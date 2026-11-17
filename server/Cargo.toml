@@ -29,6 +29,11 @@ tracing-subscriber.workspace = true
 futures-util.workspace = true
 ursi-domain.workspace = true
 ursi-agent-runtime.workspace = true
+ursi-channel.workspace = true
+ursi-mcp-server.workspace = true
+ursi-sandbox-observe.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+tokio-tungstenite.workspace = true
