@@ -57,9 +57,11 @@ Pi 使用独立 HOME、TMPDIR、`PI_CODING_AGENT_DIR`。环境经 `env_clear` �
 | `session/prompt` | `{"sessionId":"UUID","prompt":[{"type":"text","text":"任务"}]}` | 最终停止后返回 `{"stopReason":"end_turn"}` 或 `cancelled` |
 | `session/cancel` | 通知，`{"sessionId":"UUID"}` | 通知无响应，对应 prompt 等清理完成后返回 cancelled |
 | `_ursi/session/status` | `{"sessionId":"UUID"}` | `{"sessionId":"UUID","state":"running","pid":123}` |
-| `_ursi/session/close` | `{"sessionId":"UUID"}` | 回收后返回 `{}`，重复 close 幂等 |
+| `_ursi/session/close` | `{"sessionId":"UUID"}` | 确认回收后返回 `{}`，重复 close 保留成功或清理失败结果 |
 
-`cwd` 必须是绝对路径，canonicalize 后仍为 workspace 内的已有目录，且位于 state 目录之外。启动 Pi 前再次校验。非空 MCP 配置、图片与其他 prompt block 返回参数错误。
+`cwd` 必须是绝对路径，canonicalize 后为 workspace 内的已有目录，且位于 state 目录之外。创建会话时固定目录句柄并保存请求路径和规范路径。每轮 prompt（包括复用 Pi）重新检查两条路径的规范化结果、句柄当前路径以及设备号/inode。路径被改名、替换成新目录或重定向时，拒绝本轮请求，清理旧 Pi，状态进入 interrupted。非空 MCP 配置、图片与其他 prompt block 返回参数错误。
+
+启动监督器时通过固定句柄 `fchdir`，Pi 继承该目录，减少校验与启动之间再次解析路径的竞态。校验保证的是服务拒绝检查时已被篡改的请求工作目录。Pi 工具仍会以绝对 cwd 字符串访问文件，检查后的并发替换也可能影响工具路径解析。Bash 对整个容器的访问由 Linux 权限和容器隔离决定，这些 cwd 检查不提供文件系统沙箱。
 
 `session/update` 为通知，`params` 包含 `sessionId` 与 `update`。文本映射为 `agent_message_chunk`，工具执行映射为 `tool_call`、`tool_call_update`，保留 `toolCallId`、title、`in_progress/completed/failed` 和 ACP 文本 content。
 
@@ -69,13 +71,15 @@ Pi 使用独立 HOME、TMPDIR、`PI_CODING_AGENT_DIR`。环境经 `env_clear` �
 
 每会话允许一个在途 prompt，忙时立即报错。成功后保留 Pi 内存上下文，后续 prompt 使用同一进程。`prompt success:true` 仅确认提交，最终结果同时要求匹配的接受响应、成功的 assistant stopReason 与 `agent_settled`。模型 error、aborted、length、协议异常和提前退出均返回错误。
 
-状态包括 `idle`、`running`、`cancelled`、`interrupted`、`closed`。执行失败进入 interrupted。取消、中断和关闭后创建新会话继续任务。`pid` 表示该会话的监督进程 PID，它拥有 Pi 与全部工具后代。Pi 尚未启动或已经回收时为 null。
+状态包括 `idle`、`running`、`cancelled`、`interrupted`、`closed`。执行失败进入 interrupted。取消、中断和关闭后创建新会话继续任务。`pid` 仅表示该会话的监督进程 PID，尚未启动或已经确认退出时为 null。监督器异常死亡后即使仍有工具存活，`pid` 也为 null，因此不能单凭该字段判断后代回收完成。
 
-每会话通过同一二进制的内部监督模式启动独立 Linux subreaper。取消先限时发送 `clear_queue`、`abort`，再通知监督进程回收。监督进程按 `/proc` 追踪后代，使用 PID 与启动时间核对身份，经 pidfd 冻结、终止并收养回收独立进程组的工具，直到 `waitpid` 确认 ECHILD 才退出。只有该条件成立后才返回 cancelled 或 close 结果。内核不可中断 I/O 导致回收尚未结束时，会话维持清理中的 running 状态。
+每会话通过同一二进制的内部监督模式启动独立 Linux subreaper。取消先限时发送 `clear_queue`、`abort`，再通知监督进程回收。监督进程按 `/proc` 追踪后代，使用 PID 与启动时间核对身份，经 pidfd 冻结、终止并收养回收独立进程组的工具，直到 `waitpid` 确认 ECHILD，随后通过 Pi 不继承的专用通道发送清理完成回执。服务同时确认监督器退出码为零和回执有效，才返回 cancelled 或 close 成功。内核不可中断 I/O 导致回收尚未结束时，在途会话维持清理中的 running 状态。
+
+监督器被外部 SIGKILL、OOM 终止或缺少回执时，会话进入 interrupted，prompt/close 返回 `process cleanup failed`，重复 close 和重启后仍保留失败结果。运行中独立等待监督器退出，即使 detached 工具保持 stdout 打开也能及时报告错误。Pi 的父死亡信号尽力终止 Pi 本身，但监督器异常死亡后可能遗留已脱离其管控的工具，服务不会声称全部后代已回收，也不会通过扫描其他会话兜底。此时确认清除遗留进程需要外层沙箱停止或删除。
 
 连接断开只停止该连接的事件投递。任务继续运行，重连初始化后可查询状态或取消。已产生的通知与 prompt 响应仅投递到提交连接，重连通过 status 观测，执行不会重放。
 
-状态记录只含会话 ID、cwd、状态，经临时文件、fsync 和 rename 原子提交。服务锁由 root 服务与各监督进程共享，Pi 不继承锁。服务意外退出后，监督进程收到父死亡信号并清理后代。旧监督进程退出前，新服务拒绝启动。恢复将旧 idle/running 状态转换为 interrupted，保留 closed/cancelled 终态。SIGTERM 正常停机同样将尚存会话标记 interrupted。
+状态记录含会话 ID、cwd、状态和清理失败标记，经临时文件、fsync 和 rename 原子提交。服务锁由 root 服务与各监督进程共享，Pi 不继承锁。服务意外退出后，仍存活的监督进程收到父死亡信号并清理后代。旧监督进程退出前，新服务拒绝启动。锁释放仅证明监督器已退出，异常退出可能先于后代清理。恢复将旧 idle/running 状态转换为 interrupted，并将缺少回执的清理结果标为失败，保留 closed/cancelled 终态及已记录的清理失败。SIGTERM 正常停机同样将尚存会话标记 interrupted。
 
 ## 资源限额与日志
 
@@ -103,6 +107,6 @@ cargo test -p ursi-agent-cli-adapter -p ursi-session-service
 cargo clippy -p ursi-agent-cli-adapter -p ursi-session-service --all-targets -- -D warnings
 ```
 
-集成用例通过真实 HTTP/WebSocket 连接运行 Python fake RPC 子进程，覆盖鉴权、路径越界、请求关联、严格 LF、事件顺序、模型错误、并发拒绝、取消后代、断线重连、进程异常、消息超限、执行期限与服务重启。相同测试二进制可用 root 运行，覆盖 UID/GID 1000 降权、补充组清空及配置权限。
+集成用例通过真实 HTTP/WebSocket 连接运行 Python fake RPC 子进程，覆盖鉴权、路径越界、请求关联、严格 LF、事件顺序、模型错误、并发拒绝、取消后代、断线重连、进程异常、消息超限、执行期限与服务重启。cwd 回归覆盖首次与复用轮次的 symlink/目录替换，以及固定句柄启动。外部 SIGKILL 回归覆盖取消中、运行中和 idle 监督器死亡，验证清理失败持久化与其他会话继续可用。该回归在独立测试 subreaper 中执行，由测试通过登记的 pidfd 终止并收割故意保留的 detached 证据进程。相同测试二进制可用 root 运行，覆盖 UID/GID 1000 降权、补充组清空及配置权限。
 
 真实模型验收通过正式 Runtime 镜像与管理员提供的 Pi 配置执行，需同时验证 SSH/SFTP 输入、模型修改产物与仓库测试结果。

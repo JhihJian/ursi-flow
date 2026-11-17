@@ -29,8 +29,9 @@ def run(command, number):
     if message == "huge":
         print("x" * (1024 * 1024 + 1), flush=True)
         return
-    if message in ("hang", "flood"):
+    if message in ("hang", "flood", "detached"):
         # Bash 独立 session，另一个进程再次 setsid，覆盖仅 killpg(Pi) 会漏的情况。
+        # detached 故意继承 stdout，监督器被外部杀死后不能靠 EOF 判断任务结束。
         leaf = "import os,time; open('grandchild.pid','w').write(str(os.getpid())); time.sleep(300)"
         code = "import subprocess,time; subprocess.Popen(['/usr/bin/python3','-c'," + repr(leaf) + "],start_new_session=True); time.sleep(300)"
         child = subprocess.Popen(["/usr/bin/python3", "-c", code], start_new_session=True)

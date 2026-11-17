@@ -26,6 +26,47 @@ pub struct Config {
     pub deadline: Duration,
     pub lock: File,
 }
+/// 会话创建时固定目录对象，保留请求路径以检测后续重定向。
+pub struct WorkingDirectory {
+    requested: PathBuf,
+    pub path: PathBuf,
+    pub directory: File,
+}
+impl WorkingDirectory {
+    pub fn open(config: &Config, requested: &str) -> Result<Self, &'static str> {
+        let path = config.cwd(requested)?;
+        let directory = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_PATH)
+            .open(&path)
+            .map_err(|_| "cwd unavailable")?;
+        let cwd = Self {
+            requested: requested.into(),
+            path,
+            directory,
+        };
+        cwd.validate(config)?;
+        Ok(cwd)
+    }
+    pub fn validate(&self, config: &Config) -> Result<(), &'static str> {
+        let changed = "session cwd changed";
+        let resolved = config.cwd(self.requested.to_str().ok_or(changed)?)?;
+        let canonical = config.cwd(self.path.to_str().ok_or(changed)?)?;
+        let pinned = self.directory.metadata().map_err(|_| changed)?;
+        let current = fs::metadata(&self.path).map_err(|_| changed)?;
+        // /proc 句柄路径也必须相同，拒绝原目录被移走但旧路径仍指向它的情况。
+        let held_path = fs::read_link(format!("/proc/self/fd/{}", self.directory.as_raw_fd()))
+            .map_err(|_| changed)?;
+        if resolved != self.path
+            || canonical != self.path
+            || held_path != self.path
+            || (pinned.dev(), pinned.ino()) != (current.dev(), current.ino())
+        {
+            return Err(changed);
+        }
+        Ok(())
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Model {

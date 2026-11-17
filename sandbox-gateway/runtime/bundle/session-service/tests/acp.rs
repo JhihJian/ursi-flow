@@ -197,6 +197,308 @@ async fn gone(pid: i32) {
     panic!("process survived: {pid}");
 }
 
+// 单独的测试进程作 subreaper，避免异常 supervisor 留下的证据进程污染主机。
+// 只收割测试明确登记的 PID，不扫描或杀死其他会话。
+struct Orphans(Vec<(i32, std::os::fd::OwnedFd)>);
+impl Orphans {
+    fn track(&mut self, pid: i32) {
+        use std::os::fd::FromRawFd;
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) as i32 };
+        assert!(fd >= 0);
+        self.0
+            .push((pid, unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) }));
+    }
+}
+impl Drop for Orphans {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        for (_, fd) in self.0.iter().rev() {
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    fd.as_raw_fd(),
+                    libc::SIGKILL,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                );
+            }
+        }
+        for (pid, _) in self.0.iter().rev() {
+            // service/supervisor 已退出后，登记的孤儿归本测试进程。
+            for _ in 0..300 {
+                let result = unsafe { libc::waitpid(*pid, std::ptr::null_mut(), libc::WNOHANG) };
+                if result == *pid || !PathBuf::from(format!("/proc/{pid}")).exists() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn supervisor_sigkill_never_claims_cleanup_and_preserves_other_sessions() {
+    if std::env::var_os("URSI_TEST_ORPHAN_REAPER").is_none() {
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "supervisor_sigkill_never_claims_cleanup_and_preserves_other_sessions",
+                "--nocapture",
+            ])
+            .env("URSI_TEST_ORPHAN_REAPER", "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+    assert_eq!(unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1) }, 0);
+    // 覆盖取消中、运行中（stdout 仍打开）、idle 的异常退出。
+    for mode in ["cancel", "running", "idle"] {
+        let mut orphans = Orphans(Vec::new());
+        let mut server = Server::new(60).await;
+        let mut socket = server.connect().await;
+        let one = server.session(&mut socket, "workspace/repo").await;
+        let two = server.session(&mut socket, "workspace/other").await;
+        prompt(&mut socket, &two, json!("other"), "normal").await;
+        assert_eq!(
+            reply(&mut socket, json!("other")).await["result"]["stopReason"],
+            "end_turn"
+        );
+        let other_pid = status(&mut socket, &two).await["pid"].clone();
+        prompt(
+            &mut socket,
+            &one,
+            json!("run"),
+            if mode == "idle" { "normal" } else { "detached" },
+        )
+        .await;
+        let pi: Value =
+            serde_json::from_str(&file_ready(server.path("workspace/repo/identity.json")).await)
+                .unwrap();
+        orphans.track(pi["pid"].as_i64().unwrap() as i32);
+        let mut tools = Vec::new();
+        if mode == "idle" {
+            assert_eq!(
+                reply(&mut socket, json!("run")).await["result"]["stopReason"],
+                "end_turn"
+            );
+        } else {
+            for file in ["tool.pid", "grandchild.pid"] {
+                let pid = file_ready(server.path(&format!("workspace/repo/{file}")))
+                    .await
+                    .parse::<i32>()
+                    .unwrap();
+                orphans.track(pid);
+                tools.push(pid);
+            }
+        }
+        let supervisor = status(&mut socket, &one).await["pid"].as_i64().unwrap() as i32;
+        if mode == "cancel" {
+            // 暂停监督器，确定协作阶段即使延迟也不会先完成回收。
+            assert_eq!(unsafe { libc::kill(supervisor, libc::SIGSTOP) }, 0);
+            send(
+                &mut socket,
+                json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":one}}),
+            )
+            .await;
+            // 证明取消已进入协作阶段，再从测试进程杀 supervisor。
+            file_ready(server.path("workspace/repo/cancellation.log")).await;
+        }
+        assert_eq!(unsafe { libc::kill(supervisor, libc::SIGKILL) }, 0);
+        if mode != "idle" {
+            let response =
+                tokio::time::timeout(Duration::from_secs(3), reply(&mut socket, json!("run")))
+                    .await
+                    .unwrap();
+            assert_eq!(response["error"]["message"], "process cleanup failed");
+            assert!(response.get("result").is_none());
+        }
+        // SIGKILL 投递与 wait 状态可见之间存在调度间隙。
+        let state = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let state = status(&mut socket, &one).await;
+                if state["state"] == "interrupted" {
+                    break state;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(state["state"], "interrupted");
+        assert_eq!(state["pid"], Value::Null);
+        for pid in &tools {
+            let stat = fs::read_to_string(format!("/proc/{pid}/stat"))
+                .expect("测试必须保留未清理后代的证据");
+            assert_ne!(
+                stat.rsplit_once(") ").unwrap().1.split_whitespace().next(),
+                Some("Z")
+            );
+        }
+        for _ in 0..2 {
+            send(&mut socket, json!({"jsonrpc":"2.0","id":"close","method":"_ursi/session/close","params":{"sessionId":one}})).await;
+            assert_eq!(
+                reply(&mut socket, json!("close")).await["error"]["message"],
+                "process cleanup failed"
+            );
+            assert_eq!(status(&mut socket, &one).await["state"], "interrupted");
+        }
+        prompt(&mut socket, &two, json!("still-alive"), "normal").await;
+        assert_eq!(
+            reply(&mut socket, json!("still-alive")).await["result"]["stopReason"],
+            "end_turn"
+        );
+        assert_eq!(status(&mut socket, &two).await["pid"], other_pid);
+        send(&mut socket, json!({"jsonrpc":"2.0","id":"close-other","method":"_ursi/session/close","params":{"sessionId":two}})).await;
+        assert_eq!(
+            reply(&mut socket, json!("close-other")).await["result"],
+            json!({})
+        );
+        server.kill();
+        server.start(60).await;
+        let mut socket = server.connect().await;
+        send(&mut socket, json!({"jsonrpc":"2.0","id":"close-after-restart","method":"_ursi/session/close","params":{"sessionId":one}})).await;
+        assert_eq!(
+            reply(&mut socket, json!("close-after-restart")).await["error"]["message"],
+            "process cleanup failed"
+        );
+        server.kill();
+        drop(orphans);
+        for pid in tools {
+            gone(pid).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn pinned_cwd_spawn_and_missing_cleanup_receipt() {
+    use std::os::unix::fs::MetadataExt;
+    use ursi_agent_cli_adapter::{Error, PiProcess, SpawnSpec};
+    let temp = tempfile::tempdir().unwrap();
+    let original = temp.path().join("repo");
+    let moved = temp.path().join("moved");
+    let outside = temp.path().join("outside");
+    fs::create_dir(&original).unwrap();
+    fs::create_dir(&outside).unwrap();
+    let directory = fs::File::open(&original).unwrap();
+    let identity = directory.metadata().unwrap();
+    // 在获取句柄与启动之间替换路径，启动只允许使用已固定的目录对象。
+    fs::rename(&original, &moved).unwrap();
+    symlink(&outside, &original).unwrap();
+    let fake = temp.path().join("supervisor");
+    fs::write(
+        &fake,
+        r#"#!/usr/bin/python3
+import json, os, signal, sys
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+stat = os.stat('.')
+print(json.dumps(dict(cwd=os.getcwd(), dev=stat.st_dev, ino=stat.st_ino)), flush=True)
+# 故意正常退出却不发送清理回执。
+for line in sys.stdin:
+    pass
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    let spec = SpawnSpec {
+        bin: fake.clone(),
+        runtime_dir: temp.path().into(),
+        provider: "fake".into(),
+        model: "fake".into(),
+    };
+    let mut process = PiProcess::spawn(spec, &fake, -1, &directory).unwrap();
+    let event = tokio::time::timeout(Duration::from_secs(3), process.next())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(event["cwd"], moved.to_str().unwrap());
+    assert_eq!(event["dev"], identity.dev());
+    assert_eq!(event["ino"], identity.ino());
+    assert!(matches!(
+        process.stop(false).await,
+        Err(Error::CleanupUnconfirmed)
+    ));
+    assert_eq!(process.pid(), None);
+}
+
+#[tokio::test]
+async fn cwd_replacement_rejects_first_and_reused_turns() {
+    for started in [false, true] {
+        for replacement in ["outside", "inside", "directory", "request-alias"] {
+            let server = Server::new(10).await;
+            let mut socket = server.connect().await;
+            let requested = if replacement == "request-alias" {
+                symlink(
+                    server.path("workspace/repo"),
+                    server.path("workspace/alias"),
+                )
+                .unwrap();
+                "workspace/alias"
+            } else {
+                "workspace/repo"
+            };
+            let session = server.session(&mut socket, requested).await;
+            let mut previous = None;
+            if started {
+                prompt(&mut socket, &session, json!("first"), "normal").await;
+                assert_eq!(
+                    reply(&mut socket, json!("first")).await["result"]["stopReason"],
+                    "end_turn"
+                );
+                previous = status(&mut socket, &session).await["pid"].as_i64();
+            }
+            if replacement == "request-alias" {
+                fs::remove_file(server.path("workspace/alias")).unwrap();
+                symlink(server.path("outside"), server.path("workspace/alias")).unwrap();
+            } else {
+                fs::rename(
+                    server.path("workspace/repo"),
+                    server.path("workspace/moved"),
+                )
+                .unwrap();
+                match replacement {
+                    "outside" => {
+                        symlink(server.path("outside"), server.path("workspace/repo")).unwrap()
+                    }
+                    "inside" => symlink(
+                        server.path("workspace/other"),
+                        server.path("workspace/repo"),
+                    )
+                    .unwrap(),
+                    _ => fs::create_dir(server.path("workspace/repo")).unwrap(),
+                }
+            }
+            prompt(&mut socket, &session, json!("tampered"), "normal").await;
+            assert_eq!(
+                reply(&mut socket, json!("tampered")).await["error"]["code"],
+                -32602,
+                "{started} {replacement}"
+            );
+            let state = status(&mut socket, &session).await;
+            assert_eq!(state["state"], "interrupted");
+            assert_eq!(state["pid"], Value::Null);
+            if let Some(pid) = previous {
+                gone(pid as i32).await;
+            }
+            for path in ["outside/prompts.count", "workspace/other/prompts.count"] {
+                assert!(!server.path(path).exists());
+            }
+            let old_path = if replacement == "request-alias" {
+                "workspace/repo/prompts.count"
+            } else {
+                "workspace/moved/prompts.count"
+            };
+            if started {
+                assert_eq!(fs::read_to_string(server.path(old_path)).unwrap(), "1");
+            } else {
+                assert!(!server.path(old_path).exists());
+            }
+            assert!(!server.path("runtime").join(&session).exists());
+        }
+    }
+}
+
 #[tokio::test]
 async fn authentication_validation_and_workspace_boundaries() {
     let server = Server::new(10).await;
