@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [features]
-default = ["driver-fake"]
+default = ["driver-fake", "driver-docker"]
 driver-fake = []
 driver-docker = []
 
@@ -15,4 +15,14 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+axum = { version = "0.8", features = ["ws"] }
+futures-util = "0.3"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+fs2 = "0.4"
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-tungstenite = "0.29"
+tempfile = "3"

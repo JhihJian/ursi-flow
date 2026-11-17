@@ -61,4 +61,4 @@ Channel 根据端点描述选择直连或 Gateway 隧道。隧道只转发字节
 
 参考 `/data/github/grasp/sandbox-gateway/` 的资源生命周期、驱动、传输与运行包设计，提取适用的行为用例。每个功能记录参考用例与本项目差异，以本项目契约为验收依据，不承诺整个 Grasp HTTP API 兼容。
 
-本次目录和规格定义设计边界。现有 Rust 代码仍是骨架，SPEC 验收条目是后续实现目标。Docker 是首个真实驱动，fake 用于故障注入与契约测试。Kubernetes/E2B 扩展现有 driver 边界，不提前建立空驱动工程。
+Gateway 以独立二进制实现控制面、Docker 驱动与可选隧道，验证入口见 [Gateway 使用说明](gateway/README.md)。Runtime 和 Server Channel 的实现进度分别跟随自身模块，Gateway 验收镜像仅用于资源与传输验证。Docker 是首个真实驱动，fake 用于故障注入与契约测试。Kubernetes/E2B 扩展现有 driver 边界，不提前建立空驱动工程。

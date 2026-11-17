@@ -3,6 +3,7 @@ parent: ../../SPEC.md
 references:
   - ./CONTRACT.md
   - ../DESIGN.md
+  - ./README.md
 ---
 
 # Sandbox Gateway
@@ -11,7 +12,7 @@ references:
 
 Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、端口地址返回及公开/内部端口隔离。可选 tunnel 为客户端提供受鉴权保护的字节中继。
 
-一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。server 通过网络契约调用 Gateway，agent 会话在沙箱内处理。
+一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。server 通过网络契约调用 Gateway，agent 会话在沙箱内处理。首个真实驱动对接本机 Unix socket Docker daemon，进程独占 SQLite 数据库并固定 namespace 和 daemon 身份。
 
 ## 关键功能与验收
 
@@ -32,6 +33,7 @@ Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止
 #### 验收
 
 - Gateway 重启后能读回创建规格、操作意图与资源标识并继续对账。
+- 数据库绑定的 namespace 或 Docker daemon 身份改变时启动被拒绝，同一数据库路径别名不能绕过进程独占。
 - 查询超时不触发资源或记录删除，确认资源不存在后按期望操作收敛。
 
 ### 端点与可选隧道

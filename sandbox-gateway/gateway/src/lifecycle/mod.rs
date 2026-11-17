@@ -1,8 +1,367 @@
-//! 沙箱生命周期：资源操作、元数据、就绪检查与对账。
-//!
-//! 本模块统一管理业务状态和持久化操作意图，驱动只报告基础设施实际状态。
-
+//! 元数据先于外部副作用提交，按沙箱互斥执行，并以稳定代际接回中断操作。
 pub mod store;
 
-/// 生命周期服务骨架，尚未实现资源操作。
-pub struct SandboxService;
+use crate::{driver::Driver, models::*};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, Weak},
+    time::Duration,
+};
+use store::Store;
+use tokio::{
+    net::TcpStream,
+    sync::{Mutex as AsyncMutex, watch},
+    task::JoinSet,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub enum Action {
+    Start,
+    Stop,
+    Delete,
+    Rebuild { preserve_data: bool },
+}
+
+pub struct Service {
+    store: Arc<Store>,
+    driver: Arc<dyn Driver>,
+    locks: Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
+    stopping: std::sync::atomic::AtomicBool,
+}
+
+impl Service {
+    pub fn new(store: Arc<Store>, driver: Arc<dyn Driver>) -> Arc<Self> {
+        Arc::new(Self {
+            store,
+            driver,
+            locks: Mutex::new(HashMap::new()),
+            stopping: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+    pub fn is_stopping(&self) -> bool {
+        self.stopping.load(std::sync::atomic::Ordering::Acquire)
+    }
+    pub fn stop(&self) {
+        self.stopping
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+    fn ensure_accepting(&self) -> Result<()> {
+        if self.is_stopping() {
+            return Err(Error::Unavailable("Gateway 正在停止".into()));
+        }
+        Ok(())
+    }
+    pub fn driver_name(&self) -> &'static str {
+        self.driver.name()
+    }
+    pub fn capabilities(&self) -> Capabilities {
+        self.driver.capabilities()
+    }
+    fn lock_for(&self, id: &str) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.locks.lock().expect("sandbox lock map poisoned");
+        if let Some(lock) = locks.get(id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        let lock = Arc::new(AsyncMutex::new(()));
+        locks.insert(id.into(), Arc::downgrade(&lock));
+        lock
+    }
+    pub fn get(&self, id: &str) -> Result<Sandbox> {
+        self.store.get(id)
+    }
+    pub fn list(&self) -> Result<Vec<Sandbox>> {
+        self.store.list()
+    }
+    pub async fn create(&self, spec: SandboxSpec, key: Option<String>) -> Result<Sandbox> {
+        self.ensure_accepting()?;
+        spec.validate()?;
+        if key.as_ref().is_some_and(|v| v.is_empty() || v.len() > 256) {
+            return Err(Error::Invalid("幂等键无效".into()));
+        }
+        let sandbox = Sandbox {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            spec,
+            resource: Resource {
+                generation: 1,
+                data_generation: 1,
+            },
+            status: Status::Preparing,
+            operation: Some(Operation::Create),
+            retired: vec![],
+            revision: 0,
+            endpoints: vec![],
+            error: None,
+        };
+        self.store.insert(&sandbox, key.as_deref())
+    }
+    pub async fn request(&self, id: &str, action: Action) -> Result<Sandbox> {
+        self.ensure_accepting()?;
+        let lock = self.lock_for(id);
+        let _guard = lock
+            .try_lock()
+            .map_err(|_| Error::Conflict("沙箱操作执行中，请重试".into()))?;
+        let mut sandbox = self.get(id)?;
+        if let Some(operation) = &sandbox.operation {
+            let same = matches!(
+                (operation, action),
+                (Operation::Start, Action::Start)
+                    | (Operation::Stop, Action::Stop)
+                    | (Operation::Delete, Action::Delete)
+            );
+            if same {
+                return Ok(sandbox);
+            }
+            if !matches!(action, Action::Delete) {
+                return Err(Error::Conflict("已有未完成操作".into()));
+            }
+        }
+        match action {
+            Action::Start => {
+                if sandbox.status == Status::Running {
+                    return Ok(sandbox);
+                }
+                sandbox.operation = Some(Operation::Start);
+                sandbox.status = Status::Preparing;
+            }
+            Action::Stop => {
+                if sandbox.status == Status::Stopped {
+                    return Ok(sandbox);
+                }
+                sandbox.operation = Some(Operation::Stop);
+                sandbox.status = Status::Preparing;
+            }
+            Action::Delete => {
+                sandbox.operation = Some(Operation::Delete);
+                sandbox.status = Status::Deleting;
+            }
+            Action::Rebuild { preserve_data } => {
+                let capabilities = self.capabilities();
+                if (preserve_data && !capabilities.rebuild_preserve_data)
+                    || (!preserve_data && !capabilities.rebuild_destroy_data)
+                {
+                    return Err(Error::Unsupported("驱动不支持该重建方式".into()));
+                }
+                let previous = sandbox.resource;
+                sandbox.retired.push(previous);
+                sandbox.resource.generation = sandbox
+                    .resource
+                    .generation
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Internal("generation overflow".into()))?;
+                if !preserve_data {
+                    sandbox.resource.data_generation = sandbox.resource.generation;
+                }
+                sandbox.operation = Some(Operation::Rebuild {
+                    previous,
+                    preserve_data,
+                });
+                sandbox.status = Status::Preparing;
+            }
+        }
+        sandbox.endpoints.clear();
+        sandbox.error = None;
+        self.store.update(&mut sandbox)?;
+        Ok(sandbox)
+    }
+    pub async fn logs(&self, id: &str, tail: usize) -> Result<String> {
+        if tail == 0 || tail > 5000 {
+            return Err(Error::Invalid("tail 必须为1..5000".into()));
+        }
+        self.driver.logs(&self.get(id)?, tail).await
+    }
+    pub async fn resolve_endpoint(&self, id: &str, name: &str) -> Result<Endpoint> {
+        let lock = self.lock_for(id);
+        let _guard = lock
+            .try_lock()
+            .map_err(|_| Error::Conflict("沙箱操作执行中".into()))?;
+        let sandbox = self.get(id)?;
+        if sandbox.operation.is_some() || sandbox.status != Status::Running {
+            return Err(Error::Conflict("沙箱未就绪".into()));
+        }
+        let declared = sandbox
+            .spec
+            .ports
+            .iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| Error::NotFound(name.into()))?;
+        let observed = self.driver.observe(&sandbox).await?;
+        if !observed.running || observed.healthy == Some(false) {
+            return Err(Error::Unavailable("沙箱实际不可用".into()));
+        }
+        observed
+            .endpoints
+            .into_iter()
+            .find(|p| {
+                p.name == declared.name
+                    && p.port == declared.port
+                    && p.visibility == declared.visibility
+            })
+            .ok_or_else(|| Error::NotFound(name.into()))
+    }
+    async fn ready(&self, sandbox: &Sandbox, observed: Observed) -> Result<Vec<Endpoint>> {
+        if !observed.running || observed.healthy == Some(false) {
+            return Err(Error::Unavailable("容器或健康检查尚未就绪".into()));
+        }
+        for port in sandbox.spec.ports.iter().filter(|p| p.ready) {
+            let endpoint = observed
+                .endpoints
+                .iter()
+                .find(|p| p.name == port.name && p.port == port.port)
+                .ok_or_else(|| Error::Unavailable(format!("必需端点 {} 未发现", port.name)))?;
+            tokio::time::timeout(
+                Duration::from_millis(500),
+                TcpStream::connect(&endpoint.address),
+            )
+            .await
+            .map_err(|_| Error::Unavailable("必需端点连接超时".into()))?
+            .map_err(|_| Error::Unavailable("必需端点未就绪".into()))?;
+        }
+        Ok(observed.endpoints)
+    }
+    /// 可被启动/周期对账与独立恢复测试调用。每轮最多执行一次操作推进。
+    pub async fn reconcile(&self, id: &str) -> Result<()> {
+        let lock = self.lock_for(id);
+        let Ok(_guard) = lock.try_lock() else {
+            return Ok(());
+        };
+        let mut sandbox = match self.get(id) {
+            Err(Error::NotFound(_)) => return Ok(()),
+            other => other?,
+        };
+        let result = self.advance(&mut sandbox).await;
+        if let Err(error) = &result {
+            // 操作意图始终保留。错误只用于诊断，不把瞬时故障误判为资源不存在。
+            let message = error.to_string();
+            if sandbox.error.as_ref() != Some(&message) {
+                sandbox.error = Some(message);
+                if sandbox.operation.is_none() {
+                    sandbox.status = Status::Error;
+                    sandbox.endpoints.clear();
+                }
+                self.store.update(&mut sandbox)?;
+            }
+        }
+        result
+    }
+    async fn advance(&self, sandbox: &mut Sandbox) -> Result<()> {
+        match sandbox.operation.clone() {
+            Some(Operation::Delete) => {
+                // 先停止/移除全部工作负载，再删除卷，兼容保数据重建中途被删除。
+                for resource in sandbox
+                    .retired
+                    .iter()
+                    .chain(std::iter::once(&sandbox.resource))
+                {
+                    self.driver.remove(&sandbox.id, *resource, false).await?;
+                }
+                for resource in sandbox
+                    .retired
+                    .iter()
+                    .chain(std::iter::once(&sandbox.resource))
+                {
+                    self.driver.remove(&sandbox.id, *resource, true).await?;
+                }
+                return self.store.delete(sandbox);
+            }
+            Some(Operation::Stop) => {
+                match self.driver.stop(sandbox).await {
+                    Err(Error::NotFound(_)) => {}
+                    other => other?,
+                }
+                sandbox.status = Status::Stopped;
+                sandbox.endpoints.clear();
+            }
+            Some(Operation::Create) => {
+                let observed = self.driver.ensure(sandbox).await?;
+                sandbox.endpoints = self.ready(sandbox, observed).await?;
+                sandbox.status = Status::Running;
+            }
+            Some(Operation::Start) => {
+                self.driver.start(sandbox).await?;
+                sandbox.endpoints = self
+                    .ready(sandbox, self.driver.observe(sandbox).await?)
+                    .await?;
+                sandbox.status = Status::Running;
+            }
+            Some(Operation::Rebuild {
+                previous,
+                preserve_data,
+            }) => {
+                // previous 在请求受理时冻结，重试只清理旧代，绝不误删新代卷。
+                self.driver
+                    .remove(&sandbox.id, previous, !preserve_data)
+                    .await?;
+                let observed = self.driver.ensure(sandbox).await?;
+                sandbox.endpoints = self.ready(sandbox, observed).await?;
+                sandbox.status = Status::Running;
+                sandbox.retired.clear();
+            }
+            None => {
+                let observed = self.driver.observe(sandbox).await?;
+                if observed.running {
+                    sandbox.endpoints = self.ready(sandbox, observed).await?;
+                    sandbox.status = Status::Running;
+                } else {
+                    sandbox.endpoints.clear();
+                    sandbox.status = Status::Stopped;
+                }
+            }
+        }
+        sandbox.operation = None;
+        sandbox.error = None;
+        self.store.update(sandbox)
+    }
+    /// 有界后台任务；停止时取消进行中的CLI，已提交意图由下次启动继续处理。
+    pub async fn run(self: Arc<Self>, mut stop: watch::Receiver<bool>) -> Result<()> {
+        let mut tasks = JoinSet::new();
+        let mut active = std::collections::HashSet::new();
+        let mut cursor = 0usize;
+        let mut tick = tokio::time::interval(Duration::from_secs(1));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let result = loop {
+            if self.is_stopping() || *stop.borrow() {
+                break Ok(());
+            }
+            tokio::select! {
+                biased;
+                changed = stop.changed() => { if changed.is_err() || *stop.borrow() { break Ok(()); } }
+                Some(done) = tasks.join_next(), if !tasks.is_empty() => {
+                    match done {
+                        Ok(id) => { active.remove(&id); }
+                        Err(error) => {
+                            // 子任务 panic 后停止调度，交由进程重启恢复，不能永久漏掉 active ID。
+                            break Err(Error::Internal(format!("gateway reconciliation task failed: {error}")));
+                        }
+                    }
+                }
+                _ = tick.tick() => {
+                    match self.list() {
+                        Ok(sandboxes) => {
+                            let count = sandboxes.len();
+                            if count > 0 {
+                                for _ in 0..count {
+                                    if tasks.len() >= 16 { break; }
+                                    let sandbox = &sandboxes[cursor % count];
+                                    cursor = (cursor + 1) % count;
+                                    if !active.insert(sandbox.id.clone()) { continue; }
+                                    let service = self.clone();
+                                    let id = sandbox.id.clone();
+                                    tasks.spawn(async move { let _ = service.reconcile(&id).await; id });
+                                }
+                            }
+                        }
+                        Err(error) => break Err(error),
+                    }
+                }
+            }
+        };
+        self.stop();
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests;

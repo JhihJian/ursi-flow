@@ -1,46 +1,75 @@
-# Gateway 资源与传输契约
+# Gateway HTTP 与传输契约
 
-## 控制面
+## 身份与响应
 
-控制面提供创建、启动、停止、删除、重建、状态、日志、能力与端点查询。创建等长操作先持久化意图后受理，通过查询返回进度、实际状态和错误。Gateway API 鉴权后调用 lifecycle，driver 只执行基础设施操作。
+除 `GET /healthz` 外，所有资源接口要求 `Authorization: Bearer <key>`。独立进程启动时拒绝未配置或不足 16 字节的 key。该身份拥有本 Gateway 命名空间的管理权限，不提供多租户身份体系。
 
-Sandbox Spec 包含稳定操作与资源关联标识、镜像或模板、工作区保留策略、资源限制、端点声明、bundle 引用和所需环境能力。敏感凭据采用受控引用或运行时注入，不作为普通元数据明文保存。
+错误为 `{ "error": { "code": "...", "message": "..." } }`。缺失/错误身份返回 401，参数非法 400，资源不存在 404，操作冲突 409，能力不支持 501，资源暂不可用 503，内部存储错误 500。隧道目标 TCP 拨号失败在升级前返回 502。响应不返回驱动原始错误，沙箱错误状态只给安全摘要，诊断详情保存在受控数据库中。
 
-以本项目规格和行为用例验收。Grasp 提供参考实现与测试场景，不要求复制其全部 URL、版本号、错误体或接口别名。具体 HTTP 路由及请求响应 schema 随 gateway-api 实现冻结，服务端与客户端共享一组契约样例进行验证。
+## 控制面路由
 
-## 生命周期语义
+| 方法与路径 | 请求 | 响应 |
+|---|---|---|
+| `GET /healthz` | 无 | 200，HTTP 进程健康，不代表所有沙箱就绪 |
+| `GET /api/v1/capabilities` | 无 | 200，driver、capabilities、tunnel_enabled |
+| `POST /api/v1/sandboxes` | SandboxSpec，可选 `Idempotency-Key` | 202，Sandbox |
+| `GET /api/v1/sandboxes` | 无 | 200，`{sandboxes:[...]}` |
+| `GET /api/v1/sandboxes/{id}` | 无 | 200，Sandbox |
+| `POST /api/v1/sandboxes/{id}/start` | 无 | 202，Sandbox |
+| `POST /api/v1/sandboxes/{id}/stop` | 无 | 202，Sandbox |
+| `POST /api/v1/sandboxes/{id}/rebuild` | `{preserve_data:true或false}`，必须显式选择 | 202，Sandbox |
+| `DELETE /api/v1/sandboxes/{id}` | 无 | 202，带删除意图的 Sandbox，完成后查询 404 |
+| `GET /api/v1/sandboxes/{id}/logs?tail=5000` | tail 范围 1..5000 | 200，`{content:"..."}`，有输出大小上限 |
+| `GET /api/v1/sandboxes/{id}/endpoints` | 无 | 200，`{endpoints:[...]}` |
 
-| 操作 | 必须保留的行为 |
-|---|---|
-| 创建 | 冻结规格并保存意图，关联外部资源，服务就绪前保持准备状态 |
-| 启动 | 恢复已停止资源，保留工作区，重新解析端点并检查服务 |
-| 停止 | 关闭工作负载并按驱动能力保留可恢复的工作区 |
-| 删除 | 持久化删除意图，清理本沙箱拥有的资源，失败继续重试 |
-| 保数据重建 | 更换工作负载并挂回工作区，不删除共享宿主配置 |
-| 销毁数据重建 | 显式声明销毁范围，确认授权后重建对应数据与工作负载 |
+所有规格结构拒绝未知字段。同一创建幂等键绑定同一规格与沙箱，删除后保留 key 绑定。生命周期请求先落库再返回受理，驱动操作由后台调度。对账与请求采用每沙箱互斥，忙碌或冲突时返回 409。
 
-停止通常经历 running → stopping → stopped，启动经历 stopped → preparing → running。这里描述行为阶段，持久化状态枚举由 lifecycle 实现统一定义。删除是独立意图，不能因实际资源仍在运行而被对账覆盖。
+## SandboxSpec
 
-重建前验证驱动能力。无法保证数据保留时拒绝操作，不静默转为销毁数据。状态提交使用条件更新，查询故障保留记录并重试。确认资源不存在后结合期望操作处理，不直接把全部缺失资源当作成功删除。
+```json
+{
+  "image": "ursi-gateway-acceptance:local",
+  "command": [],
+  "ports": [
+    {"name": "web", "port": 8080, "visibility": "public", "ready": true},
+    {"name": "echo", "port": 9001, "visibility": "internal", "ready": true}
+  ],
+  "labels": {},
+  "memory_mb": 256,
+  "cpus": 1.0,
+  "bundle": null
+}
+```
 
-## 端点
+`image` 必填，其他字段具有上述默认值（ports 默认空）。端点名/端口不得重复，端口范围 1..65535，最多 32 个端点。内存 16..65536 MiB，CPU 大于 0 且不超过 128。command 为空使用镜像默认命令。
 
-端点描述至少包含沙箱标识、端点标识、服务协议、guest port、public/internal 属性，以及可用的直连地址或隧道接入方式。地址由 driver 查询结果生成，调用方不能注入任意目标地址。
+bundle 可为 `{url, sha256, min_image_level}`：无凭据 HTTP(S) URL、64 位十六进制校验值及最低镜像级别。Docker 镜像必须声明 `io.ursi.image-level` 并满足要求。引用透传为 `URSI_BUNDLE_URL`、`URSI_BUNDLE_SHA256`、`URSI_BUNDLE_MIN_IMAGE_LEVEL`，bootstrap 负责下载、校验和装配。当前不提供通用 env、宿主挂载、密钥存储或模板 API。
 
-public 表示允许发布，由 driver 按宿主绑定地址或基础设施网络策略映射。internal 仅在受控网络或鉴权隧道中可达。CDP/noVNC 默认内部，内部端点不提供临时公开接口。应用预览端点的声明和发布需通过公开策略校验。
+## Sandbox 与操作意图
 
-查询端点不等于创建网络映射。端点发布和回收属于生命周期操作，Gateway 重启后需对账其真实状态。
+Sandbox 包含 `id`、冻结 `spec`、`resource:{generation,data_generation}`、`retired`、`revision`、`status`、`operation`、`endpoints` 和 `error`。status 为 `preparing/running/stopped/deleting/error`。operation 为 null 或带 `kind` 的 `create/start/stop/delete/rebuild`，重建额外记录 `previous` 与 `preserve_data`。
 
-## 可选传输
+每个资源操作先持久化，修订号 CAS 防止过期写入。一次重建递增工作负载代际，销毁数据重建另选新数据代际。旧资源保存在 retired，重试只清理明确记录的旧代资源；保数据重建旧卷缺失时失败，不新建空卷冒充成功。删除期间先清理所有已知代际容器，再清理卷，失败保留意图并重试。
 
-Channel 可以直连服务，或通过 Gateway 的 TCP over WebSocket 隧道接入。两种方式承载相同的 SSH、ACP、HTTP 等上层协议，Gateway 只处理授权端点解析与字节转发。
+一份数据库由一个进程独占，绑定驱动、namespace 与 Docker daemon 身份。调度任务异常或元数据列表无法读取时，Gateway 停止受理新操作并非零退出。正常终止对 HTTP 连接提供最多 3 秒宽限，已持久化操作由重启继续。启动和周期对账接回创建后未回填的资源，观察到运行状态不能覆盖待删除意图。查询超时保持记录；正常资源被外部删除时保留错误记录，管理员可重建或删除。fake 仅提供进程内测试资源，不能代替真实恢复验收。
 
-隧道请求包含沙箱与端点标识。启用隧道必须配置有效鉴权，升级前校验身份、端点范围及实际可达性。禁止任意 host/URL 转发。二进制字节有序传输，输入半关闭后仍可读取剩余输出，并具备背压、取消和连接回收。
+## 端点与就绪
 
-具体子协议、帧界限和 EOF 编码在 tunnel 实现时通过双方契约测试冻结，本阶段不提前派生 Grasp 协议名称。功能关闭、目标未知、权限不足和目标不可达需返回可区分结果。
+Endpoint 为 `{name,port,visibility,address}`，地址由实时 Docker 查询生成。public 映射宿主临时端口，internal 返回受控容器网络地址。CDP/noVNC 名称及 9222/6080 端口强制 internal。没有临时公开 internal 端口的 API。
 
-## 运行环境边界
+命名数据卷挂载 `/ursi/workspace`，驱动只处理具有匹配 scope、id 与代际标签的资源。真实 Docker 驱动固定本地 Unix socket，首版不支持远程 daemon。
 
-Gateway 传递镜像、工作区和 bundle 引用，bootstrap 负责包校验与装配，并将失败原因上报。环境能力与所需服务检查通过后才标记就绪。镜像与 bundle 的交付约定见 [Runtime 契约](../runtime/CONTRACT.md)。
+准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及 `ready:true` 的端点可连接。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态与地址。
 
-Gateway 不执行 agent prompt，不决定工作流重试，也不解释 ACP 会话消息。
+## 可选 TCP over WebSocket
+
+`GET /api/v1/sandboxes/{id}/connect/{endpoint}`，子协议为 `ursi-tcp-v1`。这是本项目协议，帧行为参考 Grasp，未声明整个 Grasp API 兼容。端点参数为已声明端点名，不接受任意 host/URL。隧道关闭时返回 501。
+
+升级前完成 Bearer 鉴权、子协议、目标身份和可达性校验。请求携带 Origin 或任何 query 被拒绝。直连和隧道使用相同 SSH/ACP/HTTP 等上层协议，Gateway 不解析这些业务内容。
+
+- 二进制消息承载有序 TCP 字节，客户端每消息最多 64 KiB，Gateway 输出每块最多 32 KiB。
+- 文本 `eof` 表示该方向半关闭，另一方向继续传输尾包。重复 EOF、EOF 后继续数据、其他文本均关闭连接。
+- Ping/Pong 保活；空闲 75 秒、写入停滞 30 秒可终止。中间队列有界，背压不会阻止生命周期取消。
+- 停止、删除、重建、Gateway 停机或连接取消后，回收两侧连接。隧道自身不重试 prompt 或执行命令。
+
+参考路径和测试证据见 [独立验收](ACCEPTANCE.md)，Runtime 的服务装配边界见 [Runtime 契约](../runtime/CONTRACT.md)。
