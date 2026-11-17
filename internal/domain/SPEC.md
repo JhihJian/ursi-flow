@@ -12,7 +12,7 @@ domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模�
 
 ### 工作流结构定义与解析
 
-用 Go 结构体表达固定结构的工作流程：`WorkflowDefinition` 含节点集合与边集合；`WorkflowNode` 按 `Type` 区分 agent、script、approval 三类；`WorkflowEdge` 由 `Source` 指向 `Target` 描述执行依赖。
+用 Rust 结构体（struct）表达固定结构的工作流程：`WorkflowDefinition` 含节点集合与边集合；`WorkflowNode` 按 `Type` 区分 agent、script、approval 三类；`WorkflowEdge` 由 `Source` 指向 `Target` 描述执行依赖。
 
 解析（`ParseWorkflow`）负责把 JSON 解码为结构体；校验（`ValidateWorkflow`）负责节点字段语义与 DAG 无环检查。
 
