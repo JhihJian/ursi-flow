@@ -10,5 +10,5 @@ ursi-domain.workspace = true
 ursi-repo.workspace = true
 ursi-executor.workspace = true
 ursi-sandbox.workspace = true
-ursi-observe.workspace = true
 thiserror.workspace = true
+tokio.workspace = true

@@ -9,7 +9,6 @@ license.workspace = true
 ursi-domain.workspace = true
 ursi-engine.workspace = true
 ursi-repo.workspace = true
-ursi-observe.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

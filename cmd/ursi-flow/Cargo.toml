@@ -10,7 +10,6 @@ ursi-domain.workspace = true
 ursi-repo.workspace = true
 ursi-executor.workspace = true
 ursi-sandbox.workspace = true
-ursi-observe.workspace = true
 ursi-engine.workspace = true
 ursi-api.workspace = true
 tokio.workspace = true

@@ -1,40 +1,47 @@
 //! 流程执行引擎。
 //!
 //! 把一次运行从工作流定义实例化，按拓扑顺序调度节点执行，管理状态机流转、
-//! 人工审批与打回、失败重试与崩溃恢复。engine 只编排，不直接实现具体执行器，
-//! 也不直接操作数据库，均通过接口调用。
+//! 人工审批与打回、失败重试与崩溃恢复。engine 同时承担过程可观测：运行事件
+//! 的广播与订阅（原 observe 职责）在 engine 内完成，持久化由 repo 承担。
+//! engine 只编排，不直接实现具体执行器，也不直接操作数据库，均通过接口调用。
+
+mod events;
 
 use std::sync::Arc;
 
-use ursi_domain::{Run, WorkflowDefinition};
+use tokio::sync::broadcast::Receiver;
+use ursi_domain::{Run, TelemetryEvent, WorkflowDefinition};
 use ursi_executor::Runner;
-use ursi_observe::EventSink;
 use ursi_repo::Store;
-use ursi_sandbox::Driver;
 
-/// 流程执行引擎：编排调度、状态机、人工审批、重试与恢复。
+pub use events::EventBus;
+
+/// 流程执行引擎：编排调度、状态机、人工审批、重试、恢复与事件广播。
 #[allow(dead_code)]
 pub struct Engine {
     store: Arc<dyn Store>,
     runner: Arc<dyn Runner>,
-    sandbox: Arc<dyn Driver>,
-    events: Arc<dyn EventSink>,
+    events: Arc<EventBus>,
 }
 
 impl Engine {
     /// 装配引擎所需依赖。
-    pub fn new(
-        store: Arc<dyn Store>,
-        runner: Arc<dyn Runner>,
-        sandbox: Arc<dyn Driver>,
-        events: Arc<dyn EventSink>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn Store>, runner: Arc<dyn Runner>, events: Arc<EventBus>) -> Self {
         Self {
             store,
             runner,
-            sandbox,
             events,
         }
+    }
+
+    /// 广播一条运行事件。
+    pub fn emit_event(&self, run_id: &str, event: TelemetryEvent) {
+        self.events.emit(run_id, event);
+    }
+
+    /// 订阅运行事件流。
+    pub fn subscribe_events(&self) -> Receiver<(String, TelemetryEvent)> {
+        self.events.subscribe()
     }
 
     /// 从工作流定义创建一次运行，冻结工作流快照。

@@ -219,7 +219,6 @@ dependencies = [
  "tokio",
  "ursi-domain",
  "ursi-engine",
- "ursi-observe",
  "ursi-repo",
 ]
 
@@ -227,6 +226,7 @@ dependencies = [
 name = "ursi-domain"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde",
  "serde_json",
  "thiserror",
@@ -237,9 +237,9 @@ name = "ursi-engine"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "tokio",
  "ursi-domain",
  "ursi-executor",
- "ursi-observe",
  "ursi-repo",
  "ursi-sandbox",
 ]
@@ -262,18 +262,19 @@ dependencies = [
  "ursi-domain",
  "ursi-engine",
  "ursi-executor",
- "ursi-observe",
  "ursi-repo",
  "ursi-sandbox",
 ]
 
 [[package]]
-name = "ursi-observe"
+name = "ursi-gateway"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
  "thiserror",
- "ursi-domain",
+ "tokio",
 ]
 
 [[package]]

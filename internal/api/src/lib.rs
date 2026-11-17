@@ -7,16 +7,14 @@
 use std::sync::Arc;
 
 use ursi_engine::Engine;
-use ursi_observe::Subscriber;
 use ursi_repo::Store;
 
 /// 启动 HTTP 服务（骨架占位，后续实现路由与 SSE 推送）。
 pub async fn serve(
     engine: Arc<Engine>,
     store: Arc<dyn Store>,
-    subscriber: Arc<dyn Subscriber>,
 ) -> Result<(), ApiError> {
-    let _ = (engine, store, subscriber);
+    let _ = (engine, store);
     Err(ApiError::NotImplemented("serve".to_string()))
 }
 

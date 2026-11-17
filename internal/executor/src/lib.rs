@@ -5,7 +5,8 @@
 //! 是角色的属性，执行器负责把这些属性渲染为该 CLI 可用的配置。
 
 use async_trait::async_trait;
-use ursi_domain::{Artifact, Executor, Role, TelemetryEvent};
+use std::sync::Arc;
+use ursi_domain::{Artifact, ExecutionEnv, Executor, Role, TelemetryEvent};
 
 /// 执行器输入：提示词、上游产物上下文与运行上下文。
 #[derive(Debug, Clone, Default)]
@@ -31,12 +32,14 @@ pub type EventSink<'a> = &'a (dyn Fn(TelemetryEvent) + Send + Sync);
 /// 执行器统一接口。
 #[async_trait]
 pub trait Runner: Send + Sync {
-    /// 运行一次执行，返回统一结果。
+    /// 运行一次执行。env 由 engine 注入：sandbox 提供实现，Runner 经 domain
+    /// 的 `ExecutionEnv` 契约操作环境，不感知实现是本地目录还是沙箱容器。
     async fn run(
         &self,
         input: &InvocationInput,
         role: &Role,
         executor: &Executor,
+        env: Arc<dyn ExecutionEnv>,
         sink: EventSink<'_>,
     ) -> Result<InvocationResult, ExecutorError>;
 }

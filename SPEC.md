@@ -6,9 +6,28 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 服务对象：需要把「可重复交付过程」固化为流程、并由 agent 执行器落地的团队与个人。提供的结果：可解析、可校验、可执行、可审批、可观测的工作流运行。
 
-技术路线参考 LoopForge：Rust 后端 + SQLite 单机持久化 + Web 展示页。执行器通过统一协议适配 agent CLI。
+技术路线参考 grasp：Rust 后端 + SQLite 单机持久化 + 内嵌 Web 页面；沙箱控制面独立为 gateway 进程，经版本化 REST 契约与内核解耦；agent CLI 在隔离沙箱容器内运行，交付物落在沙箱内的 git 仓库工作区。
 
-本引擎聚焦「流程运行」，首版明确不做：对话工作台、GitHub/PR 交付、多租户账号体系、AI 定时任务、统计与成本、Docker 容器隔离、并行分支调度、子流程（subflow）复用、拖拽式流程画布。这些能力仅在后续需要时扩展，不在当前模块边界内。
+本引擎聚焦「流程运行」，首版明确不做：对话工作台、GitHub/PR 交付、多租户账号体系、AI 定时任务、统计与成本、并行分支调度、子流程（subflow）复用、拖拽式流程画布、Kubernetes/E2B 等远程沙箱驱动。这些能力仅在后续需要时扩展，不在当前模块边界内。
+
+## 模块地图
+
+执行链路：Rust Kernel（internal/*）→ Sandbox Gateway（gateway/）→ Isolated Sandbox（容器，镜像定义见 sandbox-image/）→ Agent CLI（沙箱内，由 executor 适配）→ Repository Workspace（沙箱内 git 工作区，由 sandbox 管理输入注入与产物回收）。
+
+| 模块 | 职责 |
+|---|---|
+| internal/domain | 唯一共享契约层：流程定义、状态机、Runner、执行环境句柄、事件契约 |
+| internal/repo | SQLite 持久化：流程、角色、运行、节点、事件，事务一致性 |
+| internal/engine | 调度、状态机、审批打回、租约恢复、事件广播与订阅（含原 observe 职责） |
+| internal/executor | Runner 实现、能力配置渲染、agent CLI 适配 |
+| internal/sandbox | gateway 控制面客户端、运行面接入、workspace IO、凭据注入 |
+| internal/api | HTTP 与 SSE 接口，rust-embed 内嵌 web 构建产物 |
+| web | Vue3 展示与审批页面 |
+| gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、运行面端点暴露 |
+| sandbox-image | 沙箱容器镜像与 bootstrap 入口 |
+| cmd/ursi-flow | kernel 组装入口；gateway 为独立二进制 ursi-gateway |
+
+kernel 与 gateway 是两个独立进程、独立编译单元，通过两份版本化契约耦合（见 gateway/CONTRACT.md）：控制面（沙箱生命周期 REST）与运行面（kernel 经 gateway 暴露的端点直连沙箱执行命令与采集输出）。gateway 与 kernel 同机部署只是部署形态，不改变接口形态。
 
 ## 关键功能与验收
 
@@ -53,7 +72,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 #### 验收
 
-- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。
+- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。事件由 engine 广播、repo 持久化，详见 internal/engine。
 - 运行详情页能展示节点状态、工具轨迹、日志与产物。
 
 ### 持久化与恢复

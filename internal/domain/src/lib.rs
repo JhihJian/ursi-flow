@@ -5,12 +5,14 @@
 //! 其他模块引用这里的类型，不各自定义等价结构。
 
 pub mod artifact;
+pub mod env;
 pub mod role;
 pub mod run;
 pub mod telemetry;
 pub mod workflow;
 
 pub use artifact::Artifact;
+pub use env::{EnvError, ExecutionEnv};
 pub use role::{Executor, Role};
 pub use run::{NodeRun, NodeStatus, Run, RunStatus};
 pub use telemetry::{EventCategory, EventPhase, TelemetryEvent};

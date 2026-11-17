@@ -6,7 +6,7 @@ parent: ../../SPEC.md
 
 ## 功能意图
 
-domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模块复用的类型定义、工作流结构定义与解析校验、运行状态机枚举、角色与能力定制模型、执行器与产物契约，以及观测事件契约。其他模块引用 domain 的类型，不得各自重新定义等价结构。
+domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模块复用的类型定义、工作流结构定义与解析校验、运行状态机枚举、角色与能力定制模型、执行环境句柄契约、执行器与产物契约，以及观测事件契约。其他模块引用 domain 的类型，不得各自重新定义等价结构。
 
 ## 关键功能与验收
 
@@ -47,11 +47,12 @@ domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模�
 
 ### 执行器定义
 
-`Executor` 描述一种执行器的标识与类型（mock 或具体 agent CLI）。`Runner` 接口约定执行器统一输入与结果，由 internal/executor 实现，engine 通过接口调用。
+`Executor` 描述一种执行器的标识与类型（mock 或具体 agent CLI）。`Runner` 接口约定执行器统一输入与结果，由 internal/executor 实现，engine 通过接口调用。执行环境操作抽象为 `ExecutionEnv` trait（发命令、写输入、读输出）：trait 定义在 domain，internal/sandbox 提供实现，engine 在组装时把实现注入给 Runner。executor 因此不依赖 sandbox crate，依赖方向保持 executor → domain。
 
 #### 验收
 
-- `Runner` 接口声明输入（提示词、配置、上下文）与结果（输出、产物、用量、错误）的完整契约，接口定义可编译。
+- `Runner` 接口声明输入（提示词、配置、上下文、环境句柄）与结果（输出、产物、用量、错误）的完整契约，接口定义可编译。
+- `ExecutionEnv` 的实现可替换（本地目录与沙箱容器实现同一接口），Runner 实现不感知差异。
 - `Executor` 的 `Kind` 枚举包含 mock 与至少一种真实 agent CLI。
 
 ### 产物契约
