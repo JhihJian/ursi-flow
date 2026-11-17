@@ -37,13 +37,16 @@
   "labels": {},
   "memory_mb": 256,
   "cpus": 1.0,
-  "bundle": null
+  "bundle": null,
+  "runtime_profile": null
 }
 ```
 
 `image` 必填，其他字段具有上述默认值（ports 默认空）。端点名/端口不得重复，端口范围 1..65535，最多 32 个端点。内存 16..65536 MiB，CPU 大于 0 且不超过 128。command 为空使用镜像默认命令。
 
-bundle 可为 `{url, sha256, min_image_level}`：无凭据 HTTP(S) URL、64 位十六进制校验值及最低镜像级别。Docker 镜像必须声明 `io.ursi.image-level` 并满足要求。引用透传为 `URSI_BUNDLE_URL`、`URSI_BUNDLE_SHA256`、`URSI_BUNDLE_MIN_IMAGE_LEVEL`，bootstrap 负责下载、校验和装配。当前不提供通用 env、宿主挂载、密钥存储或模板 API。
+bundle 可为 `{url, sha256, min_image_level}`：无凭据 HTTP(S) URL、64 位十六进制校验值及最低镜像级别。Docker 镜像必须声明 `io.ursi.image-level` 并满足要求。引用透传为 `URSI_BUNDLE_URL`、`URSI_BUNDLE_SHA256`、`URSI_BUNDLE_MIN_IMAGE_LEVEL`，bootstrap 负责下载、校验和装配。当前不提供通用 env、任意宿主挂载、密钥存储或模板 API。
+
+`runtime_profile` 可引用管理员 `URSI_GATEWAY_RUNTIME_PROFILES` 白名单中的名称，格式为 `{ "pi": { "config_dir": "/absolute/root-private-config" } }`。目录必须 root 所有、0700、非符号链接，固定只读挂载 `/run/ursi/config`；请求必须同时提供 bundle。未知引用在资源操作前拒绝。启用 profile 时仅增加固定 `CHOWN,DAC_OVERRIDE,FOWNER,SETUID,SETGID,SYS_CHROOT,KILL` 服务能力并采用 25 秒停止宽限。API/数据库只保存配置名称，不保存秘密内容；只读源配置由管理员维护。
 
 ## Sandbox 与操作意图
 

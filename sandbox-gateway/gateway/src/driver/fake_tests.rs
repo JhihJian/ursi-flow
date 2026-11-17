@@ -12,6 +12,7 @@ fn sandbox(generation: u64, data_generation: u64) -> Sandbox {
             memory_mb: 256,
             cpus: 1.0,
             bundle: None,
+            runtime_profile: None,
         },
         resource: Resource {
             generation,

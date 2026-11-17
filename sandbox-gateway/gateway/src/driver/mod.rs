@@ -5,11 +5,16 @@ use async_trait::async_trait;
 pub mod docker;
 #[cfg(feature = "driver-fake")]
 pub mod fake;
+#[cfg(feature = "driver-docker")]
+pub mod profiles;
 
 #[async_trait]
 pub trait Driver: Send + Sync {
     fn name(&self) -> &'static str;
     fn capabilities(&self) -> Capabilities;
+    fn validate_spec(&self, spec: &crate::models::SandboxSpec) -> Result<()> {
+        spec.validate()
+    }
     /// 幂等创建或接回该代资源并启动。命名卷按 data_generation 稳定命名。
     async fn ensure(&self, sandbox: &Sandbox) -> Result<Observed>;
     async fn start(&self, sandbox: &Sandbox) -> Result<()>;

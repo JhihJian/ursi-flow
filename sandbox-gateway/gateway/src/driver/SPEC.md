@@ -27,6 +27,16 @@ Docker 是首个真实驱动，使用无 shell 的 Docker CLI，启动时固定�
 - 拒绝镜像额外匿名数据卷，仅按归属标签操作本 namespace 的已知容器与命名卷。
 - fake 能注入超时、部分成功和资源不存在，供 lifecycle 恢复测试使用。
 
+### Runtime 配置接入
+
+通过管理员配置目录白名单注入 Runtime 所需凭据与启动配置，API 仅允许引用名称。源目录保持 root 私有并只读挂载，服务进程获得固定的 SSH、降权和回收能力，Agent 子进程清空 capabilities。
+
+#### 验收
+
+- 未配置或未知的 runtime_profile 在资源供应前被拒绝。
+- 请求无法指定宿主路径或自定义 capabilities，凭据内容不进入 SQLite。
+- 正式 Runtime 的 SSH/SFTP 与会话服务可用，普通 agent 用户无法读取 session token。
+
 ### 状态与端点
 
 区分确定不存在、查询失败和实际资源状态。公开端点按受控策略发布，内部端点只返回受控网络地址或隧道可解析目标。

@@ -29,6 +29,7 @@ export URSI_GATEWAY_TUNNEL=true
 | `URSI_GATEWAY_PUBLIC_BIND` | `0.0.0.0` | 公开端口宿主绑定地址 |
 | `URSI_GATEWAY_ADVERTISE_HOST` | `127.0.0.1` | 调用方及本机就绪检查可达的宿主地址，远程客户端使用时需修改 |
 | `URSI_GATEWAY_TUNNEL` | `false` | 是否启用隧道 |
+| `URSI_GATEWAY_RUNTIME_PROFILES` | 未配置 | 管理员白名单 JSON 路径，允许受控的只读 Runtime 配置挂载 |
 
 Docker 首版支持本机绝对路径 Unix socket，TCP/TLS/SSH daemon 和 Kubernetes/E2B 驱动尚未支持。默认编译 Docker 与 fake，生产可使用 `--no-default-features --features driver-docker`。fake 的实际资源保存在内存，仅供测试。
 
@@ -50,11 +51,11 @@ curl -sS http://127.0.0.1:8899/api/v1/sandboxes \
 
 ## 镜像与安全边界
 
-容器默认使用内存/CPU/pids 限制、`cap-drop ALL` 和 `no-new-privileges`，不提供特权容器、宿主目录或 Docker socket 挂载接口。镜像只能声明 `/ursi/workspace` 数据卷，额外匿名卷被拒绝，防止重建泄漏数据资源。
+容器默认使用内存/CPU/pids 限制、`cap-drop ALL` 和 `no-new-privileges`，不提供特权容器、任意宿主目录或 Docker socket 挂载接口。`runtime_profile` 可引用管理员白名单中的 root 所有、0700 配置目录，只读挂载到 `/run/ursi/config`。Runtime profile 使用固定七项 SSH/降权/回收能力，Agent 仍以 UID 1000 零 capabilities 运行。配置格式和凭据目录布局见 [Agent 执行契约](../runtime/AGENT-CONTRACT.md)。镜像只能声明 `/ursi/workspace` 数据卷，额外匿名卷被拒绝，防止重建泄漏数据资源。
 
 公开端口映射到宿主临时端口，内部端口只使用容器网络地址或隧道。CDP/noVNC 的端点名和惯用端口强制内部。受控网络隔离取决于部署网络配置，Docker 默认 bridge 不是沙箱间防火墙，也不是恶意代码的强安全边界。
 
-Gateway key 是管理权限凭据，持有者能管理该 Gateway 的全部沙箱。它不替代 SSH/ACP 等上层服务鉴权。服务当前为 HTTP，跨非可信网络部署需在前面终止 TLS 并限制访问来源。运行规格、命令、用户标签和 bundle URL 会存储，不要将凭据放进这些字段；本版不提供持久化密钥管理或通用秘密注入 API。
+Gateway key 是管理权限凭据，持有者能管理该 Gateway 的全部沙箱。它不替代 SSH/ACP 等上层服务鉴权。服务当前为 HTTP，跨非可信网络部署需在前面终止 TLS 并限制访问来源。运行规格、命令、用户标签和 bundle URL 会存储，不要将凭据放进这些字段；本版通过管理员配置目录注入 Runtime 所需凭据，不提供持久化密钥管理或通用秘密注入 API。
 
 镜像可使用 Docker HEALTHCHECK 验证实际服务，声明 `ready:true` 的端点还需 TCP 可达。只声明进程而没有健康检查的镜像，只能证明进程在运行。可选 bundle 引用透传给镜像 bootstrap，Gateway 校验镜像级别，包完整性和服务装配由 Runtime 负责。
 

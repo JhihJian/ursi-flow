@@ -37,6 +37,7 @@ pub struct DockerDriver {
     advertise_host: String,
     docker_host: Option<String>,
     identity: String,
+    runtime_profiles: super::profiles::RuntimeProfiles,
     #[cfg(test)]
     script: Option<Script>,
 }
@@ -78,6 +79,12 @@ impl DockerDriver {
         Ok(driver)
     }
 
+    /// 管理员白名单固定到当前驱动。新增配置不改变 daemon/namespace 的数据库身份。
+    pub fn with_runtime_profiles(mut self, profiles: super::profiles::RuntimeProfiles) -> Self {
+        self.runtime_profiles = profiles;
+        self
+    }
+
     /// 返回冻结的 endpoint 与 daemon ID，供持久化存储绑定使用。
     pub fn identity(&self) -> &str {
         &self.identity
@@ -117,6 +124,7 @@ impl DockerDriver {
             advertise_host,
             docker_host: None,
             identity: String::new(),
+            runtime_profiles: Default::default(),
             #[cfg(test)]
             script: None,
         })
@@ -386,6 +394,29 @@ impl DockerDriver {
             "--mount".into(),
             format!("type=volume,src={volume},dst=/ursi/workspace"),
         ];
+        if let Some(profile) = &sandbox.spec.runtime_profile {
+            let path = self.runtime_profiles.get(profile)?;
+            args.extend([
+                "--mount".into(),
+                format!(
+                    "type=bind,src={},dst=/run/ursi/config,readonly",
+                    path.display()
+                ),
+            ]);
+            // 固定服务能力集，仅供root监督器/sshd降权与回收。Agent子进程清空所有capabilities。
+            for capability in [
+                "CHOWN",
+                "DAC_OVERRIDE",
+                "FOWNER",
+                "SETUID",
+                "SETGID",
+                "SYS_CHROOT",
+                "KILL",
+            ] {
+                args.extend(["--cap-add".into(), capability.into()]);
+            }
+            args.extend(["--stop-timeout".into(), "25".into()]);
+        }
         for (key, value) in self.labels(&sandbox.id, sandbox.resource, false) {
             args.extend(["--label".into(), format!("{key}={value}")]);
         }
@@ -500,8 +531,16 @@ impl Driver for DockerDriver {
         }
     }
 
+    fn validate_spec(&self, spec: &crate::models::SandboxSpec) -> Result<()> {
+        spec.validate()?;
+        if let Some(profile) = &spec.runtime_profile {
+            self.runtime_profiles.get(profile)?;
+        }
+        Ok(())
+    }
+
     async fn ensure(&self, sandbox: &Sandbox) -> Result<Observed> {
-        sandbox.spec.validate()?;
+        self.validate_spec(&sandbox.spec)?;
         let (name, volume_name) = self.names(&sandbox.id, sandbox.resource)?;
         // 在任何创建前验证参数。镜像 ID 随后替换。
         self.create_args(sandbox, sandbox.spec.image.clone())?;
@@ -550,7 +589,12 @@ impl Driver for DockerDriver {
             vec![
                 "stop".into(),
                 "--time".into(),
-                "10".into(),
+                if sandbox.spec.runtime_profile.is_some() {
+                    "25"
+                } else {
+                    "10"
+                }
+                .into(),
                 Self::container_id(&object)?.into(),
             ],
             CLI_TIMEOUT,

@@ -38,6 +38,13 @@ async fn run() -> Result<()> {
                 env("URSI_GATEWAY_ADVERTISE_HOST", "127.0.0.1"),
             )
             .await?;
+            let driver = if let Some(path) = std::env::var_os("URSI_GATEWAY_RUNTIME_PROFILES") {
+                driver.with_runtime_profiles(ursi_gateway::driver::profiles::RuntimeProfiles::load(
+                    Path::new(&path),
+                )?)
+            } else {
+                driver
+            };
             let identity = format!("docker:{namespace}:{}", driver.identity());
             (Arc::new(driver), identity)
         }

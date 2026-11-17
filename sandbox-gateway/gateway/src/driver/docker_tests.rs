@@ -13,6 +13,7 @@ fn sandbox() -> Sandbox {
             memory_mb: 256,
             cpus: 1.5,
             bundle: None,
+            runtime_profile: None,
         },
         resource: Resource {
             generation: 2,

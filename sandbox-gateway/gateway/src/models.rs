@@ -53,6 +53,9 @@ pub struct SandboxSpec {
     /// 不含凭据的运行包引用，供镜像 bootstrap 消费。
     #[serde(default)]
     pub bundle: Option<BundleRef>,
+    /// 管理员白名单名称，不包含宿主路径或凭据。
+    #[serde(default)]
+    pub runtime_profile: Option<String>,
 }
 fn default_memory() -> u64 {
     256
@@ -192,6 +195,11 @@ impl SandboxSpec {
             || self.command.iter().any(|v| v.contains('\0'))
         {
             return Err(Error::Invalid("规格过大或命令包含空字节".into()));
+        }
+        if let Some(profile) = &self.runtime_profile {
+            if !valid_name(profile) || self.bundle.is_none() {
+                return Err(Error::Invalid("运行配置需要有效名称和bundle引用".into()));
+            }
         }
         if let Some(bundle) = &self.bundle {
             if !(bundle.url.starts_with("https://") || bundle.url.starts_with("http://"))

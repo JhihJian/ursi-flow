@@ -75,7 +75,7 @@ impl Service {
     }
     pub async fn create(&self, spec: SandboxSpec, key: Option<String>) -> Result<Sandbox> {
         self.ensure_accepting()?;
-        spec.validate()?;
+        self.driver.validate_spec(&spec)?;
         if key.as_ref().is_some_and(|v| v.is_empty() || v.len() > 256) {
             return Err(Error::Invalid("幂等键无效".into()));
         }
