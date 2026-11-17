@@ -145,20 +145,62 @@ describe('本地演示 API', () => {
     expect((await api.call('/runs/run-2/reject', 'POST', { targetNodeId: 'review' })).status).toBe(409)
   })
 
-  it('并行分支完成后才启动汇合节点，数组顺序不决定依赖顺序', async () => {
+  it('分支逐个完成后才启动汇合节点，数组顺序不决定依赖顺序', async () => {
     const api = harness()
     const workflow = (await api.call<Workflow>('/workflows', 'POST', {
-      name: '并行审查', nodes: [
+      name: '分支审查', nodes: [
         { id: 'join', name: '汇总', type: 'script', script: 'echo demo' },
         { id: 'left', name: '审查', type: 'agent', roleId: 'role-reviewer' },
         { id: 'right', name: '文档', type: 'agent', roleId: 'role-writer' },
       ], edges: [{ source: 'left', target: 'join' }, { source: 'right', target: 'join' }],
     })).data
-    const run = (await api.call<Run>('/runs', 'POST', { workflowId: workflow.id, input: '并行检查' })).data
-    expect(run.nodes.map(node => node.status)).toEqual(['pending', 'running', 'running'])
+    const run = (await api.call<Run>('/runs', 'POST', { workflowId: workflow.id, input: '逐个检查' })).data
+    expect(run.status).toBe('running')
+    expect(run.nodes.map(node => node.status)).toEqual(['pending', 'running', 'pending'])
+    vi.setSystemTime(start + 1000)
+    expect((await api.call<Run>(`/runs/${run.id}`)).data).toEqual(run)
     vi.setSystemTime(start + 2000)
-    expect((await api.call<Run>(`/runs/${run.id}`)).data.nodes.map(node => node.status)).toEqual(['running', 'succeeded', 'succeeded'])
+    const second = (await api.call<Run[]>(`/runs`)).data.find(item => item.id === run.id)!
+    expect(second.status).toBe('running')
+    expect(second.nodes.map(node => node.status)).toEqual(['pending', 'succeeded', 'running'])
+    expect((await api.call<Run>(`/runs/${run.id}`)).data).toEqual(second)
     vi.setSystemTime(start + 4000)
+    const joined = (await api.call<Run>(`/runs/${run.id}`)).data
+    expect(joined.status).toBe('running')
+    expect(joined.nodes.map(node => node.status)).toEqual(['running', 'succeeded', 'succeeded'])
+    vi.setSystemTime(start + 6000)
+    const finished = (await api.call<Run>(`/runs/${run.id}`)).data
+    expect(finished.status).toBe('succeeded')
+    expect(finished.nodes.every(node => node.status === 'succeeded')).toBe(true)
+    expect(finished.events.filter(item => item.message.startsWith('开始处理')).map(item => item.nodeId)).toEqual(['left', 'right', 'join'])
+  })
+
+  it('等待审批时独立就绪分支也保持未执行，放行后恢复顺序调度', async () => {
+    const api = harness()
+    const workflow = (await api.call<Workflow>('/workflows', 'POST', {
+      name: '审批暂停分支', nodes: [
+        { id: 'review', name: '审批', type: 'approval' },
+        { id: 'draft', name: '草案', type: 'agent', roleId: 'role-product' },
+        { id: 'docs', name: '文档', type: 'agent', roleId: 'role-writer' },
+      ], edges: [{ source: 'draft', target: 'review' }],
+    })).data
+    const run = (await api.call<Run>('/runs', 'POST', { workflowId: workflow.id, input: '确认后继续整理资料' })).data
+    expect(run.nodes.map(node => node.status)).toEqual(['pending', 'running', 'pending'])
+    vi.setSystemTime(start + 2000)
+    const waiting = (await api.call<Run>(`/runs/${run.id}`)).data
+    expect(waiting.status).toBe('waiting')
+    expect(waiting.nodes.map(node => node.status)).toEqual(['waiting_approval', 'succeeded', 'pending'])
+    vi.setSystemTime(start + 100_000)
+    expect((await api.call<Run[]>(`/runs`)).data.find(item => item.id === run.id)).toEqual(waiting)
+    expect((await api.call<Run>(`/runs/${run.id}`)).data).toEqual(waiting)
+    const rejected = await api.call<ApiFailure>(`/runs/${run.id}/reject`, 'POST', { targetNodeId: 'docs' })
+    expect(rejected.status).toBe(400)
+    expect(rejected.data.error.code).toBe('VALIDATION')
+    expect((await api.call<Run>(`/runs/${run.id}`)).data).toEqual(waiting)
+    const approved = (await api.call<Run>(`/runs/${run.id}/approve`, 'POST')).data
+    expect(approved.status).toBe('running')
+    expect(approved.nodes.map(node => node.status)).toEqual(['succeeded', 'succeeded', 'running'])
+    vi.setSystemTime(start + 102_000)
     expect((await api.call<Run>(`/runs/${run.id}`)).data.status).toBe('succeeded')
   })
 
@@ -337,18 +379,28 @@ describe('本地演示 API', () => {
     const api = harness()
     const workflow = (await api.call<Workflow>('/workflows', 'POST', {
       name: '分支交付', nodes: [
-        { id: 'draft', name: '草案', type: 'agent', roleId: 'role-product' },
-        { id: 'review', name: '审批', type: 'approval' },
         { id: 'docs', name: '文档', type: 'agent', roleId: 'role-writer' },
+        { id: 'review', name: '审批', type: 'approval' },
+        { id: 'draft', name: '草案', type: 'agent', roleId: 'role-product' },
       ], edges: [{ source: 'draft', target: 'review' }],
     })).data
-    const run = (await api.call<Run>('/runs', 'POST', { workflowId: workflow.id, input: '并行处理资料' })).data
-    vi.setSystemTime(start + 2000)
-    await api.call(`/runs/${run.id}`)
-    vi.setSystemTime(start + 3000)
-    const rejected = (await api.call<Run>(`/runs/${run.id}/reject`, 'POST', { targetNodeId: 'draft' })).data
-    expect(rejected.nodes.find(node => node.id === 'docs')?.status).toBe('succeeded')
+    const run = (await api.call<Run>('/runs', 'POST', { workflowId: workflow.id, input: '顺序处理资料' })).data
+    expect(run.nodes.map(node => node.status)).toEqual(['running', 'pending', 'pending'])
+    vi.setSystemTime(start + 4000)
+    const waiting = (await api.call<Run>(`/runs/${run.id}`)).data
+    expect(waiting.status).toBe('waiting')
+    expect(waiting.nodes.map(node => node.status)).toEqual(['succeeded', 'waiting_approval', 'succeeded'])
+    const invalidTarget = await api.call<ApiFailure>(`/runs/${run.id}/reject`, 'POST', { targetNodeId: 'docs' })
+    expect(invalidTarget.status).toBe(400)
+    expect(invalidTarget.data.error.code).toBe('VALIDATION')
+    expect((await api.call<Run>(`/runs/${run.id}`)).data).toEqual(waiting)
     vi.setSystemTime(start + 5000)
+    const rejected = (await api.call<Run>(`/runs/${run.id}/reject`, 'POST', { targetNodeId: 'draft' })).data
+    expect(rejected.status).toBe('running')
+    expect(rejected.attempt).toBe(2)
+    expect(rejected.nodes.map(node => node.status)).toEqual(['succeeded', 'pending', 'running'])
+    expect(rejected.nodes.find(node => node.id === 'docs')).toEqual(waiting.nodes.find(node => node.id === 'docs'))
+    vi.setSystemTime(start + 7000)
     await api.call(`/runs/${run.id}`)
     const final = (await api.call<Run>(`/runs/${run.id}/approve`, 'POST')).data
     expect(final.status).toBe('succeeded')

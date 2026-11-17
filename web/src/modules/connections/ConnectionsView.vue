@@ -79,7 +79,7 @@ async function remove(connection: Connection) {
 <template>
   <div class="page-stack connections-page">
     <PageHeader title="模型连接" description="统一管理模型服务，让每个角色连接合适的智能。" icon="connector">
-      <template #actions><AppButton icon="plus" @click="openEditor()">新建连接</AppButton></template>
+      <template #actions><AppButton variant="primary" icon="plus" @click="openEditor()">新建连接</AppButton></template>
     </PageHeader>
     <div class="connection-intro panel bg-surface border-line">
       <div class="intro-icon bg-accent/10 text-accent"><Icon name="connector" :size="25" /></div>
@@ -122,7 +122,7 @@ async function remove(connection: Connection) {
           <label class="field"><span class="field-label">凭据引用</span><input v-model="draft.credentialRef" class="input mono" placeholder="例如：env:OPENAI_API_KEY" autocomplete="off" /><span class="field-help text-txt3">只填写凭据标识，不要输入 API Key 或其他密钥。</span></label>
         </fieldset>
       </form>
-      <template #footer><span v-if="dirty" class="text-warn unsaved">未保存的更改</span><AppButton variant="outline" :disabled="saving" @click="closeEditor">取消</AppButton><AppButton type="submit" form="connection-form" :loading="saving" icon="check">{{ draft?.id ? '保存连接' : '创建连接' }}</AppButton></template>
+      <template #footer><span v-if="dirty" class="text-warn unsaved">未保存的更改</span><AppButton variant="outline" :disabled="saving" @click="closeEditor">取消</AppButton><AppButton variant="primary" type="submit" form="connection-form" :loading="saving" icon="check">{{ draft?.id ? '保存连接' : '创建连接' }}</AppButton></template>
     </AppModal>
   </div>
 </template>

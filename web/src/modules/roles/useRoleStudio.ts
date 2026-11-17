@@ -36,9 +36,10 @@ export function useRoleStudio() {
   const { canLeave } = useUnsavedChanges(() => dirty.value || (createOpen.value && !!createName.value.trim()))
   let controller: AbortController | undefined
   let generation = 0
+  let active = true
 
   async function loadDetail(id = selectedId.value) {
-    if (!id) return
+    if (!active || !id) return
     const current = ++generation
     controller?.abort()
     controller = new AbortController()
@@ -57,7 +58,7 @@ export function useRoleStudio() {
       if (current === generation && !controller.signal.aborted) detailError.value = errorMessage(cause)
     } finally { if (current === generation) detailLoading.value = false }
   }
-  onScopeDispose(() => { generation++; controller?.abort() })
+  onScopeDispose(() => { active = false; generation++; controller?.abort() })
   onBeforeRouteUpdate(async (to, from) => {
     if (to.query.id === from.query.id) return true
     if (busy.value) return false
@@ -70,23 +71,24 @@ export function useRoleStudio() {
   }, { immediate: true })
 
   async function selectRole(id: string) {
-    if (busy.value || id === selectedId.value) return
+    if (!active || busy.value || id === selectedId.value) return
     await router.replace({ query: { ...route.query, id } })
   }
   async function openCreate() {
-    if (busy.value || !await canLeave()) return
+    if (!active || busy.value || !await canLeave() || !active) return
     if (baseline.value) draft.value = JSON.parse(baseline.value) as Role
     createName.value = ''
     createError.value = ''
     createOpen.value = true
   }
   async function closeCreate() {
-    if (creating.value) return
+    if (!active || creating.value) return
     if (createName.value.trim() && !await confirmAction({ title: '放弃创建角色？', description: '已输入的角色名称将不会保存。', danger: true, confirmLabel: '放弃创建' })) return
+    if (!active) return
     createOpen.value = false
   }
   async function create() {
-    if (!createName.value.trim() || creating.value) return
+    if (!active || !createName.value.trim() || creating.value) return
     createError.value = ''
     const connection = connections.value[0]
     if (!connection || connectionsResource.error.value) { createError.value = '请先创建可用的模型连接，再创建角色。'; return }
@@ -94,15 +96,16 @@ export function useRoleStudio() {
     try {
       const name = createName.value.trim()
       const role = await api.post<Role>('/roles', { name, description: '', icon: 'robot', color: '#8b5cf6', systemPrompt: `你是${name}。请围绕用户目标开展工作，提供清晰、准确、可执行的结果。`, executor: 'claude-code', connectionId: connection.id, model: connection.model, skills: [], mcpServers: [] })
+      if (!active) return
       roles.value = [...roles.value, role]
       createOpen.value = false
       creating.value = false
       search.value = ''
       tab.value = 'basic'
       await router.replace({ query: { ...route.query, id: role.id } })
-      notify('角色已创建，可以继续完善配置')
-    } catch (cause) { createError.value = errorMessage(cause) }
-    finally { creating.value = false }
+      if (active) notify('角色已创建，可以继续完善配置')
+    } catch (cause) { if (active) createError.value = errorMessage(cause) }
+    finally { if (active) creating.value = false }
   }
   function changeConnection() {
     if (!draft.value) return
@@ -136,7 +139,7 @@ export function useRoleStudio() {
     return ''
   }
   async function save() {
-    if (!draft.value || busy.value) return
+    if (!active || !draft.value || busy.value) return
     actionError.value = validate(draft.value)
     if (actionError.value) return
     saving.value = true
@@ -147,46 +150,49 @@ export function useRoleStudio() {
     payload.mcpServers = payload.mcpServers.map((server) => ({ name: server.name.trim(), transport: server.transport, credentialRef: server.credentialRef?.trim() || '', ...(server.transport === 'http' ? { url: server.url?.trim() } : { command: server.command?.trim() }) }))
     try {
       const role = await api.put<Role>(`/roles/${encodeURIComponent(payload.id)}`, payload)
+      if (!active) return
       roles.value = roles.value.map((item) => item.id === role.id ? role : item)
       draft.value = clone(role)
       baseline.value = JSON.stringify(draft.value)
       notify('角色配置已保存')
-    } catch (cause) { actionError.value = errorMessage(cause) }
-    finally { saving.value = false }
+    } catch (cause) { if (active) actionError.value = errorMessage(cause) }
+    finally { if (active) saving.value = false }
   }
   async function discard() {
-    if (!busy.value && await canLeave()) { draft.value = JSON.parse(baseline.value) as Role; actionError.value = '' }
+    if (active && !busy.value && await canLeave() && active) { draft.value = JSON.parse(baseline.value) as Role; actionError.value = '' }
   }
   async function copy() {
-    if (!draft.value || busy.value || dirty.value) return
+    if (!active || !draft.value || busy.value || dirty.value) return
     copying.value = true
     actionError.value = ''
     try {
       const role = await api.post<Role>(`/roles/${encodeURIComponent(draft.value.id)}/copy`)
+      if (!active) return
       roles.value = [...roles.value, role]
       copying.value = false
       search.value = ''
       await router.replace({ query: { ...route.query, id: role.id } })
-      notify('已创建独立的角色副本')
-    } catch (cause) { actionError.value = errorMessage(cause) }
-    finally { copying.value = false }
+      if (active) notify('已创建独立的角色副本')
+    } catch (cause) { if (active) actionError.value = errorMessage(cause) }
+    finally { if (active) copying.value = false }
   }
   async function remove() {
-    if (!draft.value || busy.value || !await confirmAction({ title: `删除「${draft.value.name}」？`, description: '角色及未保存的更改将被删除。被流程引用的角色需要先解除引用。', confirmLabel: '删除角色', danger: true })) return
+    if (!active || !draft.value || busy.value || !await confirmAction({ title: `删除「${draft.value.name}」？`, description: '角色及未保存的更改将被删除。被流程引用的角色需要先解除引用。', confirmLabel: '删除角色', danger: true }) || !active) return
     deleting.value = true
     actionError.value = ''
     try {
       const id = draft.value.id
       await api.delete(`/roles/${encodeURIComponent(id)}`)
+      if (!active) return
       draft.value = null
       baseline.value = ''
       selectedId.value = ''
       roles.value = roles.value.filter((role) => role.id !== id)
       deleting.value = false
       await router.replace({ query: { ...route.query, id: roles.value[0]?.id } })
-      notify('角色已删除')
-    } catch (cause) { actionError.value = errorMessage(cause) }
-    finally { deleting.value = false }
+      if (active) notify('角色已删除')
+    } catch (cause) { if (active) actionError.value = errorMessage(cause) }
+    finally { if (active) deleting.value = false }
   }
   return { roles, connections, rolesLoading: rolesResource.loading, rolesError: rolesResource.error, reloadRoles: rolesResource.load, connectionsLoading: connectionsResource.loading, connectionsError: connectionsResource.error, reloadConnections: connectionsResource.load, search, filtered, draft, selectedId, detailLoading, detailError, actionError, tab, dirty, busy, saving, copying, deleting, createOpen, createName, createError, creating, loadDetail, selectRole, openCreate, closeCreate, create, changeConnection, save, discard, copy, remove }
 }

@@ -121,8 +121,16 @@ function artifact(state: MockState, run: Run, node: Run['nodes'][number], now: n
   const content = `# ${node.name}\n\n## 任务背景\n${run.input}\n\n## 处理结果\n已完成「${node.name}」的演示处理。\n\n- 依据流程「${run.workflowName}」的配置快照生成\n- 第 ${run.attempt} 次执行\n- 已整理关键结论与后续交付事项\n\n> 此内容为本地演示数据，未调用模型或执行脚本。\n`
   state.artifacts.push({ id: uid(state, 'artifact'), name: `${node.name}.md`, path: `/workspace/output/${encodeURIComponent(node.id)}-attempt-${run.attempt}.md`, contentType: 'text/markdown', content, runId: run.id, nodeId: node.id, attempt: run.attempt, size: new TextEncoder().encode(content).length, createdAt: iso(now) })
 }
-/** 只推进模拟时钟，脚本和工具均不实际执行。每个就绪分支可以独立推进。 */
+/** 只推进模拟时钟，脚本和工具均不实际执行。按依赖逐个调度，审批暂停整个运行。 */
 function schedule(state: MockState, run: Run, now: number): void {
+  if (run.nodes.some(node => node.status === 'waiting_approval')) {
+    run.status = 'waiting'
+    return
+  }
+  if (run.nodes.some(node => node.status === 'running')) {
+    run.status = 'running'
+    return
+  }
   const clocks = state.clocks[run.id] ?? {}
   for (const node of run.nodes) {
     if (node.status !== 'pending') continue
@@ -138,6 +146,7 @@ function schedule(state: MockState, run: Run, now: number): void {
       event(run, now, `开始处理「${node.name}」。`, node.id)
       event(run, now, '模拟工具：读取配置快照并准备工作材料。', node.id, 'tool')
     }
+    break
   }
   const previous = run.status
   if (run.nodes.every(node => node.status === 'succeeded')) {

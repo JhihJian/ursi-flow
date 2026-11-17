@@ -34,7 +34,7 @@ function updatedLabel(value: string) {
 <template>
   <div class="page-stack roles-page">
     <PageHeader title="角色工作室" description="定义角色的思考方式，为流程装配专业能力。" icon="robot">
-      <template #actions><span class="role-total text-txt3">{{ roles.length }} 个角色</span><AppButton icon="plus" :disabled="busy" @click="openCreate">创建角色</AppButton></template>
+      <template #actions><span class="role-total text-txt3">{{ roles.length }} 个角色</span><AppButton variant="primary" icon="plus" :disabled="busy" @click="openCreate">创建角色</AppButton></template>
     </PageHeader>
     <div class="role-studio panel bg-surface border-line">
       <aside class="role-sidebar border-line" aria-label="角色列表">
@@ -96,13 +96,13 @@ function updatedLabel(value: string) {
               </article>
             </div>
           </fieldset>
-          <div class="editor-footer bg-surface border-line"><span class="save-hint" :class="dirty ? 'text-warn' : 'text-txt3'"><span class="status-dot" />{{ dirty ? '有未保存的更改' : '所有更改已保存' }}</span><div class="save-actions"><AppButton v-if="dirty" variant="ghost" size="sm" :disabled="busy" @click="discard">放弃更改</AppButton><AppButton icon="check" size="sm" :loading="saving" :disabled="busy || !dirty || connectionsLoading || !!connectionsError" @click="save">保存角色</AppButton></div></div>
+          <div class="editor-footer bg-surface border-line"><span class="save-hint" :class="dirty ? 'text-warn' : 'text-txt3'"><span class="status-dot" />{{ dirty ? '有未保存的更改' : '所有更改已保存' }}</span><div class="save-actions"><AppButton v-if="dirty" variant="ghost" size="sm" :disabled="busy" @click="discard">放弃更改</AppButton><AppButton variant="primary" icon="check" size="sm" :loading="saving" :disabled="busy || !dirty || connectionsLoading || !!connectionsError" @click="save">保存角色</AppButton></div></div>
         </template>
       </section>
     </div>
     <AppModal :open="createOpen" title="创建角色" :width="460" @close="closeCreate">
       <form id="role-create-form" @submit.prevent="create"><p class="create-description text-txt3">从一个名称开始，随后配置提示词、技能和工具。{{ connections.length ? `默认使用「${connections[0]?.name}」连接，创建后可修改。` : '请先创建模型连接。' }}</p><ResourceState v-if="connectionsLoading || connectionsError" :loading="connectionsLoading" :error="connectionsError" @retry="reloadConnections" /><p v-else-if="!connections.length" class="create-description text-warn"><RouterLink to="/connections" class="underline">前往创建模型连接</RouterLink></p><p v-if="createError" role="alert" class="error-banner bg-err/10 text-err">{{ createError }}</p><label class="field"><span class="field-label">角色名称</span><input v-model="createName" class="input" required maxlength="100" placeholder="例如：产品需求分析师" :disabled="creating" /></label></form>
-      <template #footer><AppButton variant="outline" :disabled="creating" @click="closeCreate">取消</AppButton><AppButton type="submit" form="role-create-form" icon="plus" :loading="creating" :disabled="!createName.trim() || connectionsLoading || !!connectionsError || !connections.length">创建角色</AppButton></template>
+      <template #footer><AppButton variant="outline" :disabled="creating" @click="closeCreate">取消</AppButton><AppButton variant="primary" type="submit" form="role-create-form" icon="plus" :loading="creating" :disabled="!createName.trim() || connectionsLoading || !!connectionsError || !connections.length">创建角色</AppButton></template>
     </AppModal>
   </div>
 </template>

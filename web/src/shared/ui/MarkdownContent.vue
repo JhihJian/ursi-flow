@@ -3,7 +3,11 @@ import { computed } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 const props = defineProps<{ content: string }>()
-const html = computed(() => DOMPurify.sanitize(marked.parse(props.content, { async: false }), { FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'img'], FORBID_ATTR: ['style'] }))
+const html = computed(() => DOMPurify.sanitize(marked.parse(props.content, { async: false }), {
+  ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'strong', 'em', 'del', 's', 'blockquote', 'pre', 'code', 'ul', 'ol', 'li', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+  ALLOWED_ATTR: ['href', 'title', 'start', 'colspan', 'rowspan'],
+  ALLOW_DATA_ATTR: false,
+}))
 </script>
 
 <template><div class="markdown-content" v-html="html" /></template>

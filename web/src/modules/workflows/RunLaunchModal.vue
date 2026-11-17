@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onScopeDispose, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, errorMessage } from '@/shared/api'
 import type { Run, Workflow } from '@/shared/api/types'
@@ -16,21 +16,24 @@ const saving = ref(false)
 const error = ref('')
 const submitted = ref(false)
 const launched = ref(false)
+let active = true
+onScopeDispose(() => { active = false })
 const { canLeave } = useUnsavedChanges(() => !launched.value && !!(name.value || input.value))
-async function close() { if (!saving.value && await canLeave()) emit('close') }
+async function close() { if (active && !saving.value && await canLeave() && active) emit('close') }
 async function launch() {
-  if (saving.value) return
+  if (!active || saving.value) return
   submitted.value = true; error.value = ''
   if (!input.value.trim()) { error.value = '请填写任务输入，说明本次运行需要完成的工作。'; return }
   saving.value = true
   try {
     const run = await api.post<Run>('/runs', { workflowId: props.workflow.id, input: input.value.trim(), ...(name.value.trim() ? { name: name.value.trim() } : {}) })
+    if (!active) return
     launched.value = true
     notify('运行已创建')
     emit('close')
-    await router.push(`/runs/${encodeURIComponent(run.id)}`)
-  } catch (cause) { error.value = errorMessage(cause) }
-  finally { saving.value = false }
+    if (active) await router.push(`/runs/${encodeURIComponent(run.id)}`)
+  } catch (cause) { if (active) error.value = errorMessage(cause) }
+  finally { if (active) saving.value = false }
 }
 </script>
 <template>

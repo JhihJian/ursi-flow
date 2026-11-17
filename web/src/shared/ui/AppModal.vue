@@ -1,6 +1,7 @@
 <script lang="ts">
-// Track all open dialogs so a focus trap never competes with a later modal.
-const openDialogs: symbol[] = []
+import { shallowReactive } from 'vue'
+// Opening order controls both visual layers and keyboard focus.
+const openDialogs = shallowReactive<symbol[]>([])
 let originalBodyOverflow = ''
 </script>
 
@@ -181,7 +182,7 @@ defineExpose({ scrollAreaEl })
 <template>
   <Teleport to="body">
     <Transition name="modal" @before-enter="showEnteringOverlay" @before-leave="hideLeavingOverlay" @after-leave="onAfterLeave">
-      <div v-if="open" class="fixed inset-0 z-50 flex p-4" :class="placement === 'left' ? 'items-stretch justify-start' : 'items-center justify-center'">
+      <div v-if="open" class="fixed inset-0 flex p-4" :style="{ zIndex: 50 + Math.max(0, openDialogs.indexOf(dialogToken)) }" :class="placement === 'left' ? 'items-stretch justify-start' : 'items-center justify-center'">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="onBackdropClick" />
         <div
           ref="dialogEl"

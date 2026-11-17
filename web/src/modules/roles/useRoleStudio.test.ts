@@ -12,6 +12,15 @@ function makeRole(id: string): Role {
   return { id, name: id, description: '', icon: 'robot', color: '#8b5cf6', systemPrompt: '认真分析问题', executor: 'codex', model: connection.model, connectionId: connection.id, skills: [{ name: '审查', content: '检查边界条件' }], mcpServers: [], updatedAt: '2026-01-01' }
 }
 function clone<T>(data: T): T { return JSON.parse(JSON.stringify(data)) as T }
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (cause: Error) => void
+  const promise = new Promise<T>((accept, decline) => { resolve = accept; reject = decline })
+  return { promise, resolve, reject }
+}
+function snapshot() {
+  return clone({ roles: studio.roles.value, draft: studio.draft.value, selectedId: studio.selectedId.value, dirty: studio.dirty.value, busy: studio.busy.value, createOpen: studio.createOpen.value, createName: studio.createName.value, createError: studio.createError.value, actionError: studio.actionError.value })
+}
 let stored: Role[]
 let studio: ReturnType<typeof useRoleStudio>
 let wrapper: VueWrapper | undefined
@@ -50,6 +59,82 @@ async function setup(path = '/roles') {
   return router
 }
 
+describe('角色工作室异步操作生命周期', () => {
+  for (const action of ['create', 'copy', 'remove', 'save'] as const) {
+    it.each(['resolve', 'reject'] as const)(`${action} 卸载后 %s 不改写状态、其他域路由或通知`, async (outcome) => {
+      const router = await setup('/roles?id=role-a')
+      const pending = deferred<Role>()
+      if (action === 'create' || action === 'copy') vi.spyOn(api, 'post').mockReturnValueOnce(pending.promise)
+      if (action === 'save') vi.mocked(api.put).mockReturnValueOnce(pending.promise)
+      if (action === 'remove') vi.mocked(api.delete).mockReturnValueOnce(pending.promise.then(() => undefined))
+      if (action === 'create') { await studio.openCreate(); studio.createName.value = '新角色' }
+      if (action === 'save') studio.draft.value!.name = '修改名称'
+      const operation = studio[action]()
+      if (action === 'remove') { finishConfirmation(true); await flushPromises() }
+      expect(studio.busy.value).toBe(true)
+      const leaving = router.push('/elsewhere?section=keep')
+      await flushPromises()
+      if (confirmation.value) finishConfirmation(true)
+      await leaving
+      await flushPromises()
+      expect(router.currentRoute.value.fullPath).toBe('/elsewhere?section=keep')
+      const state = snapshot()
+      const replace = vi.spyOn(router, 'replace')
+      if (outcome === 'resolve') pending.resolve(makeRole('late-role'))
+      else pending.reject(new Error('迟到的错误'))
+      await operation
+      await flushPromises()
+      expect(replace).not.toHaveBeenCalled()
+      expect(router.currentRoute.value.fullPath).toBe('/elsewhere?section=keep')
+      expect(snapshot()).toEqual(state)
+      expect(toasts.value).toEqual([])
+    })
+  }
+
+  it.each(['remove', 'openCreate', 'closeCreate', 'discard'] as const)('%s 确认期间卸载后不再继续操作', async (action) => {
+    await setup('/roles?id=role-a')
+    if (action === 'closeCreate') { await studio.openCreate(); studio.createName.value = '待创建' }
+    else studio.draft.value!.name = '未保存'
+    const operation = studio[action]()
+    expect(confirmation.value).not.toBeNull()
+    wrapper!.unmount()
+    wrapper = undefined
+    const state = snapshot()
+    finishConfirmation(true)
+    await operation
+    expect(api.delete).not.toHaveBeenCalled()
+    expect(snapshot()).toEqual(state)
+    expect(toasts.value).toEqual([])
+  })
+
+  it.each(['create', 'copy'] as const)('%s 正常完成后选择返回的角色并显示成功通知', async (action) => {
+    const router = await setup('/roles?id=role-a')
+    const role = makeRole('new-role')
+    vi.spyOn(api, 'post').mockImplementationOnce(async () => { stored.push(role); return clone(role) })
+    if (action === 'create') { await studio.openCreate(); studio.createName.value = '新角色' }
+    await studio[action]()
+    await flushPromises()
+    expect(router.currentRoute.value.query.id).toBe(role.id)
+    expect(studio.selectedId.value).toBe(role.id)
+    expect(studio.busy.value).toBe(false)
+    expect(toasts.value).toHaveLength(1)
+  })
+
+  it('角色导航仍在等待时卸载，导航结束后不弹出迟到通知', async () => {
+    const router = await setup('/roles?id=role-a')
+    vi.spyOn(api, 'post').mockResolvedValueOnce(makeRole('copy-role'))
+    const navigation = deferred<undefined>()
+    vi.spyOn(router, 'replace').mockReturnValueOnce(navigation.promise)
+    const operation = studio.copy()
+    await flushPromises()
+    await router.push('/elsewhere')
+    await flushPromises()
+    navigation.resolve(undefined)
+    await operation
+    expect(toasts.value).toEqual([])
+  })
+})
+
 describe('角色工作室草稿与导航', () => {
   it('读取深链接角色，编辑技能不会提前改写列表或持久化记录，保存后重新读取一致', async () => {
     const router = await setup('/roles?id=role-b')
@@ -61,6 +146,7 @@ describe('角色工作室草稿与导航', () => {
     await studio.save()
     expect(studio.dirty.value).toBe(false)
     expect(stored[1]!.skills[0]!.content).toBe('新增审查规则')
+    expect(toasts.value.map(toast => toast.message)).toEqual(['角色配置已保存'])
     await router.replace('/roles?id=role-a')
     await flushPromises()
     await router.replace('/roles?id=role-b')
@@ -113,6 +199,7 @@ describe('角色工作室草稿与导航', () => {
     expect(studio.draft.value).toBeNull()
     expect(studio.detailError.value).toBe('')
     expect(router.currentRoute.value.query.id).toBeUndefined()
+    expect(toasts.value.map(toast => toast.message)).toEqual(['角色已删除'])
     expect(api.get).not.toHaveBeenCalledWith('/roles/role-a', expect.anything())
   })
 

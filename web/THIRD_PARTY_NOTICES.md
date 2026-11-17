@@ -4,7 +4,7 @@
 
 - 项目：https://github.com/cocofhu/grasp
 - 来源版本：`b2541df645e159604bf170cec4c9dd761b256d92`
-- 本次复用来源：本地 `/data/github/grasp` 工作副本。以下组件与图标文件在完整读取后复制或适配。
+- 复用来源：`/data/github/grasp` 工作副本中的组件、图标和主题定义。
 - 原作者：cocofhu
 - 许可证：MIT，完整文本见下方。
 
