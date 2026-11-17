@@ -1,8 +1,8 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - ../domain/SPEC.md
-  - ../agent-runtime/SPEC.md
+  - crates/domain/SPEC.md
+  - crates/agent-runtime/SPEC.md
 references:
   - ../sandbox-gateway/CONTRACT.md
 ---

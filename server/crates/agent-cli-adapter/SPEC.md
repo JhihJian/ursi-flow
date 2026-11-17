@@ -1,5 +1,5 @@
 ---
-parent: ../SPEC.md
+parent: ../../SPEC.md
 depends-on:
   - ../agent-runtime/SPEC.md
   - ../domain/SPEC.md

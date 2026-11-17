@@ -17,14 +17,14 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 | 模块 | 职责 |
 |---|---|
 | server | kernel：HTTP/WS/SSE 接入、应用服务、工作流引擎、存储、沙箱编排 |
-| domain | 唯一共享契约层：流程定义、状态机、事件契约 |
-| agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流，实现见 agent-cli-adapter |
-| agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
-| channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
-| sandbox-gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、端点暴露 |
-| sandbox-runtime | 沙箱镜像环境定义 + runtime bundle（注入沙箱的服务与配置） |
-| sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
-| mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
+| server/crates/domain | 唯一共享契约层：流程定义、状态机、事件契约 |
+| server/crates/agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流，实现见 agent-cli-adapter |
+| server/crates/agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
+| server/crates/channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
+| sandbox-gateway/gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、端点暴露 |
+| sandbox-gateway/runtime | 沙箱镜像环境定义 + runtime bundle（注入沙箱的服务与配置） |
+| server/crates/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
+| server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | Vue3 展示与审批页面 |
 | server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
 

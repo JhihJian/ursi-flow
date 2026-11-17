@@ -2,17 +2,17 @@
 resolver = "2"
 default-members = [
     "server",
-    "agent-runtime",
-    "domain",
+    "server/crates/domain",
+    "server/crates/agent-runtime",
 ]
 members = [
     "server",
-    "agent-runtime",
-    "agent-cli-adapter",
-    "channel",
-    "mcp-server",
-    "sandbox-observe",
-    "domain",
+    "server/crates/domain",
+    "server/crates/agent-runtime",
+    "server/crates/agent-cli-adapter",
+    "server/crates/channel",
+    "server/crates/mcp-server",
+    "server/crates/sandbox-observe",
     "sandbox-gateway",
 ]
 
@@ -30,9 +30,9 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "process", "sync", "time", "io-util", "signal"] }
 
 # 内部 crate
-ursi-domain = { path = "domain" }
-ursi-agent-runtime = { path = "agent-runtime" }
-ursi-agent-cli-adapter = { path = "agent-cli-adapter" }
-ursi-channel = { path = "channel" }
-ursi-mcp-server = { path = "mcp-server" }
-ursi-sandbox-observe = { path = "sandbox-observe" }
+ursi-domain = { path = "server/crates/domain" }
+ursi-agent-runtime = { path = "server/crates/agent-runtime" }
+ursi-agent-cli-adapter = { path = "server/crates/agent-cli-adapter" }
+ursi-channel = { path = "server/crates/channel" }
+ursi-mcp-server = { path = "server/crates/mcp-server" }
+ursi-sandbox-observe = { path = "server/crates/sandbox-observe" }
