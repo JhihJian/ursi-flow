@@ -23,11 +23,15 @@ pub struct Position {
 
 /// 节点声明的产物契约。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArtifactContract {
     pub name: String,
     pub path: String,
     #[serde(default)]
     pub required: bool,
+    /// 声明的内容类型（如 "text/markdown"）。
+    #[serde(default)]
+    pub media_type: Option<String>,
 }
 
 /// 工作流节点。
@@ -246,6 +250,95 @@ mod tests {
             validate_workflow(&wf),
             Err(WorkflowError::EdgeReferencesMissingNode)
         ));
+    }
+
+    #[test]
+    fn rejects_duplicate_node_id() {
+        let wf = parse_workflow(
+            r#"{
+                "id": "wf5", "name": "dup",
+                "nodes": [
+                    {"id": "A", "name": "x", "type": "approval"},
+                    {"id": "A", "name": "y", "type": "approval"}
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            validate_workflow(&wf),
+            Err(WorkflowError::DuplicateNodeId(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_node_id() {
+        let wf = parse_workflow(
+            r#"{
+                "id": "wf6", "name": "empty-id",
+                "nodes": [{"id": " ", "name": "x", "type": "approval"}],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            validate_workflow(&wf),
+            Err(WorkflowError::MissingNodeId)
+        ));
+    }
+
+    #[test]
+    fn rejects_script_node_with_empty_script() {
+        let wf = parse_workflow(
+            r#"{
+                "id": "wf7", "name": "empty-script",
+                "nodes": [
+                    {"id": "S", "name": "脚本", "type": "script", "script": "  "}
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            validate_workflow(&wf),
+            Err(WorkflowError::InvalidNode(_, _))
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_node_type() {
+        let result = parse_workflow(
+            r#"{
+                "id": "wf8", "name": "bad-type",
+                "nodes": [{"id": "A", "name": "x", "type": "workflow"}],
+                "edges": []
+            }"#,
+        );
+        assert!(result.is_err(), "未知节点 type 必须解析失败");
+    }
+
+    #[test]
+    fn parses_artifact_contract_with_camel_case_fields() {
+        let wf = parse_workflow(
+            r#"{
+                "id": "wf9", "name": "artifacts",
+                "nodes": [
+                    {"id": "A", "name": "写作", "type": "agent", "roleId": "r1",
+                     "artifactOutputs": [
+                        {"name": "报告", "path": "out/report.md", "required": true,
+                         "mediaType": "text/markdown"}
+                     ]}
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+        validate_workflow(&wf).unwrap();
+        let contract = &wf.nodes[0].artifact_outputs[0];
+        assert_eq!(contract.name, "报告");
+        assert_eq!(contract.path, "out/report.md");
+        assert!(contract.required);
+        assert_eq!(contract.media_type.as_deref(), Some("text/markdown"));
     }
 
     #[test]

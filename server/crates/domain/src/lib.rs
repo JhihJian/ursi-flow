@@ -11,9 +11,9 @@ pub mod run;
 pub mod telemetry;
 pub mod workflow;
 
-pub use artifact::Artifact;
+pub use artifact::{check_artifact_contract, Artifact, ArtifactContractError};
 pub use env::{EnvError, ExecutionEnv};
-pub use role::{Executor, Role};
+pub use role::{Executor, ExecutorKind, Role, RoleError};
 pub use run::{NodeRun, NodeStatus, Run, RunStatus};
 pub use telemetry::{EventCategory, EventPhase, TelemetryEvent};
 pub use workflow::{

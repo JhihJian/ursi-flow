@@ -10,6 +10,7 @@ declare module 'vue-router' {
   interface RouteMeta {
     title?: string
     description?: string
+    nav?: boolean
   }
 }
 
@@ -18,7 +19,7 @@ const domainRoutes = [
   ...artifactRoutes, ...sandboxRoutes, ...connectionRoutes,
 ]
 
-export const navigation = domainRoutes.map((route) => ({
+export const navigation = domainRoutes.filter((route) => !route.path.includes(':') && route.meta?.nav !== false).map((route) => ({
   path: route.path,
   title: route.meta?.title ?? '',
 }))
