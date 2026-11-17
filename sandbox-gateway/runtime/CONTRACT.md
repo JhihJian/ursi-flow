@@ -1,6 +1,6 @@
 # sandbox-runtime 契约
 
-镜像与 runtime bundle 的边界约定，gateway 契约（../sandbox-gateway/CONTRACT.md）的镜像与注入部分在此展开。
+镜像与 runtime bundle 的边界约定，gateway 契约（../gateway/CONTRACT.md）的镜像与注入部分在此展开。
 
 ## 镜像
 

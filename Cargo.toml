@@ -13,7 +13,7 @@ members = [
     "server/crates/channel",
     "server/crates/mcp-server",
     "server/crates/sandbox-observe",
-    "sandbox-gateway",
+    "sandbox-gateway/gateway",
 ]
 
 [workspace.package]

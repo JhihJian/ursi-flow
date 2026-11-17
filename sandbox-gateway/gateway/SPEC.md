@@ -1,5 +1,5 @@
 ---
-parent: ../SPEC.md
+parent: ../../SPEC.md
 references:
   - ./CONTRACT.md
 ---
@@ -46,12 +46,12 @@ gateway 是沙箱控制面，一个独立进程。它管理沙箱容器的生命
 
 ### 沙箱镜像供应
 
-沙箱镜像与 runtime bundle 由 sandbox-runtime 目录定义（镜像环境与注入沙箱的服务配置，见其 CONTRACT）。gateway 创建沙箱时按请求的镜像规格供应容器并下发 bundle。
+沙箱镜像与 runtime bundle 由 ../runtime 目录定义（镜像环境与注入沙箱的服务配置，见 runtime 的 CONTRACT）。gateway 创建沙箱时按请求的镜像规格供应容器并下发 bundle。
 
 #### 验收
 
 - fake 驱动的契约测试锁定镜像与环境变量透传语义。
-- docker 驱动使用 sandbox-runtime 构建的镜像创建的沙箱内，bootstrap 入口可执行。
+- docker 驱动使用 sandbox-gateway/runtime 构建的镜像创建的沙箱内，bootstrap 入口可执行。
 
 ## 边界
 

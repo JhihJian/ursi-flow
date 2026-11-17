@@ -4,7 +4,7 @@ depends-on:
   - crates/domain/SPEC.md
   - crates/agent-runtime/SPEC.md
 references:
-  - ../sandbox-gateway/CONTRACT.md
+  - ../sandbox-gateway/gateway/CONTRACT.md
 ---
 
 # server

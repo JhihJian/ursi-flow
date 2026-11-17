@@ -8,7 +8,7 @@ parent: ../../SPEC.md
 
 channel 是通道控制层，负责运行中的交互与内容传输：SSH 命令执行、SFTP 文件传输、Agent ACP 会话传输、终端与 code-server、Chromium CDP、noVNC、应用预览端口的连接管理、字节传输、生命周期绑定与鉴权。它与 agent-runtime 的切分线：channel 管连接与帧传输（字节层），agent-runtime 管 ACP 会话语义与控制接口（协议层）。server 是它唯一的调用方，它不反向依赖 server。
 
-连接对端是沙箱内由 sandbox-runtime bundle 注入的通道服务，端口与服务的对应关系见通道清单。
+连接对端是沙箱内由 sandbox-gateway/runtime bundle 注入的通道服务，端口与服务的对应关系见通道清单。
 
 ## 通道清单
 
@@ -22,7 +22,7 @@ channel 是通道控制层，负责运行中的交互与内容传输：SSH 命�
 | noVNC | WebSocket | bundle noVNC | 会话 token | 运行期 |
 | 应用预览 | HTTP/WS 端口代理 | bundle preview | 端口隔离 | 节点执行期 |
 
-对端服务随 sandbox-runtime bundle 注入，端口约定见其 CONTRACT。骨架阶段各通道实现延后，先随运行面契约（C2）定稿连接建立与鉴权语义。
+对端服务随 sandbox-gateway/runtime bundle 注入，端口约定见其 CONTRACT。骨架阶段各通道实现延后，先随运行面契约（C2）定稿连接建立与鉴权语义。
 
 ## 关键功能与验收
 
