@@ -26,4 +26,4 @@ kernel 从控制面拿到沙箱暴露端点后直连沙箱执行数据面操作�
 
 - golden JSON：控制面请求/响应体两侧各持 fixture 副本，任一侧结构变更必须同步修改两侧 fixture（测试失败即提示契约漂移）。
 - fake 驱动记录创建规格（env、ports、labels），作为 env 与端口透传语义的断言基准。
-- 镜像契约：sandbox-image 提供的镜像必须含 agent CLI 与 bootstrap 入口；镜像内容变更需要提升镜像版本标记。
+- 镜像契约：sandbox-runtime 提供的镜像必须含 agent CLI 与 bootstrap 入口；镜像内容变更需要提升镜像版本标记。

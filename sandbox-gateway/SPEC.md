@@ -51,7 +51,7 @@ gateway 是沙箱控制面，一个独立进程。它管理沙箱容器的生命
 #### 验收
 
 - fake 驱动的契约测试锁定镜像与环境变量透传语义。
-- docker 驱动使用 sandbox-image 构建的镜像创建的沙箱内，bootstrap 入口可执行。
+- docker 驱动使用 sandbox-runtime 构建的镜像创建的沙箱内，bootstrap 入口可执行。
 
 ## 边界
 

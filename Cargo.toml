@@ -36,5 +36,3 @@ ursi-agent-cli-adapter = { path = "agent-cli-adapter" }
 ursi-channel = { path = "channel" }
 ursi-mcp-server = { path = "mcp-server" }
 ursi-sandbox-observe = { path = "sandbox-observe" }
-ursi-engine = { path = "internal/engine" }
-ursi-api = { path = "internal/api" }

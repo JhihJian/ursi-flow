@@ -2,7 +2,7 @@
 parent: ../SPEC.md
 ---
 
-# internal/domain
+# domain
 
 ## 功能意图
 
@@ -47,7 +47,7 @@ domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模�
 
 ### 执行器定义
 
-`Executor` 描述一种执行器的标识与类型（mock 或具体 agent CLI）。`Runner` 接口约定执行器统一输入与结果，由 internal/executor 实现，engine 通过接口调用。执行环境操作抽象为 `ExecutionEnv` trait（发命令、写输入、读输出）：trait 定义在 domain，internal/sandbox 提供实现，engine 在组装时把实现注入给 Runner。executor 因此不依赖 sandbox crate，依赖方向保持 executor → domain。
+`Executor` 描述一种执行器的标识与类型（mock 或具体 agent CLI）。`Runner` 接口约定执行器统一输入与结果，由 agent-runtime 提供接口、agent-cli-adapter 实现，server 通过接口调用。执行环境操作抽象为 `ExecutionEnv` trait（发命令、写输入、读输出）：trait 定义在 domain，由 server 的 sandbox 模块与 channel 提供实现，server 在组装时把实现注入给 Runner。依赖方向保持 adapter → agent-runtime → domain。
 
 #### 验收
 
