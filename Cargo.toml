@@ -1,17 +1,14 @@
 [workspace]
 resolver = "2"
 default-members = [
-    "cmd/ursi-flow",
-    "internal/*",
+    "server",
+    "agent-runtime",
+    "domain",
 ]
 members = [
-    "cmd/ursi-flow",
-    "domain",
-    "internal/engine",
+    "server",
     "agent-runtime",
-    "internal/sandbox",
-    "internal/repo",
-    "internal/api",
+    "domain",
     "sandbox-gateway",
 ]
 
@@ -30,8 +27,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "proces
 
 # 内部 crate
 ursi-domain = { path = "domain" }
-ursi-repo = { path = "internal/repo" }
 ursi-agent-runtime = { path = "agent-runtime" }
-ursi-sandbox = { path = "internal/sandbox" }
 ursi-engine = { path = "internal/engine" }
 ursi-api = { path = "internal/api" }

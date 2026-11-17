@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use ursi_engine::Engine;
-use ursi_repo::Store;
+use crate::engine::Engine;
+use crate::database::Store;
 
 /// 启动 HTTP 服务（骨架占位，后续实现路由与 SSE 推送）。
 pub async fn serve(

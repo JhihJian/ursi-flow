@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use ursi_domain::{Run, TelemetryEvent, WorkflowDefinition};
 use ursi_agent_runtime::Runner;
-use ursi_repo::Store;
+use crate::database::Store;
 
 pub use events::EventBus;
 
@@ -78,7 +78,7 @@ impl Engine {
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
     #[error("存储错误：{0}")]
-    Store(#[from] ursi_repo::StoreError),
+    Store(#[from] crate::database::StoreError),
     #[error("执行器错误：{0}")]
     Executor(#[from] ursi_agent_runtime::ExecutorError),
     #[error("功能尚未实现：{0}")]

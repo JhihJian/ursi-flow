@@ -1,5 +1,5 @@
 ---
-parent: ../../SPEC.md
+parent: ../SPEC.md
 ---
 
 # internal/domain

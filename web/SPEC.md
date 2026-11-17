@@ -1,7 +1,7 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - ../internal/api/SPEC.md
+  - ../server/SPEC.md
 ---
 
 # web

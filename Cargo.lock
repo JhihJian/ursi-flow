@@ -219,19 +219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ursi-api"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "ursi-domain",
- "ursi-engine",
- "ursi-repo",
-]
-
-[[package]]
 name = "ursi-domain"
 version = "0.1.0"
 dependencies = [
@@ -239,31 +226,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
-]
-
-[[package]]
-name = "ursi-engine"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "tokio",
- "ursi-agent-runtime",
- "ursi-domain",
- "ursi-repo",
- "ursi-sandbox",
-]
-
-[[package]]
-name = "ursi-flow"
-version = "0.1.0"
-dependencies = [
- "tokio",
- "ursi-agent-runtime",
- "ursi-api",
- "ursi-domain",
- "ursi-engine",
- "ursi-repo",
- "ursi-sandbox",
 ]
 
 [[package]]
@@ -278,20 +240,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ursi-repo"
+name = "ursi-server"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
  "thiserror",
- "ursi-domain",
-]
-
-[[package]]
-name = "ursi-sandbox"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "thiserror",
+ "tokio",
+ "ursi-agent-runtime",
  "ursi-domain",
 ]
 

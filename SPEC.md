@@ -12,28 +12,31 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 ## 模块地图
 
-执行链路：Rust Kernel（internal/*）→ Sandbox Gateway（sandbox-gateway/）→ Isolated Sandbox（容器，镜像与 bundle 见 sandbox-runtime/）→ Agent CLI（沙箱内，由 executor 适配）→ Repository Workspace（沙箱内 git 工作区，由 sandbox 管理输入注入与产物回收）。
+执行链路：server（kernel）→ sandbox-gateway（沙箱控制面）→ Isolated Sandbox（容器，镜像与 bundle 见 sandbox-runtime/，通道服务由 channel 连接）→ Agent CLI（沙箱内，agent-runtime 接口 + agent-cli-adapter 适配）→ Repository Workspace（沙箱内 git 工作区，由 server/sandbox 管理输入注入与产物回收）。
 
 | 模块 | 职责 |
 |---|---|
-| domain | 唯一共享契约层：流程定义、状态机、Runner、执行环境句柄、事件契约 |
-| internal/repo | SQLite 持久化：流程、角色、运行、节点、事件，事务一致性 |
-| internal/engine | 调度、状态机、审批打回、租约恢复、事件广播与订阅（含原 observe 职责） |
+| server | kernel：HTTP/WS/SSE 接入、应用服务、工作流引擎、存储、沙箱编排 |
+| domain | 唯一共享契约层：流程定义、状态机、事件契约 |
 | agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流 |
-| internal/sandbox | gateway 控制面客户端、运行面接入、workspace IO、凭据注入 |
-| internal/api | HTTP 与 SSE 接口，rust-embed 内嵌 web 构建产物 |
+| agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
+| channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
+| sandbox-gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、端点暴露 |
+| sandbox-runtime | 沙箱镜像环境定义 + runtime bundle（注入沙箱的服务与配置） |
+| sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
+| mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | Vue3 展示与审批页面 |
-| gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、运行面端点暴露 |
-| sandbox-image | 沙箱容器镜像与 bootstrap 入口 |
-| cmd/ursi-flow | kernel 组装入口；gateway 为独立二进制 ursi-gateway |
+| server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
 
-kernel 与 gateway 是两个独立进程、独立编译单元，通过两份版本化契约耦合（见 sandbox-gateway/CONTRACT.md）：控制面（沙箱生命周期 REST）与运行面（kernel 经 gateway 暴露的端点直连沙箱执行命令与采集输出）。gateway 与 kernel 同机部署只是部署形态，不改变接口形态。
+server 是依赖汇点：channel、agent-runtime、agent-cli-adapter、mcp-server 依赖 server 暴露的服务接口而不被 server 反向依赖（mcp-server 为 server 提供域实现，server 提供传输接入）。channel 与 agent-runtime 的切分线：channel 管连接与帧传输（字节层），agent-runtime 管 ACP 会话语义与控制接口（协议层）。
+
+kernel（server）与 sandbox-gateway 是两个独立进程、独立编译单元，通过两份版本化契约耦合（见 sandbox-gateway/CONTRACT.md）：控制面（沙箱生命周期 REST）与运行面（kernel 经 gateway 暴露的端点直连沙箱执行命令与采集输出）。同机部署只是部署形态，不改变接口形态。
 
 ## 关键功能与验收
 
 ### 工作流定义与解析
 
-固定结构的工作流程由节点与边构成的有向无环图（DAG）描述。节点类型为 agent、script、approval；边描述执行依赖。定义、解析与校验由 internal/domain 承担。
+固定结构的工作流程由节点与边构成的有向无环图（DAG）描述。节点类型为 agent、script、approval；边描述执行依赖。定义、解析与校验由 domain 承担。
 
 #### 验收
 
@@ -42,7 +45,7 @@ kernel 与 gateway 是两个独立进程、独立编译单元，通过两份版�
 
 ### 单次运行执行
 
-一次运行从流程定义冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境生命周期。详见 internal/engine、internal/executor、internal/sandbox。
+一次运行从流程定义冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境生命周期。详见 server（engine、sandbox）、agent-runtime。
 
 #### 验收
 
@@ -60,7 +63,7 @@ kernel 与 gateway 是两个独立进程、独立编译单元，通过两份版�
 
 ### 能力定制
 
-单次运行过程中，角色提示词、模型、Skills、MCP 工具按节点引用的角色定制，并传递给执行器。详见 internal/domain、internal/executor。
+单次运行过程中，角色提示词、模型、Skills、MCP 工具按节点引用的角色定制，并传递给执行器。详见 domain、agent-runtime。
 
 #### 验收
 
@@ -68,16 +71,16 @@ kernel 与 gateway 是两个独立进程、独立编译单元，通过两份版�
 
 ### 过程可观测
 
-节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 internal/observe、internal/api、web。
+节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 server（engine、handlers）、web。
 
 #### 验收
 
-- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。事件由 engine 广播、repo 持久化，详见 internal/engine。
+- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。事件由 server（engine）广播、server（database）持久化。
 - 运行详情页能展示节点状态、工具轨迹、日志与产物。
 
 ### 持久化与恢复
 
-工作流定义、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 internal/repo、internal/engine。
+工作流定义、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 server（database、engine）。
 
 #### 验收
 
