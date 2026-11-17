@@ -12,9 +12,9 @@ python3 -B -m unittest discover -s sandbox-gateway/client/scripts -p 'test_*.py'
 ./target/debug/ursi-sandbox-client --help
 ```
 
-常规测试使用 fake HTTP/ACP 对端检查协议和 CLI 退出码，Python 策略测试检查 opt-in 和 scope 清理边界。`real_pi_agent_acceptance` 默认 ignored。真实执行需要集成后的 Gateway、正式 Runtime 镜像、bundle 和真实模型配置，并显式启用 `URSI_AGENT_ACCEPTANCE=1`。
+常规测试使用 fake HTTP/ACP 对端检查协议和 CLI 退出码，Python 策略测试检查 opt-in、root 入口、scope 清理边界、跨 UID 进程身份与取消回收判据，以及失败诊断脱敏。`real_pi_agent_acceptance` 默认 ignored。真实执行需要集成后的 Gateway、正式 Runtime 镜像、bundle 和真实模型配置，并显式启用 `URSI_AGENT_ACCEPTANCE=1`。
 
-依赖工具：构建需要 Rust 工具链，SSH/SFTP 子命令需要 OpenSSH 客户端。真实验收需要 Linux、本机 Docker daemon、Python 3.10+、`docker`、`ssh`、`sftp`、`ssh-keygen`。容器内的 Python3、Git、Pi 及 SSH 服务由正式 Runtime 镜像提供。
+依赖工具：构建需要 Rust 工具链，SSH/SFTP 子命令需要 OpenSSH 客户端。真实验收需要以 root 身份运行，具备 Linux、本机 Docker daemon、Python 3.10+、`docker`、`ssh`、`sftp`、`ssh-keygen`。容器内的 Python3、Git、Pi 及 SSH 服务由正式 Runtime 镜像提供。
 
 ## CLI 配置与调用
 
@@ -115,12 +115,12 @@ Rust 库暴露 `Gateway`、`Acp`、`Ssh`、`Secret` 和 `PromptOutcome`。每条
 - 可选 `session-token`：至少 32 字符。缺省时自动生成。
 - 使用 `--ssh-key` 时提供 `authorized_keys`，与无口令私钥匹配。省略 `--ssh-key` 时自动生成临时 Ed25519 密钥。
 
-脚本只复制上述明确列出的 Pi 配置文件。凭据文件复制到 `/tmp` 下 0700 临时目录，文件权限为 0600，任务结束后删除。脚本生成 `URSI_GATEWAY_RUNTIME_PROFILES` 指向的 JSON 文件：`{"pi":{"config_dir":"/abs/private/config"}}`。集成 Gateway 必须支持此 profile，并按契约设置 SSH capabilities 和 `/run/ursi/config` 只读挂载。
+脚本只复制操作方 `--config-dir` 中上述明确列出的 Pi 配置文件，不会读取或复制宿主用户的全量 Pi auth。真实验收入口先检查 root 身份，再接触配置与创建资源。Gateway profile 和 Runtime 要求配置目录归 root 所有且权限为 0700，因此应使用下方 `sudo` 入口。凭据文件复制到 `/tmp` 下 root 所有的 0700 临时目录，文件权限为 0600，任务结束后删除。脚本生成 `URSI_GATEWAY_RUNTIME_PROFILES` 指向的 JSON 文件：`{"pi":{"config_dir":"/abs/private/config"}}`。集成 Gateway 必须支持此 profile，并按契约设置 SSH capabilities 和 `/run/ursi/config` 只读挂载。
 
 bundle 的默认发布地址来自 `docker network inspect bridge` 的网关配置。该地址是否能下载由正式 Runtime 启动验证。自定义 Docker 网络、防火墙等环境可使用 `--bundle-host` 指定容器可达的宿主地址。
 
 ```bash
-URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_acceptance.py \
+sudo env URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_acceptance.py \
   --gateway /absolute/path/ursi-gateway \
   --client "$PWD/target/debug/ursi-sandbox-client" \
   --image ursi-runtime-pi:local \
@@ -131,7 +131,7 @@ URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_acceptance.
 
 复用操作方 SSH 身份时增加 `--ssh-key /private/id_ed25519`。可调期限为 `--operation-timeout 60`、`--lifecycle-timeout 240`、`--prompt-timeout 300`，单位为秒，每项范围 1..3600。每个命令、轮询和进程回收都有期限。
 
-Cargo ignored 测试使用同一个脚本：
+Cargo ignored 测试使用同一个脚本，也要求 root。以下命令在已配置 Rust 工具链的 root shell（`sudo -i`）中进入项目目录后执行。日常验证使用前面的非 ignored 定向测试，无需 root：
 
 ```bash
 export URSI_AGENT_ACCEPTANCE=1
@@ -148,10 +148,10 @@ cargo test -p ursi-sandbox-client --test real_agent -- --ignored --nocapture
 1. 正式 Runtime 就绪后，以 agent 公钥登录，经 SFTP 上传有函数 bug 和基线测试的小型 Git 仓库。
 2. 真实 Pi 修改函数并补测试，收到 `end_turn` 后，通过独立 SSH 检查 Git 差异、运行 unittest 和固定断言。再注入原 bug，确认新增测试能识别回归。
 3. 经 SFTP 拉回函数和测试文件，记录内容摘要。
-4. 创建另一会话。在原会话提交唯一标识的前台长任务，观察 ACP 工具执行事件，确认工具与子进程真实存在后取消。原 prompt 必须返回 `cancelled`，status 为 cancelled 且 pid 为空，`/proc` 中事先记录的 CLI、工具父子 PID 与唯一标识进程立即消失。
+4. 创建另一会话。在原会话提交唯一标识的前台长任务，观察 ACP 工具执行事件，通过 `/proc/<pid>/stat` 与 `cmdline` 确认监督器和工具父子进程身份且仍存活后取消。status.pid 指向 root 监督器，SSH 使用 agent 身份读取 `/proc`，不依赖跨 UID 的信号权限。原 prompt 必须返回 `cancelled`，status 为 cancelled 且 pid 为空，`/proc` 中事先记录的监督器、工具父子 PID 与唯一标识进程立即消失。进程扫描权限不足也视为验收失败。
 5. 另一会话继续完成真实 prompt，关闭两个会话。停止再启动沙箱，文件摘要保持一致，测试继续通过。
 6. Gateway 删除后查询为 404，随机 scope 下无所属容器和卷。
 
-原始模型事件、Gateway 输出和 SSH 输出仅留在临时目录。仓库外的 JSON 证据保留阶段结果、文件与差异摘要、工具事件计数、取消进程证据及清理结果。失败证据记录阶段和错误类别。模型错误、缺少 profile 支持、镜像/bundle 不匹配都使真实验收失败。
+原始模型事件、Gateway 输出和 SSH 输出仅留在临时目录。仓库外的 JSON 证据保留阶段结果、文件与差异摘要、工具事件计数、取消进程证据及清理结果。失败证据记录阶段、取消子阶段和错误类别。客户端失败另记固定命令类别（如 `ssh`、`acp cancel`、`acp prompt`）及退出码，启动失败或超时的退出码为 null。取消子阶段覆盖工具上传、启动等待、取消前身份核验、发送取消、等待原 prompt、取消状态查询、回收核验和另一会话验证。证据不保存命令参数、keys、模型配置、prompt 原文或原始 stdout/stderr。模型错误、缺少 profile 支持、镜像/bundle 不匹配都使真实验收失败。
 
 失败时先请求 Gateway 删除，然后停止 Gateway，再核对 Docker ownership 标签并清理本次随机 scope。脚本处理 SIGINT/SIGTERM。SIGKILL 或宿主掉电后，可根据证据中的 `scope` 人工核对残留资源。清理始终使用精确 scope 标签，禁止全局 prune。
