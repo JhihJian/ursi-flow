@@ -38,12 +38,12 @@ domain 是 ursi-flow 唯一的共享领域模型与契约层。它拥有跨模�
 
 ### 角色与能力定制
 
-`Role` 定义单次过程中可定制的角色能力：提示词（Prompt）、模型（Model）、Skills 列表、MCP 工具列表、产出物声明、验收门禁。agent 节点通过 `RoleID` 引用角色。
+`Role` 定义单次过程中可定制的角色能力：提示词（Prompt）、模型（Model）、Skills 与 MCP 配置。agent 节点通过 `RoleID` 引用角色，产出物声明和审批规则属于工作流节点。domain 提供纯数据契约及字段校验，server 的 workflows 与 roles 模块负责引用存在性和持久化约束。
 
 #### 验收
 
 - 给定一个含 Prompt、Model、Skills、MCPServers 的角色定义，可解析为 `Role` 结构体并保留全部字段。
-- agent 节点引用不存在的 `RoleID` 时，工作流校验返回错误。
+- agent 节点缺少 `RoleID` 或其值为空时，纯工作流校验返回错误；角色是否存在由 server 工作流保存和运行创建用例校验。
 
 ### 执行器定义
 

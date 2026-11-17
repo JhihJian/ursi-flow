@@ -1,8 +1,7 @@
 //! 事件广播：engine 内的事件总线。
 //!
-//! engine 与执行器产生的观测事件（节点状态、工具轨迹、日志、产物发布）统一为
-//! domain 的 `TelemetryEvent`，由总线分发给订阅方（repo 持久化、api SSE 推送）。
-//! 总线只负责广播，不持久化；订阅方按自身职责消费。
+//! runs 将事件持久化后，以 domain 的 `TelemetryEvent` 通知 SSE 等订阅方。
+//! 总线仅作实时通知，历史与断线补读以运行事件存储为准。
 
 use std::sync::Arc;
 

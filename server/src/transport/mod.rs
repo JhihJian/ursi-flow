@@ -2,18 +2,14 @@
 //!
 //! 暴露工作流的创建、解析校验与查询，运行的启动、状态查询与审批操作，
 //! 以及观测事件的流式订阅（SSE），供 web 页面与外部调用方使用。
-//! 本 crate 只做协议暴露与参数校验，不包含业务编排逻辑。
+//! 本模块负责协议暴露与参数校验，业务用例由各域公开接口提供。
 
 use std::sync::Arc;
 
-use crate::engine::Engine;
-use crate::database::Store;
+use crate::runs::{RunRepository, engine::Engine};
 
 /// 启动 HTTP 服务（骨架占位，后续实现路由与 SSE 推送）。
-pub async fn serve(
-    engine: Arc<Engine>,
-    store: Arc<dyn Store>,
-) -> Result<(), ApiError> {
+pub async fn serve(engine: Arc<Engine>, store: Arc<dyn RunRepository>) -> Result<(), ApiError> {
     let _ = (engine, store);
     Err(ApiError::NotImplemented("serve".to_string()))
 }

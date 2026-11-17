@@ -1,32 +1,35 @@
 //! 流程执行引擎。
 //!
 //! 把一次运行从工作流定义实例化，按拓扑顺序调度节点执行，管理状态机流转、
-//! 人工审批与打回、失败重试与崩溃恢复。engine 同时承担过程可观测：运行事件
-//! 的广播与订阅（原 observe 职责）在 engine 内完成，持久化由 repo 承担。
-//! engine 只编排，不直接实现具体执行器，也不直接操作数据库，均通过接口调用。
+//! 人工审批与打回、失败重试与崩溃恢复。持久化状态与事件后通知订阅方。
+//! engine 属于 runs，通过本域 repository 与执行接口调用外部能力。
 
 mod events;
 
 use std::sync::Arc;
 
+use crate::runs::RunRepository;
 use tokio::sync::broadcast::Receiver;
-use ursi_domain::{Run, TelemetryEvent, WorkflowDefinition};
 use ursi_agent_runtime::Runner;
-use crate::database::Store;
+use ursi_domain::{Run, TelemetryEvent, WorkflowDefinition};
 
 pub use events::EventBus;
 
 /// 流程执行引擎：编排调度、状态机、人工审批、重试、恢复与事件广播。
 #[allow(dead_code)]
 pub struct Engine {
-    store: Arc<dyn Store>,
+    store: Arc<dyn RunRepository>,
     runner: Arc<dyn Runner>,
     events: Arc<EventBus>,
 }
 
 impl Engine {
     /// 装配引擎所需依赖。
-    pub fn new(store: Arc<dyn Store>, runner: Arc<dyn Runner>, events: Arc<EventBus>) -> Self {
+    pub fn new(
+        store: Arc<dyn RunRepository>,
+        runner: Arc<dyn Runner>,
+        events: Arc<EventBus>,
+    ) -> Self {
         Self {
             store,
             runner,
@@ -34,7 +37,7 @@ impl Engine {
         }
     }
 
-    /// 广播一条运行事件。
+    /// 广播一条已持久化的运行事件，调用方负责先完成状态与事件提交。
     pub fn emit_event(&self, run_id: &str, event: TelemetryEvent) {
         self.events.emit(run_id, event);
     }
@@ -78,7 +81,7 @@ impl Engine {
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
     #[error("存储错误：{0}")]
-    Store(#[from] crate::database::StoreError),
+    Store(#[from] crate::storage::StoreError),
     #[error("执行器错误：{0}")]
     Executor(#[from] ursi_agent_runtime::ExecutorError),
     #[error("功能尚未实现：{0}")]
