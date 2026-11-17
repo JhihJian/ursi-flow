@@ -1,0 +1,50 @@
+{
+  "scope": "ursi-agent-8e34dd364020f8cb74dd",
+  "real_model": true,
+  "passed": true,
+  "checks": [
+    {
+      "check": "独立 Gateway 与 bundle HTTP 已启动",
+      "gateway_port": 37937,
+      "bundle_sha256": "1515f0c1bbd6cef7bfae0939c1a45f82d059d5784076ca7f63701666569f115c",
+      "image": "ursi-runtime-pi:local"
+    },
+    {
+      "check": "正式 Runtime 就绪",
+      "sandbox": "e3bce0fba383439f9a10a9b9aa38f885"
+    },
+    {
+      "check": "通过 SSH agent 与 SFTP 准备 Git 仓库"
+    },
+    {
+      "check": "真实 Pi end_turn 后独立验证函数、补测和 Git 差异",
+      "files": {
+        "calculator.py": "ba1a531f581d2e6094e978ed6f7aca7a8d92eeb62c6e7ad73ee692f7f18bc772",
+        "test_calculator.py": "1745b0d3811b020a48bd7d8f4b92494d62bc94738765457a9337ff0d42d47976"
+      },
+      "diff_sha256": "ce15ef4f5fd3ddf5cb193a649dabab2d949199fb11b273097ee65f50aed4b382",
+      "verification_stdout_sha256": "e0c162ef15e54d5187e8018302c21b1177f84e1402902cd5ba331c6543c86e2d",
+      "independent_assertions_passed": true,
+      "original_bug_detected_by_added_tests": true
+    },
+    {
+      "check": "真实长工具取消后 CLI 与父子进程退出，另一会话继续成功",
+      "child_pids": [198, 199],
+      "cli_pid": 60,
+      "cancelled_state": "cancelled",
+      "second_session_completed": true
+    },
+    {
+      "check": "停止再启动后仓库与补测保留"
+    },
+    {
+      "check": "Gateway 删除完成且 scope 下无容器和卷"
+    }
+  ],
+  "updates": {
+    "agent_message_chunk": 200,
+    "tool_call": 11,
+    "tool_call_update": 27
+  },
+  "cleanup": true
+}
