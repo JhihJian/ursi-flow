@@ -2,32 +2,46 @@
 parent: ../SPEC.md
 references:
   - ../CONTRACT.md
+  - ../AGENT-CONTRACT.md
+  - ../IMAGE-README.md
 ---
 
 # 沙箱环境镜像
 
 ## 功能意图
 
-定义系统环境、工具和成熟服务程序：Git、Agent CLI、sshd、code-server、Chromium、noVNC、成熟进程监督器，以及 bootstrap 入口。环境配置选择需要启用的服务，平台程序与配置由 bundle 交付。
+交付 `pi-execution` 环境 profile，提供 Pi Agent 执行、SSH exec/PTY/SFTP 与应用运行所需的基础工具。镜像提供 bootstrap 和成熟监督器程序，bundle 提供 session-service 与监督策略。IDE、CDP、noVNC 属于其他环境 profile。
 
 ## 关键功能与验收
 
 ### 环境基线
 
-按可追溯版本构建工具与服务，记录镜像级别和提供的能力。监督器程序安装在镜像中，监督策略由 bundle 配置。
+基于 Ubuntu 24.04，提供 Node.js >=22.19、Pi 1.5.0、Git、OpenSSH、Python3、supervisord、curl 与系统证书。镜像声明 `io.ursi.image-level=1`、`io.ursi.environment-profile=pi-execution`。普通执行账户为 agent（UID/GID 1000）。
 
 #### 验收
 
-- 构建后的镜像可查询环境版本和能力，声明提供的程序可运行。
-- sshd 支持 exec、PTY 与 SFTP，满足命令、终端与文件通道要求。
-- 仅安装服务程序不自动将内部端口公开到宿主。
+- 镜像独立构建成功，可查询 Node、Pi、Git、SSH 和监督器版本。
+- 在 cap-drop ALL、no-new-privileges 及契约固定的七项 capabilities 下，sshd 和 supervisord 能启动。
+- 2222 端口仅支持 agent 公钥认证，root 与密码登录被拒绝，exec、PTY 和 SFTP 正常。
+- SSH agent 进程无 effective/permitted/ambient capabilities。
 
-### bootstrap
+### bootstrap 与缓存
 
-获取或接收 bundle，检查完整性及最低镜像要求，准备目录并装配监督配置，移交到支持信号转发和子进程回收的监督启动链。
+入口 `/ursi/bootstrap` 根据 SHA256 下载并装配 bundle，检查清单与最低镜像级别。归档和解包结果按摘要缓存于 `/opt/ursi/runtime`，每次重启校验归档摘要、已安装路径集合、文件类型、权限及内容摘要。
 
 #### 验收
 
-- 校验失败时服务不启动，退出信息能区分内容损坏和环境不满足。
-- 同一工作区再次启动不会清空仓库和产物。
-- 启动失败不会伪报就绪；停止信号可传递到服务进程。
+- 下载内容损坏、清单内容不符、镜像级别过低、路径穿越、重复成员、符号链接、硬链接与特殊文件均拒绝启动。
+- 解包成员数与总大小有界，安装采用临时目录与原子发布，已存在的损坏运行包明确报错且不覆盖。
+- 有效缓存支持下载服务不可达时重启。
+
+### 工作区、凭据与就绪
+
+配置以 root 私有目录只读挂载到 `/run/ursi/config`。运行目录位于 `/run/ursi`。工作区根采用 root:agent、1770，agent 可创建仓库，sticky 位保护 root 所有的 `.ursi-state`。只准备目录本身的权限，保留既有文件及其所有权。
+
+#### 验收
+
+- 配置缺失、配置目录权限过宽、非只读挂载或 token 太短时启动失败。
+- agent 可写工作区，不能读取 session token、读取或替换 `.ursi-state`。
+- 停止再启动后仓库与产物保留，既有 root 状态文件仍为 root 所有。
+- 镜像健康检查同时完成受限 probe key 的真实 SSH 登录和 session-service `/healthz` 请求。

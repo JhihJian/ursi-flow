@@ -1,0 +1,27 @@
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /run/ursi/sshd/host_ed25519
+PidFile /run/ursi/sshd/sshd.pid
+PermitRootLogin no
+AllowUsers agent
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+SetEnv PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+StrictModes yes
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+PermitUserEnvironment no
+PermitUserRC no
+AllowAgentForwarding no
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+PrintMotd no
+PrintLastLog no
+UseDNS no
+LoginGraceTime 30
+MaxAuthTries 3
+Subsystem sftp internal-sftp
