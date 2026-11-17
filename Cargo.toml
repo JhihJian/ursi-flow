@@ -12,7 +12,7 @@ members = [
     "internal/sandbox",
     "internal/repo",
     "internal/api",
-    "gateway",
+    "sandbox-gateway",
 ]
 
 [workspace.package]

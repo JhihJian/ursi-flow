@@ -4,7 +4,7 @@ references:
   - ./CONTRACT.md
 ---
 
-# gateway
+# sandbox-gateway
 
 ## 功能意图
 
