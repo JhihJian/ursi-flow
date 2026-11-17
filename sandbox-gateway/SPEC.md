@@ -46,7 +46,7 @@ gateway 是沙箱控制面，一个独立进程。它管理沙箱容器的生命
 
 ### 沙箱镜像供应
 
-沙箱镜像由 sandbox-image 目录定义（含 agent CLI 与 bootstrap 入口）。gateway 创建沙箱时按请求的镜像规格供应容器，镜像契约见 CONTRACT.md。
+沙箱镜像与 runtime bundle 由 sandbox-runtime 目录定义（镜像环境与注入沙箱的服务配置，见其 CONTRACT）。gateway 创建沙箱时按请求的镜像规格供应容器并下发 bundle。
 
 #### 验收
 

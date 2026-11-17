@@ -12,7 +12,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 ## 模块地图
 
-执行链路：Rust Kernel（internal/*）→ Sandbox Gateway（sandbox-gateway/）→ Isolated Sandbox（容器，镜像定义见 sandbox-image/）→ Agent CLI（沙箱内，由 executor 适配）→ Repository Workspace（沙箱内 git 工作区，由 sandbox 管理输入注入与产物回收）。
+执行链路：Rust Kernel（internal/*）→ Sandbox Gateway（sandbox-gateway/）→ Isolated Sandbox（容器，镜像与 bundle 见 sandbox-runtime/）→ Agent CLI（沙箱内，由 executor 适配）→ Repository Workspace（沙箱内 git 工作区，由 sandbox 管理输入注入与产物回收）。
 
 | 模块 | 职责 |
 |---|---|
