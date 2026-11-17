@@ -5,6 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "ursi-flow"
+path = "src/bin/ursi-flow.rs"
+
+[lib]
+name = "ursi_server"
+path = "src/lib.rs"
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
