@@ -1,8 +1,8 @@
 //! agent 可控接口层。
 //!
-//! 定义统一的执行器接口，把单次过程的输入与能力配置交给具体执行器运行，
-//! 并把不同 agent CLI 适配为统一协议。能力定制（提示词、模型、Skills、MCP）
-//! 是角色的属性，执行器负责把这些属性渲染为该 CLI 可用的配置。
+//! 定义执行输入、结果和事件契约。目标设计由服务端经 Channel 控制沙箱内
+//! session-service，后者装配 CLI Adapter。当前只具备单次执行接口骨架，
+//! ACP 客户端与会话取消等能力尚未实现。
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -32,8 +32,8 @@ pub type EventSink<'a> = &'a (dyn Fn(TelemetryEvent) + Send + Sync);
 /// 执行器统一接口。
 #[async_trait]
 pub trait Runner: Send + Sync {
-    /// 运行一次执行。env 由 engine 注入：sandbox 提供实现，Runner 经 domain
-    /// 的 `ExecutionEnv` 契约操作环境，不感知实现是本地目录还是沙箱容器。
+    /// 运行一次执行。环境由装配方注入，具体执行位置由实现决定。
+    /// 此接口只覆盖单次执行，完整会话控制按模块规格继续实现。
     async fn run(
         &self,
         input: &InvocationInput,

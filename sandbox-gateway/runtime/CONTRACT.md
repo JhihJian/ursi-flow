@@ -1,30 +1,33 @@
-# sandbox-runtime 契约
+# 沙箱运行环境契约
 
-镜像与 runtime bundle 的边界约定，gateway 契约（./gateway/CONTRACT.md）的镜像与注入部分在此展开。
+## 交付边界
 
-## 镜像
+镜像提供系统工具、Agent CLI、sshd、code-server、Chromium、noVNC、成熟监督器与 bootstrap。bundle 提供 session-service（含 CLI Adapter）、平台脚本、监督配置和服务清单。每种程序只有一处交付来源，监督器程序在镜像，监督配置在 bundle。
 
-- bootstrap 入口：`/ursi/bootstrap`，容器启动即执行：初始化目录、装配 bundle、移交 process-supervisor、汇报就绪。
-- 环境基线：git、agent CLI（首个真实 CLI 在 adapter 工作包时定稿）、code-server、Chromium、noVNC、应用预览栈、process-supervisor 运行环境。
-- 凭据：仅经容器环境变量注入（创建规格的 env），不落盘明文。
-- 版本标记：镜像内容影响契约时提升 `IMAGE_LEVEL` 文件内容（整数 +1），gateway 创建时透传校验。
+bundle 清单包含版本、内容校验值、最低镜像级别、所需环境能力和服务就绪条件。bootstrap `/ursi/bootstrap` 校验后装配服务，校验失败不启动业务进程。运行时具备 bundle 装配能力，在线更换是否需要停止会话由更新操作明确约束，不能覆盖正在使用的程序。
 
-## runtime bundle
+## 对端服务
 
-- bundle 为注入沙箱的服务与配置包：session-service、process-supervisor、通道服务启动脚本与配置、目录初始化。
-- bundle 版本独立于镜像版本；gateway 创建沙箱时下发 bundle，bootstrap 按版本标记校验兼容后装配，由 process-supervisor 拉起服务。
-- bundle 内服务监听端口与 channel 的通道清单（见 server/crates/channel/SPEC.md 通道清单表）一一对应，端口分级（public/internal）遵循 gateway 契约。
+| 通道 | 对端 | 资源管理方 |
+|---|---|---|
+| SSH 命令与终端 | sshd，exec 或 PTY | sshd 管连接进程，调用方控制命令 |
+| SFTP | 同一 sshd 的 SFTP 子系统 | sshd |
+| ACP | session-service | session-service 管会话和 CLI 子进程 |
+| IDE | code-server 原生 HTTP/WebSocket | code-server |
+| 浏览器调试 | Chromium CDP | 浏览器服务及其启动配置 |
+| 桌面 | noVNC 与后端 VNC 服务 | 桌面服务及其启动配置 |
+| 应用预览 | 应用原生 HTTP/WebSocket | 启动该应用的运行或会话 |
 
-## session-service 端点
+具体端口由环境配置声明，Gateway 返回运行实例端点。多个通道可以共用一个端点。公开/内部策略见 [Gateway 契约](../gateway/CONTRACT.md)。Channel 可直连或经隧道访问，服务侧身份校验仍须执行。
 
-- ACP 会话：WebSocket，会话 token 鉴权，承载 agent 会话与事件流。
-- exec/终端：随 channel 阶段定稿（SSH 经 tunnel 或 session-service exec 端点）。
-- code-server / CDP / noVNC / 预览：端点预留，实现随 channel 阶段展开。
+## 就绪与停止
 
-## 目录约定
+就绪检查覆盖启用的必需服务。SSH/SFTP 就绪验证实际连接能力，session-service 就绪验证会话服务可接收请求，单一 TCP 端口开放不代表所有服务就绪。
 
-- 工作区根：`/ursi/workspace/<run-id>/`，每次运行独立目录。
-- 输入目录：`/ursi/workspace/<run-id>/input/`，kernel 在节点执行前写入。
-- 产物目录：`/ursi/workspace/<run-id>/output/`，节点执行后 kernel 读出。
+监督器只负责常驻服务保活，session-service 管 agent 执行进程。连接断开、会话取消、任务失败、服务退出分别报告，服务恢复不自动重放任务。沙箱停止按监督配置传递信号并回收子进程。
 
-镜像不含 agent 之外的业务逻辑；agent CLI 选型与版本随 adapter 工作包定稿后更新本文件。
+## 工作区与凭据
+
+工作区根为 `/ursi/workspace/<run-id>/`，输入和产物分别为其 `input/`、`output/` 子目录。工作区保留策略由 Gateway 管理的存储资源落实，bundle 装配不清空工作区。
+
+凭据通过受控运行时注入，按 CLI 或服务需要采用环境变量或限权临时文件。凭据不写入镜像、bundle 或普通元数据日志，临时凭据随会话或沙箱释放清理。读取、传输和观测路径均执行访问范围校验与敏感信息过滤。

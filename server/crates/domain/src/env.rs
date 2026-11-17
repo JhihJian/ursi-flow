@@ -1,9 +1,7 @@
 //! 执行环境句柄：沙箱内执行面的统一抽象（domain 契约）。
 //!
-//! Runner 通过该 trait 操作执行环境（发命令、读写文件、收日志），
-//! 不感知环境是本地目录还是沙箱容器。server 的 sandbox 模块与 channel 提供实现，
-//! engine 负责把实现注入给 Runner。trait 定义在 domain，保证
-//! executor 不依赖 sandbox crate。
+//! 定义命令与文件操作契约，由装配方注入实现。该接口不拥有沙箱生命周期，
+//! 也不决定执行位置；Channel 管服务端连接，沙箱内 CLI Adapter 使用本地环境。
 
 use async_trait::async_trait;
 

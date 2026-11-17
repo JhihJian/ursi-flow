@@ -1,12 +1,8 @@
-//! kernel 侧沙箱生命周期编排。
+//! Gateway 客户端与运行资源关联。
 //!
-//! 面向 engine 提供环境句柄与生命周期编排：经 sandbox-gateway 控制面创建
-//! 与释放沙箱，经运行面端点直连沙箱完成命令执行、输入注入、输出与产物
-//! 收集，并管理沙箱内 git 仓库工作区与凭据注入。
-//!
-//! 本模块是 sandbox-gateway 控制面 REST 契约（C1）在 kernel 侧的客户端，
-//! 含 `SandboxControl` trait 的两个实现：gateway HTTP 客户端（生产形态）
-//! 与 in-process fake（无 Docker 环境的开发与测试），engine 不感知差异。
+//! server 请求 Gateway 准备或释放资源，Gateway lifecycle 管理资源状态和
+//! 对账。输入输出由 Channel 传输，agent 会话经 Agent Runtime 控制。
+//! 当前仅定义客户端接口，HTTP 实现与测试替身尚未实现。
 
 use async_trait::async_trait;
 
@@ -15,7 +11,7 @@ use async_trait::async_trait;
 pub trait SandboxControl: Send + Sync {
     /// 为一次运行准备沙箱环境，返回控制面沙箱 ID。
     async fn prepare(&self, run_id: &str) -> Result<String, SandboxError>;
-    /// 释放一次运行的沙箱；释放失败不阻塞运行终态。
+    /// 请求释放一次运行的沙箱；失败必须显式返回，以便记录和重试。
     async fn release(&self, run_id: &str) -> Result<(), SandboxError>;
 }
 

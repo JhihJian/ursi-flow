@@ -1,11 +1,10 @@
-//! 沙箱控制面（Sandbox Gateway）。
+//! Sandbox Gateway：独立资源控制面。
 //!
-//! 独立进程，管理沙箱容器的生命周期：REST 接口、生命周期编排与恢复对账、
-//! 驱动抽象（fake/docker）、状态存储。与 kernel 仅通过版本化 REST 契约耦合，
-//! 不依赖 internal/* 下的任何 crate。
+//! gateway_api 接入请求，lifecycle 管操作意图与持久化对账，driver 适配基础
+//! 设施，tunnel 提供可选字节中继。各模块同属一个 crate，功能实现仍为骨架。
 
-pub mod models;
 pub mod driver;
-pub mod store;
-pub mod service;
-pub mod api;
+pub mod gateway_api;
+pub mod lifecycle;
+pub mod models;
+pub mod tunnel;

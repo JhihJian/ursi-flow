@@ -1,3 +1,8 @@
+---
+references:
+  - sandbox-gateway/DESIGN.md
+---
+
 # ursi-flow
 
 ## 功能意图
@@ -12,25 +17,25 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 ## 模块地图
 
-执行链路：server（kernel）→ sandbox-gateway（沙箱控制面）→ Isolated Sandbox（容器，镜像与 bundle 见 sandbox-gateway/runtime，通道服务由 channel 连接）→ Agent CLI（沙箱内，agent-runtime 接口 + agent-cli-adapter 适配）→ Repository Workspace（沙箱内 git 工作区，由 server/sandbox 管理输入注入与产物回收）。
+沙箱管理分为三个边界：Gateway 管资源，Runtime 管沙箱内进程与 agent 会话，Server Channel 管连接。server 请求 Gateway 准备资源，通过 Channel 连接沙箱原生服务，Agent Runtime 通过 ACP 控制 session-service，由会话服务装配 CLI Adapter 执行任务。仓库工作区保存在沙箱的数据资源中。目录与资源归属详见 [沙箱管理模块设计](sandbox-gateway/DESIGN.md)。
 
 | 模块 | 职责 |
 |---|---|
 | server | kernel：HTTP/WS/SSE 接入、应用服务、工作流引擎、存储、沙箱编排 |
 | server/crates/domain | 唯一共享契约层：流程定义、状态机、事件契约 |
-| server/crates/agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流，实现见 agent-cli-adapter |
-| server/crates/agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
+| server/crates/agent-runtime | agent 可控接口与会话语义，服务端通过 ACP 控制沙箱会话 |
+| server/crates/agent-cli-adapter | 沙箱内 CLI 适配与能力渲染，供 session-service 装配，mock 用于测试 |
 | server/crates/channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
 | sandbox-gateway/gateway | 沙箱控制面：生命周期接口（含重建）、tunnel 传输、public/internal 端口隔离、驱动抽象（fake/docker）、元数据存储与启动对账 |
-| sandbox-gateway/runtime | 沙箱镜像环境定义 + runtime bundle（session-service 会话服务 + process-supervisor 进程监督） |
+| sandbox-gateway/runtime | image 提供环境与成熟监督器，bundle 提供 session-service、监督配置与平台脚本 |
 | server/crates/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | Vue3 展示与审批页面 |
 | server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
 
-server 是依赖汇点：channel、agent-runtime、agent-cli-adapter、mcp-server 依赖 server 暴露的服务接口而不被 server 反向依赖（mcp-server 为 server 提供域实现，server 提供传输接入）。channel 与 agent-runtime 的切分线：channel 管连接与帧传输（字节层），agent-runtime 管 ACP 会话语义与控制接口（协议层）。
+server 装配 Agent Runtime、Channel 和 MCP 工具，基础库不反向依赖 server crate。MCP 业务能力通过装配时注入的接口提供。CLI Adapter 的源码位于 workspace 中，其真实实现随 session-service 在沙箱内运行。
 
-kernel（server）与 sandbox-gateway 是两个独立进程、独立编译单元，通过两份版本化契约耦合（见 sandbox-gateway/CONTRACT.md）：控制面（沙箱生命周期 REST）与运行面（kernel 经 gateway 暴露的端点直连沙箱执行命令与采集输出）。同机部署只是部署形态，不改变接口形态。
+Gateway 是独立服务，内部 lifecycle、driver、tunnel、gateway-api 同属一个 crate。Runtime 是镜像和 bundle 交付物，Channel 是 server 内连接库。控制请求经 [Gateway 契约](sandbox-gateway/gateway/CONTRACT.md) 传递，运行中连接可选择直连或可选字节隧道。
 
 ## 关键功能与验收
 

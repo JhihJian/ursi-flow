@@ -1,47 +1,46 @@
-# gateway 契约
+# Gateway 资源与传输契约
 
-kernel 与 gateway 通过版本化 REST 契约耦合，不共享类型。本文件是契约的事实来源，两侧实现各自定义结构体，用 golden JSON fixture 测试锁定。
+## 控制面
 
-## C1 控制面（kernel → gateway REST）
+控制面提供创建、启动、停止、删除、重建、状态、日志、能力与端点查询。创建等长操作先持久化意图后受理，通过查询返回进度、实际状态和错误。Gateway API 鉴权后调用 lifecycle，driver 只执行基础设施操作。
 
-对齐 grasp gateway v1：
+Sandbox Spec 包含稳定操作与资源关联标识、镜像或模板、工作区保留策略、资源限制、端点声明、bundle 引用和所需环境能力。敏感凭据采用受控引用或运行时注入，不作为普通元数据明文保存。
 
-- `POST /api/v1/sandboxes`：创建，受理返回（异步到 running）
-- `GET /api/v1/sandboxes/{id}`：查询状态与端点
-- `GET /api/v1/sandboxes?label=k:v`：列表（标签 AND 过滤）
-- `POST /api/v1/sandboxes/{id}/start|stop`：恢复/停止
-- `POST /api/v1/sandboxes/{id}/reinstall`：重建（`preserveData` 默认 true 保数据卷）
-- `DELETE /api/v1/sandboxes/{id}`：删除
-- `GET /api/v1/sandboxes/{id}/logs?tail=`：日志（非流式）
-- `GET /api/v1/sandboxes/{id}/host/{port}`：public 端口的宿主地址
-- `GET /api/v1/sandboxes/{id}/ports/{port}`：internal 端口发布（按需）
-- `GET /api/v1/capabilities`、`GET /api/v2/info`：gateway 描述（driver、默认镜像、profile、端口表、能力）
-- `GET /healthz`：健康检查
+以本项目规格和行为用例验收。Grasp 提供参考实现与测试场景，不要求复制其全部 URL、版本号、错误体或接口别名。具体 HTTP 路由及请求响应 schema 随 gateway-api 实现冻结，服务端与客户端共享一组契约样例进行验证。
 
-鉴权：Bearer API key（kernel 与 gateway 共享密钥），本地匿名豁免可配置。错误体结构、状态码语义与 grasp v1 一致（404/409/501）。
+## 生命周期语义
 
-生命周期状态：`pulling → creating → running ⇄ stopped → stopping → deleting`，异常进入 `error`。
+| 操作 | 必须保留的行为 |
+|---|---|
+| 创建 | 冻结规格并保存意图，关联外部资源，服务就绪前保持准备状态 |
+| 启动 | 恢复已停止资源，保留工作区，重新解析端点并检查服务 |
+| 停止 | 关闭工作负载并按驱动能力保留可恢复的工作区 |
+| 删除 | 持久化删除意图，清理本沙箱拥有的资源，失败继续重试 |
+| 保数据重建 | 更换工作负载并挂回工作区，不删除共享宿主配置 |
+| 销毁数据重建 | 显式声明销毁范围，确认授权后重建对应数据与工作负载 |
 
-## C2 传输面（tunnel，可选）
+停止通常经历 running → stopping → stopped，启动经历 stopped → preparing → running。这里描述行为阶段，持久化状态枚举由 lifecycle 实现统一定义。删除是独立意图，不能因实际资源仍在运行而被对账覆盖。
 
-客户端经 gateway 鉴权后按「沙箱 ID + 客户端口」建立 TCP/WebSocket 传输（ursi-tcp-v1 帧协议），gateway 校验记录与驱动实际状态后解析当前端点并中继字节流。语义：
+重建前验证驱动能力。无法保证数据保留时拒绝操作，不静默转为销毁数据。状态提交使用条件更新，查询故障保留记录并重试。确认资源不存在后结合期望操作处理，不直接把全部缺失资源当作成功删除。
 
-- `GET /api/v2/sandboxes/{id}/connect/{guestPort}`，`Upgrade: websocket`，子协议 `ursi-tcp-v1`
-- 不提供任意 host/URL 参数；未知沙箱/端口 404，升级前不可达 502，错误子协议 400
-- 二进制帧承载有序 TCP 字节，帧上限 64 KiB；文本 `eof` 表示半关闭；Ping/Pong 保活
-- 传输面鉴权独立于控制面：未配置 API key 时传输面禁用（503）
+## 端点
 
-## C3 运行面（kernel → sandbox，经 C1 端点发现 + C2 隧道）
+端点描述至少包含沙箱标识、端点标识、服务协议、guest port、public/internal 属性，以及可用的直连地址或隧道接入方式。地址由 driver 查询结果生成，调用方不能注入任意目标地址。
 
-kernel 从控制面拿到沙箱端点后直连沙箱内 session-service 执行数据面操作：agent 会话（ACP）、进程执行（exec）、输入写入、输出与产物读取。internal 端口经 C2 tunnel 访问，public 端口可直连。传输实现（首版 SSH 经 tunnel 或 session-service exec 端点）在 channel 工作包定稿；本文件锁定「数据面不经 gateway 中转业务语义，gateway 只做端点解析与字节中继」的边界。
+public 表示允许发布，由 driver 按宿主绑定地址或基础设施网络策略映射。internal 仅在受控网络或鉴权隧道中可达。CDP/noVNC 默认内部，内部端点不提供临时公开接口。应用预览端点的声明和发布需通过公开策略校验。
 
-## 端口分级
+查询端点不等于创建网络映射。端点发布和回收属于生命周期操作，Gateway 重启后需对账其真实状态。
 
-- public 端口：驱动发布到宿主（bindIP:ephemeral），地址经 C1 查询返回，可直连。
-- internal 端口：不发布宿主，仅容器网络可达，经 C2 tunnel 访问（CDP/noVNC 类）。
+## 可选传输
 
-## 契约测试
+Channel 可以直连服务，或通过 Gateway 的 TCP over WebSocket 隧道接入。两种方式承载相同的 SSH、ACP、HTTP 等上层协议，Gateway 只处理授权端点解析与字节转发。
 
-- golden JSON：控制面请求/响应体两侧各持 fixture 副本，任一侧结构变更必须同步修改两侧 fixture（测试失败即提示契约漂移）。
-- fake 驱动记录创建规格（env、ports、labels），作为 env 与端口透传语义的断言基准。
-- 镜像契约：sandbox-gateway/runtime 提供的镜像必须含 bootstrap 入口与 process-supervisor；镜像内容变更需要提升镜像版本标记（IMAGE_LEVEL）。
+隧道请求包含沙箱与端点标识。启用隧道必须配置有效鉴权，升级前校验身份、端点范围及实际可达性。禁止任意 host/URL 转发。二进制字节有序传输，输入半关闭后仍可读取剩余输出，并具备背压、取消和连接回收。
+
+具体子协议、帧界限和 EOF 编码在 tunnel 实现时通过双方契约测试冻结，本阶段不提前派生 Grasp 协议名称。功能关闭、目标未知、权限不足和目标不可达需返回可区分结果。
+
+## 运行环境边界
+
+Gateway 传递镜像、工作区和 bundle 引用，bootstrap 负责包校验与装配，并将失败原因上报。环境能力与所需服务检查通过后才标记就绪。镜像与 bundle 的交付约定见 [Runtime 契约](../runtime/CONTRACT.md)。
+
+Gateway 不执行 agent prompt，不决定工作流重试，也不解释 ACP 会话消息。

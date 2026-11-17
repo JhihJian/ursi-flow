@@ -3,6 +3,7 @@ parent: ../SPEC.md
 depends-on:
   - crates/domain/SPEC.md
   - crates/agent-runtime/SPEC.md
+  - crates/channel/SPEC.md
 references:
   - ../sandbox-gateway/gateway/CONTRACT.md
 ---
@@ -13,7 +14,7 @@ references:
 
 server 是 ursi-flow 的 kernel：HTTP/WebSocket/SSE 接入、应用服务、工作流引擎与存储的单体 crate。它把一次运行从工作流定义实例化，按拓扑顺序调度节点执行，管理状态机流转与人工审批，处理失败重试、打回返工与崩溃恢复，并承担过程可观测（事件广播与订阅）。对外经 REST/SSE 暴露流程、运行与审批接口；对下经 agent-runtime 接口驱动 agent、经 sandbox-gateway 契约编排沙箱生命周期。
 
-单 crate 内模块分层：`handlers`（接入与参数校验）、`engine`（调度、状态机、审批、恢复、事件总线）、`database`（存储接口与 SQLite）、`sandbox`（沙箱生命周期编排与 gateway 客户端）。FSM/flow 结构的定义与解析为 engine 下的纯契约模块，无 IO、可独立测试。依赖纪律：server 是依赖汇点，channel、agent-runtime、agent-cli-adapter 不得反向依赖 server。
+单 crate 内模块分层：`handlers`（接入与参数校验）、`engine`（调度、状态机、审批、恢复、事件总线）、`database`（存储接口与 SQLite）、`sandbox`（Gateway 客户端与运行资源关联）。Flow 定义解析由 domain 提供，engine 负责执行。server 装配 Channel 与 Agent Runtime，基础库不反向依赖 server。
 
 ## 关键功能与验收
 
@@ -96,15 +97,15 @@ server 是 ursi-flow 的 kernel：HTTP/WebSocket/SSE 接入、应用服务、工
 - 引擎持有运行期间定期续约，租约不因正常执行超时。
 - 模拟引擎崩溃后，另一实例可接管租约到期的运行并继续执行。
 
-### 执行环境生命周期编排
+### 执行环境接入
 
-通过 `sandbox` 模块管理执行环境的启动、停止与输入输出：节点执行前准备环境与输入，执行后收集输出与产物，运行结束释放环境。`SandboxControl` 提供 gateway HTTP 客户端与 in-process fake 两个实现，engine 不感知差异。
+`sandbox` 模块请求 Gateway 准备或释放资源并关联运行与沙箱标识，Gateway lifecycle 拥有资源状态与对账。文件和 script 命令通过 Channel 的 SFTP/SSH 完成，agent 任务通过 Agent Runtime 控制 session-service。生产使用网络客户端，测试使用可替换客户端。
 
 #### 验收
 
-- 节点执行前环境已启动且输入就位；节点完成后输出与产物被收集。
-- 运行结束（成功、失败或取消）后环境被释放。
-- fake 实现下可断言 prepare 与 release 的调用时序。
+- 节点执行前确认沙箱就绪并写入输入，执行后可回收产物。
+- 运行结束后提交释放请求；释放失败可查询、可重试，不能把请求失败标记为资源已释放。
+- 客户端替身可验证调用顺序，服务端不维护另一套基础设施恢复状态机。
 
 ### 存储与状态提交一致性
 
