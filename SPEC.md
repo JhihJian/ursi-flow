@@ -19,7 +19,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 | domain | 唯一共享契约层：流程定义、状态机、Runner、执行环境句柄、事件契约 |
 | internal/repo | SQLite 持久化：流程、角色、运行、节点、事件，事务一致性 |
 | internal/engine | 调度、状态机、审批打回、租约恢复、事件广播与订阅（含原 observe 职责） |
-| internal/executor | Runner 实现、能力配置渲染、agent CLI 适配 |
+| agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流 |
 | internal/sandbox | gateway 控制面客户端、运行面接入、workspace IO、凭据注入 |
 | internal/api | HTTP 与 SSE 接口，rust-embed 内嵌 web 构建产物 |
 | web | Vue3 展示与审批页面 |
