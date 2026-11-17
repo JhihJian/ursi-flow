@@ -19,7 +19,7 @@ cargo build --release -p ursi-session-service
 | `URSI_SESSION_STATE_DIR` | `/ursi/workspace/.ursi-state` | root 0700 状态目录 |
 | `URSI_SESSION_RUNTIME_DIR` | `/run/ursi/sessions` | 工作区外的临时 Pi 配置与 HOME |
 | `URSI_PI_BIN` | `/usr/local/bin/pi` | 绝对可执行路径，Pi 1.5.0 |
-| `URSI_SESSION_LISTEN` | `0.0.0.0:8765` | HTTP/WebSocket 监听地址 |
+| `URSI_SESSION_BIND` | `0.0.0.0:8765` | HTTP/WebSocket 监听地址 |
 | `URSI_SESSION_TASK_TIMEOUT_SECS` | `1800` | 单次 prompt 总期限，范围 1 至 86400 秒 |
 
 配置目录包含：

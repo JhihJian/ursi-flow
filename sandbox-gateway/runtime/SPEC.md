@@ -2,6 +2,7 @@
 parent: ../../SPEC.md
 references:
   - ./CONTRACT.md
+  - ./AGENT-CONTRACT.md
   - ../DESIGN.md
 ---
 
@@ -34,3 +35,13 @@ image 定义环境和 bootstrap，bundle 定义平台程序与服务配置。启
 - SSH/SFTP 可独立使用，执行普通命令无需创建 agent 会话。
 - agent 会话能够执行、回传事件并接受取消，关闭后会话子进程被回收。
 - 常驻服务崩溃可按策略恢复，agent 任务不会因服务恢复被自动重放。
+
+### 独立 Agent 执行
+
+运行环境通过 Gateway、SSH/SFTP 和 ACP 对外提供完整执行能力。独立客户端可准备仓库、驱动真实 Pi CLI、读取产物并验证结果，运行链路无需启动 server、FSM 或 Web。
+
+#### 验收
+
+- 正式镜像与 bundle 配合真实模型，能够修改 Git 工作区并通过独立执行的回归测试。
+- 取消返回成功时，对应 CLI 与工具后代已被回收，另一会话可继续运行。
+- 沙箱停止后启动保留工作区，删除后所属容器与数据卷被清理。

@@ -76,7 +76,7 @@ impl Server {
                 .env("URSI_SESSION_STATE_DIR", self.path("workspace/.ursi-state"))
                 .env("URSI_SESSION_RUNTIME_DIR", self.path("runtime"))
                 .env("URSI_PI_BIN", self.path("fake-pi"))
-                .env("URSI_SESSION_LISTEN", format!("0.0.0.0:{}", self.port))
+                .env("URSI_SESSION_BIND", format!("0.0.0.0:{}", self.port))
                 .env("URSI_SESSION_TASK_TIMEOUT_SECS", timeout.to_string())
                 .env("URSI_SESSION_TOKEN", "INHERITED_TOKEN_MUST_NOT_REACH_PI")
                 .env("HOST_SECRET", "INHERITED_SECRET_MUST_NOT_REACH_PI")

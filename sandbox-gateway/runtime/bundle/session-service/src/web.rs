@@ -37,7 +37,7 @@ pub async fn serve(sessions: Arc<Sessions>) -> std::io::Result<()> {
         .route("/healthz", get(|| async { "ok\n" }))
         .route("/acp", get(upgrade))
         .with_state(app);
-    let address = std::env::var("URSI_SESSION_LISTEN").unwrap_or_else(|_| "0.0.0.0:8765".into());
+    let address = std::env::var("URSI_SESSION_BIND").unwrap_or_else(|_| "0.0.0.0:8765".into());
     let listener = tokio::net::TcpListener::bind(address).await?;
     eprintln!("session-service: listening");
     let shutdown_sessions = sessions.clone();

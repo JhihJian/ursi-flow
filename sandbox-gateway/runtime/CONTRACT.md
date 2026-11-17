@@ -6,6 +6,8 @@
 
 bundle 清单包含版本、内容校验值、最低镜像级别、所需环境能力和服务就绪条件。bootstrap `/ursi/bootstrap` 校验后装配服务，校验失败不启动业务进程。运行时具备 bundle 装配能力，在线更换是否需要停止会话由更新操作明确约束，不能覆盖正在使用的程序。
 
+`pi-execution` 环境能力包含 SSH/SFTP 与 ACP，交付入口见 [Runtime 使用说明](README.md)，执行协议见 [Agent 契约](AGENT-CONTRACT.md)。下表定义各环境能力的服务归属，具体启用集合由镜像与 bundle 声明。
+
 ## 对端服务
 
 | 通道 | 对端 | 资源管理方 |
@@ -28,6 +30,6 @@ bundle 清单包含版本、内容校验值、最低镜像级别、所需环境�
 
 ## 工作区与凭据
 
-工作区根为 `/ursi/workspace/<run-id>/`，输入和产物分别为其 `input/`、`output/` 子目录。工作区保留策略由 Gateway 管理的存储资源落实，bundle 装配不清空工作区。
+Gateway 挂载根为 `/ursi/workspace`。server 按 `/ursi/workspace/<run-id>/` 组织业务工作区，输入和产物分别为其 `input/`、`output/` 子目录。独立客户端可直接在挂载根下准备 Git 项目，session-service 校验目录归属并排除私有状态目录。工作区保留策略由 Gateway 管理的存储资源落实，bundle 装配不清空工作区。
 
 凭据通过受控运行时注入，按 CLI 或服务需要采用环境变量或限权临时文件。凭据不写入镜像、bundle 或普通元数据日志，临时凭据随会话或沙箱释放清理。读取、传输和观测路径均执行访问范围校验与敏感信息过滤。
