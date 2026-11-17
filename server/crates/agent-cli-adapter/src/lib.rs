@@ -1,7 +1,29 @@
-//! 沙箱内 Pi RPC 适配器。调用方拥有会话状态与客户端协议。
+//! 沙箱内 agent CLI 适配器。调用方拥有会话状态与客户端协议。
+//!
+//! 模块划分：
+//! - [`capability`]：能力渲染（Role → 会话工作区配置文件集、CLI 参数向量、
+//!   凭据占位清单），纯逻辑独立验证，含 materialize/cleanup；
+//! - [`adapter`]：[`Runner`] 契约的 [`adapter::CliAdapter`]（经 ExecutionEnv
+//!   启动 CLI 并采集输出产物）与 [`adapter::StubAdapter`]（确定性本地 mock，
+//!   语义对齐 agent-runtime::MockRunner，供会话服务和流程测试）；
+//! - [`local_env`]：进程内 LocalEnv 执行环境替身（临时目录 + sh），
+//!   供本地验证与集成测试使用，生产装配方注入真正的沙箱 ExecutionEnv；
+//! - `process` / `supervisor`：Pi RPC 长期进程与每会话 subreaper 监督
+//!   （既有实现，与上述模块独立演进）。
+mod adapter;
+pub mod capability;
+pub mod local_env;
 mod process;
 pub mod supervisor;
 
+pub use adapter::{
+    CliAdapter, StubAdapter, EVT_ARTIFACTS, EVT_CLEANUP, EVT_LAUNCH, EVT_RENDER,
+    OUTPUT_CAPTURE_FILE,
+};
+pub use capability::{
+    CapabilityManifest, CliRenderPlan, GenericCliPlan, PlannedCli, RenderContext, RenderError,
+    RenderOutcome,
+};
 pub use process::{PiProcess, SpawnSpec};
 use serde_json::{Value, json};
 

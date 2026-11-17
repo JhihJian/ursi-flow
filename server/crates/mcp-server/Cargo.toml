@@ -11,3 +11,6 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ursi-domain.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
