@@ -1,4 +1,249 @@
-fn main() {
-    eprintln!("独立沙箱客户端尚未实现");
-    std::process::exit(1);
+use serde_json::{Value, json};
+use std::{
+    io::{self, Write},
+    path::Path,
+    time::Duration,
+};
+use ursi_sandbox_client::{Acp, Error, Gateway, PromptOutcome, Result, Secret, Ssh};
+
+const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP、ACP 客户端
+
+命令（固定位置参数，文件内容使用 UTF-8）：
+  gateway capabilities | list
+  gateway create SPEC_JSON_FILE
+  gateway status|start|stop|delete|endpoints SANDBOX_ID
+  acp initialize
+  acp new WORKSPACE_CWD
+  acp prompt SESSION_ID PROMPT_TEXT_FILE
+  acp status|close|cancel SESSION_ID
+  ssh HOST PORT PRIVATE_KEY_FILE KNOWN_HOSTS_FILE SCRIPT_FILE
+  sftp-put|sftp-get HOST PORT PRIVATE_KEY_FILE KNOWN_HOSTS_FILE LOCAL_FILE REMOTE_FILE
+
+配置：
+  URSI_GATEWAY_URL                  例如 http://127.0.0.1:8899
+  URSI_GATEWAY_KEY[_FILE]           二选一，值或凭据文件
+  URSI_ACP_URL                      例如 ws://172.17.0.2:8765/acp
+  URSI_SESSION_TOKEN[_FILE]         二选一，值或凭据文件
+  URSI_CLIENT_TIMEOUT_SECS          每操作总期限，默认 120 秒
+
+输出：JSONL，ACP update 为通知，result 才是请求结果。
+prompt 仅 end_turn 返回 0，cancelled 返回 2，错误/超时返回 1。
+cancel 是通知，输出仅表示已发送。应等待原 prompt 的 cancelled 并查询 status。
+断线/超时不会自动取消或重放远端任务。另一个进程可查询/取消同一会话。
+SSH 固定 agent 用户、仅公钥，独立 known_hosts 首次信任，之后拒绝密钥变化。
+"#;
+
+fn arg(args: &[String], index: usize) -> Result<&str> {
+    args.get(index)
+        .map(String::as_str)
+        .ok_or_else(|| Error::Invalid("缺少参数，运行 --help 查看说明".into()))
+}
+fn count(args: &[String], expected: usize) -> Result<()> {
+    if args.len() == expected {
+        Ok(())
+    } else {
+        Err(Error::Invalid("参数数量错误，运行 --help 查看说明".into()))
+    }
+}
+fn env(name: &str) -> Result<String> {
+    std::env::var(name).map_err(|_| Error::Invalid(format!("需要环境变量 {name}")))
+}
+fn emit(mut value: Value) {
+    for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+        if let Ok(secret) = Secret::from_env(name) {
+            value = secret.redact_json(&value);
+        }
+    }
+    println!("{value}");
+    let _ = io::stdout().flush();
+}
+fn result(value: Value) {
+    emit(json!({"type":"result","result":value}));
+}
+
+#[tokio::main]
+async fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() || matches!(args[0].as_str(), "help" | "--help" | "-h") {
+        print!("{HELP}");
+        return;
+    }
+    match run(&args).await {
+        Ok(code) => std::process::exit(code),
+        Err(error) => {
+            // 输出层再次过滤本进程配置的两种身份，避免对端回显。
+            let mut message = error.to_string();
+            for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+                if let Ok(secret) = Secret::from_env(name) {
+                    message = secret.redact(&message);
+                }
+            }
+            eprintln!("{}", json!({"type":"error","message":message}));
+            std::process::exit(1);
+        }
+    }
+}
+async fn run(args: &[String]) -> Result<i32> {
+    let seconds = std::env::var("URSI_CLIENT_TIMEOUT_SECS")
+        .unwrap_or_else(|_| "120".into())
+        .parse::<u64>()
+        .ok()
+        .filter(|n| (1..=86400).contains(n))
+        .ok_or_else(|| Error::Invalid("timeout 应在 1..86400 秒".into()))?;
+    let timeout = Duration::from_secs(seconds);
+    match arg(args, 0)? {
+        "gateway" => {
+            let operation = arg(args, 1)?;
+            let (method, path, body) = match operation {
+                "capabilities" | "list" => {
+                    count(args, 2)?;
+                    (
+                        reqwest::Method::GET,
+                        format!(
+                            "/api/v1/{}",
+                            if operation == "list" {
+                                "sandboxes"
+                            } else {
+                                "capabilities"
+                            }
+                        ),
+                        None,
+                    )
+                }
+                "create" => {
+                    count(args, 3)?;
+                    let body = serde_json::from_slice::<Value>(&std::fs::read(arg(args, 2)?)?)
+                        .map_err(|_| Error::Invalid("规格文件不是 JSON".into()))?;
+                    (
+                        reqwest::Method::POST,
+                        "/api/v1/sandboxes".into(),
+                        Some(body),
+                    )
+                }
+                "status" | "start" | "stop" | "delete" | "endpoints" => {
+                    count(args, 3)?;
+                    let id = arg(args, 2)?;
+                    if id.is_empty()
+                        || !id
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                    {
+                        return Err(Error::Invalid("沙箱 ID 无效".into()));
+                    }
+                    let method = match operation {
+                        "start" | "stop" => reqwest::Method::POST,
+                        "delete" => reqwest::Method::DELETE,
+                        _ => reqwest::Method::GET,
+                    };
+                    let suffix = match operation {
+                        "start" => "/start",
+                        "stop" => "/stop",
+                        "endpoints" => "/endpoints",
+                        _ => "",
+                    };
+                    (method, format!("/api/v1/sandboxes/{id}{suffix}"), None)
+                }
+                _ => return Err(Error::Invalid("未知 Gateway 命令".into())),
+            };
+            let gateway = Gateway::new(
+                &env("URSI_GATEWAY_URL")?,
+                Secret::from_env("URSI_GATEWAY_KEY")?,
+                timeout,
+            )?;
+            result(gateway.request(method, &path, body).await?);
+        }
+        "acp" => {
+            let operation = arg(args, 1)?;
+            count(
+                args,
+                match operation {
+                    "initialize" => 2,
+                    "prompt" => 4,
+                    "new" | "cancel" | "status" | "close" => 3,
+                    _ => return Err(Error::Invalid("未知 ACP 命令".into())),
+                },
+            )?;
+            let mut acp = Acp::connect(
+                &env("URSI_ACP_URL")?,
+                Secret::from_env("URSI_SESSION_TOKEN")?,
+                timeout,
+            )
+            .await?;
+            let initialized = acp.initialize().await?;
+            if operation == "initialize" {
+                result(initialized);
+                return Ok(0);
+            }
+            let session = arg(args, 2)?;
+            let (method, params) = match operation {
+                "new" => ("session/new", json!({"cwd":session,"mcpServers":[]})),
+                "prompt" => (
+                    "session/prompt",
+                    json!({"sessionId":session,"prompt":[{"type":"text","text":std::fs::read_to_string(arg(args, 3)?)?}]}),
+                ),
+                "status" => ("_ursi/session/status", json!({"sessionId":session})),
+                "close" => ("_ursi/session/close", json!({"sessionId":session})),
+                "cancel" => {
+                    acp.notify("session/cancel", json!({"sessionId":session}))
+                        .await?;
+                    result(json!({"cancelSent":true,"sessionId":session}));
+                    return Ok(0);
+                }
+                _ => unreachable!(),
+            };
+            let value = acp
+                .request(method, params, |update| {
+                    emit(json!({"type":"update","params":update}))
+                })
+                .await?;
+            let code = if operation == "prompt" {
+                match PromptOutcome::from_result(&value)? {
+                    PromptOutcome::Completed => 0,
+                    PromptOutcome::Cancelled => 2,
+                }
+            } else {
+                0
+            };
+            result(value);
+            return Ok(code);
+        }
+        "ssh" | "sftp-put" | "sftp-get" => {
+            let operation = arg(args, 0)?;
+            count(args, if operation == "ssh" { 6 } else { 7 })?;
+            let ssh = Ssh {
+                host: arg(args, 1)?.into(),
+                port: arg(args, 2)?
+                    .parse()
+                    .map_err(|_| Error::Invalid("SSH 端口无效".into()))?,
+                identity: arg(args, 3)?.into(),
+                known_hosts: arg(args, 4)?.into(),
+                timeout,
+            };
+            let output = if operation == "ssh" {
+                ssh.run(&std::fs::read(arg(args, 5)?)?).await?
+            } else {
+                ssh.transfer(
+                    operation == "sftp-put",
+                    Path::new(arg(args, 5)?),
+                    arg(args, 6)?,
+                )
+                .await?
+            };
+            // SSH 内容是调用方显式请求的仓库输出，身份配置不放入脚本。
+            let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+            let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+                if let Ok(secret) = Secret::from_env(name) {
+                    stdout = secret.redact(&stdout);
+                    stderr = secret.redact(&stderr);
+                }
+            }
+            result(
+                json!({"success":output.status.success(),"code":output.status.code(),"stdout":stdout,"stderr":stderr}),
+            );
+            return Ok(if output.status.success() { 0 } else { 1 });
+        }
+        _ => return Err(Error::Invalid("未知命令，运行 --help 查看说明".into())),
+    }
+    Ok(0)
 }
