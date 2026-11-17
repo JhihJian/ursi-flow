@@ -21,8 +21,8 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 | server/crates/agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流，实现见 agent-cli-adapter |
 | server/crates/agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
 | server/crates/channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
-| sandbox-gateway/gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、端点暴露 |
-| sandbox-gateway/runtime | 沙箱镜像环境定义 + runtime bundle（注入沙箱的服务与配置） |
+| sandbox-gateway/gateway | 沙箱控制面：生命周期接口（含重建）、tunnel 传输、public/internal 端口隔离、驱动抽象（fake/docker）、元数据存储与启动对账 |
+| sandbox-gateway/runtime | 沙箱镜像环境定义 + runtime bundle（session-service 会话服务 + process-supervisor 进程监督） |
 | server/crates/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | Vue3 展示与审批页面 |
