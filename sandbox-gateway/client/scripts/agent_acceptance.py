@@ -21,7 +21,56 @@ import urllib.request
 
 
 class AcceptanceError(RuntimeError):
-    pass
+    def __init__(self, message, *, command=None, exit_code=None):
+        super().__init__(message)
+        self.command = command
+        self.exit_code = exit_code
+
+
+def command_category(args):
+    # 只接受固定命令名，不把路径、会话、提示词或配置写入诊断。
+    if args and args[0] in ("ssh", "sftp-put", "sftp-get"):
+        return args[0]
+    allowed = {"acp": {"initialize", "new", "prompt", "status", "cancel", "close"},
+               "gateway": {"capabilities", "create", "list", "status", "endpoints", "stop", "start", "delete"}}
+    if len(args) >= 2 and args[1] in allowed.get(args[0], set()):
+        return args[0] + " " + args[1]
+    return "unknown"
+
+
+def process_check_script(pids, supervisor_pid, marker, *, alive):
+    # /proc 的 stat/cmdline 对跨 UID 监督器可读，kill(0) 则会返回 EPERM。
+    code = f"""from pathlib import Path
+proc = Path('/proc')
+pids = {pids!r}
+supervisor_pid = {supervisor_pid!r}
+marker = {marker!r}.encode()
+"""
+    if alive:
+        code += """for pid in pids:
+    entry = proc / str(pid)
+    state = (entry / 'stat').read_text().rsplit(')', 1)[1].split()[0]
+    assert state not in ('Z', 'X', 'x'), 'tracked process is not live'
+    args = (entry / 'cmdline').read_bytes().split(b'\\0')
+    if pid == supervisor_pid:
+        assert b'--ursi-pi-supervisor' in args, 'supervisor identity mismatch'
+        uid = next(line.split()[1] for line in (entry / 'status').read_text().splitlines()
+                   if line.startswith('Uid:'))
+        assert uid == '0', 'supervisor must be root-owned'
+    else:
+        assert marker in args, 'tool identity mismatch'
+"""
+    else:
+        code += """assert all(not (proc / str(pid)).exists() for pid in pids), 'tracked PID remains'
+for entry in proc.iterdir():
+    if not entry.name.isdigit(): continue
+    try:
+        command = (entry / 'cmdline').read_bytes()
+    except (FileNotFoundError, ProcessLookupError):
+        continue
+    assert marker not in command, 'marked descendant remains'
+"""
+    return "python3 - <<'PY'\n" + code + "PY\n"
 
 
 def require(condition, message):
@@ -91,12 +140,19 @@ class Acceptance:
         self.sandbox = None
         self.gateway_url = None
         self.stage = "prepare"
+        self.substage = None
         self.evidence = getattr(args, "evidence", None)
         self.save_evidence()
 
     def save_evidence(self):
         if self.evidence:
             private_write(self.evidence, json.dumps(self.report, ensure_ascii=False, indent=2) + "\n")
+
+    def failure_details(self, error):
+        details = {"stage": self.stage, "substage": self.substage, "kind": type(error).__name__}
+        if isinstance(error, AcceptanceError):
+            details.update(summary=str(error), command=error.command, exit_code=error.exit_code)
+        return details
 
     def record(self, name, **facts):
         self.report["checks"].append({"check": name, **facts})
@@ -107,10 +163,20 @@ class Acceptance:
         timeout = timeout or self.args.operation_timeout
         env = self.env.copy()
         env["URSI_CLIENT_TIMEOUT_SECS"] = str(max(1, int(timeout)))
-        result = run([self.args.client, *args], env=env, timeout=timeout + 5, check=False)
-        if check:
-            require(result.returncode == 0, "客户端操作失败")
-        values = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        category = command_category(args)
+        try:
+            result = run([self.args.client, *args], env=env, timeout=timeout + 5, check=False)
+        except subprocess.TimeoutExpired:
+            raise AcceptanceError("客户端操作超时", command=category) from None
+        except OSError:
+            raise AcceptanceError("客户端启动失败", command=category) from None
+        if check and result.returncode != 0:
+            raise AcceptanceError("客户端操作失败", command=category, exit_code=result.returncode)
+        try:
+            values = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        except json.JSONDecodeError:
+            raise AcceptanceError("客户端 JSON 输出无效", command=category,
+                                  exit_code=result.returncode) from None
         for value in values:
             self.observe(value)
         results = [value["result"] for value in values if value.get("type") == "result"]
@@ -280,6 +346,7 @@ class Acceptance:
 
     def cancellation(self):
         self.stage = "cancel"
+        self.substage = "second_session_create"
         second = self.acp("new", "/ursi/workspace/repo")["sessionId"]
         marker = "ursi_sleep_" + secrets.token_hex(12)
         # 工具脚本在 repo 外，使用唯一参数识别父子进程。PID 文件由工具写入。
@@ -287,8 +354,10 @@ class Acceptance:
         pidfile = "/ursi/workspace/" + marker + ".json"
         code = ("import json, os, subprocess, sys, time\n"
                 "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)', sys.argv[1]])\n"
-                "with open(sys.argv[2], 'w') as f: json.dump([os.getpid(), child.pid], f)\n"
+                "with open(sys.argv[2] + '.tmp', 'w') as f: json.dump([os.getpid(), child.pid], f)\n"
+                "os.replace(sys.argv[2] + '.tmp', sys.argv[2])\n"
                 "time.sleep(600)\n")
+        self.substage = "tool_upload"
         local = private_write(self.root / "sleep.py", code)
         self.cli("sftp-put", self.host, str(self.port), self.identity, self.known_hosts, local, helper)
         prompt = private_write(self.root / "sleep-prompt.txt", f"Use the bash tool now to run exactly: python3 {helper} {marker} {pidfile}\nRun it in the foreground and wait for it. Do not read files, background it, set a short timeout, or terminate it. This is an operator cancellation test.")
@@ -296,15 +365,21 @@ class Acceptance:
         errors = self.root / "cancel-errors.txt"
         env = self.env.copy()
         env["URSI_CLIENT_TIMEOUT_SECS"] = str(self.args.prompt_timeout)
-        with events.open("w") as out, errors.open("w") as err:
-            process = subprocess.Popen([str(self.args.client), "acp", "prompt", self.session, str(prompt)],
-                                       env=env, stdout=out, stderr=err, start_new_session=True)
+        self.substage = "prompt_start"
+        try:
+            with events.open("w", encoding="utf-8") as out, errors.open("w", encoding="utf-8") as err:
+                process = subprocess.Popen([str(self.args.client), "acp", "prompt", self.session, str(prompt)],
+                                           env=env, stdout=out, stderr=err, start_new_session=True)
+        except OSError:
+            raise AcceptanceError("长任务客户端启动失败", command="acp prompt") from None
         self.prompts.append(process)
         observed_lines = 0
         tool_started = False
         def running_tool():
             nonlocal observed_lines, tool_started
-            require(process.poll() is None, "长任务提前结束")
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise AcceptanceError("长任务提前结束", command="acp prompt", exit_code=exit_code)
             lines = events.read_text(encoding="utf-8").splitlines()
             for line in lines[observed_lines:]:
                 try:
@@ -319,46 +394,54 @@ class Acceptance:
             if not tool_started:
                 return False
             code, output = self.ssh(f"test -s {pidfile}\n", check=False)
+            if code != 0 and not (code == 1 and output and output.get("code") == 1):
+                raise AcceptanceError("等待工具 PID 时 SSH 失败", command="ssh", exit_code=code)
             return code == 0 and output and output["success"]
+        self.substage = "tool_start_wait"
         wait_until(running_tool, self.args.prompt_timeout, "等待真实工具开始与子进程 PID")
+        self.substage = "tool_pid_read"
         _, output = self.ssh(f"cat {pidfile}\n")
         pids = json.loads(output["stdout"])
-        require(len(pids) == 2 and all(isinstance(pid, int) and pid > 1 for pid in pids), "工具 PID 证据无效")
+        require(isinstance(pids, list) and len(pids) == 2
+                and all(type(pid) is int and pid > 1 for pid in pids)
+                and len(set(pids)) == 2, "工具 PID 证据无效")
+        self.substage = "running_status"
         running = self.acp("status", self.session)
         cli_pid = running.get("pid")
-        require(running["state"] == "running" and isinstance(cli_pid, int) and cli_pid > 1, "长任务缺少运行中的 CLI PID")
-        tracked_pids = list(dict.fromkeys([*pids, cli_pid]))
-        # 取消发生前，CLI、工具父进程和子进程必须真实存在。
-        self.ssh("python3 - <<'PY'\nimport os\n" + "\n".join(f"os.kill({pid}, 0)" for pid in tracked_pids) + "\nPY\n")
+        require(running["state"] == "running" and type(cli_pid) is int and cli_pid > 1
+                and cli_pid not in pids, "长任务缺少独立运行中的监督器 PID")
+        tracked_pids = [*pids, cli_pid]
+        self.substage = "process_identity_before_cancel"
+        self.ssh(process_check_script(tracked_pids, cli_pid, marker, alive=True))
+        self.substage = "cancel_send"
         self.acp("cancel", self.session)
-        require(process.wait(timeout=self.args.operation_timeout) == 2, "原 prompt 必须返回 cancelled/退出码2")
+        self.substage = "prompt_cancelled_wait"
+        try:
+            exit_code = process.wait(timeout=self.args.operation_timeout)
+        except subprocess.TimeoutExpired:
+            raise AcceptanceError("等待原 prompt 取消超时", command="acp prompt") from None
+        if exit_code != 2:
+            raise AcceptanceError("原 prompt 必须返回 cancelled/退出码2", command="acp prompt",
+                                  exit_code=exit_code)
         values = [json.loads(line) for line in events.read_text(encoding="utf-8").splitlines()]
         require(any(v.get("type") == "result" and v.get("result", {}).get("stopReason") == "cancelled" for v in values), "缺少 cancelled 响应")
+        self.substage = "cancelled_status"
         status = self.acp("status", self.session)
         require(status["state"] == "cancelled" and "pid" in status and status["pid"] is None, "取消状态或 CLI PID 未清理")
-        # 扫描实际 /proc，原 PID 消失，且没有唯一标记的后代残留。
-        check_script = f"""python3 - <<'PY'
-from pathlib import Path
-pids = {tracked_pids!r}
-marker = {marker!r}.encode()
-assert all(not Path('/proc/' + str(pid)).exists() for pid in pids), 'child PID remains'
-for entry in Path('/proc').iterdir():
-    if not entry.name.isdigit(): continue
-    try:
-        command = (entry / 'cmdline').read_bytes()
-    except (FileNotFoundError, PermissionError, ProcessLookupError):
-        continue
-    assert marker not in command, 'marked descendant remains'
-PY
-"""
         # cancelled 是清理完成的承诺，收到后立即检查，不以稍后杀进程掩盖失败。
-        self.ssh(check_script)
+        self.substage = "processes_gone_after_cancel"
+        self.ssh(process_check_script(tracked_pids, cli_pid, marker, alive=False))
+        self.substage = "second_session_prompt"
         self.prompt(second, "Without changing files, use bash to run python3 -m unittest -v in this repository, then report completion.")
+        self.substage = "second_session_verify"
         self.ssh("cd /ursi/workspace/repo\npython3 -m unittest -v\n")
+        self.substage = "first_session_close"
         self.acp("close", self.session)
+        self.substage = "second_session_close"
         self.acp("close", second)
         self.record("真实长工具取消后 CLI 与父子进程退出，另一会话继续成功", child_pids=pids,
                     cli_pid=cli_pid, cancelled_state=status["state"], second_session_completed=True)
+        self.substage = None
 
     def persistence(self):
         self.stage = "persistence"
@@ -460,6 +543,7 @@ def main():
     args = parse_args()
     require(os.environ.get("URSI_AGENT_ACCEPTANCE") == "1", "真实验收需要显式 URSI_AGENT_ACCEPTANCE=1")
     require(sys.platform.startswith("linux"), "当前真实验收需要 Linux 本机 Docker、SSH 与容器 IP 可达")
+    require(os.geteuid() == 0, "真实验收需要通过 sudo 以 root 运行，Runtime 配置目录必须 root 所有且权限为 0700")
     for program in ("docker", "ssh", "sftp", "ssh-keygen"):
         require(shutil.which(program), "缺少依赖工具 " + program)
     for binary in (args.gateway, args.client):
@@ -486,9 +570,7 @@ def main():
             acceptance.persistence()
             acceptance.delete()
         except Exception as error:
-            acceptance.report["failure"] = {"stage": acceptance.stage, "kind": type(error).__name__}
-            if isinstance(error, AcceptanceError):
-                acceptance.report["failure"]["summary"] = str(error)
+            acceptance.report["failure"] = acceptance.failure_details(error)
             print("真实验收失败，阶段：" + acceptance.stage, file=sys.stderr)
         finally:
             # 清理阶段不被第二次普通信号打断。
@@ -510,5 +592,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except (AcceptanceError, OSError, ValueError) as error:
         # 入口校验错误仅含脚本自定义安全摘要。
-        print("验收输入/环境校验失败：" + type(error).__name__, file=sys.stderr)
+        summary = str(error) if isinstance(error, AcceptanceError) else type(error).__name__
+        print("验收输入/环境校验失败：" + summary, file=sys.stderr)
         sys.exit(1)
