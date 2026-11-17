@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "cmd/ursi-flow",
+    "internal/domain",
+    "internal/engine",
+    "internal/executor",
+    "internal/sandbox",
+    "internal/repo",
+    "internal/api",
+    "internal/observe",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "process", "sync", "time", "io-util", "signal"] }
+
+# 内部 crate
+ursi-domain = { path = "internal/domain" }
+ursi-repo = { path = "internal/repo" }
+ursi-executor = { path = "internal/executor" }
+ursi-sandbox = { path = "internal/sandbox" }
+ursi-observe = { path = "internal/observe" }
+ursi-engine = { path = "internal/engine" }
+ursi-api = { path = "internal/api" }

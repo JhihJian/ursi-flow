@@ -1,0 +1,11 @@
+[package]
+name = "ursi-executor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ursi-domain.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true

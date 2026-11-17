@@ -1,0 +1,16 @@
+[package]
+name = "ursi-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ursi-domain.workspace = true
+ursi-engine.workspace = true
+ursi-repo.workspace = true
+ursi-observe.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

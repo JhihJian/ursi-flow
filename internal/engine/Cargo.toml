@@ -1,0 +1,14 @@
+[package]
+name = "ursi-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ursi-domain.workspace = true
+ursi-repo.workspace = true
+ursi-executor.workspace = true
+ursi-sandbox.workspace = true
+ursi-observe.workspace = true
+thiserror.workspace = true
