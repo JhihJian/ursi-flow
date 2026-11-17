@@ -210,6 +210,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
+name = "ursi-agent-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "ursi-domain",
+]
+
+[[package]]
 name = "ursi-api"
 version = "0.1.0"
 dependencies = [
@@ -238,19 +247,10 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "tokio",
+ "ursi-agent-runtime",
  "ursi-domain",
- "ursi-executor",
  "ursi-repo",
  "ursi-sandbox",
-]
-
-[[package]]
-name = "ursi-executor"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "thiserror",
- "ursi-domain",
 ]
 
 [[package]]
@@ -258,10 +258,10 @@ name = "ursi-flow"
 version = "0.1.0"
 dependencies = [
  "tokio",
+ "ursi-agent-runtime",
  "ursi-api",
  "ursi-domain",
  "ursi-engine",
- "ursi-executor",
  "ursi-repo",
  "ursi-sandbox",
 ]

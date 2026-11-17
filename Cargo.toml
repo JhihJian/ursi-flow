@@ -8,7 +8,7 @@ members = [
     "cmd/ursi-flow",
     "domain",
     "internal/engine",
-    "internal/executor",
+    "agent-runtime",
     "internal/sandbox",
     "internal/repo",
     "internal/api",
@@ -31,7 +31,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "proces
 # 内部 crate
 ursi-domain = { path = "domain" }
 ursi-repo = { path = "internal/repo" }
-ursi-executor = { path = "internal/executor" }
+ursi-agent-runtime = { path = "agent-runtime" }
 ursi-sandbox = { path = "internal/sandbox" }
 ursi-engine = { path = "internal/engine" }
 ursi-api = { path = "internal/api" }

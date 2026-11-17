@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast::Receiver;
 use ursi_domain::{Run, TelemetryEvent, WorkflowDefinition};
-use ursi_executor::Runner;
+use ursi_agent_runtime::Runner;
 use ursi_repo::Store;
 
 pub use events::EventBus;
@@ -80,7 +80,7 @@ pub enum EngineError {
     #[error("存储错误：{0}")]
     Store(#[from] ursi_repo::StoreError),
     #[error("执行器错误：{0}")]
-    Executor(#[from] ursi_executor::ExecutorError),
+    Executor(#[from] ursi_agent_runtime::ExecutorError),
     #[error("功能尚未实现：{0}")]
     NotImplemented(String),
 }

@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 ursi-domain.workspace = true
 ursi-repo.workspace = true
-ursi-executor.workspace = true
+ursi-agent-runtime.workspace = true
 ursi-sandbox.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
