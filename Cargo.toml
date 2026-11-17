@@ -6,7 +6,7 @@ default-members = [
 ]
 members = [
     "cmd/ursi-flow",
-    "internal/domain",
+    "domain",
     "internal/engine",
     "internal/executor",
     "internal/sandbox",
@@ -29,7 +29,7 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "process", "sync", "time", "io-util", "signal"] }
 
 # 内部 crate
-ursi-domain = { path = "internal/domain" }
+ursi-domain = { path = "domain" }
 ursi-repo = { path = "internal/repo" }
 ursi-executor = { path = "internal/executor" }
 ursi-sandbox = { path = "internal/sandbox" }
