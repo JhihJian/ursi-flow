@@ -9,3 +9,15 @@ license.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+bytes = "1"
+russh = "0.45"
+russh-sftp = "2"
+ursi-domain.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+futures-util.workspace = true
