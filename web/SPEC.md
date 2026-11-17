@@ -2,6 +2,9 @@
 parent: ../SPEC.md
 depends-on:
   - ../server/SPEC.md
+references:
+  - DESIGN.md
+  - README.md
 ---
 
 # web
@@ -12,7 +15,33 @@ web 通过 server transport 提供的 HTTP 与 SSE 契约，提供角色和模�
 
 后端各模块可先经服务接口完成独立验收，页面验收连接真实业务服务与持久化存储。
 
+## 模块地图
+
+采用 Vue 3、TypeScript、Vite、Vue Router、Pinia 与 Tailwind CSS。业务目录与 server 业务域对应，共享基础和应用装配分别组织。
+
+| 模块 | 职责 |
+|---|---|
+| [app](src/app/SPEC.md) | 应用壳、导航、路由、全局样式和加载失败处理 |
+| [shared](src/shared/SPEC.md) | 公共 UI 与同源 HTTP 请求 |
+| [workflows](src/modules/workflows/SPEC.md) | 流程定义、图展示、角色选择和启动入口 |
+| [roles](src/modules/roles/SPEC.md) | 提示词、Skills、MCP 与模型选择 |
+| [runs](src/modules/runs/SPEC.md) | 运行状态、审批、事件及配置快照 |
+| [artifacts](src/modules/artifacts/SPEC.md) | 产物预览、下载和执行归属 |
+| [sandboxes](src/modules/sandboxes/SPEC.md) | 沙箱关联、状态及获准连接入口 |
+| [connections](src/modules/connections/SPEC.md) | 模型连接与凭据引用 |
+
 ## 关键功能与验收
+
+### 工程初始化与模块入口
+
+提供可重复安装、类型检查、测试和构建入口。六域路由可独立进入，尚未开放的业务能力使用明确的准备中页面，业务记录来自真实服务接口。
+
+#### 验收
+
+- Node.js 24 下使用锁文件完成干净安装，lint、类型检查、单元测试和构建成功。
+- 六个模块路由在桌面和移动浏览器可导航与刷新，未知地址显示返回入口。
+- 懒加载失败显示可恢复提示，初始化页面不产生业务写入或展示伪造业务记录。
+- 构建输出到 dist，生产页面回退与 API、静态资源路由隔离由 server transport 联合验收。
 
 ### 流程列表与详情
 
