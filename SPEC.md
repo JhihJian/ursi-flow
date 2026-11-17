@@ -18,7 +18,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 |---|---|
 | server | kernel：HTTP/WS/SSE 接入、应用服务、工作流引擎、存储、沙箱编排 |
 | domain | 唯一共享契约层：流程定义、状态机、事件契约 |
-| agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流 |
+| agent-runtime | agent 可控接口：Runner 契约、能力配置渲染约定、事件回流，实现见 agent-cli-adapter |
 | agent-cli-adapter | 具体 agent CLI 适配（含 mock），实现 agent-runtime 接口 |
 | channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
 | sandbox-gateway | 沙箱控制面：REST 生命周期、驱动抽象（fake/docker）、状态存储与恢复、端点暴露 |
