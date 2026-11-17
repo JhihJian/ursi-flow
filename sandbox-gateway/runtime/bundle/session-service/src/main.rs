@@ -63,9 +63,10 @@ fn main() {
             args.get(2).and_then(|s| serde_json::from_str(s).ok()),
             args.get(3).and_then(|s| s.parse().ok()),
             args.get(4).and_then(|s| s.parse().ok()),
+            args.get(5).and_then(|s| s.parse().ok()),
         ) {
-            (Some(spec), Some(parent), Some(fd)) => {
-                ursi_agent_cli_adapter::supervisor::run(spec, parent, fd)
+            (Some(spec), Some(parent), Some(fd), Some(receipt)) => {
+                ursi_agent_cli_adapter::supervisor::run(spec, parent, fd, receipt)
             }
             _ => 1,
         };

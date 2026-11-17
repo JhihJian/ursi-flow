@@ -17,6 +17,10 @@ pub enum Error {
     Model,
     #[error("Pi execution deadline exceeded")]
     Timeout,
+    #[error("Pi supervisor exited")]
+    SupervisorExited,
+    #[error("Pi descendant cleanup could not be confirmed")]
+    CleanupUnconfirmed,
 }
 
 /// 不携带提供方原始错误或命令内容，避免凭据进入错误响应与日志。

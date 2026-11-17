@@ -14,10 +14,16 @@ extern "C" fn stop(_: libc::c_int) {
 }
 
 /// 在构建 Tokio runtime 之前调用。只接受由本服务生成的启动参数。
-pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
+pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32, receipt_fd: i32) -> i32 {
     unsafe {
         libc::signal(libc::SIGTERM, stop as *const () as usize);
         libc::signal(libc::SIGINT, stop as *const () as usize);
+        let mut mask = std::mem::zeroed();
+        libc::sigemptyset(&mut mask);
+        libc::sigaddset(&mut mask, libc::SIGTERM);
+        if libc::sigprocmask(libc::SIG_UNBLOCK, &mask, std::ptr::null_mut()) != 0 {
+            return 1;
+        }
         if libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1) != 0
             || libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0
         {
@@ -35,6 +41,7 @@ pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
     unsafe {
         libc::close(probe);
     }
+    let supervisor_pid = std::process::id();
     let mut cmd = Command::new(&spec.bin);
     cmd.args([
         "--mode",
@@ -50,7 +57,6 @@ pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
         "--offline",
     ])
     .args(["--provider", &spec.provider, "--model", &spec.model])
-    .current_dir(&spec.cwd)
     .env_clear()
     .env("PATH", "/usr/local/bin:/usr/bin:/bin")
     .env("HOME", &spec.runtime_dir)
@@ -65,6 +71,7 @@ pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
     .stderr(Stdio::null());
     unsafe {
         cmd.pre_exec(move || {
+            libc::close(receipt_fd);
             if lock_fd >= 0 {
                 libc::close(lock_fd);
             }
@@ -80,6 +87,7 @@ pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
             }
             // setuid 会清除 PDEATHSIG，所以必须在降权后设置。
             if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0
+                || libc::getppid() as u32 != supervisor_pid
                 || libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0
             {
                 return Err(std::io::Error::last_os_error());
@@ -102,7 +110,12 @@ pub fn run(spec: SpawnSpec, expected_parent: u32, lock_fd: i32) -> i32 {
         }
     };
     cleanup();
-    code
+    // 专用 fd 不传给 Pi，只有 ECHILD 后才写回执。服务仍须核对退出状态。
+    let sent = unsafe { libc::write(receipt_fd, [1u8].as_ptr().cast(), 1) };
+    unsafe {
+        libc::close(receipt_fd);
+    }
+    if sent == 1 { code } else { 1 }
 }
 
 /// 返回此 supervisor 的全部后代，不接触其他会话。/proc stat 的 comm 可包含空格与括号。

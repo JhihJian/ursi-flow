@@ -2,7 +2,12 @@ use crate::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    os::fd::RawFd,
+    fs::File,
+    io::Read,
+    os::{
+        fd::{AsRawFd, RawFd},
+        unix::net::UnixStream,
+    },
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -19,7 +24,6 @@ pub const MAX_RECORD: usize = 1024 * 1024;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpawnSpec {
     pub bin: PathBuf,
-    pub cwd: PathBuf,
     pub runtime_dir: PathBuf,
     pub provider: String,
     pub model: String,
@@ -31,22 +35,45 @@ pub struct PiProcess {
     events: mpsc::Receiver<Result<Value, Error>>,
     reader: JoinHandle<()>,
     sequence: u64,
+    cleanup: UnixStream,
+    cleanup_confirmed: bool,
 }
 impl PiProcess {
     /// supervisor_exe 必须在 main 最前面处理 --ursi-pi-supervisor。
-    pub fn spawn(spec: SpawnSpec, supervisor_exe: &Path, lock_fd: RawFd) -> Result<Self, Error> {
+    pub fn spawn(
+        spec: SpawnSpec,
+        supervisor_exe: &Path,
+        lock_fd: RawFd,
+        cwd: &File,
+    ) -> Result<Self, Error> {
+        // 专用通道只交给 supervisor，Pi 无法伪造清理完成证据。
+        let (cleanup, receipt) = UnixStream::pair()?;
+        cleanup.set_nonblocking(true)?;
+        let receipt_fd = receipt.as_raw_fd();
+        let cwd_fd = cwd.as_raw_fd();
         let mut command = Command::new(supervisor_exe);
         command
             .arg("--ursi-pi-supervisor")
             .arg(serde_json::to_string(&spec).map_err(|_| Error::Protocol)?)
             .arg(std::process::id().to_string())
             .arg(lock_fd.to_string())
+            .arg(receipt_fd.to_string())
             .env_clear()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         unsafe {
             command.pre_exec(move || {
+                // exec 与安装 handler 之间的取消也必须经过 supervisor 清理路径。
+                let mut mask = std::mem::zeroed();
+                libc::sigemptyset(&mut mask);
+                libc::sigaddset(&mut mask, libc::SIGTERM);
+                if libc::sigprocmask(libc::SIG_BLOCK, &mask, std::ptr::null_mut()) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::fchdir(cwd_fd) != 0 || libc::fcntl(receipt_fd, libc::F_SETFD, 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
                 if lock_fd >= 0 && libc::fcntl(lock_fd, libc::F_SETFD, 0) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
@@ -99,6 +126,8 @@ impl PiProcess {
             events,
             reader,
             sequence: 0,
+            cleanup,
+            cleanup_confirmed: false,
         })
     }
     pub fn pid(&self) -> Option<u32> {
@@ -120,7 +149,14 @@ impl PiProcess {
         Ok(id)
     }
     pub async fn next(&mut self) -> Result<Value, Error> {
-        self.events.recv().await.ok_or(Error::Protocol)?
+        tokio::select! {
+            // 工具可能继承 stdout，即使 supervisor 死亡也不产生 EOF。
+            status = self.child.wait() => {
+                status?;
+                Err(Error::SupervisorExited)
+            }
+            event = self.events.recv() => event.ok_or(Error::Protocol)?,
+        }
     }
     pub async fn configure(&mut self) -> Result<(), Error> {
         for kind in ["set_auto_retry", "set_auto_compaction"] {
@@ -142,7 +178,7 @@ impl PiProcess {
         }
         Ok(())
     }
-    /// 协作取消有期限，最终由独立 subreaper 收割所有后代才返回。
+    /// 只有正常退出且收到 ECHILD 后的专用回执才确认清理完成。
     pub async fn stop(&mut self, cooperative: bool) -> Result<(), Error> {
         if cooperative {
             let _ = tokio::time::timeout(Duration::from_millis(250), async {
@@ -157,10 +193,20 @@ impl PiProcess {
                 libc::kill(pid as i32, libc::SIGTERM);
             }
         }
-        // supervisor 只有 waitpid 返回 ECHILD 后才退出。不能 SIGKILL supervisor。
-        self.child.wait().await?;
+        // 不主动 SIGKILL supervisor。外部 SIGKILL/OOM 不等于完成回收。
+        let status = self.child.wait().await;
         self.reader.abort();
-        Ok(())
+        let status = status?;
+        if !self.cleanup_confirmed {
+            let mut receipt = [0];
+            self.cleanup_confirmed =
+                self.cleanup.read(&mut receipt).ok() == Some(1) && receipt == [1];
+        }
+        if status.success() && self.cleanup_confirmed {
+            Ok(())
+        } else {
+            Err(Error::CleanupUnconfirmed)
+        }
     }
 }
 impl Drop for PiProcess {
