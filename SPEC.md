@@ -1,6 +1,7 @@
 ---
 references:
   - sandbox-gateway/DESIGN.md
+  - server/DESIGN.md
 ---
 
 # ursi-flow
@@ -21,7 +22,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 | 模块 | 职责 |
 |---|---|
-| server | kernel：HTTP/WS/SSE 接入、应用服务、工作流引擎、存储、沙箱编排 |
+| server | 模块化主服务：workflows、roles、runs、artifacts、sandboxes、connections 六个业务模块，app、transport、storage 三个支撑模块，详见 server/SPEC.md |
 | server/crates/domain | 唯一共享契约层：流程定义、状态机、事件契约 |
 | server/crates/agent-runtime | agent 可控接口与会话语义，服务端通过 ACP 控制沙箱会话 |
 | server/crates/agent-cli-adapter | 沙箱内 CLI 适配与能力渲染，供 session-service 装配，mock 用于测试 |
@@ -30,7 +31,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 | sandbox-gateway/runtime | image 提供环境与成熟监督器，bundle 提供 session-service、监督配置与平台脚本 |
 | server/crates/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
-| web | Vue3 展示与审批页面 |
+| web | Vue3 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections 六域组织，app/shared 提供装配与基础能力 |
 | server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
 
 server 装配 Agent Runtime、Channel 和 MCP 工具，基础库不反向依赖 server crate。MCP 业务能力通过装配时注入的接口提供。CLI Adapter 的源码位于 workspace 中，其真实实现随 session-service 在沙箱内运行。
@@ -50,7 +51,7 @@ Gateway 是独立服务，内部 lifecycle、driver、tunnel、gateway-api 同�
 
 ### 单次运行执行
 
-一次运行从流程定义冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境生命周期。详见 server（engine、sandbox）、agent-runtime。
+一次运行从流程与角色配置冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境接入。详见 server（runs、sandboxes）、agent-runtime。
 
 #### 验收
 
@@ -68,24 +69,25 @@ Gateway 是独立服务，内部 lifecycle、driver、tunnel、gateway-api 同�
 
 ### 能力定制
 
-单次运行过程中，角色提示词、模型、Skills、MCP 工具按节点引用的角色定制，并传递给执行器。详见 domain、agent-runtime。
+角色可创建、编辑、复制和查询，拥有系统提示词、模型选择、Skills 文件与 MCP 配置。流程节点引用角色，创建运行时冻结有效配置。详见 server（roles、connections、runs）、domain、agent-runtime。
 
 #### 验收
 
 - 给定引用特定角色的 agent 节点，执行时该角色的提示词、模型、Skills、MCP 工具被渲染给执行器。
+- 编辑角色后，已创建运行保持原配置，新运行使用更新配置。
 
 ### 过程可观测
 
-节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 server（engine、handlers）、web。
+节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 server（runs、artifacts、transport）、web。
 
 #### 验收
 
-- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。事件由 server（engine）广播、server（database）持久化。
+- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。server（runs）先原子提交状态与事件，再广播，transport 从持久事件重放与补读。
 - 运行详情页能展示节点状态、工具轨迹、日志与产物。
 
 ### 持久化与恢复
 
-工作流定义、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 server（database、engine）。
+工作流定义、角色配置、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 server 各域存储接口以及 storage、runs。
 
 #### 验收
 

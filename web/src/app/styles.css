@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply bg-canvas font-sans text-ink antialiased; }
+  body { @apply m-0 min-w-[320px]; }
+  a, button { -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 3px solid #0d9488; outline-offset: 4px; }
+  ::selection { background: #ccfbf1; color: #134e4a; }
+}
+
+@layer components {
+  .nav-active { @apply bg-white/10 font-medium text-white; box-shadow: inset 3px 0 #5eead4; }
+  .skip-link { @apply sr-only; }
+  .skip-link:focus { @apply not-sr-only fixed left-4 top-4 z-50 rounded-lg bg-white px-4 py-3 text-ink shadow-lg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
