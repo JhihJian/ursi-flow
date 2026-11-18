@@ -1,0 +1,11 @@
+{
+  "name":"ursi-flow-runtime", "version":"0.1.0", "license":"MIT", "type":"module",
+  "description":"独立 FLOW.md 引擎与本地 Pi headless 执行器",
+  "engines":{"node":">=22.19.0"},
+  "exports":{".":"./dist/index.js","./core":"./dist/core/index.js"},
+  "bin":{"ursi-flow":"dist/cli.js"},
+  "files":["dist","docs","examples","LICENSE","README.md"],
+  "scripts":{"build":"tsc -p tsconfig.build.json && cp src/executor-adapters/local-pi/outcome.mjs dist/executor-adapters/local-pi/","prepack":"npm run build","test":"npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/local-pi.test.mjs && vitest run"},
+  "dependencies":{"yaml":"2.9.0","proper-lockfile":"4.1.2"},
+  "devDependencies":{"@types/node":"22.19.19","@types/proper-lockfile":"4.1.4","typescript":"5.9.3","tsx":"4.21.0","vitest":"4.1.9"}
+}

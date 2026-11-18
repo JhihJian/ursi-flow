@@ -1,0 +1,6 @@
+dist/
+.ursi-flow/
+*.tgz
+node_modules/
+.pi/
+/core
