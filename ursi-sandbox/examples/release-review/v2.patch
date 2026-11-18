@@ -1,0 +1,12 @@
+diff --git a/release.py b/release.py
+index 100ca48..6a2dc56 100644
+--- a/release.py
++++ b/release.py
+@@ -1,5 +1,6 @@
+ def latest(tags):
+     def version_key(tag):
+-        return tuple(int(part) for part in tag.split("."))
++        version = tag.removeprefix("v")
++        return tuple(int(part) for part in version.split("."))
+ 
+     return max(tags, key=version_key)
