@@ -1,6 +1,6 @@
 # ursi-flow Web
 
-Vue 3 + TypeScript 工作台，提供工作流、角色、运行、产物、沙箱和模型连接六个业务域。默认使用浏览器内模拟 API，可独立完成配置管理、发起运行、审批返工和产物下载的页面验收。
+React 19 + TypeScript 工作台，提供工作流、角色、运行、产物、沙箱、模型连接和对话七个业务域。默认使用浏览器内模拟 API，可独立完成配置管理、发起运行、审批返工、产物下载和对话演示的页面验收。
 
 演示配置、快照、运行记录、事件和产物保存到当前站点的 localStorage，键为 `ursi-flow-demo-v1`。模型连接与 MCP 仅填写演示用 `credentialRef`，例如 `env:DEMO_MODEL_TOKEN`，不填写真实密钥。模型调用、脚本、工具日志和沙箱资源均为模拟。真实 server API 联合验收覆盖协议和持久化，真实执行链路单独验收。
 
@@ -34,7 +34,7 @@ URSI_API_PROXY=http://127.0.0.1:8080
 
 刷新页面可读回已保存的演示数据。演示状态由单个标签页管理，同时打开多个标签页修改可能覆盖彼此的保存结果，验收时使用一个标签页。浏览器禁止访问 localStorage 时使用会话内存，刷新后的数据保留以存储可用为前提。主题偏好使用独立的 `ursi-flow:theme` 键。
 
-## 六域独立操作验收
+## 七域独立操作验收
 
 以下步骤使用默认模拟 API，可按域单独操作。各域开始前可重置演示数据恢复相同基线。
 
@@ -46,6 +46,7 @@ URSI_API_PROXY=http://127.0.0.1:8080
 | 运行 `/runs` | 进入“客户反馈看板 · 需求确认”，查看节点、日志、任务输入和配置快照，执行下方审批返工步骤 | 轮询显示节点变化，审批操作依据 API 响应更新，事件保留且重复读取不重复展示。终态停止自动轮询 |
 | 产物 `/artifacts` | 搜索“代码审查报告.md”，切换“内容预览”和“源文件”，下载并打开文件，按运行和执行轮次筛选 | Markdown 标题和表格可读，源文件保留原文本，下载文件名及内容与所选条目一致，运行链接进入所属运行 |
 | 沙箱 `/sandboxes` | 搜索“交付工作区 01”，打开“详情与日志”，尝试释放，再进入关联运行取消任务并返回 | 详情显示标识、模拟资源规格及日志，活动运行拒绝释放；取消确认后沙箱显示已释放并保留日志。页面只有模拟状态、日志与释放操作，没有真实终端或远程连接 |
+| 对话 `/chat` | 新建会话，发送“现在有哪些工作流和运行？”，等待流式回复，展开推理与工具块，刷新后重新进入 | 消息分段出现，回复为 Markdown；工具调用显示状态，刷新后会话与消息仍保留。演示回复为本地模板，未调用模型 |
 
 连接验证仅产生模拟响应。角色 Skill 为名称与文本内容，MCP 命令和工作流脚本保存为定义，演示时不会实际执行。
 
@@ -62,7 +63,7 @@ URSI_API_PROXY=http://127.0.0.1:8080
 
 ### 通用交互与故障恢复
 
-- 切换明暗主题并刷新，主题保持；在移动宽度打开抽屉导航，六域入口可用。
+- 切换明暗主题并刷新，主题保持；在移动宽度打开抽屉导航，七域入口可用。
 - 使用键盘 Tab 进入“跳到主要内容”，检查弹窗焦点、Esc 关闭和标签页方向键操作。
 - 搜索无匹配内容时显示空状态。开启一次性故障后刷新，页面显示错误，重试恢复数据。
 - 在运行详情提高延迟并切换到另一运行，页面应显示新运行内容。离开详情后停止该页轮询。
@@ -76,7 +77,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`check` 执行 ESLint、Vitest、vue-tsc 和默认 Vite 构建。ESLint 检查模块依赖方向，单元与组件测试覆盖模拟接口、状态推进、表单、轮询及 Markdown 净化等行为。
+`check` 执行 ESLint、Vitest、tsc 类型检查和默认 Vite 构建。ESLint 检查模块依赖方向，单元与组件测试覆盖模拟接口、状态推进、表单、轮询、对话流及 Markdown 净化等行为。
 
 Playwright 构建并启动 `0.0.0.0:4173` 预览服务，验收桌面与移动导航、主题、深链刷新、404、键盘访问、加载失败恢复，以及两种尺寸下的配置、嵌套确认框、审批返工、历史产物、下载和沙箱操作。运行前保持 4173 端口空闲，测试结束后自动关闭服务。
 
@@ -113,6 +114,6 @@ live 模式通过同源 `/api` 请求网络，失败时显示请求错误，不�
 
 - [总规格与模块地图](SPEC.md)、[设计与验收边界](DESIGN.md)。
 - [app 装配](src/app/SPEC.md)、[shared DTO 与公共能力](src/shared/SPEC.md)、[mocks 模拟状态](src/mocks/SPEC.md)。
-- [工作流](src/modules/workflows/SPEC.md)、[角色](src/modules/roles/SPEC.md)、[运行](src/modules/runs/SPEC.md)、[产物](src/modules/artifacts/SPEC.md)、[沙箱](src/modules/sandboxes/SPEC.md)、[模型连接](src/modules/connections/SPEC.md)。
+- [工作流](src/modules/workflows/SPEC.md)、[角色](src/modules/roles/SPEC.md)、[运行](src/modules/runs/SPEC.md)、[产物](src/modules/artifacts/SPEC.md)、[沙箱](src/modules/sandboxes/SPEC.md)、[模型连接](src/modules/connections/SPEC.md)、[对话](src/modules/chat/SPEC.md)。
 
-基础 UI 控件、图标及主题样式复用并适配 [Grasp](https://github.com/cocofhu/grasp)，具体来源、改动与 MIT 许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+基础 UI 控件、图标及主题样式复用并适配 [Grasp](https://github.com/cocofhu/grasp)，组件基元基于 [shadcn/ui](https://ui.shadcn.com) 源码并适配本项目 token，对话模块布局参考 [chatbot-template](https://github.com/shadcn-ui/chatbot-template)，具体来源、改动与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

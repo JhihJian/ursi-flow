@@ -31,7 +31,7 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 | sandbox-gateway/runtime | image 提供环境与成熟监督器，bundle 提供 session-service、监督配置与平台脚本 |
 | sandbox-gateway/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
-| web | Vue3 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections 六域组织，app/shared 提供装配与基础能力 |
+| web | React 19 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections、chat 七域组织，app/shared 提供装配、shadcn 基元与基础能力；Zustand 管理应用级状态 |
 | server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
 
 server 装配 Agent Runtime、Channel 和 MCP 工具，基础库不反向依赖 server crate。MCP 业务能力通过装配时注入的接口提供。CLI Adapter 与 sandbox-observe 归属 sandbox-gateway 目录，分别提供沙箱执行适配与观测契约。CLI Adapter 的真实实现随 session-service 在沙箱内运行，观测库可由服务端和沙箱侧的事件生产方共同使用。

@@ -1,4 +1,5 @@
 import type { Connection, Role, Run, Workflow, WorkflowNode } from '@/shared/api/types'
+import { chatRoute } from './chat'
 import { clone, createSeed, type MockState } from './seed'
 
 export const STORAGE_KEY = 'ursi-flow-demo-v1'
@@ -7,7 +8,8 @@ export interface MockStorage {
   setItem(key: string, value: string): void
 }
 export interface MockOptions { delay?: number }
-class HttpError extends Error {
+/** 对话模块复用同一错误结构；它在 chat.ts 中只于调用时引用，故模块循环导入不影响初始化。 */
+export class HttpError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) { super(message) }
 }
 function invalid(message: string): never { throw new HttpError(400, 'VALIDATION', message) }
@@ -239,9 +241,12 @@ function actOnRun(state: MockState, run: Run, action: string, body: Record<strin
   return run
 }
 
-function route(state: MockState, method: string, url: URL, body: Record<string, unknown>, now: number): { value?: unknown; status?: number } {
+/** 路由结果：`response` 用于对话消息这类需要自建流式响应的接口，其余接口仍按 `value`/`status` 包成 JSON。 */
+function route(state: MockState, method: string, url: URL, body: Record<string, unknown>, now: number): { value?: unknown; status?: number; response?: Response } {
   const parts = url.pathname.slice(5).split('/').filter(Boolean).map(part => decodeURIComponent(part))
   const [resource, id, action] = parts
+  // 对话接口的路径深度与业务资源不同，交给 chat 模块自行解析。
+  if (resource === 'chat') return chatRoute(state, method, url, body, now)
   if (parts.length > 3) throw new HttpError(404, 'NOT_FOUND', '接口不存在。')
   if (resource === 'demo' && id === 'settings' && !action) {
     if (method === 'GET') return { value: state.settings }
@@ -383,7 +388,7 @@ export function createMockBackend(storage?: MockStorage, options: MockOptions = 
         const candidate = object(loaded)
         // 固定版本的完整状态才恢复，损坏的存储由全新演示数据恢复。
         const settings = object(candidate.settings)
-        if (['roles', 'connections', 'workflows', 'runs', 'artifacts', 'sandboxes'].every(key => Array.isArray(candidate[key])) && Number.isSafeInteger(candidate.sequence) && typeof settings.delay === 'number' && Number.isFinite(settings.delay) && settings.delay >= 0 && settings.delay <= 30_000 && typeof settings.failNext === 'boolean' && candidate.clocks && typeof candidate.clocks === 'object') {
+        if (['roles', 'connections', 'workflows', 'runs', 'artifacts', 'sandboxes', 'chatSessions'].every(key => Array.isArray(candidate[key])) && Number.isSafeInteger(candidate.sequence) && typeof settings.delay === 'number' && Number.isFinite(settings.delay) && settings.delay >= 0 && settings.delay <= 30_000 && typeof settings.failNext === 'boolean' && candidate.clocks && typeof candidate.clocks === 'object') {
           state = loaded as MockState
           restored = true
         }
@@ -427,6 +432,8 @@ export function createMockBackend(storage?: MockStorage, options: MockOptions = 
       const next = clone(state)
       const result = route(next, method, url, body, Date.now())
       if (JSON.stringify(next) !== JSON.stringify(state)) commit(next)
+      // 对话消息接口已自行构造流式响应，直接返回，避免再包一层 JSON。
+      if (result.response) return result.response
       return result.status === 204 ? new Response(null, { status: 204 }) : json(result.value, result.status)
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error

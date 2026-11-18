@@ -414,4 +414,27 @@ describe('本地演示 API', () => {
     storage.setItem(STORAGE_KEY, '{')
     expect((await harness(storage).call<Role[]>('/roles')).data).toHaveLength(4)
   })
+
+  it('对话请求交给 chat 模块处理', async () => {
+    const storage = memoryStorage()
+    const api = harness(storage)
+    const list = await api.call<{ id: string }[]>('/chat/sessions')
+    expect(list.status).toBe(200)
+    expect(list.data.length).toBeGreaterThanOrEqual(1)
+    expect((await api.call('/chat/sessions', 'POST', { title: '演示' })).status).toBe(201)
+    const saved = storage.getItem(STORAGE_KEY) ?? '{}'
+    const persisted = JSON.parse(saved) as { chatSessions: { messages: unknown[] }[] }
+    expect(persisted.chatSessions.length).toBeGreaterThanOrEqual(2)
+    expect(persisted.chatSessions.every((session) => Array.isArray(session.messages))).toBe(true)
+    expect(persisted.chatSessions.some((session) => session.messages.length === 2)).toBe(true)
+
+    // chatSessions 是恢复校验的必需数组键：存在时恢复原状态，缺失时回到新种子。
+    const role = { name: '新角色', systemPrompt: '提示词', connectionId: 'conn-openai', model: 'gpt-4.1' }
+    const restore = JSON.parse(saved) as { sequence: number }
+    restore.sequence = 500
+    storage.setItem(STORAGE_KEY, JSON.stringify(restore))
+    expect((await harness(storage).call<Role>('/roles', 'POST', role)).data.id).toBe('role-501')
+    storage.setItem(STORAGE_KEY, JSON.stringify({ ...restore, chatSessions: undefined }))
+    expect((await harness(storage).call<Role>('/roles', 'POST', role)).data.id).toBe('role-101')
+  })
 })

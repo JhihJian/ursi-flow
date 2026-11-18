@@ -2,28 +2,29 @@
 
 ## 目标与交付形态
 
-Web 为流程维护者和运行操作者提供六域工作台。默认演示模式通过本地模拟 API 完成配置、启动运行、审批返工、产物查阅和沙箱状态管理，支持前端独立验收。live 模式请求真实网络接口，真实 server API 协议与执行链路分别通过联合验收确认。
+Web 为流程维护者和运行操作者提供七个业务域的工作台：工作流、角色、运行、产物、沙箱、模型连接与对话。默认演示模式通过本地模拟 API 完成配置、启动运行、审批返工、产物查阅、沙箱状态管理和对话演示，支持前端独立验收。live 模式请求真实网络接口，真实 server API 协议与执行链路分别通过联合验收确认。
 
-工程采用 Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Tailwind CSS，以独立 npm 包和锁文件管理依赖。Node.js 24 用于安装与构建，产物输出到 `web/dist`。Pinia 在入口注册，页面状态主要由本域 composable 和组件管理。
+工程采用 React 19、TypeScript、Vite、React Router 7、Zustand 和 Tailwind CSS，组件基于 shadcn/ui（Radix UI + class-variance-authority）以源码形式维护在 `src/shared/ui`，以独立 npm 包和锁文件管理依赖。Node.js 24 用于安装与构建，产物输出到 `web/dist`。Zustand 只承载应用级状态（主题、全局反馈和对话会话），业务页面使用本域 hook 与组件状态。
 
-基础 UI、图标、明暗主题 tokens 复用并适配 Grasp。应用壳、业务布局与页面围绕 ursi-flow 六域组织，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+基础 UI、图标、明暗主题 tokens 复用并适配 Grasp，shadcn/ui 组件统一映射到现有 CSS 变量。应用壳、业务布局与页面围绕 ursi-flow 七域组织，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 ## 目录与职责
 
 | 模块 | 职责 |
 | --- | --- |
-| `src/app` 与 `src/main.ts` | 选择 API 模式，装配 Router 和 Pinia，提供应用壳、导航、主题、全局反馈与演示设置入口 |
-| `src/shared` | 六域共用 DTO、API 传输、通用组件、请求生命周期、编辑保护和反馈能力 |
-| `src/mocks` | 种子数据、模拟 API、配置引用检查、运行调度与审批、快照、事件、产物和模拟沙箱状态，持久化演示数据 |
+| `src/app` 与 `src/main.tsx` | 选择 API 模式，装配 Router 与主题，提供应用壳、导航、全局反馈与演示设置入口 |
+| `src/shared` | 七域共用 DTO、API 传输、shadcn 基元、请求生命周期、编辑保护和反馈能力 |
+| `src/mocks` | 种子数据、模拟 API、配置引用检查、运行调度与审批、快照、事件、产物、模拟沙箱与对话会话，持久化演示数据 |
 | `src/modules/workflows` | 工作流目录、JSON 定义编辑、只读 DAG 与发起运行 |
 | `src/modules/roles` | 角色工作室、提示词、模型、文本 Skills 和 MCP 编辑 |
 | `src/modules/runs` | 运行目录与详情、串行轮询、日志筛选、快照、审批返工和取消 |
 | `src/modules/artifacts` | 产物搜索与运行、轮次筛选，Markdown 预览、源文件和下载 |
 | `src/modules/sandboxes` | 模拟资源状态、运行关联、生命周期日志和释放操作 |
 | `src/modules/connections` | 模型连接配置、凭据引用、模拟验证与引用冲突反馈 |
+| `src/modules/chat` | 对话会话列表、流式消息、Markdown 回复与推理/工具折叠块 |
 | `e2e` | 构建产物的浏览器独立验收 |
 
-app 导入各业务域公开的 `routes.ts`，按需加载页面。业务域依赖 shared，shared 保持独立。mocks 使用 shared DTO 并由入口注入 transport。跨域通过共享 API 查询所需数据，通过资源标识与路由地址跳转，业务模块不导入其他域内部组件或状态。ESLint 检查静态导入的依赖方向。
+app 导入各业务域公开的 `routes.tsx`，按需加载页面。业务域依赖 shared，shared 保持独立。mocks 使用 shared DTO 并由入口注入 transport。跨域通过共享 API 查询所需数据，通过资源标识与路由地址跳转，业务模块不导入其他域内部组件或状态。ESLint 检查静态导入的依赖方向。
 
 共享 DTO 位于 `src/shared/api/types.ts`，描述前端与演示 API 当前使用的传输结构。真实服务的路由、字段、错误码和认证需要联调对齐，server 规格中的存储模型、generation 和节点级 attempt 等语义另由真实服务契约约束。
 
@@ -75,9 +76,13 @@ Vite 开发代理将 `/api` 转发到 `URSI_API_PROXY`，默认 `http://127.0.0.
 
 沙箱页面显示模拟标识、镜像、规格、目录、运行关联、状态和生命周期日志，提供确认释放与失败反馈。当前页面没有真实终端、IDE、文件通道或远程连接。真实资源准备、连接授权、文件往返和释放核实由 sandboxes、Gateway 与 Channel 联合验收。
 
+### 对话流
+
+对话会话与消息由 mock 持久化。消息接口以 `application/x-ndjson` 逐行返回 `delta`、`tool` 和 `done`，客户端通过注入的 transport 读取流并逐段渲染，支持停止与重新生成。演示回复由本地模板生成，不调用模型；真实模型调用与流协议由 server 联调确认。
+
 ## 应用壳与通用交互
 
-六个一级地址为 `/workflows`、`/roles`、`/runs`、`/artifacts`、`/sandboxes`、`/connections`。运行详情位于 `/runs/:id`。根地址进入工作流，未知地址显示 404，懒加载失败保留目标地址并提供重新打开入口。
+七个一级地址为 `/workflows`、`/roles`、`/runs`、`/artifacts`、`/sandboxes`、`/connections`、`/chat`。运行详情位于 `/runs/:id`，对话详情位于 `/chat/:sessionId`。根地址进入工作流，未知地址显示 404，懒加载失败保留目标地址并提供重新打开入口。
 
 桌面使用侧边导航，小屏使用顶部按钮打开抽屉。主题在挂载前应用，偏好存于独立 localStorage 键。通用组件统一加载、空态、错误、确认、通知与未保存编辑保护。模态框提供焦点约束与恢复，标签页支持键盘切换，页面提供跳到主要内容入口。
 
@@ -85,7 +90,7 @@ Vite 开发代理将 `/api` 转发到 `URSI_API_PROXY`，默认 `http://127.0.0.
 
 | 层次 | 环境 | 可观察结果与范围 |
 | --- | --- | --- |
-| 前端独立验收 | Vitest 接口替身、模拟 API、内存或浏览器存储 | 六域表单与状态、请求错误、引用冲突反馈、快照展示、审批返工、轮询清理、产物内容和模拟沙箱释放 |
+| 前端独立验收 | Vitest 接口替身、模拟 API、内存或浏览器存储 | 七域表单与状态、请求错误、引用冲突反馈、快照展示、审批返工、轮询清理、产物内容、模拟沙箱释放与对话流 |
 | 浏览器独立验收 | 默认构建与 Playwright、桌面和移动 Chromium | 导航、深链、主题、键盘、故障恢复，以及两种尺寸下的配置和运行闭环、历史产物与下载 |
 | 真实 API 联合验收 | live 前端、真实 transport、业务域和持久化存储 | 路由与 DTO、认证、事务引用、快照一致性、审批冲突、实际产物归属、持久事件和生产路由处理 |
 | 真实执行联合验收 | Gateway、Channel、Agent Runtime、session-service 和 CLI | 真实凭据解析、模型与脚本执行、配置渲染、资源连接、产物回收、迟到结果隔离与释放核实 |
