@@ -20,7 +20,7 @@
 //! [`ApiError`]：NotFound / Conflict / BadRequest / Forbidden / Internal。
 
 use async_trait::async_trait;
-use ursi_domain::{Run, RunStatus, TelemetryEvent, WorkflowDefinition};
+use flow_core::domain::{Run, RunStatus, TelemetryEvent, WorkflowDefinition};
 
 use crate::transport::error::ApiError;
 
@@ -178,10 +178,10 @@ impl RunDto {
             nodes: self
                 .nodes
                 .into_iter()
-                .map(|n| ursi_domain::NodeRun {
+                .map(|n| flow_core::domain::NodeRun {
                     node_id: n.node_id,
-                    status: ursi_domain::NodeStatus::parse(&n.status)
-                        .unwrap_or(ursi_domain::NodeStatus::Pending),
+                    status: flow_core::domain::NodeStatus::parse(&n.status)
+                        .unwrap_or(flow_core::domain::NodeStatus::Pending),
                     output: n.output,
                     error: n.error,
                     attempts: n.attempt,
@@ -280,6 +280,10 @@ pub struct SandboxDto {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    /// 为 true 表示来自本地记录，不是本次查询核实的状态或端点。
+    pub last_observed: bool,
+    /// 本地关联记录更新时间，不等同于最近一次成功的 Gateway 查询时间。
+    pub updated_at: String,
 }
 
 /// 准备沙箱的请求。
@@ -298,10 +302,12 @@ pub struct PrepareSandboxRequest {
 pub trait SandboxesApi: Send + Sync {
     /// 请求 Gateway 准备资源并记录关联。
     async fn prepare(&self, request: PrepareSandboxRequest) -> Result<SandboxDto, ApiError>;
-    async fn get_sandbox(&self, sandbox_id: &str) -> Result<SandboxDto, ApiError>;
+    /// 按运行关联核实资源状态。
+    async fn get_sandbox(&self, run_id: &str) -> Result<SandboxDto, ApiError>;
+    /// 仅读本地关联，可以离线列举或按运行过滤。
     async fn list_sandboxes(&self, run_id: Option<&str>) -> Result<Vec<SandboxDto>, ApiError>;
     /// 释放资源；失败或结果未知时保留待核实状态（不删除记录）。
-    async fn release(&self, sandbox_id: &str) -> Result<SandboxDto, ApiError>;
+    async fn release(&self, run_id: &str) -> Result<SandboxDto, ApiError>;
 }
 
 // ---------------------------------------------------------------------------

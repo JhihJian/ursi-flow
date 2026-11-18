@@ -38,7 +38,7 @@ use std::sync::Arc;
 
 use axum::http::Uri;
 use axum::Router;
-use ursi_mcp_server::McpServer;
+use crate::mcp::McpServer;
 
 pub use error::ApiError;
 pub use ports::{

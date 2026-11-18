@@ -1,0 +1,40 @@
+{
+  "id": "sb-provider-27",
+  "spec": {
+    "image": "ursi-runtime:test",
+    "command": [
+      "/init"
+    ],
+    "labels": {
+      "team": "acceptance"
+    },
+    "ports": [
+      {
+        "name": "acp",
+        "port": 7000,
+        "visibility": "internal",
+        "ready": false
+      }
+    ],
+    "bundle": {
+      "url": "https://bundle.example.test/runtime.tar",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "min_image_level": 2
+    },
+    "runtime_profile": "pi",
+    "memory_mb": 256,
+    "cpus": 1.0
+  },
+  "resource": {
+    "generation": 1,
+    "data_generation": 1
+  },
+  "retired": [],
+  "revision": 2,
+  "status": "deleting",
+  "operation": {
+    "kind": "delete"
+  },
+  "endpoints": [],
+  "error": null
+}

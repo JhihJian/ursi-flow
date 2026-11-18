@@ -8,18 +8,20 @@
 //! 4. 重启持久化读回（同一数据目录重新 assemble）；
 //! 5. 有序关闭：状态流转与重复关闭幂等。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use serde_json::{json, Value};
+use flow_core::agent_runtime::{MockRunner, MockScenario, Runner};
+use serde_json::{Value, json};
 
-use crate::app::assembly::{assemble, App};
+use crate::app::assembly::{App, assemble};
 use crate::app::config::AppConfig;
 
 /// 装配一个真实应用实例（127.0.0.1 随机端口）。
-async fn spawn_app(dir: &PathBuf) -> App {
-    let mut config = AppConfig::for_test(dir.clone());
+async fn spawn_app(dir: &Path) -> App {
+    let mut config = AppConfig::for_test(dir.to_owned());
     config.lease_scan_interval = Duration::from_millis(100);
     config.cleanup_retry_interval = Duration::from_millis(100);
     assemble(config).await.expect("装配失败")
@@ -93,7 +95,7 @@ async fn seed_fixture(base: &str, client: &reqwest::Client) -> String {
             "id": "wf-demo",
             "name": "演示流程",
             "nodes": [
-                { "id": "n-write", "name": "写作", "type": "agent", "roleId": "role-writer", "maxAttempts": 3 },
+                { "id": "n-write", "name": "写作", "type": "agent", "roleId": "role-writer" },
                 { "id": "n-review", "name": "审批", "type": "approval", "rejectTo": "n-write" }
             ],
             "edges": [
@@ -113,7 +115,14 @@ async fn seed_fixture(base: &str, client: &reqwest::Client) -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn 有效配置装配并可经_http_保存配置_创建运行_查询状态() {
     let dir = temp_dir("happy");
-    let app = spawn_app(&dir).await;
+    let config = AppConfig::for_test(dir.clone());
+    let runner: Arc<dyn Runner> = Arc::new(MockRunner::new(MockScenario::Success {
+        output: "mock 完成".into(),
+        tokens: 0,
+    }));
+    let app = super::assembly::assemble_with_runner(config, runner)
+        .await
+        .expect("装配测试 Runner 失败");
     assert!(app.ready(), "装配后应就绪");
 
     let client = reqwest::Client::new();
@@ -222,90 +231,102 @@ async fn 有效配置装配并可经_http_保存配置_创建运行_查询状态
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn runtime_acp_dispatch_uses_frozen_role_after_restart() {
-    use super::assembly::assemble_with_runtime_acp;
-    use std::sync::Arc;
-    use ursi_agent_runtime::{EventSink, ExecutorError, InvocationInput, InvocationResult, Runner};
-    use ursi_domain::{ExecutionEnv, Executor, Role};
-
-    struct ProfileRunner;
-    #[async_trait::async_trait]
-    impl Runner for ProfileRunner {
-        async fn run(&self, _: &InvocationInput, role: &Role, executor: &Executor,
-            _: Arc<dyn ExecutionEnv>, _: EventSink<'_>,
-        ) -> Result<InvocationResult, ExecutorError> {
-            assert_eq!(executor.kind.as_str(), "runtime-acp");
-            assert_eq!(role.model.as_deref(), Some("runtime-profile"));
-            assert!(role.skills.is_empty() && role.mcp_servers.is_empty());
-            Ok(InvocationResult { output: role.prompt.clone(), artifacts: vec![], tokens: 0 })
-        }
-    }
-
-    async fn json_response(request: reqwest::RequestBuilder) -> Value {
-        request.send().await.unwrap().error_for_status().unwrap().json().await.unwrap()
-    }
-    async fn queue(client: &reqwest::Client, base: &str) -> String {
-        let run = json_response(client.post(format!("{base}/api/v1/runs"))
-            .json(&json!({ "workflowId": "wf-demo" }))).await;
-        run["id"].as_str().unwrap().into()
-    }
-    async fn start(client: &reqwest::Client, base: &str, id: &str) -> Value {
-        json_response(client.post(format!("{base}/api/v1/runs/{id}/start"))).await
-    }
-
-    let dir = tempfile::tempdir().unwrap();
-    let config = || AppConfig::for_test(dir.path().to_owned());
-    let app = assemble_with_runtime_acp(config(), None).await.unwrap();
-    let base = format!("http://{}", app.addr());
-    let client = reqwest::Client::new();
-    let connection = seed_fixture(&base, &client).await;
-    let role_url = format!("{base}/api/v1/roles/role-writer");
-    let mock = json_response(client.get(&role_url)).await;
-    let mock_run = queue(&client, &base).await;
-    let acp = json!({
-        "id": "role-writer", "name": "ACP", "prompt": "冻结的 ACP 提示词",
-        "executorKind": "runtime-acp", "model": "runtime-profile", "connectionId": connection
-    });
-    let saved = json_response(client.put(&role_url).json(&acp)).await;
-    assert_eq!(saved["skills"], json!([]));
-    assert_eq!(saved["mcpServers"], json!([]));
-    assert_eq!(saved["executorKind"], "runtime-acp");
-    let acp_run = queue(&client, &base).await;
-    let unavailable = queue(&client, &base).await;
-    let failed = start(&client, &base, &unavailable).await;
-    assert_eq!(failed["status"], "failed");
-    fn writer(run: &Value) -> &Value {
-        run["nodes"].as_array().unwrap().iter().find(|n| n["nodeId"] == "n-write").unwrap()
-    }
-    let node = writer(&failed);
-    assert_eq!(node["attempt"], 1);
-    assert!(node["error"].as_str().unwrap().contains("runtime-acp"));
-
-    json_response(client.put(&role_url).json(&mock)).await;
-    app.shutdown().await;
-    drop(app);
-    let app = assemble_with_runtime_acp(config(), Some(Arc::new(ProfileRunner))).await.unwrap();
-    let base = format!("http://{}", app.addr());
-    let ordinary = start(&client, &base, &mock_run).await;
-    assert_eq!(writer(&ordinary)["output"], "mock 完成");
-    let profiled = start(&client, &base, &acp_run).await;
-    assert_eq!(profiled["status"], "waiting");
-    assert_eq!(writer(&profiled)["output"], acp["prompt"]);
-    app.shutdown().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn 非法监听地址_装配失败并返回明确原因() {
+async fn 监听地址已占用_装配失败并返回明确原因() {
     let dir = temp_dir("badaddr");
     let mut config = AppConfig::for_test(dir.clone());
-    // 已被保留的端口（用 1 端口模拟不可绑定）。
-    config.listen_addr = "127.0.0.1:1".parse().expect("静态地址解析失败");
+    let occupied = std::net::TcpListener::bind(config.listen_addr).expect("占用随机端口失败");
+    config.listen_addr = occupied.local_addr().unwrap();
     let err = match assemble(config).await {
         Err(reason) => reason,
         Ok(_) => panic!("不可绑定地址应失败"),
     };
     assert!(err.contains("绑定监听"), "错误应说明监听绑定失败：{err}");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+async fn expect_json(request: reqwest::RequestBuilder, expected: StatusCode) -> Value {
+    let response = request.send().await.expect("HTTP 请求失败");
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, expected, "响应：{body}");
+    serde_json::from_str(&body).expect("响应应为 JSON")
+}
+
+async fn create_queued_run(client: &reqwest::Client, base: &str, workflow: &str) -> String {
+    let run = expect_json(
+        client
+            .post(format!("{base}/api/v1/runs"))
+            .json(&json!({ "workflowId": workflow })),
+        StatusCode::CREATED,
+    )
+    .await;
+    assert_eq!(run["status"], "queued");
+    run["id"].as_str().expect("运行 id 缺失").to_owned()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn 无_gateway_脚本和_agent_可创建_启动被拒后仍可取消和读取() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = spawn_app(dir.path()).await;
+    let base = format!("http://{}", app.addr());
+    let client = reqwest::Client::new();
+    seed_fixture(&base, &client).await;
+    expect_json(
+        client.post(format!("{base}/api/v1/workflows")).json(&json!({
+            "id": "wf-script", "name": "脚本流程",
+            "nodes": [{ "id": "s", "name": "脚本", "type": "script", "script": "true", "scriptLanguage": "shell" }],
+            "edges": []
+        })),
+        StatusCode::CREATED,
+    ).await;
+
+    for workflow in ["wf-script", "wf-demo"] {
+        let id = create_queued_run(&client, &base, workflow).await;
+        let run_url = format!("{base}/api/v1/runs/{id}");
+        expect_json(
+            client.post(format!("{run_url}/start")),
+            StatusCode::SERVICE_UNAVAILABLE,
+        )
+        .await;
+        let queued = expect_json(client.get(&run_url), StatusCode::OK).await;
+        assert_eq!(queued["status"], "queued", "启动被拒不应推进 {workflow}");
+        let cancelled = expect_json(client.post(format!("{run_url}/cancel")), StatusCode::OK).await;
+        assert_eq!(cancelled["status"], "cancelled");
+        let fetched = expect_json(client.get(&run_url), StatusCode::OK).await;
+        assert_eq!(fetched["status"], "cancelled");
+    }
+    app.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn 无_gateway_仅审批流程可启动并放行() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = spawn_app(dir.path()).await;
+    let base = format!("http://{}", app.addr());
+    let client = reqwest::Client::new();
+    expect_json(
+        client
+            .post(format!("{base}/api/v1/workflows"))
+            .json(&json!({
+                "id": "wf-review", "name": "审批流程",
+                "nodes": [{ "id": "review", "name": "审批", "type": "approval" }], "edges": []
+            })),
+        StatusCode::CREATED,
+    )
+    .await;
+    let id = create_queued_run(&client, &base, "wf-review").await;
+    let run_url = format!("{base}/api/v1/runs/{id}");
+    let started = expect_json(client.post(format!("{run_url}/start")), StatusCode::OK).await;
+    assert_eq!(started["status"], "waiting");
+    let approved = expect_json(
+        client
+            .post(format!("{run_url}/approve"))
+            .json(&json!({ "nodeId": "review", "approved": true })),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(approved["status"], "succeeded");
+    app.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,51 +1,26 @@
 # 从 Flow 调用 Runtime ACP
 
-Flow 使用 `ursi-sandbox-client` 的公开 Rust API 连接已运行的 Runtime `/acp` WebSocket。Gateway 创建沙箱、安装 bundle、配置模型以及通过 SSH/SFTP 准备 `/ursi/workspace/repo` 都是调用前提。地址和令牌由 Flow 管理员提供，不从角色或流程参数读取。一个 Flow 实例的 ACP 节点共享同一 Runtime 和工作目录，只应运行同一信任主体的任务。
+Server 按运行选择已就绪的沙箱，经内部 `/acp` WebSocket 执行 `pi` 文本节点。Gateway key 用于查询和管理资源，Runtime token 用于该沙箱的会话鉴权。生产进程不使用独立 CLI 的全局端点或 token。
 
-## 启用执行器
+## 从全局 Runtime 迁移
 
-在 Flow 仓库根目录运行，替换为实际端点和令牌文件：
+1. **清理服务环境。** 从启动脚本、服务配置和继承的环境中移除 `URSI_ACP_URL`、`URSI_SESSION_TOKEN`、`URSI_SESSION_TOKEN_FILE`、`URSI_CLIENT_TIMEOUT_SECS`。任一变量仍存在（即使为空），Server 会在打开存储前报迁移错误。独立 CLI 可在自己的进程环境中继续使用这些变量。
+2. **配置接入。** 在默认 feature 构建中成对设置 `URSI_GATEWAY_URL`、`URSI_GATEWAY_KEY`，并设置 `URSI_ACP_BINDINGS_DIR` 为管理员维护的私有绝对目录。启动方式见 [Server README](README.md)。
+3. **迁移角色。** 旧角色可以查询。通过角色 API 显式修改为 `executorKind: "pi"`，或创建新角色并更新流程引用。将 `model: "runtime-profile"` 替换为 Runtime profile 中的实际模型名，保留有效的 `connectionId`。使用单文件文本 `SKILL.md` 并令 `mcpServers` 为空。旧执行器写入或引用旧角色创建运行均返回 HTTP 409。
+4. **新建运行，再绑定资源。** 创建运行以冻结新角色，为该 run 申请沙箱并核对 Gateway 的就绪状态、沙箱 ID 及唯一的内部 `session` 端点。准备工作目录 `/ursi/workspace/repo` 和 Pi 模型配置，原子安装 `<run_id>.json` 后再启动运行。文件格式、权限和准入失败语义见 [ACP 绑定说明](../sandbox-access/ACP.md)。
 
-```bash
-export CARGO_TARGET_DIR=/data/dev/ursi-flow/target
-export URSI_ACP_URL=ws://127.0.0.1:8765/acp
-export URSI_SESSION_TOKEN_FILE=/private/session-token
-export URSI_CLIENT_TIMEOUT_SECS=120
-cargo run --locked -p ursi-server --bin ursi-flow
-```
+旧快照保留原身份。即使同名角色已更新为 `pi`，启动冻结为 `runtime-acp` 的旧运行仍返回 409，不占新 attempt。未开始的旧运行可以取消；已发送 prompt 且回执未知的旧 attempt 保留原状，先核实原沙箱再决定如何处置。不要通过改写快照、沿用全局 token 或自动重发来迁移在途任务。
 
-远程端点请使用 `wss://` 或受保护的隧道。`URSI_SESSION_TOKEN` 和 `URSI_SESSION_TOKEN_FILE` 二选一，URL、令牌必须成对设置。每次请求的超时可选，默认 120 秒，范围 `1..=86400`。配置非法时应用在打开存储前报错。配置合法不代表已连通，首次创建 ACP 会话时才连接。
+## 取消与断连
 
-通过 `POST /api/v1/roles` 创建角色。将示例中的 `connectionId` 替换为 Flow 中已有的有效连接标识：
+当前 Runner 在提交 prompt 的同一连接上向同一会话发送 `session/cancel`。取消通知只表达意图，原 prompt 的停止原因和 `_ursi/session/close` 回执共同确认收尾。断线、超时、停止响应或回收结果未知时，节点保留当前 attempt；重新启动或接管租约不会重投这轮 prompt。
 
-```json
-{
-  "id": "runtime-writer", "name": "Runtime 写作节点", "prompt": "请用中文简短回答。",
-  "executorKind": "runtime-acp", "model": "runtime-profile",
-  "connectionId": "existing-connection-id", "skills": [], "mcpServers": []
-}
-```
+## 验收差异
 
-让工作流的 agent 节点引用该角色后创建并启动运行。只有冻结时选择了 `runtime-acp` 的角色会使用该端点；端点未配置时该节点明确失败。普通角色与旧快照仍按原有 mock 路径执行。`runtime-profile` 表示接受 Runtime 管理员固定的模型；Flow 仍校验角色的连接引用，但不向 Runtime 下发该连接的端点或凭据。模型覆盖、Flow Skills 与非空 MCP 列表均不受支持。
+| 入口 | 验证对象与边界 |
+| --- | --- |
+| [历史联合验收记录](../ursi-sandbox/INTEGRATION-ACCEPTANCE.md) | Flow 源码 `e7a100f` 的全局 Runner 和独立 CLI 连接正式 session-service，使用真实 Pi 与固定响应的模型替身，验证文本及正常关闭。记录仅适用于该提交和所列制品，不覆盖当前 HTTP 工作流和逐运行绑定。 |
+| `cargo test --locked -p ursi-server --test acp_migration --test remote_execution` | 本地测试验证旧配置与旧快照的拒绝路径，以及当前 HTTP、SQLite、Gateway/ACP 协议对端下的执行、取消和结果未知处理。对端不运行 Pi 或模型。 |
+| `server/tests/scripts/verify_runtime_acp.sh <独立构建目录>` | **当前版本的待核验入口**。需本机 Linux Docker bridge、脚本指定的 Runtime 镜像、匹配的独立 CLI 和 dist bundle。测试通过 Server HTTP 创建角色和运行、安装运行绑定并调用正式 Runtime，检查固定输出、关闭及清理；Gateway 视图和模型端点均为替身。脚本中的全局变量供测试夹具和 CLI 使用，Server 子进程单独配置。 |
 
-## 单独验证已有真实服务
-
-在同样的 ACP 环境配置下，从仓库根目录执行（无需启动 Flow HTTP 服务）：
-
-```bash
-URSI_FLOW_REAL_ACP=1 CARGO_TARGET_DIR=/data/dev/ursi-flow/target \
-  cargo test --locked -p ursi-server --test real_runtime_acp -- --ignored --nocapture
-```
-
-该测试会创建真实会话并提交一轮 prompt，可能产生模型费用。它要求收到文本、`end_turn` 以及关闭确认。
-
-## 运行取消与中断
-
-Flow 收到运行取消请求后停止调度下游，等待当前 Runner 返回。即使启动请求的 HTTP 连接断开，调度者也会继续等待。只有确认执行已结束，引擎才提交取消状态和事件。运行取消不会向 Runtime 发送 `session/cancel`；直接调用 ACP 控制器可以单独发送该通知，但发送成功不代表 prompt 已停止。
-
-prompt 提交后断线、超时或收到无效终态时，Runner 返回 `OutcomeUnknown`。引擎保留节点的 `running` 记录，取消请求返回冲突。重启后 Flow 没有持久化的 ACP 会话句柄可供核实，因此不会自动重放这轮 prompt。
-
-## 验证边界
-
-- 本地 WebSocket 对端测试覆盖初始化、建会话、文本和工具通知映射、取消、状态查询与关闭；HTTP 和 SQLite 测试用 Runner 替身验证角色保存、运行快照和重启后的分派。
-- 上述 opt-in 命令单独验证 Flow Runner 到正式 Runtime 的连接。它不验证 HTTP 工作流端到端、Gateway 生命周期、工作区准备、产物回收或多租户隔离。
+当前版本的真实 Runtime 结果需以本次构建的提交、镜像和 bundle 摘要及脚本输出为据。真实 Gateway 生命周期、SSH/SFTP、远端文件产物和真实模型推理需要各自的联合验收。

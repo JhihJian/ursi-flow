@@ -18,22 +18,17 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 ## 模块地图
 
-Flow 负责编排与审批，[ursi-sandbox](ursi-sandbox/DESIGN.md) 负责执行环境。独立 CLI 和 Flow 都是该环境的调用方。Flow 的 `runtime-acp` 角色通过公共客户端连接管理员已准备的 Runtime 及工作区，角色选择和业务重试留在引擎。
+Flow 负责编排与审批，[ursi-sandbox](ursi-sandbox/DESIGN.md) 负责执行环境。独立 CLI 和 Flow 都是该环境的调用方。Flow 的 `pi` 角色通过运行专属绑定连接已就绪的 Runtime，角色选择和业务重试留在引擎。
 
 | 模块 | 职责 |
 |---|---|
-| server | 模块化主服务：workflows、roles、runs、artifacts、sandboxes、connections 六个业务模块，app、transport、storage 三个支撑模块，详见 server/SPEC.md |
-| server/crates/domain | 唯一共享契约层：流程定义、状态机、事件契约 |
-| server/crates/agent-runtime | agent 可控接口与会话语义，服务端通过 ACP 控制沙箱会话 |
-| server/crates/agent-cli-adapter | Flow 的角色能力渲染与 Runner 适配 |
-| server/crates/channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
+| [flow-core](flow-core/SPEC.md) | workflows、roles、runs、artifacts、sandboxes、connections 六个业务域，共享领域契约、存储与执行端口 |
+| [sandbox-access](sandbox-access/SPEC.md) | Gateway v1 资源控制、Channel 传输与按运行绑定的 Runtime ACP 接入 |
+| [server](server/SPEC.md) | `ursi-flow` 主服务：app 装配、HTTP/SSE、MCP 工具和静态资源入口 |
 | ursi-sandbox | 独立 workspace：Gateway 管资源，Runtime 管执行，Client 提供公共调用库和 CLI |
-| server/crates/sandbox-observe | Flow 侧观测记录、脱敏、采集接口 |
-| server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | React 19 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections、chat 七域组织，app/shared 提供装配、shadcn 基元与基础能力；Zustand 管理应用级状态 |
-| server bin | ursi-flow 组装入口 |
 
-server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的领域类型。资源管理遵循 [Gateway 契约](ursi-sandbox/gateway/CONTRACT.md)，真实 ACP 角色接入方法和限制见 [Flow 调用说明](server/REAL-RUNTIME-ACP.md)。
+沙箱不链接 Flow 的领域类型。资源管理遵循 [Gateway v1 契约](contracts/gateway/v1/README.md)，当前文本执行的接入条件和验收范围见 [Flow 调用说明](server/REAL-RUNTIME-ACP.md)。
 
 ## 关键功能与验收
 
@@ -48,7 +43,7 @@ server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的�
 
 ### 单次运行执行
 
-一次运行从流程与角色配置冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境接入。详见 server（runs、sandboxes）、agent-runtime。
+一次运行从流程与角色配置冻结快照，按拓扑顺序执行节点，将输入与配置交给执行器，并管理执行环境接入。详见 flow-core（runs、sandboxes、agent_runtime）。
 
 #### 验收
 
@@ -66,7 +61,7 @@ server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的�
 
 ### 能力定制
 
-角色可创建、编辑、复制和查询，拥有系统提示词、模型选择、Skills 文件与 MCP 配置。流程节点引用角色，创建运行时冻结有效配置。详见 server（roles、connections、runs）、domain、agent-runtime。
+角色可创建、编辑、复制和查询，拥有系统提示词、模型选择、Skills 文件与 MCP 配置。流程节点引用角色，创建运行时冻结有效配置。详见 flow-core（roles、connections、runs、domain、agent_runtime）。
 
 #### 验收
 
@@ -75,16 +70,16 @@ server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的�
 
 ### 过程可观测
 
-节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 server（runs、artifacts、transport）、web。
+节点状态、工具轨迹、日志和产物在运行过程中统一采集，并通过 API 与页面呈现。详见 flow-core（runs、artifacts）、server 的 transport 和 web。
 
 #### 验收
 
-- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。server（runs）先原子提交状态与事件，再广播，transport 从持久事件重放与补读。
+- 运行过程中产生的节点状态变化与执行器工具轨迹可被订阅查询。runs 先原子提交状态与事件，再广播，transport 从持久事件重放与补读。
 - 运行详情页能展示节点状态、工具轨迹、日志与产物。
 
 ### 持久化与恢复
 
-工作流定义、角色配置、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 server 各域存储接口以及 storage、runs。
+工作流定义、角色配置、运行与节点状态、观测事件持久化存储；引擎重启后可恢复未完成运行。详见 flow-core 各域存储接口以及 storage、runs。
 
 #### 验收
 

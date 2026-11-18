@@ -5,7 +5,7 @@
 //! - 403：越权访问（资源归属与上下文运行不一致）；
 //! - 404：资源不存在、工具不存在、静态资源缺失；
 //! - 409：引用或状态冲突；
-//! - 500：基础设施或内部故障，消息固定脱敏，不透出内部错误详情字符串。
+//! - 500：内部故障；502：上游鉴权或协议错误；503：沙箱接入不可用。
 //!
 //! 业务域注入接口（[`crate::transport::ports`]）以本类型作为错误类型，
 //! 各业务域的真实实现把本域错误映射为这里的语义，transport 不再自行
@@ -48,6 +48,14 @@ pub enum ApiError {
     Conflict {
         message: String,
     },
+    /// 上游拒绝服务凭据，不是入站调用方缺少授权。
+    #[error("Gateway 拒绝了服务凭据")]
+    GatewayUnauthorized,
+    #[error("Gateway 响应不符合协议")]
+    GatewayProtocol,
+    /// 沙箱控制面或执行通道不可用。消息须为平台侧的安全摘要。
+    #[error("{message}")]
+    SandboxUnavailable { message: String },
     /// 基础设施或内部故障。消息固定，不透出内部错误详情。500 / internal_error。
     #[error("服务内部错误")]
     Internal,
@@ -63,6 +71,9 @@ impl ApiError {
             ApiError::NotFound { .. } => "not_found",
             ApiError::Forbidden { .. } => "forbidden",
             ApiError::Conflict { .. } => "conflict",
+            ApiError::GatewayUnauthorized => "gateway_unauthorized",
+            ApiError::GatewayProtocol => "gateway_protocol_error",
+            ApiError::SandboxUnavailable { .. } => "sandbox_unavailable",
             ApiError::Internal => "internal_error",
         }
     }
@@ -77,6 +88,8 @@ impl ApiError {
             ApiError::NotFound { resource } => format!("{resource} 不存在"),
             ApiError::Forbidden { message } => message.clone(),
             ApiError::Conflict { message } => message.clone(),
+            ApiError::GatewayUnauthorized | ApiError::GatewayProtocol => self.to_string(),
+            ApiError::SandboxUnavailable { message } => message.clone(),
             ApiError::Internal => "服务内部错误".to_string(),
         }
     }
@@ -90,6 +103,8 @@ impl ApiError {
             ApiError::Forbidden { .. } => StatusCode::FORBIDDEN,
             ApiError::NotFound { .. } => StatusCode::NOT_FOUND,
             ApiError::Conflict { .. } => StatusCode::CONFLICT,
+            ApiError::GatewayUnauthorized | ApiError::GatewayProtocol => StatusCode::BAD_GATEWAY,
+            ApiError::SandboxUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
             ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

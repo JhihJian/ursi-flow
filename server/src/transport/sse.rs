@@ -273,7 +273,7 @@ mod tests {
     /// SSE 帧包含 seq 游标与事件内容（经响应体验证完整帧文本）。
     #[tokio::test]
     async fn sse_frame_carries_cursor_and_payload() {
-        use ursi_domain::{EventCategory, EventPhase, TelemetryEvent};
+        use flow_core::domain::{EventCategory, EventPhase, TelemetryEvent};
         let event = NumberedEvent {
             run_id: "run-1".into(),
             seq: 7,

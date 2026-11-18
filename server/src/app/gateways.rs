@@ -9,11 +9,7 @@
 //!   RoleStore 公开）。**装配约束**：workflows 与 roles 必须共用同一
 //!   SQLite 文件（见 mod.rs「共享库装配」），否则事务内登记会写入另一
 //!   个数据库。
-//! Gateway 控制面（`GatewayClient`）与通道网关（`ChannelGateway`）的
-//! 实现暂缺：`GatewaySandboxView`（`GatewayClient::get` 返回类型）定义
-//! 在 sandboxes 私有 `model` 模块且未公开导出，crate 外无法实现该 trait
-//! （接口缺口，见 app mod.rs 交付边界说明）。本阶段沙箱面经
-//! `SandboxStore` 交付本地记录视图，控制面待接口公开后接线。
+//! 沙箱控制面的生产接入由 `app::sandbox` 装配。
 //!
 //! 错误文本全部复用域 Display（已脱敏），不拼接字段值。
 
@@ -81,9 +77,7 @@ impl ConnectionGateway for RolesConnectionGateway {
     }
 
     async fn describe_capabilities(&self) -> Result<ConnectionCapabilities, RolesGatewayError> {
-        // 本阶段执行器为 mock（MockRunner）；mock 执行不消耗模型连接，
-        // 放行全部已注册服务类型。真实执行器接入后改为查询执行器能力
-        // 描述接口（roles SPEC「能力未知即拒绝保存」的对照实现）。
+        // 可以离线保存角色的连接配置，运行时另行核实执行条件。
         Ok(ConnectionCapabilities {
             supported_service_types: vec![
                 crate::connections::ServiceType::OpenAiCompatible,

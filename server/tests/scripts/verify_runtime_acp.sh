@@ -6,7 +6,6 @@ standalone=${1:?expected standalone build directory}
 client="$standalone/target/debug/ursi-sandbox-client"
 bundle="$standalone/dist/runtime-bundle.tar.gz"
 image=$(docker image inspect -f '{{.Id}}' ursi-runtime-pi:local)
-export CARGO_TARGET_DIR=/data/dev/ursi-flow/target
 (cd "$standalone/dist" && sha256sum -c runtime-bundle.sha256)
 sha256sum "$client" "$bundle"
 printf 'image=%s\n' "$image"

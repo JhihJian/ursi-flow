@@ -38,18 +38,23 @@ use tokio::sync::watch;
 
 use crate::app::adapters::{
     ArtifactsApiAdapter, ConnectionsApiAdapter, RolesApiAdapter, RunEventFeed, RunsApiAdapter,
-    SandboxesApiAdapter, WorkflowApiAdapter,
+    WorkflowApiAdapter,
 };
 use crate::app::config::AppConfig;
 use crate::app::gateways::{
     RolesConnectionGateway, WorkflowRoleGateway,
 };
-use crate::runs::engine::{Engine, ScriptExecutionError, ScriptExecutor};
-use crate::runs::{ResourceReleaseError, ResourceReleaser};
+use crate::runs::engine::{Engine, ScriptExecutionError, ScriptExecutionResult, ScriptExecutor, ScriptInvocation};
+use flow_core::agent_runtime::Runner;
+use flow_core::runs::ResourceReleaser;
+#[cfg(test)]
+use flow_core::runs::{ScriptWorkspaces, WorkspaceExecution};
+use super::execution::ProductionRunner;
+use super::sandbox::SandboxesApiAdapter;
+use crate::runs::{CleanupState, RunRepository};
 use crate::storage::Database;
 use crate::transport::{AppState, StaticAssets};
 
-/// 本装配的沙箱服务形态（Gateway 与通道网关为占位实现）。
 /// 就绪状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppStatus {
@@ -86,7 +91,6 @@ pub struct App {
 struct Services {
     _state: AppState,
     _engine: Arc<Engine>,
-    _sandbox_store: Arc<crate::sandboxes::SandboxStore>,
 }
 
 impl App {
@@ -110,8 +114,11 @@ impl App {
         // 1. 停止后台任务（租约扫描、收尾重试）。
         let _ = self.inner.shutdown.send(true);
         let tasks = self.inner.background_tasks.lock().expect("后台任务表可用").drain(..).collect::<Vec<_>>();
-        for task in tasks {
-            let _ = tokio::time::timeout(Duration::from_secs(1), task).await;
+        for mut task in tasks {
+            if tokio::time::timeout(Duration::from_secs(1), &mut task).await.is_err() {
+                task.abort();
+                let _ = task.await;
+            }
         }
         // 2. 停止接收新业务操作：终止 HTTP 服务任务，监听端口随任务释放。
         let http = self
@@ -161,17 +168,35 @@ impl Drop for App {
 /// 迁移或存储打开失败返回明确原因，不报告就绪；监听绑定失败同样直接
 /// 失败——失败点全部在后台任务启动之前，无组件需要回滚。
 pub async fn assemble(config: AppConfig) -> Result<App, String> {
-    // ACP 真实接入是显式 opt-in。配置不完整或非法时在打开存储前拒绝，
-    // 缺省仍保留原有 MockRunner 行为。
-    let real_runner = ursi_agent_runtime::AcpRunner::from_env()
-        .map_err(|e| format!("ACP 配置错误：{e}"))?;
-    assemble_with_runtime_acp(config, real_runner.map(|r| Arc::new(r) as Arc<_>)).await
+    // 显式构造 AppConfig 的嵌入方也可能沿用旧版 assemble 的全局执行凭据。
+    super::config::reject_legacy_acp_env()?;
+    assemble_inner(config, Injection::Production).await
 }
 
-pub(super) async fn assemble_with_runtime_acp(
+#[cfg(test)]
+pub(super) async fn assemble_with_runner(config: AppConfig, runner: Arc<dyn Runner>) -> Result<App, String> {
+    assemble_inner(config, Injection::Runner(runner)).await
+}
+
+/// 与生产共用 HTTP 和存储装配，只在测试构建中替换执行依赖。
+#[cfg(test)]
+pub(super) async fn assemble_with_test_execution(
     config: AppConfig,
-    runtime_acp: Option<Arc<dyn ursi_agent_runtime::Runner>>,
+    runner: Arc<dyn Runner>,
+    workspaces: Arc<dyn ScriptWorkspaces>,
 ) -> Result<App, String> {
+    assemble_inner(config, Injection::Test(runner, workspaces)).await
+}
+
+enum Injection {
+    Production,
+    #[cfg(test)]
+    Runner(Arc<dyn Runner>),
+    #[cfg(test)]
+    Test(Arc<dyn Runner>, Arc<dyn ScriptWorkspaces>),
+}
+
+async fn assemble_inner(config: AppConfig, injection: Injection) -> Result<App, String> {
     let (status_tx, status_rx) = watch::channel(AppStatus::Starting);
     std::fs::create_dir_all(&config.data_dir)
         .map_err(|e| format!("创建数据目录 {} 失败：{e}", config.data_dir.display()))?;
@@ -210,8 +235,15 @@ pub(super) async fn assemble_with_runtime_acp(
         Arc::new(crate::runs::SystemClock),
     )
     .map_err(|e| format!("打开运行存储失败：{e}"))?);
-    let sandboxes_store = Arc::new(crate::sandboxes::SandboxStore::open(config.sandboxes_db_path())
-        .map_err(|e| format!("打开沙箱存储失败：{e}"))?);
+    let sandbox_store = crate::sandboxes::SandboxStore::open(config.sandboxes_db_path())
+        .map_err(|e| format!("打开沙箱存储失败：{e}"))?;
+    let sandboxes = Arc::new(SandboxesApiAdapter::new(sandbox_store, &config)?);
+    // 产物与角色分别维护引用及孤儿清理，不能共用内容目录。
+    let artifact_db = Database::open(config.data_dir.join("artifacts.db"), crate::artifacts::ARTIFACT_MIGRATIONS)
+        .map_err(|e| format!("打开产物数据库失败：{e}"))?;
+    let artifact_content = crate::storage::ContentStore::open(config.data_dir.join("artifact-content"))
+        .map_err(|e| format!("打开产物内容存储失败：{e}"))?;
+    let artifacts = Arc::new(crate::artifacts::ArtifactStore::new(artifact_db, artifact_content));
     let content_store_for_service = crate::storage::ContentStore::open(config.content_root())
         .map_err(|e| format!("打开内容存储失败：{e}"))?;
     let content_store_for_api = crate::storage::ContentStore::open(config.content_root())
@@ -231,56 +263,69 @@ pub(super) async fn assemble_with_runtime_acp(
     let roles_service =
         Arc::new(crate::roles::RoleService::new(roles_service_store, roles_gateway));
 
-    let runner = Arc::new(ursi_agent_runtime::MockRunner::new(
-        ursi_agent_runtime::MockScenario::Success {
-            output: "mock 完成".to_string(),
-            tokens: 0,
-        },
-    ));
-    let events_bus = crate::runs::engine::EventBus::new();
-    let engine = Arc::new(
-        Engine::new(
-            Arc::clone(&runs_store) as Arc<dyn crate::runs::RunRepository>,
-            runner,
-            events_bus.clone(),
-            Arc::clone(&runs_store) as Arc<dyn crate::runs::LeaseTable>,
+    let production = Arc::new(ProductionRunner { sandboxes: sandboxes.clone(), bindings: config.acp_bindings_dir.clone() });
+    let (runner, script_executor, releaser, admission): (
+        Arc<dyn Runner>,
+        Arc<dyn ScriptExecutor>,
+        Arc<dyn ResourceReleaser>,
+        Option<Arc<ProductionRunner>>,
+    ) = match injection {
+        Injection::Production => (
+            production.clone(),
             Arc::new(NoopScriptExecutor),
-        )
-        .with_runtime_acp(runtime_acp)
-        .with_releaser(Arc::new(SandboxResourceReleaser {
-            store: Arc::clone(&sandboxes_store),
-        }))
-        .with_lease_ttl_ms(config.lease_ttl.as_millis() as u64),
-    );
+            sandboxes.clone(),
+            Some(production),
+        ),
+        #[cfg(test)]
+        Injection::Runner(runner) => (
+            runner,
+            Arc::new(NoopScriptExecutor),
+            sandboxes.clone(),
+            None,
+        ),
+        #[cfg(test)]
+        Injection::Test(runner, workspaces) => {
+            let execution = Arc::new(WorkspaceExecution::new(workspaces, artifacts.clone()));
+            (runner, execution.clone(), execution, None)
+        }
+    };
+    let events_bus = crate::runs::engine::EventBus::new();
+    let engine_builder = Engine::new(
+        Arc::clone(&runs_store) as Arc<dyn crate::runs::RunRepository>,
+        runner,
+        events_bus.clone(),
+        Arc::clone(&runs_store) as Arc<dyn crate::runs::LeaseTable>,
+        script_executor,
+    )
+    .with_releaser(releaser)
+    .with_lease_ttl_ms(config.lease_ttl.as_millis() as u64);
+    let engine = Arc::new(engine_builder);
 
     // 3. transport 适配器与状态。
+    let runs = Arc::new(RunsApiAdapter::new(
+        engine.clone(), runs_store.clone(), workflow_store.clone(), roles_service.clone(), admission,
+    ));
     let state = AppState {
         workflows: Arc::new(WorkflowApiAdapter::new(workflow_store.clone())),
         roles: Arc::new(RolesApiAdapter::new(
             Arc::clone(&roles_service),
             Arc::clone(&roles_api_store),
         )),
-        runs: Arc::new(RunsApiAdapter::new(
-            Arc::clone(&engine),
-            Arc::clone(&runs_store),
-            workflow_store.clone(),
-            Arc::clone(&roles_service),
-        )),
-        artifacts: Arc::new(ArtifactsApiAdapter::new(Arc::clone(&runs_store))),
-        sandboxes: Arc::new(SandboxesApiAdapter::new(Arc::clone(&sandboxes_store))),
+        runs: runs.clone(),
+        artifacts: Arc::new(ArtifactsApiAdapter::new(artifacts)),
+        sandboxes: sandboxes.clone(),
         connections: Arc::new(ConnectionsApiAdapter::new(Arc::clone(&connections_api_store))),
         events: RunEventFeed::new(Arc::clone(&runs_store), events_bus),
         mcp: crate::transport::mcp::assemble_mcp_server(&[
-            ursi_mcp_server::Domain::Ops(Arc::new(super::mcp_backends::OpsBackendAdapter::new(
-                Arc::clone(&sandboxes_store),
+            crate::mcp::Domain::Ops(Arc::new(super::mcp_backends::OpsBackendAdapter::new(
+                sandboxes,
             ))),
-            ursi_mcp_server::Domain::Control(Arc::new(
+            crate::mcp::Domain::Control(Arc::new(
                 super::mcp_backends::ControlBackendAdapter::new(
-                    Arc::clone(&engine),
-                    Arc::clone(&runs_store),
+                    runs,
                 ),
             )),
-            ursi_mcp_server::Domain::Internal(Arc::new(
+            crate::mcp::Domain::Internal(Arc::new(
                 super::mcp_backends::InternalBackendAdapter::new(Arc::clone(&runs_store)),
             )),
         ])
@@ -314,7 +359,8 @@ pub(super) async fn assemble_with_runtime_acp(
             config.lease_scan_interval,
         ),
         spawn_cleanup_retry(
-            Arc::clone(&sandboxes_store),
+            Arc::clone(&runs_store),
+            Arc::clone(&engine),
             shutdown_tx.clone(),
             config.cleanup_retry_interval,
         ),
@@ -341,7 +387,6 @@ pub(super) async fn assemble_with_runtime_acp(
         _services: Services {
             _state: state,
             _engine: engine,
-            _sandbox_store: Arc::clone(&sandboxes_store),
         },
     })
 }
@@ -391,23 +436,6 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
-/// 资源释放入口：终态运行的收尾经沙箱服务释放（失败保留待核实状态，
-/// 可由收尾重试扫描再次请求；运行执行结果不受影响）。
-struct SandboxResourceReleaser {
-    store: Arc<crate::sandboxes::SandboxStore>,
-}
-
-#[async_trait::async_trait]
-impl ResourceReleaser for SandboxResourceReleaser {
-    async fn release(&self, run_id: &str) -> Result<(), ResourceReleaseError> {
-        // 释放即本地关联收敛为 Released（平台视图随之不可用）。
-        // 控制面接入前的明确边界：仅收敛本地记录，不伪造平台侧已回收。
-        self.store
-            .record_released(run_id)
-            .map_err(|e| ResourceReleaseError::Failed(e.to_string()))
-    }
-}
-
 /// 租约恢复扫描：接管过期租约的可恢复运行（runs SPEC「恢复」）。
 /// 当前 RunRepository 无运行列举入口，可恢复清单没有事实来源；扫描任务
 /// 保留周期与关闭语义，`resume_interrupted` 接线在入口补齐后启用。
@@ -440,10 +468,9 @@ fn spawn_lease_recovery(
 
 /// 资源收尾重试扫描：终态运行 cleanup 状态为 pending/failed 时重新请求
 /// 释放（失败保留状态供下轮重试，不伪造成功）。
-/// 重试清单依赖「按清理状态列举终态运行」的查询（同列举缺口），入口
-/// 补齐前保留周期语义。缺口在 SPEC 交付说明记录。
 fn spawn_cleanup_retry(
-    sandbox_store: Arc<crate::sandboxes::SandboxStore>,
+    store: Arc<crate::runs::SqliteRunStore>,
+    engine: Arc<Engine>,
     shutdown: watch::Sender<bool>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
@@ -461,9 +488,20 @@ fn spawn_cleanup_retry(
                     }
                 }
             }
-            // 重试清单依赖清理状态列举入口（缺口）；补齐后在此对
-            // pending/failed 的终态运行调用收尾释放。
-            let _ = &sandbox_store;
+            if *rx.borrow() { break; }
+            use flow_core::domain::RunStatus::{Cancelled, Failed, Succeeded};
+            let Ok(rows) = store.list_runs(&[Succeeded, Failed, Cancelled]).await else {
+                tracing::warn!("无法读取待收尾运行");
+                continue;
+            };
+            for row in rows {
+                if *rx.borrow() { break; }
+                match store.cleanup_status(&row.id).await {
+                    Ok(Some(s)) if s.state == CleanupState::Done => continue,
+                    Err(_) => continue,
+                    _ => { let _ = engine.release_resources(&row.id).await; }
+                }
+            }
         }
     })
 }
@@ -474,7 +512,7 @@ struct NoopScriptExecutor;
 
 #[async_trait::async_trait]
 impl ScriptExecutor for NoopScriptExecutor {
-    async fn exec(&self, _script: &str, _language: &str) -> Result<String, ScriptExecutionError> {
+    async fn exec(&self, _: ScriptInvocation) -> Result<ScriptExecutionResult, ScriptExecutionError> {
         Err(ScriptExecutionError::Failed(
             "脚本执行器尚未接入沙箱通道（装配占位）".to_string(),
         ))

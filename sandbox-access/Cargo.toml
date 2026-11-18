@@ -1,0 +1,25 @@
+[package]
+name = "sandbox-access"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+flow-core.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ursi-sandbox-client = { path = "../ursi-sandbox/client" }
+reqwest.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+bytes = "1"
+russh = "0.45"
+russh-sftp = "2"
+
+[dev-dependencies]
+axum.workspace = true
+tempfile.workspace = true

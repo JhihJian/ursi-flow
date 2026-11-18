@@ -1,0 +1,51 @@
+name: Workspace isolation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+
+jobs:
+  isolated:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - side: server
+            sources: |
+              /Cargo.toml
+              /Cargo.lock
+              /server/
+              /flow-core/
+              /sandbox-access/
+              /ursi-sandbox/Cargo.toml
+              /ursi-sandbox/client/Cargo.toml
+              /ursi-sandbox/client/src/
+          - side: sandbox
+            sources: /ursi-sandbox/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/ci/
+            /contracts/gateway/v1/
+            /.cargo/
+            /rust-toolchain
+            /rust-toolchain.toml
+            ${{ matrix.sources }}
+      - name: Prepare local SSH test fixture
+        if: matrix.side == 'server'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-server
+          sudo install -d -m 0755 /run/sshd
+      - name: Build and test isolated workspace
+        run: scripts/ci/run-workspace-isolation.sh "${{ matrix.side }}"
+        env:
+          CI_REPORT_DIR: ${{ runner.temp }}/isolation-report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolation-${{ matrix.side }}
+          path: ${{ runner.temp }}/isolation-report/

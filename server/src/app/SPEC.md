@@ -1,16 +1,9 @@
 ---
 parent: ../../SPEC.md
 depends-on:
-  - ../storage/SPEC.md
-  - ../connections/SPEC.md
-  - ../roles/SPEC.md
-  - ../workflows/SPEC.md
-  - ../artifacts/SPEC.md
-  - ../sandboxes/SPEC.md
-  - ../runs/SPEC.md
+  - ../../../flow-core/SPEC.md
+  - ../../../sandbox-access/SPEC.md
   - ../transport/SPEC.md
-  - ../../crates/channel/SPEC.md
-  - ../../crates/agent-runtime/SPEC.md
 references:
   - ../../DESIGN.md
 ---
@@ -19,23 +12,33 @@ references:
 
 ## 功能意图
 
-作为主服务的组装根，读取配置、创建各模块实现、启动后台任务和协议服务，并协调关闭。二进制入口只调用本模块。真实 CLI Adapter 由沙箱 session-service 装配，主服务装配 Channel 和 Agent Runtime 客户端。
+作为主服务的组装根，读取配置、创建 `flow-core` 服务、选择可选的 `sandbox-access` 实现、启动后台任务和协议服务，并协调关闭。二进制入口只调用本模块。真实 CLI Adapter 由沙箱 Runtime 的 session-service 装配，server 只负责 Gateway/ACP 接入和执行准入。
 
 ## 关键功能与验收
 
 ### 配置与依赖装配
 
-解析服务监听、存储位置、Gateway 连接和运行参数，按依赖顺序构造存储、业务服务、执行客户端和传输入口。默认网络监听地址为 0.0.0.0。真实 Runtime ACP 是显式 opt-in：`URSI_ACP_URL` 必须和 `URSI_SESSION_TOKEN` 或 `URSI_SESSION_TOKEN_FILE` 成对设置，可选 `URSI_CLIENT_TIMEOUT_SECS`；该配置只提供真实 Runner，不改变普通角色的默认执行器。
+解析服务监听、存储位置、Gateway 连接和运行参数，按依赖顺序构造存储、业务服务、执行客户端和传输入口。默认网络监听地址为 0.0.0.0。生产装配使用 Gateway 关联与运行专属绑定选择 ACP 端点。
 
 #### 验收
 
 - 给定有效配置，装配记录显示共享事务设施和对应服务实例正确注入。
 - 缺失必需配置、非法地址或无法打开存储时，启动失败并返回明确原因，不报告服务就绪。
-- 测试可以注入组件工厂或接口替身，运行生命周期测试无需 Docker 或模型服务。
-- ACP 只设置一侧、同时设置 token 环境变量与文件、或 timeout 越界时，装配在打开存储前明确拒绝。
-- 仅冻结的 `executorKind: "runtime-acp"` 选择真实 Runner。未配置时该节点明确失败，其他执行器类型和未指定类型仍走 MockRunner。
-- ACP 使用环境配置的 Runtime 会话地址和令牌；角色的模型连接仍须通过校验，但不用于配置或认证该会话。
-- 配置诊断与启动日志不打印凭据明文。
+- 进程环境含旧全局 ACP 地址、token、token 文件或超时变量时，在打开存储前返回迁移提示，诊断只列变量名。测试可以注入组件或接口替身，无需 Docker 或模型服务。
+- `sandbox-access` 默认启用。配置 `URSI_GATEWAY_URL` 与 `URSI_GATEWAY_KEY` 后，HTTP、MCP 和运行收尾共享一个 Gateway 客户端。两项均省略时可以启动，单项配置报错；配置诊断与日志不打印密钥。ACP 还需要管理员提供 `URSI_ACP_BINDINGS_DIR` 及匹配运行身份。
+- 无接入时可保存配置、创建与取消运行、查询历史、推进纯审批流程。需要远端执行时在调度前返回 503，节点尝试次数不增加。Gateway 就绪只证明资源就绪，不能代替已绑定到该运行的 ACP 或脚本执行客户端。
+- 使用生产装配与 `httptest` 验证 Gateway 请求、受理与就绪、重启重试、释放失败与确认；该测试不启动 Docker、Runtime 或真实模型。验证引擎成功分支可显式注入执行器；验证 Runtime 文本路径则使用 ACP WebSocket 协议对端。
+- 仅测试构建提供 `assemble_with_test_execution`。替身提供 Runner 响应和按轮次隔离的工作区。app 将同一个 `flow-core::runs::WorkspaceExecution` 注入脚本执行与资源释放入口，归档与 HTTP 查询共用本地产物存储。生产 `assemble` 无替身入口，未配置脚本通道时仍在调度前拒绝。
+
+### 本地产物查询
+
+HTTP 产物接口读取数据目录下的 `artifacts.db` 与独立的 `artifact-content/` 内容目录，无需 Gateway。runs 记录的节点声明不构成归档，查询不按声明路径访问文件。
+
+#### 验收
+
+- `GET /api/v1/artifacts` 列出已提交的归档元数据，`?runId=` 只列该运行，空集合返回 `{"items":[]}`。列表不含正文。
+- `GET /api/v1/artifacts/{id}` 按稳定归档 ID 返回对应轮次的记录。校验通过的 UTF-8 内容原样返回，空文件返回空字符串，非 UTF-8 对象只返回元数据。
+- 未知 ID 返回 404。已登记对象缺失、损坏或指向符号链接时返回 500，不回退到工作目录或其他运行、轮次的同名文件。
 
 ### 启动与后台任务
 
@@ -47,7 +50,8 @@ references:
 - 存储初始化成功后才启动消费该存储的业务服务与后台任务。
 - 中途组件启动失败时，已启动组件被关闭，监听与后台任务不残留。
 - 真实 SQLite 与 HTTP 组装后，可经接口保存配置、创建运行并查询状态。
-- 服务重启后，已持久化配置可读回，未完成运行由 runs 的恢复规则处理。
+- Server-only 集成测试经 HTTP 启动脚本，成功或非零退出都先归档声明文件再释放工作区，释放后仍可查询内容。部分归档失败时，节点报告失败，未完成归档的工作区保留；本次测试进程内的收尾重试补齐归档后才释放。独立运行：`cargo test -p ursi-server --lib server_only_execution`。
+- 服务重启后，已持久化配置可读回，收尾扫描可重试未确认的释放。引擎提供租约接管规则，当前 app 的租约扫描尚未自动枚举并接管未完成运行。
 
 ### 有序关闭
 
@@ -62,6 +66,6 @@ references:
 
 ## 交付与验收边界
 
-独立验收使用配置夹具、可记录启动关闭的组件和故障注入，验证装配、就绪、回滚与关闭顺序。当前真实接入已到 Runtime ACP WebSocket 与 Flow Runner 层，可用 `server/tests/real_runtime_acp.rs` 在显式 opt-in 下核验；尚未声称 Gateway 准备、沙箱 SSH/SFTP、真实模型和产物回收组成的整链完成。完整 app 联合验收仍需真实 Gateway、Channel、Agent Runtime、沙箱和 artifacts 证据。
+独立验收使用配置夹具、可记录启动关闭的组件和故障注入，验证装配、就绪、回滚与关闭顺序。当前 server 集成测试覆盖真实 SQLite、HTTP、Gateway 替身和 mock 执行接口；真实 Gateway、Channel、Runtime、模型及产物链路需要额外环境和独立证据，尚不因这些测试完成而视为生产执行已完成。
 
 app 不承载角色、流程或节点业务规则。各模块行为以自身 SPEC 为准，主服务集成测试负责证明组合后的配置和调用关系正确。

@@ -1,13 +1,12 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - crates/domain/SPEC.md
-  - crates/agent-runtime/SPEC.md
-  - crates/channel/SPEC.md
-  - crates/mcp-server/SPEC.md
+  - ../flow-core/SPEC.md
+  - ../sandbox-access/SPEC.md
 references:
   - DESIGN.md
-  - ../ursi-sandbox/gateway/CONTRACT.md
+  - ../contracts/gateway/v1/README.md
+  - ../sandbox-access/ACP.md
   - REAL-RUNTIME-ACP.md
 ---
 
@@ -15,77 +14,49 @@ references:
 
 ## 功能意图
 
-server 是 ursi-flow 的主服务，以一个 Rust crate 提供流程与角色管理、可恢复的运行执行、人工审批、产物管理和业务接入。内部按业务域及状态所有权组织，模块经公开接口协作；各业务域可使用真实本域存储与外部接口替身独立交付，真实执行链路通过联合验收确认。
-
-`server/src` 承载主服务内部模块，`server/crates` 保持独立库布局。Channel 管连接，Agent Runtime 管会话控制，真实 CLI Adapter 在沙箱 session-service 内执行。Gateway 拥有沙箱资源生命周期。
+server 是 ursi-flow 的主服务 crate，提供配置加载、业务服务装配、HTTP/SSE、MCP、静态资源和后台生命周期。业务模型、状态机、存储与可替换执行端口由 `flow-core` 拥有；Gateway、Channel 和 Runtime ACP 接入由可选的 `sandbox-access` 提供。
 
 ## 模块地图
 
 | 模块 | 职责与规格 |
-|---|---|
-| workflows | [流程定义、结构校验和角色引用](src/workflows/SPEC.md) |
-| roles | [角色配置、Skills 文件、MCP 配置及引用约束](src/roles/SPEC.md) |
-| runs | [快照、运行状态、engine、审批、恢复和事件](src/runs/SPEC.md) |
-| artifacts | [产物内容、元数据、执行归属和契约检查](src/artifacts/SPEC.md) |
-| sandboxes | [平台资源关联、Gateway 请求和连接接入](src/sandboxes/SPEC.md) |
-| connections | [模型连接、凭据引用和配置解析](src/connections/SPEC.md) |
-| storage | [共享数据库、迁移、事务与内容存储基础能力](src/storage/SPEC.md) |
-| transport | [HTTP、SSE/WS、MCP 与静态页面接入](src/transport/SPEC.md) |
-| app | [配置、依赖组装、启动与关闭](src/app/SPEC.md) |
+| --- | --- |
+| `src/app` | 配置、依赖组装、启动、后台任务和有序关闭，见 [app SPEC](src/app/SPEC.md) |
+| `src/transport` | HTTP、SSE、MCP 传输与静态页面接入，见 [transport SPEC](src/transport/SPEC.md) |
+| `src/mcp` | MCP 工具域、运行上下文和后端适配，见 [mcp SPEC](src/mcp/SPEC.md) |
+| `flow-core` | 被 server 组装的业务域和持久化边界，见 [core SPEC](../flow-core/SPEC.md) |
+| `sandbox-access` | 可选的 Gateway、Channel 和 ACP 接入，见 [接入 SPEC](../sandbox-access/SPEC.md) |
 
-engine 是 runs 的内部实现，审批与事件遵循同一状态提交路径。各业务域拥有本域 repository，storage 提供可共用的事务上下文。依赖关系、界面映射与独立验收矩阵见 [模块设计](DESIGN.md)。
+HTTP 与 MCP 经 app 注入的业务服务访问同一份运行和沙箱关联。独立配置、启动与测试见 [Server 使用说明](README.md)。
 
 ## 关键功能与验收
 
-### 配置管理与运行实例化
+### 配置与应用装配
 
-workflows 管理流程，roles 管理完整角色配置，connections 管理模型连接与凭据引用。runs 在一致事务中读取配置并冻结运行快照，后续调度使用快照。
-
-#### 验收
-
-- 各配置模块分别用临时数据库和依赖替身验证完整管理用例及错误分支。
-- 联合 workflows、roles、connections、storage，在并发保存引用与删除被引用配置时拒绝冲突操作，持久化数据没有悬空引用。
-- 联合 runs 与配置域验证创建后的流程、角色、模型连接和技能内容修改不改变旧运行快照，新运行读取新配置。
-- 缺失资源或快照保存失败时不产生可启动的半成品运行，快照及接口响应不包含凭据明文。
-
-### 运行、审批与恢复
-
-runs 统一管理节点调度、重试、审批返工、取消、租约和崩溃恢复。首版按 DAG 依赖顺序执行，依赖满足后才启动下游。
+从环境变量构造监听、数据目录、静态资源和可选 Gateway/ACP 配置，初始化 core 存储和服务，再绑定 HTTP 并启动后台扫描。
 
 #### 验收
 
-- 使用 mock 执行接口可独立跑通创建、顺序执行、等待审批、放行、打回、失败重试和取消。
-- 打回仅允许传递祖先，重试与返工次数受到限制，非法操作返回错误且不改变状态。
-- 真实 SQLite 重开后可接管租约到期运行，过期代数提交被拒绝，结果未知的任务先核实再决定后续操作。
+- 默认可在 `0.0.0.0:8080` 启动，数据目录不存在时创建目录；非法地址、存储失败或 Gateway 配置只设置一项时启动失败。
+- 无 Gateway 时应用仍可启动并处理配置、查询和审批类操作；依赖沙箱的执行请求在执行前返回 `sandbox_unavailable`，不伪造成功。
+- 关闭时先停止后台和 HTTP 接收，再释放业务服务与存储；监听和后台句柄最终释放。
 
-### 状态与事件一致性
+### 业务协议与事件接入
 
-runs 在同一事务中保存状态和对应有序事件，提交成功后广播。transport 使用持久事件进行历史重放、断线续传和通知滞后补读。
-
-#### 验收
-
-- 联合 runs、storage 注入提交失败，状态与事件同时回滚。
-- 提交成功后广播前崩溃，重启后状态和事件均可查询。
-- 联合 transport，在订阅交界、重复通知、慢消费者和断线重连场景下，事件按游标输出且不丢不重。
-
-### 执行环境与产物交付
-
-sandboxes 接入 Gateway 与 Channel，runs 调用 Agent Runtime 控制沙箱会话，artifacts 保存回收内容和执行归属。运行结果与资源清理结果分别记录。
+transport 将请求路由到 core 服务，mcp 将工具域装配到同一状态，事件从持久化记录提供历史读取和实时通知。server 不直接暴露 Gateway 原始响应或密钥。
 
 #### 验收
 
-- 各模块通过接口替身分别验证就绪、执行调用、产物校验与释放请求的成功和故障路径。
-- Flow 已提供显式 opt-in 的 Runtime ACP WebSocket 核验入口，验证公开 client、提示词事件和 end_turn 收尾；Gateway、Channel、SSH/SFTP、真实模型、Skills/MCP 配置和产物回收仍需独立联合证据，不能由该入口代替。
-- 返工后旧尝试的迟到产物不能成为当前有效输出，必需产物缺失时下游不执行。
-- 释放失败时可查询、可重试，资源未确认释放前不标记释放成功。
+- HTTP、MCP 和运行收尾共享同一沙箱关联，错误映射保持资源不存在、冲突、Gateway 鉴权/协议错误和不可用的区别。
+- 事件订阅、历史重放和断线补读使用持久事件身份，不因广播滞后丢失已提交事件。
+- 静态资源缺失不阻止 API 启动，路径回退不吞掉 `/api` 和缺失资源错误。
 
-### 应用接入与交付
+### 当前远端执行边界
 
-transport 暴露业务协议，app 组装服务和后台任务，web 通过同一接口使用业务能力。程序支持内嵌页面资源与配置目录回退。
+当前生产装配使用 Gateway v1 客户端和 ACP 绑定来准入 Pi 文本执行。脚本执行、文件产物回收和完整 Channel 端点绑定尚未接入 server 的生产装配；相关能力必须由独立替身测试或后续联合验收明确证明。
 
 #### 验收
 
-- transport 用业务替身独立验证参数、错误映射、身份上下文与流式协议；app 用组件替身独立验证装配和启动关闭失败路径。
-- 联合真实 SQLite、HTTP 和 mock 执行接口，完成角色配置、流程引用、启动运行、审批和查询产物的应用闭环。
-- 重启后配置与运行记录仍可查询，服务启动失败不报告就绪，关闭后监听和后台句柄释放。
-- 真实执行链路和页面操作分别提供联合验收证据，不以接口替身通过替代；当前仓库仅记录 Runtime ACP 层已接入，不声称完整整链已通过。
+- Gateway consumer 测试使用 server 生产装配和 HTTP 替身验证受理、实时就绪、释放确认、超时、重启和敏感信息隔离。
+- 沙箱未就绪或缺少匹配身份时，启动请求在调度前返回 503，节点尝试次数不增加。已通过准入的运行仍须在执行时核验 Pi 角色和模型。
+- 冻结为旧 `runtime-acp` 的运行仍可查询。启动返回迁移冲突，快照和尝试次数保持不变。
+- 正式 Runtime 联验需记录当前版本、镜像、bundle、模型来源和会话回收结果。真实 Gateway 生命周期、模型推理和文件产物分别需要相应环境的证据。

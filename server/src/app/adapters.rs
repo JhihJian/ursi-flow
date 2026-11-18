@@ -8,25 +8,22 @@
 //!    适配器不拼接任何字段值，凭据明文不可能进入错误文本。
 //!
 //! ## 已知装配缺口（域接口现状，在 SPEC 交付说明中记录，不在此修补）
-//! - `RunRepository` 没有按 id 集合/全表列举运行的查询，
-//!   [`RunsApiAdapter::list_runs`] 与 [`ArtifactsApiAdapter::list_artifacts`]
-//!   的无过滤列举没有事实来源可读，返回 500；
 //! - runs 事件序号是 `i64`，transport 游标是 `u64`（见 [`RunEventFeed`]）。
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::task::block_in_place;
-use ursi_domain::{NodeType, WorkflowDefinition};
+use flow_core::domain::{NodeType, WorkflowDefinition};
 
+use crate::artifacts::{ArtifactError, ArtifactRecord, ArtifactStore};
 use crate::connections::{ConnectionChanges, ConnectionError, ConnectionStore, NewConnection, ServiceType};
 use crate::storage::StoreError;
 use crate::transport::error::ApiError;
 use crate::runs::RunRepository;
 use crate::transport::ports::{
     ArtifactDto, ArtifactsApi, ConnectionDto, ConnectionsApi, CreateRunRequest, EventFeed,
-    EventStream, NumberedEvent, PrepareSandboxRequest, RoleDto, RolesApi, RunDto, RunsApi,
-    SandboxDto, SandboxesApi, WorkflowApi,
+    EventStream, NumberedEvent, RoleDto, RolesApi, RunDto, RunsApi, WorkflowApi,
 };
 use crate::workflows::{WorkflowStore, WorkflowError};
 
@@ -171,7 +168,7 @@ impl WorkflowApi for WorkflowApiAdapter {
 pub(crate) fn role_dto_to_definition(dto: RoleDto) -> Result<crate::roles::RoleDefinition, ApiError> {
     use crate::roles::{McpServerConfig, RoleDefinition, SkillFile, SkillPackage};
 
-    let base = ursi_domain::Role {
+    let base = flow_core::domain::Role {
         id: dto.id,
         name: dto.name,
         prompt: dto.prompt,
@@ -190,11 +187,12 @@ pub(crate) fn role_dto_to_definition(dto: RoleDto) -> Result<crate::roles::RoleD
         executor_id: None,
     };
     let executor_kind = dto.executor_kind.as_deref()
-        .map(|raw| ursi_domain::ExecutorKind::parse(raw)
+        .map(|kind| flow_core::domain::ExecutorKind::parse(kind)
             .ok_or_else(|| ApiError::bad_request("executorKind 不能为空")))
         .transpose()?;
-    let skill_package = SkillPackage::for_executor(
-        executor_kind.as_ref(), crate::roles::SKILL_ENTRY,
+    reject_legacy_executor(executor_kind.as_ref().map(|kind| kind.as_str()))?;
+    let skill_package = SkillPackage::with_entry(
+        crate::roles::SKILL_ENTRY,
         dto.skills
             .into_iter()
             .map(|s| SkillFile::new(s.path, s.content.into_bytes()))
@@ -428,9 +426,17 @@ impl ConnectionsApi for ConnectionsApiAdapter {
 // runs
 // ---------------------------------------------------------------------------
 
+fn reject_legacy_executor(kind: Option<&str>) -> Result<(), ApiError> {
+    if kind.map(str::trim) == Some("runtime-acp") {
+        return Err(ApiError::conflict("旧执行器 runtime-acp 需要迁移：请显式配置 pi 角色及其 Runtime 模型，为新运行绑定独立身份。旧快照不能改写或重放"));
+    }
+    Ok(())
+}
+
 /// [`RunsApi`] 的 runs 域适配器：变更入口走 Engine，读取走 RunRepository；
 /// 创建运行时从 workflows/roles 一致读取定义与角色配置并冻结快照。
 pub(crate) struct RunsApiAdapter {
+    admission: Option<Arc<super::execution::ProductionRunner>>,
     engine: Arc<crate::runs::engine::Engine>,
     store: Arc<crate::runs::SqliteRunStore>,
     workflow_store: Arc<WorkflowStore>,
@@ -438,13 +444,36 @@ pub(crate) struct RunsApiAdapter {
 }
 
 impl RunsApiAdapter {
-    pub(crate) fn new(
+    pub(super) fn new(
         engine: Arc<crate::runs::engine::Engine>,
         store: Arc<crate::runs::SqliteRunStore>,
         workflow_store: Arc<WorkflowStore>,
         roles_service: Arc<crate::roles::RoleService<super::gateways::RolesConnectionGateway>>,
+        admission: Option<Arc<super::execution::ProductionRunner>>,
     ) -> Self {
-        Self { engine, store, workflow_store, roles_service }
+        Self { engine, store, workflow_store, roles_service, admission }
+    }
+
+    async fn admit(&self, id: &str) -> Result<(), ApiError> {
+        let snapshot = self.store.get_snapshot(id).await
+            .map_err(|e| storage_to_api(&e))?
+            .ok_or_else(|| ApiError::not_found(format!("运行 {id}")))?;
+        for role in snapshot.roles.values() {
+            reject_legacy_executor(role["executorKind"].as_str())?;
+        }
+        if let Some(runner) = &self.admission {
+            runner.admit(id, &snapshot.workflow).await?;
+        }
+        Ok(())
+    }
+
+    // 清理与执行分别提交。运行终态即使清理失败仍可被调用方读到。
+    async fn finish(&self, id: &str) -> Result<RunDto, ApiError> {
+        let run = self.load_dto(id).await?;
+        if matches!(run.status.as_str(), "succeeded" | "cancelled" | "failed") {
+            self.engine.release_resources(id).await.map_err(engine_to_api)?;
+        }
+        Ok(run)
     }
 
     async fn load_dto(&self, run_id: &str) -> Result<RunDto, ApiError> {
@@ -491,11 +520,27 @@ impl RunsApi for RunsApiAdapter {
                 .export_freezable(&role_id)
                 .await
                 .map_err(roles_to_api)?;
-            let role_json = serde_json::to_value(crate::runs::FrozenRole {
-                role: freezable.definition.base,
-                executor_kind: freezable.definition.executor_kind,
-            })
-                .map_err(|_| ApiError::Internal)?;
+            let def = freezable.definition;
+            reject_legacy_executor(def.executor_kind.as_ref().map(|kind| kind.as_str()))?;
+            let mut role = def.base;
+            // Runtime v1 accepts text only. Freeze a single Markdown skill as text;
+            // leave multi-file packages intact so the execution adapter rejects them.
+            if def.executor_kind.as_ref().map(|k| k.as_str()) == Some("pi")
+                && role.skills.as_slice() == [crate::roles::SKILL_ENTRY]
+                && def.skill_package.files.len() == 1
+            {
+                let entry = def.skill_package.file(crate::roles::SKILL_ENTRY).ok_or(ApiError::Internal)?;
+                let instructions = std::str::from_utf8(&entry.bytes).map_err(|_| ApiError::Internal)?;
+                role.prompt.push_str("\n\nSKILL.md:\n");
+                role.prompt.push_str(instructions);
+                role.skills.clear();
+            }
+            if def.executor_kind.as_ref().map(|k| k.as_str()) == Some("pi") && !request.input.is_empty() {
+                role.prompt.push_str("\n\n运行任务：\n");
+                role.prompt.push_str(&request.input);
+            }
+            let mut role_json = serde_json::to_value(role).map_err(|_| ApiError::Internal)?;
+            role_json["executorKind"] = serde_json::json!(def.executor_kind);
             frozen.insert(role_id, role_json);
         }
         let run = self
@@ -507,29 +552,32 @@ impl RunsApi for RunsApiAdapter {
     }
 
     async fn start_run(&self, run_id: &str) -> Result<RunDto, ApiError> {
+        self.admit(run_id).await?;
         self.engine.start_run(run_id).await.map_err(engine_to_api)?;
-        self.load_dto(run_id).await
+        self.finish(run_id).await
     }
 
     async fn approve(&self, run_id: &str, node_id: &str) -> Result<RunDto, ApiError> {
+        self.admit(run_id).await?;
         self.engine
             .approve(run_id, node_id)
             .await
             .map_err(engine_to_api)?;
-        self.load_dto(run_id).await
+        self.finish(run_id).await
     }
 
     async fn reject(&self, run_id: &str, node_id: &str, target: &str) -> Result<RunDto, ApiError> {
+        self.admit(run_id).await?;
         self.engine
             .reject(run_id, node_id, target)
             .await
             .map_err(engine_to_api)?;
-        self.load_dto(run_id).await
+        self.finish(run_id).await
     }
 
     async fn cancel_run(&self, run_id: &str) -> Result<RunDto, ApiError> {
         self.engine.cancel(run_id).await.map_err(engine_to_api)?;
-        self.load_dto(run_id).await
+        self.finish(run_id).await
     }
 
     async fn get_run(&self, run_id: &str) -> Result<RunDto, ApiError> {
@@ -537,9 +585,12 @@ impl RunsApi for RunsApiAdapter {
     }
 
     async fn list_runs(&self) -> Result<Vec<RunDto>, ApiError> {
-        // 已知缺口：RunRepository 未提供全表/按状态列举入口，没有事实
-        // 来源可读；不伪造数据，返回内部错误（SPEC 交付说明记录）。
-        Err(ApiError::Internal)
+        let rows = self.store.list_runs(&[]).await.map_err(|e| storage_to_api(&e))?;
+        let mut result = Vec::with_capacity(rows.len());
+        for row in rows {
+            result.push(self.load_dto(&row.id).await?);
+        }
+        Ok(result)
     }
 }
 
@@ -547,171 +598,57 @@ impl RunsApi for RunsApiAdapter {
 // artifacts
 // ---------------------------------------------------------------------------
 
-/// [`ArtifactsApi`] 的适配器：基于 runs 的节点产物归属记录投影元数据。
-/// artifacts 域当前只有仓储接口骨架（无内容读取实现），content 恒为
-/// None（SPEC 交付说明记录该边界）。
+/// 只投影已提交的归档记录；runs 的节点声明不证明内容存在。
 pub(crate) struct ArtifactsApiAdapter {
-    runs_store: Arc<crate::runs::SqliteRunStore>,
+    store: Arc<ArtifactStore>,
 }
 
 impl ArtifactsApiAdapter {
-    pub(crate) fn new(runs_store: Arc<crate::runs::SqliteRunStore>) -> Self {
-        Self { runs_store }
+    pub(crate) fn new(store: Arc<ArtifactStore>) -> Self {
+        Self { store }
     }
 
-    fn to_dto(record: crate::runs::NodeArtifactRecord) -> ArtifactDto {
-        ArtifactDto {
-            id: format!(
-                "art-{}-{}-{}-{}",
-                record.run_id, record.node_id, record.attempt, record.name
-            ),
-            name: record.name.clone(),
-            path: record.path.clone(),
-            media_type: record.media_type.clone(),
-            run_id: record.run_id.clone(),
-            node_id: record.node_id.clone(),
-            attempt: record.attempt,
-            content: None,
-        }
+    fn to_dto(record: ArtifactRecord, content: Option<String>) -> Result<ArtifactDto, ApiError> {
+        Ok(ArtifactDto {
+            id: record.artifact_id,
+            name: record.name,
+            path: record.path,
+            media_type: record.media_type,
+            run_id: record.run_id,
+            node_id: record.node_id,
+            attempt: record.attempt.try_into().map_err(|_| ApiError::Internal)?,
+            content,
+        })
     }
 }
 
 #[async_trait]
 impl ArtifactsApi for ArtifactsApiAdapter {
     async fn get_artifact(&self, artifact_id: &str) -> Result<ArtifactDto, ApiError> {
-        // 归属记录无按 ID 索引；本阶段以「末段即产物名 + run 前缀解析」
-        // 不可靠为由，按全部运行缺失入口的同一缺口处理：单产物的稳定
-        // 标识读取依赖 artifacts 域补齐仓储实现（SPEC 交付说明记录）。
-        let _ = artifact_id;
-        Err(ApiError::Internal)
+        let store = self.store.clone();
+        let id = artifact_id.to_owned();
+        let object = tokio::task::spawn_blocking(move || store.get(&id))
+            .await
+            .map_err(|_| ApiError::Internal)?
+            .map_err(|err| match err {
+                ArtifactError::NotFound(_) => ApiError::not_found("产物"),
+                _ => ApiError::Internal,
+            })?;
+        // content 是可选文本，二进制不做有损替换。
+        Self::to_dto(object.record, String::from_utf8(object.bytes).ok())
     }
 
     async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactDto>, ApiError> {
-        match run_id {
-            Some(run_id) => {
-                let records = self
-                    .runs_store
-                    .list_node_artifacts(run_id)
-                    .await
-                    .map_err(|e| storage_to_api(&e))?;
-                Ok(records.into_iter().map(Self::to_dto).collect())
-            }
-            None => {
-                // 无过滤列举依赖全运行入口（同 list_runs 缺口）。
-                Err(ApiError::Internal)
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// sandboxes
-// ---------------------------------------------------------------------------
-
-/// [`SandboxesApi`] 的 sandboxes 域适配器。域接口以 run_id 为主体；
-/// DTO 的 id 字段：未分配沙箱标识时取空串、否则取平台沙箱 ID，run_id
-/// 由 dedicated 字段承载（GET 按沙箱 ID 查询的路径语义由 SPEC 交付说明
-/// 记录为本阶段以 run 维度为主）。
-pub(crate) struct SandboxesApiAdapter {
-    store: Arc<crate::sandboxes::SandboxStore>,
-}
-
-impl SandboxesApiAdapter {
-    pub(crate) fn new(store: Arc<crate::sandboxes::SandboxStore>) -> Self {
-        Self { store }
-    }
-
-    fn to_dto(view: crate::sandboxes::PlatformView) -> SandboxDto {
-        SandboxDto {
-            id: view.sandbox_id.unwrap_or_default(),
-            run_id: view.run_id.clone(),
-            status: view.state.as_str().to_string(),
-            endpoint: view.endpoints.first().map(|e| e.address.clone()),
-        }
-    }
-}
-
-#[async_trait]
-impl SandboxesApi for SandboxesApiAdapter {
-    async fn prepare(&self, request: PrepareSandboxRequest) -> Result<SandboxDto, ApiError> {
-        // 冻结规格投影：spec JSON 反序列化为域 SandboxSpec（镜像必填，
-        // 其余缺省）。非法规格是请求错误。
-        let spec: crate::sandboxes::SandboxSpec = serde_json::from_value(request.spec)
-            .map_err(|e| ApiError::bad_request(format!("沙箱规格无效：{e}")))?;
-        // 域服务（SandboxService）构造依赖 GatewayClient（返回类型
-        // GatewaySandboxView 未公开导出，见 mod.rs 缺口说明）；本阶段
-        // 落本地请求记录（PreparePending，幂等键=运行标识），平台受理
-        // 待控制面接线。
-        block_in_place(|| {
-            self.store
-                .request_record(&request.run_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))?;
-            self.store
-                .record_request(&crate::sandboxes::RequestRecord {
-                    run_id: request.run_id.clone(),
-                    sandbox_id: None,
-                    prepare_operation_id: request.run_id.clone(),
-                    state: crate::sandboxes::DomainSandboxState::PreparePending,
-                    spec_json: serde_json::to_string(&spec)
-                        .map_err(|e| ApiError::bad_request(format!("沙箱规格序列化失败：{e}")))?,
-                    gateway_summary: None,
-                    last_error: None,
-                    updated_at: crate::sandboxes::now_rfc3339(),
-                })
-                .map_err(|e| ApiError::conflict(e.to_string()))?;
-            self.store
-                .platform_view(&request.run_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))?
-                .map(Self::to_dto)
-                .ok_or_else(|| ApiError::Internal)
+        let store = self.store.clone();
+        let run_id = run_id.map(str::to_owned);
+        let records = tokio::task::spawn_blocking(move || match run_id {
+            Some(id) => store.list(&id, None, None, None),
+            None => store.list_all(),
         })
-    }
-
-    async fn get_sandbox(&self, sandbox_id: &str) -> Result<SandboxDto, ApiError> {
-        // 域接口按 run 维度管理关联；以 run_id 查询本地平台视图。
-        let view = block_in_place(|| {
-            self.store
-                .platform_view(sandbox_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))
-        })?
-        .ok_or_else(|| ApiError::not_found(format!("沙箱 {sandbox_id}")))?;
-        Ok(Self::to_dto(view))
-    }
-
-    async fn list_sandboxes(&self, run_id: Option<&str>) -> Result<Vec<SandboxDto>, ApiError> {
-        match run_id {
-            Some(run_id) => {
-                let view = block_in_place(|| {
-                    self.store
-                        .platform_view(run_id)
-                        .map_err(|e| ApiError::conflict(e.to_string()))
-                })?
-                .ok_or_else(|| ApiError::not_found(format!("沙箱 {run_id}")))?;
-                Ok(vec![Self::to_dto(view)])
-            }
-            None => Err(ApiError::Internal), // 无全表列举入口（同 list_runs 缺口）
-        }
-    }
-
-    async fn release(&self, sandbox_id: &str) -> Result<SandboxDto, ApiError> {
-        // 释放即本地关联收敛为 Released（控制面接入前的明确边界，不
-        // 伪造平台侧已回收）；对应 MCP stop 与运行收尾同一语义。
-        block_in_place(|| {
-            self.store
-                .platform_view(sandbox_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))?
-                .ok_or_else(|| ApiError::not_found(format!("沙箱 {sandbox_id}")))?;
-            self.store
-                .record_released(sandbox_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))
-        })?;
-        let view = block_in_place(|| {
-            self.store
-                .platform_view(sandbox_id)
-                .map_err(|e| ApiError::conflict(e.to_string()))
-        })?
-        .expect("记录存在");
-        Ok(Self::to_dto(view))
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .map_err(|_| ApiError::Internal)?;
+        records.into_iter().map(|r| Self::to_dto(r, None)).collect()
     }
 }
 

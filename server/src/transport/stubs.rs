@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use ursi_domain::{EventCategory, EventPhase, TelemetryEvent, WorkflowDefinition};
+use flow_core::domain::{EventCategory, EventPhase, TelemetryEvent, WorkflowDefinition};
 
 use crate::transport::error::ApiError;
 use crate::transport::ports::{
@@ -475,13 +475,15 @@ impl SandboxesApi for FakeSandboxes {
         let sbx = SandboxDto {
             id,
             run_id: request.run_id,
-            status: "running".into(),
+            status: "Ready".into(),
             endpoint: Some("10.0.0.1:22".into()),
+            last_observed: false,
+            updated_at: "2026-01-01T00:00:00Z".into(),
         };
         self.rows
             .lock()
             .unwrap()
-            .insert(sbx.id.clone(), sbx.clone());
+            .insert(sbx.run_id.clone(), sbx.clone());
         Ok(sbx)
     }
 
@@ -506,6 +508,10 @@ impl SandboxesApi for FakeSandboxes {
             .values()
             .filter(|s| run_id.is_none_or(|r| s.run_id == r))
             .cloned()
+            .map(|mut row| {
+                row.last_observed = true;
+                row
+            })
             .collect();
         rows.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(rows)
@@ -520,7 +526,7 @@ impl SandboxesApi for FakeSandboxes {
         let sbx = rows
             .get_mut(sandbox_id)
             .ok_or_else(|| ApiError::not_found(format!("沙箱 {sandbox_id}")))?;
-        sbx.status = "released".into();
+        sbx.status = "Released".into();
         Ok(sbx.clone())
     }
 }
@@ -791,9 +797,9 @@ pub fn test_app_state(
     let events = std::sync::Arc::new(FakeEventFeed::default());
 
     let mcp = crate::transport::mcp::assemble_mcp_server(&[
-        ursi_mcp_server::Domain::Ops(std::sync::Arc::new(McpOpsStub)),
-        ursi_mcp_server::Domain::Control(std::sync::Arc::new(McpControlStub::default())),
-        ursi_mcp_server::Domain::Internal(std::sync::Arc::new(McpInternalStub::default())),
+        crate::mcp::Domain::Ops(std::sync::Arc::new(McpOpsStub)),
+        crate::mcp::Domain::Control(std::sync::Arc::new(McpControlStub::default())),
+        crate::mcp::Domain::Internal(std::sync::Arc::new(McpInternalStub::default())),
     ])
     .expect("MCP 替身装配成功");
 
@@ -824,19 +830,19 @@ pub fn test_app_state(
 struct McpOpsStub;
 
 #[async_trait]
-impl ursi_mcp_server::OpsBackend for McpOpsStub {
+impl crate::mcp::OpsBackend for McpOpsStub {
     async fn list_sandboxes(
         &self,
         _run_id: Option<&str>,
-    ) -> Result<Vec<ursi_mcp_server::SandboxSummary>, ursi_mcp_server::BackendFailure> {
+    ) -> Result<Vec<crate::mcp::SandboxSummary>, crate::mcp::BackendFailure> {
         Ok(Vec::new())
     }
 
     async fn get_sandbox(
         &self,
         sandbox_id: &str,
-    ) -> Result<ursi_mcp_server::SandboxSummary, ursi_mcp_server::BackendFailure> {
-        Ok(ursi_mcp_server::SandboxSummary {
+    ) -> Result<crate::mcp::SandboxSummary, crate::mcp::BackendFailure> {
+        Ok(crate::mcp::SandboxSummary {
             sandbox_id: sandbox_id.into(),
             status: "running".into(),
             owner_run_id: "run-1".into(),
@@ -847,21 +853,21 @@ impl ursi_mcp_server::OpsBackend for McpOpsStub {
     async fn restart_sandbox(
         &self,
         _sandbox_id: &str,
-    ) -> Result<ursi_mcp_server::OpsOutcome, ursi_mcp_server::BackendFailure> {
+    ) -> Result<crate::mcp::OpsOutcome, crate::mcp::BackendFailure> {
         Ok(true)
     }
 
     async fn stop_sandbox(
         &self,
         _sandbox_id: &str,
-    ) -> Result<ursi_mcp_server::OpsOutcome, ursi_mcp_server::BackendFailure> {
+    ) -> Result<crate::mcp::OpsOutcome, crate::mcp::BackendFailure> {
         Ok(true)
     }
 
     async fn gateway_status(
         &self,
-    ) -> Result<ursi_mcp_server::GatewayStatus, ursi_mcp_server::BackendFailure> {
-        Ok(ursi_mcp_server::GatewayStatus {
+    ) -> Result<crate::mcp::GatewayStatus, crate::mcp::BackendFailure> {
+        Ok(crate::mcp::GatewayStatus {
             reachable: true,
             detail: "ok".into(),
         })
@@ -870,37 +876,37 @@ impl ursi_mcp_server::OpsBackend for McpOpsStub {
 
 /// MCP 控制域替身：控制域工具面（run_id 从工具参数读取）。
 struct McpControlStub {
-    inner: ursi_mcp_server::stubs::RecordingControlBackend,
+    inner: crate::mcp::stubs::RecordingControlBackend,
 }
 
 impl Default for McpControlStub {
     fn default() -> Self {
         McpControlStub {
-            inner: ursi_mcp_server::stubs::recording_control_backend(),
+            inner: crate::mcp::stubs::recording_control_backend(),
         }
     }
 }
 
 #[async_trait]
-impl ursi_mcp_server::ControlBackend for McpControlStub {
+impl crate::mcp::ControlBackend for McpControlStub {
     async fn get_run(
         &self,
         run_id: &str,
-    ) -> Result<ursi_mcp_server::RunSummary, ursi_mcp_server::BackendFailure> {
+    ) -> Result<crate::mcp::RunSummary, crate::mcp::BackendFailure> {
         self.inner.get_run(run_id).await
     }
 
     async fn list_runs(
         &self,
         status: Option<&str>,
-    ) -> Result<Vec<ursi_mcp_server::RunSummary>, ursi_mcp_server::BackendFailure> {
+    ) -> Result<Vec<crate::mcp::RunSummary>, crate::mcp::BackendFailure> {
         self.inner.list_runs(status).await
     }
 
     async fn cancel_run(
         &self,
         run_id: &str,
-    ) -> Result<ursi_mcp_server::OpsOutcome, ursi_mcp_server::BackendFailure> {
+    ) -> Result<crate::mcp::OpsOutcome, crate::mcp::BackendFailure> {
         self.inner.cancel_run(run_id).await
     }
 
@@ -909,21 +915,21 @@ impl ursi_mcp_server::ControlBackend for McpControlStub {
         run_id: &str,
         node_id: &str,
         approved: bool,
-    ) -> Result<ursi_mcp_server::OpsOutcome, ursi_mcp_server::BackendFailure> {
+    ) -> Result<crate::mcp::OpsOutcome, crate::mcp::BackendFailure> {
         self.inner.approve(run_id, node_id, approved).await
     }
 }
 
 /// MCP 内部域替身：带归属产物，用于越权场景。
 struct McpInternalStub {
-    inner: ursi_mcp_server::stubs::RecordingInternalBackend,
+    inner: crate::mcp::stubs::RecordingInternalBackend,
 }
 
 impl Default for McpInternalStub {
     fn default() -> Self {
         McpInternalStub {
-            inner: ursi_mcp_server::stubs::recording_internal_backend(vec![
-                ursi_mcp_server::ArtifactView {
+            inner: crate::mcp::stubs::recording_internal_backend(vec![
+                crate::mcp::ArtifactView {
                     artifact_id: "art-1".into(),
                     name: "报告".into(),
                     path: "out/report.md".into(),
@@ -936,18 +942,18 @@ impl Default for McpInternalStub {
 }
 
 #[async_trait]
-impl ursi_mcp_server::InternalBackend for McpInternalStub {
+impl crate::mcp::InternalBackend for McpInternalStub {
     async fn get_run_status(
         &self,
         run_id: &str,
-    ) -> Result<ursi_mcp_server::RunSummary, ursi_mcp_server::InternalBackendError> {
+    ) -> Result<crate::mcp::RunSummary, crate::mcp::InternalBackendError> {
         self.inner.get_run_status(run_id).await
     }
 
     async fn list_nodes(
         &self,
         run_id: &str,
-    ) -> Result<Vec<ursi_mcp_server::NodeSnapshot>, ursi_mcp_server::InternalBackendError> {
+    ) -> Result<Vec<crate::mcp::NodeSnapshot>, crate::mcp::InternalBackendError> {
         self.inner.list_nodes(run_id).await
     }
 
@@ -955,21 +961,21 @@ impl ursi_mcp_server::InternalBackend for McpInternalStub {
         &self,
         run_id: &str,
         artifact_id: &str,
-    ) -> Result<ursi_mcp_server::ArtifactView, ursi_mcp_server::InternalBackendError> {
+    ) -> Result<crate::mcp::ArtifactView, crate::mcp::InternalBackendError> {
         self.inner.get_artifact(run_id, artifact_id).await
     }
 
     async fn list_artifacts(
         &self,
         run_id: &str,
-    ) -> Result<Vec<ursi_mcp_server::ArtifactView>, ursi_mcp_server::InternalBackendError> {
+    ) -> Result<Vec<crate::mcp::ArtifactView>, crate::mcp::InternalBackendError> {
         self.inner.list_artifacts(run_id).await
     }
 }
 
 /// 构造测试工作流定义。
 pub fn sample_workflow(id: &str) -> WorkflowDefinition {
-    ursi_domain::parse_workflow(&format!(
+    flow_core::domain::parse_workflow(&format!(
         r#"{{"id":"{id}","name":"demo","nodes":[{{"id":"n1","name":"第一步","type":"script","script":"echo hi"}}],"edges":[]}}"#
     ))
     .unwrap()

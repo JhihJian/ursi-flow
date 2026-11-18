@@ -13,24 +13,22 @@
 //!   ForbiddenIdentityArgs 校验透传，agent 无法用工具参数覆盖可信上下文）;
 //! - 越权访问（CrossRunAccess）-> 403 / forbidden（同 HTTP 业务校验）；
 //! - 参数无效 -> 400；
-//! - 后端执行失败（Execution）属于基础设施故障，统一 500 脱敏，不透出
-//!   内部错误详情；NotFound / CrossRun 语义已由 backend 在后端侧区分并
-//!   转为对应工具错误。
+//! - 共享服务错误保留 HTTP 错误分类；未分类的执行错误统一 500 脱敏。
 //!
 //! 成功响应：`{"result": <ToolOutput JSON>}`。
 
 use std::sync::Arc;
 
+use crate::mcp::{BackendFailure, Domain, DomainId, InvocationContext, McpServer, ToolError};
+use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
-use ursi_mcp_server::{Domain, DomainId, InvocationContext, McpServer, ToolError};
 
-use crate::transport::error::ApiError;
 use crate::transport::AppState;
+use crate::transport::error::ApiError;
 
 /// MCP invoke 请求体。没有身份字段：身份只来自可信头。
 #[derive(Debug, Deserialize)]
@@ -70,7 +68,11 @@ pub async fn invoke_tool(
     };
 
     match state.mcp.invoke(&body.name, Some(&ctx), body.args).await {
-        Ok(output) => (StatusCode::OK, Json(serde_json::json!({ "result": output }))).into_response(),
+        Ok(output) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "result": output })),
+        )
+            .into_response(),
         Err(err) => map_tool_error(err).into_response(),
     }
 }
@@ -83,32 +85,60 @@ fn header_value(headers: &HeaderMap, name: &str) -> String {
         .to_string()
 }
 
+// 旧 MCP 契约只传 message。适配器只传稳定错误码，不把自由文本作为
+// HTTP 分类依据，也不把后端消息（可能含凭据）带出请求边界。
+impl From<ApiError> for BackendFailure {
+    fn from(error: ApiError) -> Self {
+        BackendFailure::new(error.code())
+    }
+}
+
+fn backend_error(code: &str) -> ApiError {
+    match code {
+        "sandbox_unavailable" => ApiError::SandboxUnavailable {
+            message: "沙箱服务不可用".into(),
+        },
+        "gateway_unauthorized" => ApiError::GatewayUnauthorized,
+        "gateway_protocol_error" => ApiError::GatewayProtocol,
+        "not_found" => ApiError::not_found("资源"),
+        "conflict" => ApiError::conflict("资源状态冲突"),
+        "forbidden" => ApiError::forbidden("资源访问被拒绝"),
+        "invalid_request" => ApiError::bad_request("请求参数无效"),
+        "invalid_cursor" => ApiError::InvalidCursor {
+            message: "游标无效".into(),
+        },
+        "missing_context" => ApiError::MissingContext,
+        _ => ApiError::Internal,
+    }
+}
+
 /// ToolError -> HTTP 错误。语义对齐等价 HTTP 调用：
 /// 不存在 404、越权 403、参数/上下文 400、其余内部故障 500 脱敏。
 pub(crate) fn map_tool_error(err: ToolError) -> ApiError {
     match err {
         ToolError::UnknownTool { .. } => ApiError::not_found("工具"),
         ToolError::MissingInvocationContext => ApiError::MissingContext,
-        ToolError::MissingNodeIdentity => ApiError::bad_request("上下文缺少节点身份，无法定位节点资源"),
+        ToolError::MissingNodeIdentity => {
+            ApiError::bad_request("上下文缺少节点身份，无法定位节点资源")
+        }
         ToolError::ForbiddenIdentityArgs { keys } => ApiError::bad_request(format!(
             "工具参数禁止携带运行身份字段：{}（身份只来自可信调用上下文）",
             keys.join(", ")
         )),
-        ToolError::CrossRunAccess { resource, owner_run, context_run } => ApiError::forbidden(format!(
+        ToolError::CrossRunAccess {
+            resource,
+            owner_run,
+            context_run,
+        } => ApiError::forbidden(format!(
             "资源 {resource} 属于运行 {owner_run}，当前上下文运行 {context_run}"
         )),
         ToolError::InvalidArgs { .. } => ApiError::bad_request("工具参数无效"),
-        // 后端执行失败：可能是业务 NotFound，也可能基础设施故障。消息
-        // 可能含内部细节，统一脱敏为 500，不透出 message。
-        ToolError::Execution { .. } => {
-            tracing::warn!("MCP 工具执行失败（已脱敏返回）：{err}");
-            ApiError::Internal
-        }
+        ToolError::Execution { message, .. } => backend_error(&message),
     }
 }
 
 /// 暴露的工具清单（调试/发现用途，非 SPEC 必需，供联调核对）。
-pub fn list_tools(server: &McpServer, domain: Option<DomainId>) -> Vec<ursi_mcp_server::ToolDescriptor> {
+pub fn list_tools(server: &McpServer, domain: Option<DomainId>) -> Vec<crate::mcp::ToolDescriptor> {
     server.list_tools(domain)
 }
 
@@ -119,7 +149,7 @@ mod tests {
     /// 错误映射与等价 HTTP 语义一致。
     #[test]
     fn tool_error_maps_to_http_semantics() {
-        use ursi_mcp_server::ToolError;
+        use crate::mcp::ToolError;
         assert_eq!(
             map_tool_error(ToolError::UnknownTool { name: "x".into() }).status(),
             StatusCode::NOT_FOUND
@@ -146,7 +176,8 @@ mod tests {
     /// 请求体解析：缺 name 直接失败（handler 返回 400，不触发调用）。
     #[test]
     fn invoke_request_requires_name() {
-        let parsed: Result<McpInvokeRequest, _> = serde_json::from_value(serde_json::json!({"args": {}}));
+        let parsed: Result<McpInvokeRequest, _> =
+            serde_json::from_value(serde_json::json!({"args": {}}));
         assert!(parsed.is_err());
         let parsed: McpInvokeRequest =
             serde_json::from_value(serde_json::json!({"name": "ops_gateway_status"})).unwrap();

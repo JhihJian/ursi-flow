@@ -1,13 +1,8 @@
 ---
 parent: ../../SPEC.md
 depends-on:
-  - ../workflows/SPEC.md
-  - ../roles/SPEC.md
-  - ../runs/SPEC.md
-  - ../artifacts/SPEC.md
-  - ../sandboxes/SPEC.md
-  - ../connections/SPEC.md
-  - ../../crates/mcp-server/SPEC.md
+  - ../../../flow-core/SPEC.md
+  - ../mcp/SPEC.md
 references:
   - ../../DESIGN.md
 ---
@@ -30,6 +25,9 @@ references:
 - 格式错误请求返回 4xx，业务服务不被调用。
 - 资源不存在映射为 404，引用或状态冲突映射为 409，内部故障返回脱敏错误。
 - 角色配置与模型连接响应只返回允许展示的配置及凭据引用，认证信息不进入响应或请求日志。
+- `POST /api/v1/sandboxes` 的 202 表示已受理，只有实时核实就绪才返回 201。`GET`、`DELETE /api/v1/sandboxes/{runId}` 按运行关联寻址；DELETE 返回 202 表示释放中，200 表示已确认释放。响应 `id` 是 Gateway 资源标识。
+- `GET /api/v1/sandboxes?runId=...` 只读本地关联，响应标记 `lastObserved: true`。MCP 的 `sandboxId` 是可直接交给 get/stop 的运行关联标识；列表状态用 `LastObserved(...)` 区分最近观测与实时状态。
+- Gateway 凭据被拒绝或响应不合法时返回 502，错误码分别为 `gateway_unauthorized` 与 `gateway_protocol_error`。请求冲突返回 409，未配置接入或网关不可达返回 503。
 
 ### 事件流与重放
 
@@ -45,7 +43,7 @@ references:
 
 ### MCP 与连接协议接入
 
-装配现有 mcp-server 提供的工具域，工具操作通过注入的业务接口执行。运行与节点身份来自可信调用上下文。终端等长连接转交 sandboxes/Channel 接入。
+装配 `server/src/mcp` 提供的工具域，工具操作通过注入的 `flow-core` 业务接口执行。运行与节点身份来自可信调用上下文。终端等长连接交给 sandbox-access 的 Channel 端口，当前 server 装配仍按可用性边界拒绝未绑定的远端通道。
 
 #### 验收
 
@@ -56,11 +54,11 @@ references:
 
 ### 静态页面资源
 
-提供 web/dist 构建产物的内嵌或目录读取，使用 feature 隔离构建产物依赖。应用从站点根路径部署，页面导航路径回退到 index.html，由前端 Router 处理深链和未知页面。
+从 `URSI_STATIC_ROOT` 指定的目录读取 Web 构建产物。应用从站点根路径部署，页面导航路径回退到 index.html，由前端 Router 处理深链和未知页面。
 
 #### 验收
 
-- 开启内嵌构建后可返回页面与静态资源，无需外部文件目录。
+- 将静态目录指向构建好的 `web/dist` 后，页面和静态资源可从同源地址读取。
 - 无构建产物时接口仍可启动，静态资源缺失返回明确响应且不 panic。
 - 静态路径不能越过配置的资源根目录。
 - 直接访问或刷新 /roles、/runs 等前端路径时返回应用页面；未知页面路径交由前端显示未找到。

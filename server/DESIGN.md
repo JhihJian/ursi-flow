@@ -2,7 +2,7 @@
 
 ## 组织原则
 
-server 是一个模块化单体。`server/src` 按业务对象和状态所有权划分内部模块，每个模块以公开服务接口和可观察结果作为交付边界。`server/crates` 保持现有布局和编译边界，基础库由主服务或沙箱会话服务按运行位置装配。
+平台工作区有三个 crate。`flow-core` 拥有六个业务域、存储和执行端口；`server` 提供 app、transport 和 MCP 工具域；`sandbox-access` 实现平台访问外部沙箱所需的协议。server 在装配时选择是否使用 `sandbox-access`。只有 `sandbox-access` 直接依赖沙箱工作区的公共 SDK `ursi-sandbox-client`，平台不链接 Gateway 或 Runtime 实现；关闭默认 feature 的 Server 不编入接入库和 SDK。启动配置与测试入口见 [Server 使用说明](README.md)。
 
 模块独立交付指可以用本域真实存储和外部依赖替身验证完整用例。独立交付不要求独立进程、独立数据库或独立 Cargo 包。模块规格定义目标行为，是否实现由测试和验收记录证明。
 
@@ -28,10 +28,10 @@ server 是一个模块化单体。`server/src` 按业务对象和状态所有权
 - transport 调用各业务域公开服务，MCP 工具通过同样的业务接口访问状态。
 - runs 编排 workflows、roles、connections、artifacts、sandboxes 和 Agent Runtime。
 - workflows 调用 roles 的引用校验与登记接口；roles 调用 connections 的配置查询与引用接口。
-- sandboxes 通过 Gateway 契约与 Channel 接入资源和连接。
+- sandboxes 定义资源和连接端口。sandbox-access 实现这些端口，将平台模型与 Gateway 的协议类型分开。
 - 各域使用 storage 提供的事务和存储基础设施，业务表、查询与 repository 属于各自域。
 
-被调用方不回调上游域，不访问上游 repository。各域通过构造时注入的窄接口获得依赖，独立测试可以替换这些接口。跨进程共享类型继续由 domain 等现有契约提供，领域内部类型留在所属模块。
+被调用方不回调上游域，不访问上游 repository。各域通过构造时注入的窄接口获得依赖，独立测试可以替换这些接口。平台内共享类型由 flow-core 的 domain 提供。跨进程交互遵循 [Gateway v1 契约](../contracts/gateway/v1/README.md) 和 Runtime 的 ACP 契约。
 
 模块内部可按规模拆为服务、模型、repository 和测试文件。transport 按业务组织协议适配文件。app 是实现选择与装配入口，各业务模块不读取全局服务容器。
 
@@ -55,7 +55,7 @@ runs 依据当前执行身份决定有效输出，过期执行的状态、事件
 
 ### 资源与会话
 
-Gateway 拥有沙箱实际生命周期，sandboxes 保存平台侧关联和请求结果。释放请求失败或结果未知时保留待核实状态，通过 Gateway 查询与幂等操作确认。Channel 管连接，Agent Runtime 管客户端会话控制，沙箱 session-service 装配真实 CLI Adapter。
+Gateway 拥有沙箱实际生命周期，sandboxes 保存平台侧关联和请求结果。释放请求失败或结果未知时保留待核实状态，通过 Gateway 查询与幂等操作确认。服务端的连接和 ACP 客户端在 sandbox-access，沙箱内的 session-service 负责调用 CLI。当前 Server 使用运行专属绑定直连 Runtime 的文本会话。脚本和文件产物通道未装配。
 
 ## 独立交付与联合验收
 
@@ -73,4 +73,4 @@ Gateway 拥有沙箱实际生命周期，sandboxes 保存平台侧关联和请�
 
 独立验收测试应能单独选择运行，不要求先启动整个系统。真实 SQLite 的并发和重开行为使用数据库验证，替身用于外部服务的确定性返回和故障注入。transport 和 app 可以分别验证协议与生命周期，但产品可用性以联合验收为准。
 
-server 总规格拥有四组联合验收：配置引用与快照、状态与事件、执行与产物、应用装配。参与模块在各自 SPEC 中列出边界，联合场景由主服务集成测试统一组织。真实 CLI、真实文件传输和真实资源回收分别需要对应环境证据。
+跨模块的联合验收分四组：配置引用与快照、状态与事件、执行与产物、应用装配。参与模块在各自 SPEC 中列出边界，联合场景由主服务集成测试统一组织。真实 CLI、真实文件传输和真实资源回收分别需要对应环境证据。

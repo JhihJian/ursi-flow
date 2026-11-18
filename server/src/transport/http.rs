@@ -73,7 +73,7 @@ fn rejection_message(rejection: JsonRejection) -> ApiError {
 async fn create_workflow(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<WorkflowDefinitionBody>,
-) -> Result<(StatusCode, Json<ursi_domain::WorkflowDefinition>), ApiError> {
+) -> Result<(StatusCode, Json<flow_core::domain::WorkflowDefinition>), ApiError> {
     state.workflows.create_workflow(body.0).await.map(|wf| (StatusCode::CREATED, Json(wf)))
 }
 
@@ -81,16 +81,16 @@ async fn create_workflow(
 /// 不能用于 newtype 结构，改用透明包装）。
 #[derive(Debug, serde::Deserialize)]
 #[serde(transparent)]
-struct WorkflowDefinitionBody(ursi_domain::WorkflowDefinition);
+struct WorkflowDefinitionBody(flow_core::domain::WorkflowDefinition);
 
-async fn list_workflows(State(state): State<AppState>) -> Result<Json<Items<ursi_domain::WorkflowDefinition>>, ApiError> {
+async fn list_workflows(State(state): State<AppState>) -> Result<Json<Items<flow_core::domain::WorkflowDefinition>>, ApiError> {
     state.workflows.list_workflows().await.map(|items| Json(Items { items }))
 }
 
 async fn get_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<ursi_domain::WorkflowDefinition>, ApiError> {
+) -> Result<Json<flow_core::domain::WorkflowDefinition>, ApiError> {
     state.workflows.get_workflow(&id).await.map(Json)
 }
 
@@ -98,7 +98,7 @@ async fn update_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
     ApiJson(body): ApiJson<WorkflowDefinitionBody>,
-) -> Result<Json<ursi_domain::WorkflowDefinition>, ApiError> {
+) -> Result<Json<flow_core::domain::WorkflowDefinition>, ApiError> {
     state.workflows.update_workflow(&id, body.0).await.map(Json)
 }
 
@@ -239,7 +239,14 @@ async fn prepare_sandbox(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<PrepareSandboxRequest>,
 ) -> Result<(StatusCode, Json<crate::transport::ports::SandboxDto>), ApiError> {
-    state.sandboxes.prepare(body).await.map(|sb| (StatusCode::CREATED, Json(sb)))
+    let sandbox = state.sandboxes.prepare(body).await?;
+    let status = match sandbox.status.as_str() {
+        "Ready" => StatusCode::CREATED,
+        "PreparePending" | "Unknown" => StatusCode::ACCEPTED,
+        "ReleasePending" | "Released" => return Err(ApiError::conflict("沙箱已进入释放流程")),
+        _ => return Err(ApiError::Internal),
+    };
+    Ok((status, Json(sandbox)))
 }
 
 async fn get_sandbox(
@@ -263,8 +270,14 @@ async fn list_sandboxes(
 async fn release_sandbox(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<crate::transport::ports::SandboxDto>, ApiError> {
-    state.sandboxes.release(&id).await.map(Json)
+) -> Result<(StatusCode, Json<crate::transport::ports::SandboxDto>), ApiError> {
+    let sandbox = state.sandboxes.release(&id).await?;
+    let status = match sandbox.status.as_str() {
+        "Released" => StatusCode::OK,
+        "ReleasePending" => StatusCode::ACCEPTED,
+        _ => return Err(ApiError::Internal),
+    };
+    Ok((status, Json(sandbox)))
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +374,7 @@ mod tests {
         let run = RunDto {
             id: "run-1".into(),
             status: "queued".into(),
-            workflow: ursi_domain::WorkflowDefinition {
+            workflow: flow_core::domain::WorkflowDefinition {
                 id: "wf-1".into(),
                 name: "demo".into(),
                 nodes: Vec::new(),

@@ -130,6 +130,9 @@ async fn valid_request_passes_full_params_and_preserves_result() {
         .await
         .unwrap();
     assert_eq!(listed["items"][0]["id"], sbx_id.as_str());
+    assert_eq!(listed["items"][0]["lastObserved"], true);
+    assert_eq!(sbx["lastObserved"], false);
+    assert_eq!(listed["items"][0]["updatedAt"], sbx["updatedAt"]);
 
     // artifacts：预置后按 runId 过滤查询。
     artifacts.rows.lock().unwrap().push(
@@ -307,6 +310,27 @@ async fn error_mapping_not_found_conflict_and_sanitized_internal() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// 控制面拒绝服务凭据、上游回包畸形与接入未配置，不能被压平为同一个 500。
+#[tokio::test]
+async fn sandbox_errors_have_distinct_safe_codes() {
+    let (base, _, _, _, _, sandboxes, _, _) = spawn_app().await;
+    let client = Client::new();
+    for (error, status, code) in [
+        (ApiError::GatewayUnauthorized, StatusCode::BAD_GATEWAY, "gateway_unauthorized"),
+        (ApiError::GatewayProtocol, StatusCode::BAD_GATEWAY, "gateway_protocol_error"),
+        (ApiError::conflict("沙箱操作冲突"), StatusCode::CONFLICT, "conflict"),
+        (ApiError::SandboxUnavailable { message: "Gateway 未配置".into() }, StatusCode::SERVICE_UNAVAILABLE, "sandbox_unavailable"),
+    ] {
+        sandboxes.faults.set("prepare", error);
+        let response = client.post(format!("{base}/api/v1/sandboxes"))
+            .json(&json!({ "runId": "r", "spec": { "image": "test" } }))
+            .send().await.unwrap();
+        assert_eq!(response.status(), status);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"]["code"], code);
+    }
 }
 
 /// SPEC「业务接口与错误映射」验收 4：
