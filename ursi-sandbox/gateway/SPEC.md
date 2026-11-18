@@ -1,5 +1,5 @@
 ---
-parent: ../../SPEC.md
+parent: ../SPEC.md
 references:
   - ./CONTRACT.md
   - ../DESIGN.md

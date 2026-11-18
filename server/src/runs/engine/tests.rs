@@ -479,6 +479,24 @@ async fn failure_retries_to_max_attempts_then_run_fails() {
     assert_eq!(fail_events, 3, "每轮失败各留一条事件");
 }
 
+#[tokio::test]
+async fn legacy_frozen_role_uses_default_runner_and_honors_do_not_retry() {
+    let runner = RecordingRunner::new(MockScenario::Failure(
+        ExecutorError::DoNotRetry("执行结果未知".into()),
+    ));
+    let acp = RecordingRunner::new(MockScenario::Cancelled);
+    let mut f = fixture(runner.clone(), RecordingScriptExecutor::ok());
+    f.engine = f.engine.with_runtime_acp(Some(acp.clone()));
+    let mut node = agent_node("A", "r1");
+    node.max_attempts = 3;
+    let wf = wf_of("wf-terminal", vec![node], vec![]);
+    let run = f.engine.create_run(&wf, &test_roles()).await.unwrap();
+    f.engine.start_run(&run.id).await.unwrap();
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Failed);
+    assert_eq!(runner.call_log().len(), 1);
+    assert!(acp.call_log().is_empty());
+}
+
 /// SPEC「审批、重试与返工」：max_attempts 内重试成功则继续。
 #[tokio::test]
 async fn retry_within_limit_recovers() {

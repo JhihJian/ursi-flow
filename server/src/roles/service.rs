@@ -164,6 +164,8 @@ impl<S: ConnectionGateway> RoleService<S> {
             .store
             .get(role_id)?
             .ok_or_else(|| RolesError::NotFound(role_id.to_string()))?;
+        // 旧角色可能在 ACP 能力边界生效前写入；先校验完整聚合再投影到快照。
+        def.validate().map_err(RolesError::from)?;
         let connection = self
             .gateway
             .get(&def.connection_id)

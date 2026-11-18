@@ -80,7 +80,7 @@ async fn seed_fixture(base: &str, client: &reqwest::Client) -> String {
             "id": "wf-demo",
             "name": "演示流程",
             "nodes": [
-                { "id": "n-write", "name": "写作", "type": "agent", "roleId": "role-writer" },
+                { "id": "n-write", "name": "写作", "type": "agent", "roleId": "role-writer", "maxAttempts": 3 },
                 { "id": "n-review", "name": "审批", "type": "approval", "rejectTo": "n-write" }
             ],
             "edges": [
@@ -206,6 +206,79 @@ async fn 有效配置装配并可经_http_保存配置_创建运行_查询状态
 
     app.shutdown().await;
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn runtime_acp_dispatch_uses_frozen_role_after_restart() {
+    use super::assembly::assemble_with_runtime_acp;
+    use std::sync::Arc;
+    use ursi_agent_runtime::{EventSink, ExecutorError, InvocationInput, InvocationResult, Runner};
+    use ursi_domain::{ExecutionEnv, Executor, Role};
+
+    struct ProfileRunner;
+    #[async_trait::async_trait]
+    impl Runner for ProfileRunner {
+        async fn run(&self, _: &InvocationInput, role: &Role, executor: &Executor,
+            _: Arc<dyn ExecutionEnv>, _: EventSink<'_>,
+        ) -> Result<InvocationResult, ExecutorError> {
+            assert_eq!(executor.kind.as_str(), "runtime-acp");
+            assert_eq!(role.model.as_deref(), Some("runtime-profile"));
+            assert!(role.skills.is_empty() && role.mcp_servers.is_empty());
+            Ok(InvocationResult { output: role.prompt.clone(), artifacts: vec![], tokens: 0 })
+        }
+    }
+
+    async fn json_response(request: reqwest::RequestBuilder) -> Value {
+        request.send().await.unwrap().error_for_status().unwrap().json().await.unwrap()
+    }
+    async fn queue(client: &reqwest::Client, base: &str) -> String {
+        let run = json_response(client.post(format!("{base}/api/v1/runs"))
+            .json(&json!({ "workflowId": "wf-demo" }))).await;
+        run["id"].as_str().unwrap().into()
+    }
+    async fn start(client: &reqwest::Client, base: &str, id: &str) -> Value {
+        json_response(client.post(format!("{base}/api/v1/runs/{id}/start"))).await
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let config = || AppConfig::for_test(dir.path().to_owned());
+    let app = assemble_with_runtime_acp(config(), None).await.unwrap();
+    let base = format!("http://{}", app.addr());
+    let client = reqwest::Client::new();
+    let connection = seed_fixture(&base, &client).await;
+    let role_url = format!("{base}/api/v1/roles/role-writer");
+    let mock = json_response(client.get(&role_url)).await;
+    let mock_run = queue(&client, &base).await;
+    let acp = json!({
+        "id": "role-writer", "name": "ACP", "prompt": "冻结的 ACP 提示词",
+        "executorKind": "runtime-acp", "model": "runtime-profile", "connectionId": connection
+    });
+    let saved = json_response(client.put(&role_url).json(&acp)).await;
+    assert_eq!(saved["skills"], json!([]));
+    assert_eq!(saved["mcpServers"], json!([]));
+    assert_eq!(saved["executorKind"], "runtime-acp");
+    let acp_run = queue(&client, &base).await;
+    let unavailable = queue(&client, &base).await;
+    let failed = start(&client, &base, &unavailable).await;
+    assert_eq!(failed["status"], "failed");
+    fn writer(run: &Value) -> &Value {
+        run["nodes"].as_array().unwrap().iter().find(|n| n["nodeId"] == "n-write").unwrap()
+    }
+    let node = writer(&failed);
+    assert_eq!(node["attempt"], 1);
+    assert!(node["error"].as_str().unwrap().contains("runtime-acp"));
+
+    json_response(client.put(&role_url).json(&mock)).await;
+    app.shutdown().await;
+    drop(app);
+    let app = assemble_with_runtime_acp(config(), Some(Arc::new(ProfileRunner))).await.unwrap();
+    let base = format!("http://{}", app.addr());
+    let ordinary = start(&client, &base, &mock_run).await;
+    assert_eq!(writer(&ordinary)["output"], "mock 完成");
+    let profiled = start(&client, &base, &acp_run).await;
+    assert_eq!(profiled["status"], "waiting");
+    assert_eq!(writer(&profiled)["output"], acp["prompt"]);
+    app.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

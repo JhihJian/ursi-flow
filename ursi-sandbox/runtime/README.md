@@ -17,19 +17,19 @@ Gateway 只管理资源。session-service 管理会话和 CLI 进程，监督器
 
 使用 Linux、本机 Docker daemon、Rust 工具链及 OpenSSH 客户端。session-service 需要支持 pidfd 的内核和相应 Docker seccomp 策略。二进制架构与 glibc 要求见镜像说明。
 
-在仓库根目录执行：
+从独立产品根 `ursi-sandbox/` 执行：
 
 ```bash
 cargo build -p ursi-gateway -p ursi-session-service -p ursi-sandbox-client
-docker build -t ursi-runtime-pi:local sandbox-gateway/runtime/image
-sandbox-gateway/runtime/scripts/build-bundle.sh \
+docker build -t ursi-runtime-pi:local runtime/image
+runtime/scripts/build-bundle.sh \
   "$PWD/target/debug/ursi-session-service" /tmp/ursi-bundle
 ```
 
 准备仓库外的最小模型配置目录，包含 `session.json` 和 `pi/models.json`，按提供方需要增加 `pi/auth.json`。配置内容和权限要求见客户端说明。验收会生成专用 SSH 密钥与服务 token，并临时发布 bundle、启动 Gateway 和沙箱。
 
 ```bash
-sudo env URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_acceptance.py \
+sudo env URSI_AGENT_ACCEPTANCE=1 python3 client/scripts/agent_acceptance.py \
   --gateway "$PWD/target/debug/ursi-gateway" \
   --client "$PWD/target/debug/ursi-sandbox-client" \
   --image ursi-runtime-pi:local \

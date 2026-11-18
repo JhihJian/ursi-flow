@@ -549,7 +549,8 @@ def main():
     for binary in (args.gateway, args.client):
         require(binary.is_file() and os.access(binary, os.X_OK), "binary 不存在或不可执行")
     require(args.bundle.is_file(), "bundle 不存在")
-    repo = Path(__file__).resolve().parents[3]
+    # client/scripts 位于独立产品根 ursi-sandbox 下，证据不能写入该产品树。
+    repo = Path(__file__).resolve().parents[2]
     evidence = args.evidence.resolve() if args.evidence else Path("/tmp") / ("ursi-agent-evidence-" + secrets.token_hex(10) + ".json")
     require(not evidence.is_relative_to(repo), "证据不能写入仓库")
     require(evidence.parent.is_dir() and os.access(evidence.parent, os.W_OK), "证据目录必须存在且可写")

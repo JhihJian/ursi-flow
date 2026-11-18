@@ -40,18 +40,26 @@ use crate::storage::StoreError;
 
 /// 冻结的角色配置集合：role_id → 角色配置 JSON。
 ///
-/// 冻结值为 [`ursi_domain::Role`] 的 JSON 序列化（camelCase：提示词、模型、
-/// skills、MCP 配置、执行器标识）。创建运行时经各域一致读取后传入，执行时
+/// 冻结值为 [`FrozenRole`] 的 JSON 序列化（camelCase：基础角色及执行器类型）。创建运行时经各域一致读取后传入，执行时
 /// engine 解析回 `Role` 交给 Runner（SPEC「运行创建与配置冻结」）。与 roles
 /// 域 `export_freezable` 的完整冻结形态（技能文件包、结构化 MCP 配置、凭据
 /// 引用）是配置域联合验收点，本域契约以 Role 字段为最小集合。
 pub type FrozenRoles = serde_json::Map<String, serde_json::Value>;
 
+/// 缺少 executorKind 的既有快照仍使用默认 mock，不根据当前环境推断。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FrozenRole {
+    #[serde(flatten)]
+    pub role: ursi_domain::Role,
+    pub executor_kind: Option<ursi_domain::ExecutorKind>,
+}
+
 /// 运行快照：创建时冻结的工作流与角色配置，后续编辑不影响在途运行。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSnapshot {
     pub workflow: ursi_domain::WorkflowDefinition,
-    /// 冻结的角色配置（role_id → 配置）。本阶段为空映射。
+    /// 冻结的角色配置（role_id → 配置）。
     #[serde(default)]
     pub roles: FrozenRoles,
 }

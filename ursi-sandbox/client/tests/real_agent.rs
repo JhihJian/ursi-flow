@@ -1,4 +1,6 @@
 //! 显式 opt-in 的真实验收入口。需要已集成的 Gateway、Runtime 镜像和 bundle。
+use std::path::Path;
+
 #[test]
 #[ignore = "需要 URSI_AGENT_ACCEPTANCE=1、正式镜像/bundle 和真实模型配置"]
 fn real_pi_agent_acceptance() {
@@ -7,13 +9,16 @@ fn real_pi_agent_acceptance() {
         Ok("1"),
         "必须显式启用真实模型验收"
     );
+    let product_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("client 应位于独立产品根下");
+    let script = product_root.join("client/scripts/agent_acceptance.py");
+    let client = env!("CARGO_BIN_EXE_ursi-sandbox-client");
     let mut command = std::process::Command::new("python3");
     command
-        .arg(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/scripts/agent_acceptance.py"
-        ))
-        .args(["--client", env!("CARGO_BIN_EXE_ursi-sandbox-client")]);
+        .current_dir(product_root)
+        .arg(script)
+        .args(["--client", client]);
     for (flag, variable) in [
         ("--gateway", "URSI_ACCEPTANCE_GATEWAY"),
         ("--bundle", "URSI_ACCEPTANCE_BUNDLE"),

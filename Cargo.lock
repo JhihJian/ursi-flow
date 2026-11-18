@@ -615,16 +615,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs2"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "futures"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2682,11 +2672,15 @@ name = "ursi-agent-runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-tungstenite",
+ "url",
  "ursi-domain",
+ "ursi-sandbox-client",
 ]
 
 [[package]]
@@ -2718,25 +2712,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ursi-gateway"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "fs2",
- "futures-util",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite",
- "uuid",
-]
-
-[[package]]
 name = "ursi-mcp-server"
 version = "0.1.0"
 dependencies = [
@@ -2756,7 +2731,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
@@ -2797,24 +2771,6 @@ dependencies = [
  "ursi-domain",
  "ursi-mcp-server",
  "ursi-sandbox-observe",
- "uuid",
-]
-
-[[package]]
-name = "ursi-session-service"
-version = "0.1.0"
-dependencies = [
- "axum",
- "futures-util",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite",
- "ursi-agent-cli-adapter",
  "uuid",
 ]
 

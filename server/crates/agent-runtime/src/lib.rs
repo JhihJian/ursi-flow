@@ -18,6 +18,7 @@
 pub mod capability;
 pub mod mock;
 pub mod session;
+pub mod websocket;
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -29,6 +30,12 @@ pub use session::{
     AcpEvent, AcpFrameTransport, AcpSessionController, ExecutionState, SessionControl,
     SessionError, SessionHandle, SessionSpec, map_acp_event_to_telemetry, stop_reason_to_state,
 };
+pub use websocket::{AcpRunner, WebSocketAcpConfig, WebSocketSessionController};
+
+/// Flow 角色显式选择 Runtime ACP 的执行器类型。
+pub const RUNTIME_ACP: &str = "runtime-acp";
+/// 角色使用管理员固定的模型，而非请求模型覆盖。
+pub const RUNTIME_PROFILE: &str = "runtime-profile";
 
 /// 执行器输入：提示词、上游产物上下文与运行上下文。
 ///
@@ -79,6 +86,9 @@ pub enum ExecutorError {
     Launch(String),
     #[error("执行失败：{0}")]
     Execution(String),
+    /// prompt 结果未知、已取消或已完成但收尾失败。调用方不得重新提交。
+    #[error("执行不可重试：{0}")]
+    DoNotRetry(String),
     #[error("解析执行器输出失败：{0}")]
     Parse(String),
 }

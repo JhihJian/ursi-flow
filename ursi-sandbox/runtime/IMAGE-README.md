@@ -4,11 +4,11 @@
 
 ## 构建
 
-从仓库根目录执行：
+从独立产品根 `ursi-sandbox/` 执行：
 
 ```bash
-docker build -t ursi-runtime-pi:local sandbox-gateway/runtime/image
-sandbox-gateway/runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle
+docker build -t ursi-runtime-pi:local runtime/image
+runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle
 (cd /tmp/ursi-bundle && sha256sum -c runtime-bundle.sha256)
 ```
 
@@ -91,9 +91,9 @@ supervisord 作为 PID 1，直接启动 sshd 与 session-service。事件监听�
 ## 验证
 
 ```bash
-python3 sandbox-gateway/runtime/scripts/test_bootstrap.py -v
-python3 sandbox-gateway/runtime/scripts/test_smoke_cleanup.py -v
-python3 sandbox-gateway/runtime/scripts/smoke-image.py
+python3 runtime/scripts/test_bootstrap.py -v
+python3 runtime/scripts/test_smoke_cleanup.py -v
+python3 runtime/scripts/smoke-image.py
 ```
 
 前两项覆盖恶意归档、版本、缓存完整性以及准备失败、SIGTERM、Docker 超时和资源删除失败的清理行为。镜像 smoke 使用随机 scope、临时公钥和健康专用测试程序，验证固定 capabilities 下 SSH exec/PTY/SFTP、无 root 登录、agent 无 capabilities、凭据与状态隔离、离线重启、数据保留和有限恢复。测试的 HTTP 下载端点与 SSH 映射使用临时端口监听 0.0.0.0，结束时清理所属容器、卷和凭据。脚本输出明确标注测试程序，仅真实 ACP、Pi 和模型调用可证明 Agent 全链路通过。

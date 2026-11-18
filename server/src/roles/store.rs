@@ -337,7 +337,7 @@ fn decode_definition(
             .map_err(|e| RolesError::Storage(format!("角色 {id} 文件 {path} 内容缺失：{e}")))?;
         files.push(SkillFile::new(path, bytes));
     }
-    let skill_package = SkillPackage::with_entry(entry, files)
+    let skill_package = SkillPackage::for_executor(executor_kind.as_ref(), entry, files)
         .map_err(|e| RolesError::Storage(format!("角色 {id} 文件包损坏：{e}")))?;
     Ok(RoleDefinition {
         base,
