@@ -22,6 +22,7 @@ Flow 负责编排与审批，[ursi-sandbox](ursi-sandbox/DESIGN.md) 负责执行
 
 | 模块 | 职责 |
 |---|---|
+| [flow-runtime](flow-runtime/SPEC.md) | 可独立交付的 FLOW.md 运行时与本地 Pi 执行器。当前 Rust Server 仍使用下列 JSON 流程模块。 |
 | [flow-core](flow-core/SPEC.md) | workflows、roles、runs、artifacts、sandboxes、connections 六个业务域，共享领域契约、存储与执行端口 |
 | [sandbox-access](sandbox-access/SPEC.md) | Gateway v1 资源控制、Channel 传输与按运行绑定的 Runtime ACP 接入 |
 | [server](server/SPEC.md) | `ursi-flow` 主服务：app 装配、HTTP/SSE、MCP 工具和静态资源入口 |

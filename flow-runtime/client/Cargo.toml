@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "ursi-flow-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "ursi-flow"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
