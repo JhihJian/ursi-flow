@@ -34,7 +34,7 @@ pub use store::{RUNS_MIGRATIONS, SqliteRunStore};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use ursi_domain::{Run, TelemetryEvent};
+use ursi_domain::{Run, RunStatus, TelemetryEvent};
 
 use crate::storage::StoreError;
 
@@ -254,6 +254,17 @@ pub trait RunRepository: Send + Sync {
         run_id: &str,
         after_seq: i64,
     ) -> Result<Vec<RunEventRecord>, StoreError>;
+
+    /// 按状态过滤列出运行标识与状态，`statuses` 为空时返回全部运行。
+    /// 按创建时间降序，供列表查询与恢复扫描使用。
+    async fn list_runs(&self, statuses: &[RunStatus]) -> Result<Vec<RunSummary>, StoreError>;
+}
+
+/// 运行列表项：标识与状态摘要（不含完整快照）。
+#[derive(Debug, Clone)]
+pub struct RunSummary {
+    pub id: String,
+    pub status: RunStatus,
 }
 
 /// 租约表接口：运行级持有租约，与运行同库同事务约束。

@@ -25,6 +25,13 @@ fn open_store(clock: Arc<FakeClock>) -> (tempfile::TempDir, SqliteRunStore) {
     (dir, store)
 }
 
+fn open_store_at(clock_ms: i64) -> (Arc<FakeClock>, tempfile::TempDir, SqliteRunStore) {
+    let clock = FakeClock::start_at(clock_ms);
+    let dir = tempfile::tempdir().expect("创建临时目录");
+    let store = SqliteRunStore::open(dir.path().join("runs.db"), clock.clone()).expect("打开存储");
+    (clock, dir, store)
+}
+
 fn event(msg: &str) -> ursi_domain::TelemetryEvent {
     ursi_domain::TelemetryEvent {
         category: ursi_domain::EventCategory::Node,
@@ -500,4 +507,60 @@ async fn stale_attempt_commit_rejected_within_same_generation() {
         .map(|r| r.event.message)
         .collect();
     assert_eq!(msgs, vec!["第二轮 node.succeeded".to_string()], "迟到事件不得入库");
+}
+
+/// SPEC「查询、事件与资源收尾」：提供运行列表查询，能按状态过滤，
+/// 列表项含运行标识与状态摘要。
+#[tokio::test]
+async fn list_runs_filters_by_status_and_returns_summaries() {
+    let (_clock, _dir, store) = open_store_at(1_000_000);
+
+    for id in ["run-queued-1", "run-queued-2", "run-running-1"] {
+        let mut run = initial_run(&chain_workflow());
+        run.id = id.to_string();
+        store
+            .create_run(&run, &FrozenRoles::default())
+            .await
+            .expect("创建运行");
+    }
+
+    // 把第三个运行推进到 running，形成两种状态。
+    let mut running = store.get_run("run-running-1").await.expect("读取").unwrap();
+    running.status = RunStatus::Running;
+    store
+        .commit_run(&running, 1, &[])
+        .await
+        .expect("提交 running");
+
+    // 全量列表：三条记录。
+    let all = store.list_runs(&[]).await.expect("全量列表");
+    assert_eq!(all.len(), 3);
+
+    // 按状态过滤：仅 queued。
+    let queued = store
+        .list_runs(&[RunStatus::Queued])
+        .await
+        .expect("按状态过滤");
+    assert_eq!(queued.len(), 2);
+    assert!(queued.iter().all(|s| s.status == RunStatus::Queued));
+    assert!(queued.iter().any(|s| s.id == "run-queued-1"));
+
+    // 过滤 running：单条。
+    let running = store
+        .list_runs(&[RunStatus::Running])
+        .await
+        .expect("running 过滤");
+    assert_eq!(running.len(), 1);
+    assert_eq!(running[0].id, "run-running-1");
+
+    // 状态推进后过滤结果随之变化。
+    let mut run = store.get_run("run-running-1").await.expect("读取").unwrap();
+    run.status = RunStatus::Succeeded;
+    store.commit_run(&run, 1, &[]).await.expect("提交状态");
+    let succeeded = store
+        .list_runs(&[RunStatus::Succeeded])
+        .await
+        .expect("succeeded 过滤");
+    assert_eq!(succeeded.len(), 1);
+    assert_eq!(succeeded[0].id, "run-running-1");
 }

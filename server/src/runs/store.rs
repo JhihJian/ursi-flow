@@ -35,7 +35,7 @@ use crate::storage::{Database, Migration, StoreError};
 
 use super::{
     CleanupState, CleanupStatus, Clock, FrozenRoles, LeaseError, LeaseState, LeaseTable,
-    NodeArtifactRecord, RunEventRecord, RunRepository, RunSnapshot,
+    NodeArtifactRecord, RunEventRecord, RunRepository, RunSnapshot, RunSummary,
 };
 
 /// runs 域迁移（登记到 app 的统一迁移列表，顺序只可追加）。
@@ -497,6 +497,36 @@ impl RunRepository for SqliteRunStore {
         after_seq: i64,
     ) -> Result<Vec<RunEventRecord>, StoreError> {
         self.list_events_since_impl(run_id, after_seq)
+    }
+
+    async fn list_runs(&self, statuses: &[RunStatus]) -> Result<Vec<RunSummary>, StoreError> {
+        fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunSummary> {
+            let status: String = row.get(1)?;
+            Ok(RunSummary {
+                id: row.get(0)?,
+                status: RunStatus::parse(&status).ok_or(rusqlite::Error::InvalidQuery)?,
+            })
+        }
+        self.with_conn(|conn| {
+            let rows = if statuses.is_empty() {
+                let mut stmt = conn.prepare(
+                    "SELECT id, status FROM runs ORDER BY updated_at_ms DESC, id ASC",
+                )?;
+                let rows = stmt.query_map([], map_row)?;
+                rows.collect::<rusqlite::Result<Vec<RunSummary>>>()?
+            } else {
+                let placeholders = statuses.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "SELECT id, status FROM runs WHERE status IN ({placeholders}) \
+                     ORDER BY updated_at_ms DESC, id ASC"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let refs: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
+                let rows = stmt.query_map(rusqlite::params_from_iter(refs), map_row)?;
+                rows.collect::<rusqlite::Result<Vec<RunSummary>>>()?
+            };
+            Ok(rows)
+        })
     }
 }
 
