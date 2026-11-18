@@ -1,0 +1,7 @@
+transaction_id,date,store,type,amount_cents
+T001,2026-05-18,西街店,payment,899
+T002,2026-05-18,东街店,payment,1299
+T003,2026-05-18,东街店,refund,250
+T004,2026-05-18,西街店,refund,1000
+T005,2026-05-18,东街店,payment,501
+T006,2026-05-18,东街店,refund,1
