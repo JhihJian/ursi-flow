@@ -69,9 +69,9 @@ export default function ChatView() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack-fill">
       <PageHeader title="对话" description="就当前工作流与运行记录向助手提问。" icon="chat" />
-      <div className="panel flex h-[calc(100dvh-14rem)] min-h-[420px] flex-col overflow-hidden lg:h-[calc(100dvh-15rem)] lg:flex-row">
+      <div className="panel flex min-h-[520px] min-w-0 flex-col overflow-hidden lg:min-h-0 lg:flex-1 lg:flex-row">
         <ChatSidebar
           sessions={sessions}
           currentId={currentId}

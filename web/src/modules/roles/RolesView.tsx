@@ -61,7 +61,7 @@ export default function RolesView() {
   ]
 
   return (
-    <div className="page-stack min-w-0">
+    <div className="page-stack page-stack-fill min-w-0">
       <PageHeader
         title="角色工作室"
         description="定义角色的思考方式，为流程装配专业能力。"
@@ -74,10 +74,10 @@ export default function RolesView() {
         )}
       />
 
-      <div className="panel grid min-h-[680px] min-w-0 grid-cols-1 overflow-hidden min-[760px]:grid-cols-[215px_minmax(0,1fr)] min-[1101px]:grid-cols-[252px_minmax(0,1fr)]">
+      <div className="panel grid min-h-[680px] min-w-0 grid-cols-1 overflow-hidden lg:min-h-0 lg:flex-1 min-[760px]:grid-cols-[215px_minmax(0,1fr)] min-[1101px]:grid-cols-[252px_minmax(0,1fr)]">
         <aside
           aria-label="角色列表"
-          className="flex min-w-0 flex-col border-b border-line p-3 min-[760px]:border-b-0 min-[760px]:border-r max-[759px]:max-h-[280px] max-[759px]:overflow-y-auto"
+          className="flex min-w-0 flex-col border-b border-line p-3 min-[760px]:border-b-0 min-[760px]:border-r max-[759px]:max-h-[280px] max-[759px]:overflow-y-auto lg:min-h-0 lg:overflow-y-auto"
         >
           <div className="flex items-center justify-between px-[5px] pb-3 pt-[3px] text-xs font-semibold text-txt2">
             <span>我的角色</span>
@@ -132,7 +132,7 @@ export default function RolesView() {
           </div>
         </aside>
 
-        <section aria-label="角色编辑器" aria-busy={studio.detailLoading} className="flex min-w-0 flex-col max-[759px]:min-h-[520px]">
+        <section aria-label="角色编辑器" aria-busy={studio.detailLoading} className="flex min-h-0 min-w-0 flex-col max-[759px]:min-h-[520px]">
           {studio.detailLoading || studio.detailError ? (
             <ResourceState loading={studio.detailLoading} error={studio.detailError} onRetry={() => { void studio.loadDetail() }} />
           ) : !draft ? (
@@ -177,14 +177,14 @@ export default function RolesView() {
                 <p role="alert" className="mx-4 mt-4 rounded-lg bg-err/10 px-3.5 py-3 text-xs text-err [overflow-wrap:anywhere] min-[760px]:mx-5">{studio.actionError}</p>
               ) : null}
 
-              <fieldset className="m-0 min-w-0 flex-1 border-0 p-0" disabled={busy}>
+              <fieldset className="m-0 min-h-0 min-w-0 flex-1 overflow-y-auto border-0 p-0" disabled={busy}>
                 {studio.tab === 'basic' ? <BasicTab studio={studio} draft={draft} /> : null}
                 {studio.tab === 'prompt' ? <PromptTab studio={studio} draft={draft} /> : null}
                 {studio.tab === 'skills' ? <SkillsTab studio={studio} draft={draft} /> : null}
                 {studio.tab === 'mcp' ? <McpTab studio={studio} draft={draft} /> : null}
               </fieldset>
 
-              <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4 min-[760px]:px-7">
+              <div className="flex flex-none flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4 min-[760px]:px-7">
                 <span className={`flex items-center gap-[7px] text-[11px] ${dirty ? 'text-warn' : 'text-txt3'}`}>
                   <span className="h-[5px] w-[5px] rounded-full bg-current" />
                   {dirty ? '有未保存的更改' : '所有更改已保存'}

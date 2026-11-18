@@ -126,7 +126,7 @@ export default function AppShell() {
         <aside className="desktop-sidebar">
           <ShellSidebar groups={navigationGroups} dark={themeMode === 'dark'} demo={isDemo} onTheme={toggleTheme} onSettings={openSettings} />
         </aside>
-        <div className="min-w-0">
+        <div className="shell-col">
           <header className="shell-topbar">
             <button
               type="button"
@@ -154,9 +154,11 @@ export default function AppShell() {
               {isDemo ? '演示工作区' : '真实服务'}
             </span>
           </header>
-          <main id="main-content" tabIndex={-1} className="shell-content">
-            <Outlet />
-          </main>
+          <div className="shell-scroll">
+            <main id="main-content" tabIndex={-1} className="shell-content">
+              <Outlet />
+            </main>
+          </div>
         </div>
       </div>
 

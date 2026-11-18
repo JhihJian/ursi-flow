@@ -95,7 +95,7 @@ export default function WorkflowsView() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack-fill">
       <PageHeader
         title="工作流"
         description="管理流程定义，查看节点依赖并发起任务。"
@@ -144,7 +144,7 @@ export default function WorkflowsView() {
         )}
       </ResourceState>
       {!loading && !error && visible.length ? (
-        <div className="table-wrap">
+        <div className="table-wrap table-fill">
           <table className="data-table workflow-table">
             <thead>
               <tr>

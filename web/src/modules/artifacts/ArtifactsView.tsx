@@ -93,7 +93,7 @@ export default function ArtifactsView() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack-fill">
       <PageHeader
         title="产物管理"
         description="把每一次执行的结果，沉淀为可追溯的交付物。"
@@ -143,8 +143,8 @@ export default function ArtifactsView() {
         onRetry={() => { reload() }}
       />
       {!loading && !error && selected ? (
-        <div className="panel grid grid-cols-1 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="max-h-[260px] overflow-auto border-b border-line bg-base/50 pb-3 lg:max-h-[740px] lg:border-b-0 lg:border-r">
+        <div className="panel grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="max-h-[260px] overflow-auto border-b border-line bg-base/50 pb-3 lg:max-h-none lg:min-h-0 lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between px-5 py-4 text-xs text-txt3">
               <span>交付文件</span>
               <span>{filtered.length} 个文件</span>
@@ -172,7 +172,7 @@ export default function ArtifactsView() {
               </button>
             ))}
           </aside>
-          <section className="min-w-0">
+          <section className="flex min-h-0 min-w-0 flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
                 <h2 className="truncate font-semibold">{selected.name}</h2>
@@ -191,7 +191,7 @@ export default function ArtifactsView() {
             <div className="px-5 pt-2">
               <TabBar tabs={TABS} value={tab} onValueChange={setTab} />
             </div>
-            <div className="min-h-[380px] px-6 py-7 sm:px-9">
+            <div className="min-h-[380px] min-w-0 flex-1 overflow-y-auto px-6 py-7 sm:px-9 lg:min-h-0">
               {tab === 'preview' && selected.contentType === 'text/markdown' ? (
                 <MarkdownContent content={selected.content} />
               ) : (

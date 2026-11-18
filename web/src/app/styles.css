@@ -94,8 +94,10 @@
 @layer components {
   .app-shell { @apply min-h-screen min-w-0; }
   .desktop-sidebar { @apply hidden; }
-  .shell-topbar { @apply flex h-16 min-w-0 items-center gap-3 border-b border-line bg-base px-4 sm:px-7; }
-  .shell-content { @apply mx-auto min-w-0 max-w-[1500px] px-4 py-7 sm:px-7 sm:py-9 lg:px-9; overflow-wrap: anywhere; }
+  .shell-col { @apply min-w-0; }
+  .shell-topbar { @apply flex h-16 min-w-0 flex-none items-center gap-3 border-b border-line bg-base px-4 sm:px-7; }
+  .shell-scroll { @apply min-w-0; }
+  .shell-content { @apply mx-auto w-full min-w-0 max-w-[1680px] px-4 py-6 sm:px-7 lg:px-9; overflow-wrap: anywhere; }
   .sidebar-link { @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-txt3 transition-colors hover:bg-overlay/50 hover:text-txt; }
   .sidebar-link.nav-active { @apply bg-accent-dim text-accent-2; }
   .icon-button { @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-txt3 transition-colors hover:bg-elevated hover:text-txt; }
@@ -117,13 +119,14 @@
   .search-input input:focus-visible { outline: none; }
   .table-wrap { @apply min-w-0 max-w-full overflow-x-auto rounded-xl border border-line bg-surface; overscroll-behavior-x: contain; }
   .data-table { @apply w-full border-collapse text-left text-sm; }
-  .data-table th { @apply border-b border-line bg-elevated/50 px-5 py-3 text-xs font-medium text-txt3; white-space: nowrap; }
+  .data-table th { @apply sticky top-0 z-[1] border-b border-line bg-elevated px-5 py-3 text-xs font-medium text-txt3; white-space: nowrap; }
+  .table-fill { @apply min-h-0 flex-1 overflow-auto; }
   .data-table td { @apply border-b border-line px-5 py-4 align-middle text-txt2; }
   .data-table tbody tr:last-child td { border-bottom: 0; }
   .data-table tbody tr:hover { background: rgb(var(--c-elevated) / .4); }
   .data-table td a { @apply font-medium text-txt hover:text-accent-2; }
   .empty-hint { @apply px-5 py-12 text-center text-sm leading-6 text-txt3; }
-  .page-stack { @apply flex min-w-0 flex-col gap-6; }
+  .page-stack { @apply flex min-w-0 flex-col gap-5; }
   .studio-layout { @apply grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]; }
   .studio-sidebar { @apply min-w-0 rounded-xl border border-line bg-surface p-4; align-self: start; }
   .studio-main { @apply min-w-0 space-y-5; }
@@ -132,9 +135,15 @@
   .skeleton { @apply rounded-md bg-elevated; animation: skeleton-pulse 1.5s ease-in-out infinite; }
 }
 
+/* 桌面上壳层锁定视口高度：导航与顶栏不动，只有内容区滚动，页面得以填满可用空间。 */
 @media (min-width: 1024px) {
-  .app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
-  .desktop-sidebar { display: block; position: sticky; top: 12px; height: calc(100dvh - 24px); margin: 12px 0 12px 12px; border: 1px solid rgb(var(--c-line)); border-radius: 16px; background: rgb(var(--c-elevated) / .55); }
+  .app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+  .desktop-sidebar { display: block; margin: 12px 0 12px 12px; border: 1px solid rgb(var(--c-line)); border-radius: 16px; background: rgb(var(--c-elevated) / .55); }
+  .shell-col { display: flex; height: 100dvh; min-height: 0; flex-direction: column; }
+  .shell-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .shell-content { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+  .page-stack { flex: 1 0 auto; min-height: 0; }
+  .page-stack-fill { flex: 1 1 auto; overflow: hidden; }
 }
 .scroll-area { scrollbar-width: thin; scrollbar-color: rgb(var(--c-line-strong)) transparent; overscroll-behavior: contain; }
 .ui-pressable { transition: transform var(--dur-press) var(--ease-out-expo); }

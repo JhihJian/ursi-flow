@@ -125,7 +125,7 @@ export default function SandboxesView() {
         onRetry={() => { reload() }}
       />
       {!loading && !error && filtered.length ? (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
           {filtered.map((item) => (
             <article key={item.id} className="panel overflow-hidden">
               <div className="flex items-start gap-3 p-5">

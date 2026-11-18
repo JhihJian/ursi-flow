@@ -19,11 +19,12 @@ references:
 
 `/workflows` 通过 `routes.tsx` 的 `lazy` 加载 `WorkflowsView.tsx`，以路由 `handle.nav = true` 注册一级导航。目录提供搜索、创建、编辑、复制和删除，点击名称读取定义详情。
 
-实现约定：页面状态由组件局部 `useState` 管理，列表读取走 `useResource`（保留 generation 与 AbortController 语义），写操作自行维护 `savingId` / `actionError`。复制与删除使用共享 `confirmAction`，成功提示使用 `notify`，错误经 `errorMessage` 归一。列表使用 `.page-stack`、`.toolbar`、`.table-wrap`、`.data-table` 等既有类名。
+实现约定：页面状态由组件局部 `useState` 管理，列表读取走 `useResource`（保留 generation 与 AbortController 语义），写操作自行维护 `savingId` / `actionError`。复制与删除使用共享 `confirmAction`，成功提示使用 `notify`，错误经 `errorMessage` 归一。列表使用 `.page-stack`、`.toolbar`、`.table-wrap`、`.data-table` 等既有类名；桌面页面取 `.page-stack-fill`，表格占据剩余高度并在 `.table-fill` 内滚动，表头固定。
 
 #### 验收
 
 - `GET /workflows` 返回的名称、描述、节点数与更新时间显示在目录，搜索匹配名称或描述。加载、空目录、无匹配和请求失败均有可操作提示。
+- 桌面目录表格填满内容区剩余高度，行数超过可视区域时在表格内滚动且表头保持可见；窄屏保持文档滚动。
 - `GET /workflows/:id` 返回详情后，可查看描述、节点依赖与角色引用。详情请求失败可重试。
 - 新建与编辑分别向 `POST /workflows`、`PUT /workflows/:id` 提交名称、描述、nodes、edges，成功后重新读取目录。
 - 复制确认后请求 `POST /workflows/:id/copy` 并打开副本编辑。删除确认后请求 `DELETE /workflows/:id`，失败保留原记录并显示错误。

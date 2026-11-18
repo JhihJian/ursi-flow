@@ -39,7 +39,7 @@ export default function RunsView() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack-fill">
       <PageHeader
         title="运行记录"
         description="追踪任务进度，处理人工审批，回看执行过程与交付物。"
@@ -88,7 +88,7 @@ export default function RunsView() {
       </ResourceState>
 
       {!loading && !error && visible.length ? (
-        <div className="table-wrap">
+        <div className="table-wrap table-fill">
           <table className="data-table min-w-[680px]">
             <thead>
               <tr>
