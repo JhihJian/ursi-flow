@@ -34,7 +34,7 @@ archive=$(mktemp -d "$HOME/daily-close-XXXXXXXX") && cp -- "$report" "$archive/r
 
 ## 换成门店自己的订单
 
-保留示例文件，按同目录 `orders.csv` 的表头和字段格式准备订单，然后指定文件：
+按同目录 `orders.csv` 的表头准备单个营业日的流水。`transaction_id` 必须唯一，`type` 取 `payment`（收款）或 `refund`（退款），`amount_cents` 都填正整数分。报表的 `net_cents` 是收款减退款，可以为负。店名不得有首尾空白、控制字符或表格公式前缀。指定自己的文件：
 
 ```bash
 report=$(sudo python3 -I -B examples/daily-close/run.py --orders "$HOME/门店订单/今日订单.csv") && cat -- "$report"

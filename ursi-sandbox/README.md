@@ -2,6 +2,8 @@
 
 为独立客户端或工作流引擎提供 Docker 执行环境。Gateway 供应资源，Runtime 管理工作区内的 Agent 会话，Client 提供 Rust 库和命令行。设计与责任划分见 [整体架构](DESIGN.md)。
 
+第一次使用可从[门店日结实例](examples/daily-close/README.md)开始：上传当天流水，在沙箱里执行日结，下载可以对账的 CSV。支持替换为自己的订单，不需要模型密钥。
+
 ## 从源码构建
 
 在 Linux 上从本目录执行以下命令，不需要 Flow 源码。二进制与镜像需使用兼容的架构和 glibc。

@@ -32,8 +32,10 @@ def summarize(path):
             transaction, day, store, kind, amount = row
             if not transaction.strip() or not store.strip():
                 raise ValueError(line + "流水号和店名不能为空")
+            if store != store.strip() or not store.isprintable() or store.startswith(("=", "+", "-", "@")):
+                raise ValueError(line + "店名包含表格不安全字符")
             if transaction in seen:
-                raise ValueError(line + f"重复流水号 {transaction}")
+                raise ValueError(line + "重复流水号")
             if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", day):
                 raise ValueError(line + "日期格式应为 YYYY-MM-DD")
             day = date.fromisoformat(day)

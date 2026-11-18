@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import sys
@@ -30,7 +31,12 @@ class DailyClose(Acceptance):
             local = self.root / name
             shutil.copyfile(source, local)
             self.cli("sftp-put", *connection, local, remote + name)
-        self.ssh("cd /ursi/workspace/daily-close\npython3 close.py orders.csv report.csv\ntest -s report.csv\n")
+        code, result = self.ssh("cd /ursi/workspace/daily-close\npython3 close.py orders.csv report.csv\ntest -s report.csv\n", check=False)
+        if code:
+            # 仅回显固定的业务诊断，不暴露远程 stderr 或订单字段。
+            message = (result or {}).get("stderr", "").strip()
+            known = re.fullmatch(r"日结失败：第 [0-9]+ 行：(重复流水号|流水含多个营业日|金额必须为正整数分|日期格式应为 YYYY-MM-DD|流水类型应为 payment 或 refund|店名包含表格不安全字符|流水列数不正确|流水号和店名不能为空)", message)
+            raise AcceptanceError(message.removeprefix("日结失败：") if known else "远程处理失败，请核对订单格式和 SSH 连接")
         report = self.root / "report.csv"
         self.cli("sftp-get", *connection, report, remote + "report.csv")
         require(report.stat().st_size > 0, "下载的报表为空")
