@@ -43,7 +43,6 @@ export default function RunsView() {
       <PageHeader
         title="运行记录"
         description="追踪任务进度，处理人工审批，回看执行过程与交付物。"
-        icon="runs"
         actions={(
           <>
             <Button variant="outline" icon="refresh" loading={loading} onClick={reload}>刷新</Button>

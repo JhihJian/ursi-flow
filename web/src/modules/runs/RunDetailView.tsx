@@ -122,7 +122,6 @@ function RunDetail({ id }: { id: string }) {
       <PageHeader
         title={run?.name || '运行详情'}
         description={run?.workflowName || '查看运行状态、执行过程与配置快照。'}
-        icon="runs"
         actions={(
           <>
             <Button variant="ghost" icon="refresh" loading={refreshing} disabled={busy} onClick={refresh}>刷新</Button>

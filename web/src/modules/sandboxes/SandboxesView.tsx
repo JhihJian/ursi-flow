@@ -78,7 +78,6 @@ export default function SandboxesView() {
       <PageHeader
         title="沙箱管理"
         description="独立运行环境，清晰掌握每个任务的资源与生命周期。"
-        icon="server"
         actions={<Button icon="refresh" loading={loading} onClick={() => { reload() }}>刷新状态</Button>}
       />
       <div className="grid grid-cols-3 gap-3 sm:gap-5">

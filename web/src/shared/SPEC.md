@@ -50,6 +50,8 @@ HTTP 层统一使用 `/api` 前缀和同源凭据策略，保留调用方请求�
 
 `ui/` 提供 `button`（含 primary/subtle/danger 别名、icon/loading/block）、`modal`、`sheet`、`tabs`（含兼容用法的 `TabBar`）、`switch`、`badge`（含 `StatusPill`）、`input`、`textarea`、`label`、`select`、`card`、`alert`、`table`、`skeleton`、`scroll-area`、`separator`、`tooltip`、`dropdown-menu`、`avatar`，以及 `icon`、`spinner`、`markdown-content`、`page-header`、`resource-state`、`shell-sidebar`、`status-pill`，供 app 与业务域组合。控件默认套用 `styles.css` 的组件类与语义 token，视觉与旧实现一致。
 
+`page-header` 为单行标题条：`h1` 标题、次要说明与右侧操作同行排布，说明在空间不足时截断，不占额外纵向空间，窄屏可换行。
+
 #### 验收
 
 - 加载、错误及空结果可区分，错误可触发调用方重试，等待中的按钮展示加载并阻止重复操作。

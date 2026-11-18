@@ -97,7 +97,6 @@ export default function ArtifactsView() {
       <PageHeader
         title="产物管理"
         description="把每一次执行的结果，沉淀为可追溯的交付物。"
-        icon="artifact"
         actions={<Button icon="refresh" loading={loading} onClick={() => { reload() }}>刷新</Button>}
       />
       <div className="toolbar">

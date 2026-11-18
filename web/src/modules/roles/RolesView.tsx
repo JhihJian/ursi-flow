@@ -65,7 +65,6 @@ export default function RolesView() {
       <PageHeader
         title="角色工作室"
         description="定义角色的思考方式，为流程装配专业能力。"
-        icon="robot"
         actions={(
           <>
             <span className="text-xs text-txt3 max-[760px]:hidden">{roles.length} 个角色</span>

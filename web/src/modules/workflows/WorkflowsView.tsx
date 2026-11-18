@@ -99,7 +99,6 @@ export default function WorkflowsView() {
       <PageHeader
         title="工作流"
         description="管理流程定义，查看节点依赖并发起任务。"
-        icon="workflow"
         actions={(
           <Button variant="primary" icon="plus" onClick={() => { edit() }}>
             新建工作流

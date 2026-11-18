@@ -173,7 +173,6 @@ export default function ConnectionsView() {
       <PageHeader
         title="模型连接"
         description="统一管理模型服务，让每个角色连接合适的智能。"
-        icon="connector"
         actions={<Button variant="primary" icon="plus" onClick={() => { openEditor() }}>新建连接</Button>}
       />
 
