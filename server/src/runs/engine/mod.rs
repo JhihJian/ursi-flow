@@ -44,7 +44,7 @@ use ursi_domain::{
     WorkflowDefinition, WorkflowNode, validate_workflow,
 };
 
-use crate::runs::{CleanupState, FrozenRoles, ResourceReleaser, RunRepository};
+use crate::runs::{CleanupState, FrozenRole, FrozenRoles, ResourceReleaser, RunRepository};
 pub use crate::runs::{LeaseError, LeaseState, LeaseTable};
 
 pub use events::EventBus;
@@ -92,6 +92,7 @@ pub enum ScriptExecutionError {
 pub struct Engine {
     store: Arc<dyn RunRepository>,
     runner: Arc<dyn Runner>,
+    runtime_acp: Option<Arc<dyn Runner>>,
     events: Arc<EventBus>,
     leases: Arc<dyn LeaseTable>,
     script_executor: Arc<dyn ScriptExecutor>,
@@ -116,6 +117,7 @@ impl Engine {
         Self {
             store,
             runner,
+            runtime_acp: None,
             events,
             leases,
             script_executor,
@@ -124,6 +126,12 @@ impl Engine {
             lease_ttl_ms: 300_000,
             holder: format!("engine-{}", uuid::Uuid::new_v4().simple()),
         }
+    }
+
+    /// 仅供快照明确选择 runtime-acp 的节点调用。
+    pub(crate) fn with_runtime_acp(mut self, runner: Option<Arc<dyn Runner>>) -> Self {
+        self.runtime_acp = runner;
+        self
     }
 
     /// 注入执行环境（后续阶段随角色冻结配置装配沙箱环境）。
@@ -181,7 +189,7 @@ impl Engine {
                     role_id: role_id.to_string(),
                 }
             })?;
-            let _: ursi_domain::Role = serde_json::from_value(value.clone())
+            let _: FrozenRole = serde_json::from_value(value.clone())
                 .map_err(|e| EngineError::FrozenRoleInvalid {
                     role_id: role_id.to_string(),
                     reason: e.to_string(),
@@ -734,7 +742,9 @@ impl Engine {
                 Ok(NodeOutcome::WaitingApproval)
             }
             Err(err) => {
-                let retryable = node_of(run, node_id)?.attempts < spec.max_attempts;
+                let retryable = !matches!(err, NodeInvocationError::Runner(
+                    ursi_agent_runtime::ExecutorError::DoNotRetry(_)
+                )) && node_of(run, node_id)?.attempts < spec.max_attempts;
                 if retryable {
                     // 同一轮次内重试：状态回到 pending 等待再次调度。
                     let node = node_mut(run, node_id)?;
@@ -751,7 +761,7 @@ impl Engine {
                     ));
                     self.commit_and_emit(run, generation, events).await?;
                 } else {
-                    // 超过重试上限：节点 failed 且运行进入失败终态，
+                    // 不可重试或已到上限：节点 failed 且运行进入失败终态，
                     // 终态后不调度新节点。
                     {
                         let node = node_mut(run, node_id)?;
@@ -798,11 +808,11 @@ impl Engine {
                 // 冻结角色解析：执行身份必须来自快照，创建后编辑角色配置
                 // 不影响在途运行（SPEC「运行创建与配置冻结」）。缺失即快照
                 // 不完整，明确失败不猜测。
-                let role = self
+                let FrozenRole { role, executor_kind } = match self
                     .frozen_role(&run.id, spec.role_id.as_deref())
-                    .await;
-                let role = match role {
-                    Ok(role) => role,
+                    .await
+                {
+                    Ok(frozen) => frozen,
                     Err(err) => return (Err(NodeInvocationError::Frozen(err)), None),
                 };
                 let executor = ursi_domain::Executor {
@@ -811,7 +821,7 @@ impl Engine {
                         .clone()
                         .unwrap_or_else(|| role.id.clone()),
                     name: format!("冻结执行器（{}）", role.id),
-                    kind: ursi_domain::ExecutorKind::Mock,
+                    kind: executor_kind.unwrap_or(ursi_domain::ExecutorKind::Mock),
                 };
                 let input = InvocationInput {
                     prompt,
@@ -822,8 +832,18 @@ impl Engine {
                 let sink: EventSink<'_> = &|event: TelemetryEvent| {
                     runner_events.lock().expect("事件收集互斥锁可用").push(event);
                 };
-                let result = self
-                    .runner
+                let runner = if executor.kind.as_str() == ursi_agent_runtime::RUNTIME_ACP {
+                    let Some(runner) = &self.runtime_acp else {
+                        let err = ursi_agent_runtime::ExecutorError::DoNotRetry(
+                            "未配置 runtime-acp 执行器".into(),
+                        );
+                        return (Err(NodeInvocationError::Runner(err)), None);
+                    };
+                    runner
+                } else {
+                    &self.runner
+                };
+                let result = runner
                     .run(&input, &role, &executor, self.env.clone(), sink)
                     .await;
                 match result {
@@ -854,7 +874,7 @@ impl Engine {
         &self,
         run_id: &str,
         role_id: Option<&str>,
-    ) -> Result<ursi_domain::Role, EngineError> {
+    ) -> Result<FrozenRole, EngineError> {
         let Some(role_id) = role_id else {
             return Err(EngineError::FrozenRoleMissing {
                 run_id: run_id.to_string(),

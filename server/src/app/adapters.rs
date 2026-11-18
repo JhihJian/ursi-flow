@@ -187,8 +187,12 @@ pub(crate) fn role_dto_to_definition(dto: RoleDto) -> Result<crate::roles::RoleD
             .collect(),
         executor_id: None,
     };
-    let skill_package = SkillPackage::with_entry(
-        crate::roles::SKILL_ENTRY,
+    let executor_kind = dto.executor_kind.as_deref()
+        .map(|raw| ursi_domain::ExecutorKind::parse(raw)
+            .ok_or_else(|| ApiError::bad_request("executorKind 不能为空")))
+        .transpose()?;
+    let skill_package = SkillPackage::for_executor(
+        executor_kind.as_ref(), crate::roles::SKILL_ENTRY,
         dto.skills
             .into_iter()
             .map(|s| SkillFile::new(s.path, s.content.into_bytes()))
@@ -212,10 +216,7 @@ pub(crate) fn role_dto_to_definition(dto: RoleDto) -> Result<crate::roles::RoleD
         skill_package,
         mcp_servers_config,
         connection_id: dto.connection_id,
-        executor_kind: dto.executor_kind.map(|raw| match raw.as_str() {
-            ursi_domain::ExecutorKind::MOCK_TAG => ursi_domain::ExecutorKind::Mock,
-            other => ursi_domain::ExecutorKind::Cli(other.to_string()),
-        }),
+        executor_kind,
     })
 }
 
@@ -488,7 +489,10 @@ impl RunsApi for RunsApiAdapter {
                 .export_freezable(&role_id)
                 .await
                 .map_err(roles_to_api)?;
-            let role_json = serde_json::to_value(&freezable.definition.base)
+            let role_json = serde_json::to_value(crate::runs::FrozenRole {
+                role: freezable.definition.base,
+                executor_kind: freezable.definition.executor_kind,
+            })
                 .map_err(|_| ApiError::Internal)?;
             frozen.insert(role_id, role_json);
         }

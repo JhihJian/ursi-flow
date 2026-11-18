@@ -1,8 +1,8 @@
 ---
 parent: ../../SPEC.md
 references:
-  - ../../../sandbox-gateway/gateway/CONTRACT.md
-  - ../../../sandbox-gateway/runtime/CONTRACT.md
+  - ../../../ursi-sandbox/gateway/CONTRACT.md
+  - ../../../ursi-sandbox/runtime/CONTRACT.md
 ---
 
 # Server Channel

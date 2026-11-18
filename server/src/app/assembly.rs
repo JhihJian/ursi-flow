@@ -161,6 +161,17 @@ impl Drop for App {
 /// 迁移或存储打开失败返回明确原因，不报告就绪；监听绑定失败同样直接
 /// 失败——失败点全部在后台任务启动之前，无组件需要回滚。
 pub async fn assemble(config: AppConfig) -> Result<App, String> {
+    // ACP 真实接入是显式 opt-in。配置不完整或非法时在打开存储前拒绝，
+    // 缺省仍保留原有 MockRunner 行为。
+    let real_runner = ursi_agent_runtime::AcpRunner::from_env()
+        .map_err(|e| format!("ACP 配置错误：{e}"))?;
+    assemble_with_runtime_acp(config, real_runner.map(|r| Arc::new(r) as Arc<_>)).await
+}
+
+pub(super) async fn assemble_with_runtime_acp(
+    config: AppConfig,
+    runtime_acp: Option<Arc<dyn ursi_agent_runtime::Runner>>,
+) -> Result<App, String> {
     let (status_tx, status_rx) = watch::channel(AppStatus::Starting);
 
     // 1. 存储与迁移。共享库版本治理（文档化约束）：
@@ -218,8 +229,7 @@ pub async fn assemble(config: AppConfig) -> Result<App, String> {
     let roles_service =
         Arc::new(crate::roles::RoleService::new(roles_service_store, roles_gateway));
 
-    // 运行引擎：MockRunner、SQL 租约表、资源释放入口接沙箱服务。
-    let runner: Arc<dyn ursi_agent_runtime::Runner> = Arc::new(ursi_agent_runtime::MockRunner::new(
+    let runner = Arc::new(ursi_agent_runtime::MockRunner::new(
         ursi_agent_runtime::MockScenario::Success {
             output: "mock 完成".to_string(),
             tokens: 0,
@@ -234,6 +244,7 @@ pub async fn assemble(config: AppConfig) -> Result<App, String> {
             Arc::clone(&runs_store) as Arc<dyn crate::runs::LeaseTable>,
             Arc::new(NoopScriptExecutor),
         )
+        .with_runtime_acp(runtime_acp)
         .with_releaser(Arc::new(SandboxResourceReleaser {
             store: Arc::clone(&sandboxes_store),
         }))

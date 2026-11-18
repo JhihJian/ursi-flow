@@ -5,8 +5,8 @@ depends-on:
   - ../../crates/channel/SPEC.md
 references:
   - ../../DESIGN.md
-  - ../../../sandbox-gateway/gateway/CONTRACT.md
-  - ../../../sandbox-gateway/runtime/CONTRACT.md
+  - ../../../ursi-sandbox/gateway/CONTRACT.md
+  - ../../../ursi-sandbox/runtime/CONTRACT.md
 ---
 
 # sandboxes

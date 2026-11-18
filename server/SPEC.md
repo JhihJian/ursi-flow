@@ -7,7 +7,8 @@ depends-on:
   - crates/mcp-server/SPEC.md
 references:
   - DESIGN.md
-  - ../sandbox-gateway/gateway/CONTRACT.md
+  - ../ursi-sandbox/gateway/CONTRACT.md
+  - REAL-RUNTIME-ACP.md
 ---
 
 # server
@@ -74,7 +75,7 @@ sandboxes 接入 Gateway 与 Channel，runs 调用 Agent Runtime 控制沙箱会
 #### 验收
 
 - 各模块通过接口替身分别验证就绪、执行调用、产物校验与释放请求的成功和故障路径。
-- 联合真实 Gateway、Channel、Agent Runtime 和沙箱 CLI，验证提示词、模型、Skills 与 MCP 配置实际生效，任务产物可回收并读取。
+- Flow 已提供显式 opt-in 的 Runtime ACP WebSocket 核验入口，验证公开 client、提示词事件和 end_turn 收尾；Gateway、Channel、SSH/SFTP、真实模型、Skills/MCP 配置和产物回收仍需独立联合证据，不能由该入口代替。
 - 返工后旧尝试的迟到产物不能成为当前有效输出，必需产物缺失时下游不执行。
 - 释放失败时可查询、可重试，资源未确认释放前不标记释放成功。
 
@@ -87,4 +88,4 @@ transport 暴露业务协议，app 组装服务和后台任务，web 通过同�
 - transport 用业务替身独立验证参数、错误映射、身份上下文与流式协议；app 用组件替身独立验证装配和启动关闭失败路径。
 - 联合真实 SQLite、HTTP 和 mock 执行接口，完成角色配置、流程引用、启动运行、审批和查询产物的应用闭环。
 - 重启后配置与运行记录仍可查询，服务启动失败不报告就绪，关闭后监听和后台句柄释放。
-- 真实执行链路和页面操作分别提供联合验收证据，不以接口替身通过替代。
+- 真实执行链路和页面操作分别提供联合验收证据，不以接口替身通过替代；当前仓库仅记录 Runtime ACP 层已接入，不声称完整整链已通过。

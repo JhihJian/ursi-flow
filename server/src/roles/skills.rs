@@ -74,6 +74,20 @@ impl SkillPackage {
         Self::with_entry(SKILL_ENTRY, files)
     }
 
+    /// 角色 DTO 与存储共用的解码规则。仅 Runtime 固定 profile 不携带文件包。
+    pub(crate) fn for_executor(
+        kind: Option<&ursi_domain::ExecutorKind>,
+        entry: &str,
+        files: Vec<SkillFile>,
+    ) -> Result<Self, RoleValidationError> {
+        if kind.map(|k| k.as_str()) == Some(ursi_agent_runtime::RUNTIME_ACP) && files.is_empty() {
+            validate_skill_path(entry)?;
+            Ok(Self { entry: entry.into(), files })
+        } else {
+            Self::with_entry(entry, files)
+        }
+    }
+
     /// 指定入口创建文件包并校验：路径边界、重复路径、入口存在。
     pub fn with_entry(entry: impl Into<String>, mut files: Vec<SkillFile>) -> Result<Self, RoleValidationError> {
         let entry = entry.into();

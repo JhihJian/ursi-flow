@@ -23,6 +23,8 @@ use super::error::RoleValidationError;
 use super::mcp::McpServerConfig;
 use super::skills::SkillPackage;
 
+use ursi_agent_runtime::{RUNTIME_ACP, RUNTIME_PROFILE};
+
 /// 测试共用基础 Role 构造（各文件测试模块复用）。
 #[cfg(test)]
 pub(crate) fn test_base(id: &str) -> Role {
@@ -101,6 +103,28 @@ impl RoleDefinition {
                     reason: "必填：角色必须选择模型".into(),
                 });
             }
+            if self.executor_kind.as_ref().map(ExecutorKind::as_str) == Some(RUNTIME_ACP) {
+                if self.base.model.as_deref() != Some(RUNTIME_PROFILE) {
+                    return Err(RoleValidationError::Field {
+                        field: "model",
+                        reason: "runtime-acp 角色必须使用 runtime-profile，模型由 Runtime 固定".into(),
+                    });
+                }
+                if !self.base.skills.is_empty() || !self.skill_package.files.is_empty() {
+                    return Err(RoleValidationError::Field {
+                        field: "skills",
+                        reason: "runtime-acp 角色不支持 skills".into(),
+                    });
+                }
+                if !self.base.mcp_servers.is_empty() || !self.mcp_servers_config.is_empty() {
+                    return Err(RoleValidationError::Field {
+                        field: "mcpServers",
+                        reason: "runtime-acp 角色不支持 MCP".into(),
+                    });
+                }
+            } else if self.skill_package.files.is_empty() {
+                return Err(RoleValidationError::SkillMissingEntry(self.skill_package.entry.clone()));
+            }
             // MCP 配置逐台校验；服务器名在本域配置内不允许重复。
             let mut seen = std::collections::BTreeSet::new();
             for cfg in &self.mcp_servers_config {
@@ -149,6 +173,44 @@ mod tests {
             Some(ExecutorKind::Cli("claude-code".into()))
         );
         assert_eq!(def.base.skills, vec!["code-review".to_string()]);
+    }
+
+    #[test]
+    fn runtime_acp_requires_fixed_profile_and_no_capabilities() {
+        let mut def = definition("r1");
+        def.executor_kind = ExecutorKind::parse(RUNTIME_ACP);
+        def.base.model = Some(RUNTIME_PROFILE.into());
+        def.base.skills.clear();
+        def.base.mcp_servers.clear();
+        let mcp = std::mem::take(&mut def.mcp_servers_config);
+        assert!(def.validate().unwrap_err().to_string().contains("skills"));
+        def.skill_package = SkillPackage::for_executor(
+            def.executor_kind.as_ref(), crate::roles::SKILL_ENTRY, vec![],
+        ).unwrap();
+        def.validate().unwrap();
+        def.mcp_servers_config = mcp;
+        assert!(def.validate().unwrap_err().to_string().contains("mcpServers"));
+        def.mcp_servers_config.clear();
+        def.base.mcp_servers.push("server".into());
+        assert!(def.validate().unwrap_err().to_string().contains("mcpServers"));
+        def.base.mcp_servers.clear();
+        def.base.skills.push("skill".into());
+        assert!(def.validate().unwrap_err().to_string().contains("skills"));
+        def.base.skills.clear();
+        for model in [None, Some("custom".into())] {
+            def.base.model = model;
+            assert!(def.validate().unwrap_err().to_string().contains("model"));
+        }
+        def.base.model = Some(RUNTIME_PROFILE.into());
+        def.connection_id.clear();
+        assert!(def.validate().unwrap_err().to_string().contains("connection_id"));
+        def.connection_id = "conn_main".into();
+        for kind in [None, Some(ExecutorKind::Mock), ExecutorKind::parse("claude-code")] {
+            def.executor_kind = kind;
+            assert!(matches!(def.validate(), Err(DefinitionValidationError::Extended(
+                RoleValidationError::SkillMissingEntry(_)
+            ))));
+        }
     }
 
     /// SPEC「角色创建、查询与修改」：domain 基础校验失败返回字段级原因。

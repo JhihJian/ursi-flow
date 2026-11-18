@@ -25,6 +25,8 @@
 //! - `get_run` / 单产物读取无按 ID 索引路径的域接口，按上述同一缺口处理。
 //!
 //! 验收契约见 SPEC.md；测试见 [`tests`]（真实 SQLite + 进程内 HTTP）。
+//! Runtime ACP 的真实 Flow 核验入口见 `server/REAL-RUNTIME-ACP.md` 与
+//! `server/tests/real_runtime_acp.rs`，该入口只在显式 opt-in 下运行。
 
 pub mod adapters;
 pub mod assembly;
