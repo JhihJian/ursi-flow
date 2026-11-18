@@ -12,7 +12,7 @@ references:
 
 Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、端口地址返回及公开/内部端口隔离。可选 tunnel 为客户端提供受鉴权保护的字节中继。
 
-一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。server 通过网络契约调用 Gateway，agent 会话在沙箱内处理。首个真实驱动对接本机 Unix socket Docker daemon，进程独占 SQLite 数据库并固定 namespace 和 daemon 身份。
+一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。沙箱客户端通过网络契约调用 Gateway，agent 会话在沙箱内处理。首个真实驱动对接本机 Unix socket Docker daemon，进程独占 SQLite 数据库并固定 namespace 和 daemon 身份。
 
 ## 关键功能与验收
 

@@ -20,22 +20,21 @@ export interface ShellSidebarProps {
   mode: 'light' | 'dark'
   /** 当前主色调，`mono` 为黑白灰主题。 */
   palette: 'color' | 'mono'
-  /** 演示模式下展示演示设置入口。 */
-  demo: boolean
+  signedIn: boolean
   onNavigate?: () => void
   onToggleMode?: () => void
   onTogglePalette?: () => void
-  onSettings?: () => void
+  onLogout?: () => void
   className?: string
 }
 
 /** 侧边导航：桌面固定栏与移动抽屉共用同一份结构与文案。 */
-export function ShellSidebar({ groups, mode, palette, demo, onNavigate, onToggleMode, onTogglePalette, onSettings, className }: ShellSidebarProps) {
+export function ShellSidebar({ groups, mode, palette, signedIn, onNavigate, onToggleMode, onTogglePalette, onLogout, className }: ShellSidebarProps) {
   const dark = mode === 'dark'
   const mono = palette === 'mono'
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <Link to="/workflows" className="flex items-center gap-3 px-5 py-6" aria-label="ursi-flow 首页" onClick={onNavigate}>
+      <Link to="/flows" className="flex items-center gap-3 px-5 py-6" aria-label="ursi-flow 首页" onClick={onNavigate}>
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-primary-foreground">
           <Icon name="workflow" size={23} />
         </span>
@@ -83,18 +82,7 @@ export function ShellSidebar({ groups, mode, palette, demo, onNavigate, onToggle
           <Icon name="contrast" />
           <span>{mono ? '彩色主题' : '黑白主题'}</span>
         </button>
-        {demo ? (
-          <button type="button" className="sidebar-link w-full" onClick={onSettings}>
-            <Icon name="flask" />
-            <span>演示模式</span>
-            <Icon name="settings" size={14} className="ml-auto text-txt3" />
-          </button>
-        ) : (
-          <div className="flex items-center gap-3 px-3 py-2.5 text-sm text-txt3">
-            <Icon name="server" />
-            <span>真实服务</span>
-          </div>
-        )}
+        {signedIn && <button type="button" className="sidebar-link w-full" onClick={onLogout}><Icon name="user" />退出登录</button>}
         <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface p-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-dim text-xs font-semibold text-accent-2" aria-hidden="true">
             UF
@@ -102,8 +90,8 @@ export function ShellSidebar({ groups, mode, palette, demo, onNavigate, onToggle
           <div className="min-w-0">
             <p className="truncate text-xs font-medium text-txt">默认工作区</p>
             <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-txt3">
-              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', demo ? 'bg-accent' : 'bg-info')} aria-hidden="true" />
-              {demo ? '演示工作区' : '真实服务'}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-info" aria-hidden="true" />
+              Flow Runtime
             </p>
           </div>
         </div>

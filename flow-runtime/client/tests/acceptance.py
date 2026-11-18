@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import time
@@ -26,7 +27,23 @@ flowchart TD
 完成工作。
 '''.replace(' description:', 'description:')
 
+def request(home, op, args):
+    with socket.socket(socket.AF_UNIX) as sock:
+        sock.settimeout(5)
+        sock.connect(str(home / 'runtime.sock'))
+        sock.sendall(json.dumps({'v': 1, 'op': op, 'args': args}).encode())
+        sock.shutdown(socket.SHUT_WR)
+        with sock.makefile() as reply:
+            return json.load(reply)
+
+
 class Acceptance(unittest.TestCase):
+    def assert_code(self, home, op, args, code):
+        reply = request(home, op, args)
+        self.assertEqual(reply['v'], 1)
+        self.assertIsInstance(reply['error'], str)
+        self.assertEqual(reply.get('code'), code, reply)
+
     def test_independent_processes(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp)
@@ -46,6 +63,11 @@ class Acceptance(unittest.TestCase):
                 self.addCleanup(lambda: p.poll() is None and (p.terminate(),p.wait(timeout=8)))
                 wait(lambda:(home/'runtime.sock').exists()); return p
             p=daemon()
+            for op in ('flow.get', 'flow.update', 'flow.delete', 'run.get', 'run.stop', 'run.history'):
+                self.assert_code(home, op, {'id': 'missing'}, 'not_found')
+            for bad in ([], {'model': None}, {'maxConcurrent': 0}, {'unknown': True}):
+                self.assert_code(home, 'config.update', bad, 'invalid_input')
+            self.assert_code(home, 'flow.get', {'id': '../invalid'}, 'invalid_input')
             cli('config','set','{"maxConcurrent":1}');cli('config','set','{"maxConcurrent":0}',ok=False)
             self.assertEqual(cli('config','get')['maxConcurrent'],1)
             pkg=home/'source'; (pkg/'scripts').mkdir(parents=True)
@@ -54,8 +76,26 @@ class Acceptance(unittest.TestCase):
             script.write_text("import fs from 'node:fs'; fs.writeFileSync('pid',String(process.pid)); setInterval(()=>{},1000)")
             self.assertTrue(cli('flow','validate','work',str(pkg))['valid']);self.assertEqual(cli('flow','list'),[])
             cli('flow','create','work',str(pkg)); self.assertEqual(cli('flow','list'),['work'])
+            files = {'FLOW.md': FLOW, 'scripts/task.mjs': script.read_text()}
+            args = {'id': 'work', 'files': files}
+            rev = cli('flow', 'get', 'work')['revision']
+            self.assert_code(home, 'flow.create', args, 'conflict')
+            for bad in ({'FLOW.md': 'invalid'}, {'FLOW.md': FLOW},
+                        {**files, 'scripts/task.mjs/child': ''}):
+                self.assert_code(home, 'flow.validate', {**args, 'files': bad}, 'invalid_input')
+            args['expectedRevision'] = rev
+            updated = request(home, 'flow.update', args)['data']['revision']
+            self.assertNotEqual(rev, updated)
+            self.assert_code(home, 'flow.update', args, 'conflict')
+            self.assertEqual(cli('flow', 'get', 'work')['revision'], updated)
+            start = {'id': 'first', 'flow': 'work', 'cwd': temp, 'variables': {}}
+            for patch in ({'variables': None}, {'variables': []}, {'cwd': str(home/'absent')}):
+                self.assert_code(home, 'run.start', {**start, **patch}, 'invalid_input')
+            self.assert_code(home, 'run.start', {**start, 'flow': 'absent'}, 'not_found')
             a=cli('run','start','work','{}','first'); wait(lambda:(home/'pid').exists())
             self.assertEqual(a['id'],cli('run','start','work','{}','first')['id'])
+            self.assert_code(home, 'run.start', {**start, 'variables': {'x': 1}}, 'conflict')
+            self.assert_code(home, 'run.start', {**start, 'id': 'second'}, 'busy')
             cli('run','start','work','{}','second',ok=False)
             pid=int((home/'pid').read_text()); self.assertEqual(cli('run','history','first')['nodeRuns'][0]['nodeRef'],'work')
             (pkg/'FLOW.md').write_text('invalid'); cli('flow','update','work',str(pkg),ok=False)
@@ -73,5 +113,12 @@ class Acceptance(unittest.TestCase):
             p.terminate();p.wait(timeout=8); daemon()
             fact=cli('run','history','second')['nodeRuns'][0]
             self.assertEqual(fact['outcome']['result'],'已执行'); self.assertEqual(fact['commandResult']['stdout'].strip(),'新版')
+            # Broken persisted data is neither missing business data nor bad caller input.
+            (home/'config.json').write_text('{"maxConcurrent":0}')
+            self.assert_code(home, 'config.update', {'model': 'x'}, None)
+            (home/'catalog.json').write_text('"missing-generation"')
+            self.assert_code(home, 'flow.get', {'id': 'work'}, None)
+            (home/'runs/second/job.json').unlink()
+            self.assert_code(home, 'run.get', {'id': 'second'}, None)
 
 if __name__=='__main__':unittest.main()

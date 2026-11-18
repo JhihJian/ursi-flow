@@ -94,7 +94,7 @@ export function createChatTestServer(options: ChatTestServerOptions = {}): ChatT
   }
 
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = String(input).replace(/^\/api/, '')
+    const url = String(input)
     const method = (init?.method ?? 'GET').toUpperCase()
     const raw = typeof init?.body === 'string' ? init.body : ''
     const body = raw ? JSON.parse(raw) as Record<string, unknown> : undefined

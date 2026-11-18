@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { setApiTransport } from '@/shared/http/client'
+import { setChatTransport } from './demo/client'
 import { streamChatMessage, type ChatStreamEvent } from './stream'
 
 const sessionId = 'chat-1'
@@ -10,7 +10,7 @@ interface Call { url: string; init: RequestInit }
 
 function useTransport(handler: (url: string, init: RequestInit) => Response | Promise<Response>): Call[] {
   const calls: Call[] = []
-  setApiTransport(((input: RequestInfo | URL, init?: RequestInit) => {
+  setChatTransport(((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const request = init ?? {}
     calls.push({ url, init: request })
@@ -33,8 +33,8 @@ const reply = {
   parts: [{ type: 'text' as const, text: '你好，世界' }],
 }
 
-beforeEach(() => { setApiTransport((...args) => globalThis.fetch(...args)) })
-afterEach(() => { setApiTransport((...args) => globalThis.fetch(...args)) })
+beforeEach(() => { setChatTransport() })
+afterEach(() => { setChatTransport() })
 
 describe('读取对话消息流', () => {
   it('逐行解析被拆开的 NDJSON 分段并返回最终助手消息', async () => {
@@ -49,7 +49,7 @@ describe('读取对话消息流', () => {
     expect(events.filter((event) => event.type === 'delta').map((event) => (event as { text: string }).text)).toEqual(['你好', '，世界'])
     expect(message).toEqual(reply)
     expect(calls).toHaveLength(1)
-    expect(calls[0]!.url).toBe(`/api/chat/sessions/${sessionId}/messages`)
+    expect(calls[0]!.url).toBe(`/chat/sessions/${sessionId}/messages`)
     expect(calls[0]!.init.method).toBe('POST')
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ text: '现在有哪些运行？' })
   })

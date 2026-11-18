@@ -16,7 +16,7 @@ function EmptyState({ onCreate }: { onCreate?: () => void }) {
         <Icon name="chat" size={24} />
       </span>
       <h2 className="font-semibold text-txt">开始一段新对话</h2>
-      <p className="max-w-md text-sm leading-6 text-txt3">演示助手会读取当前工作流与运行记录，并按本地模板生成回复，不会调用任何模型。</p>
+      <p className="max-w-md text-sm leading-6 text-txt3">演示助手使用本地示例，不读取真实工作区或调用模型。</p>
       {onCreate ? <Button className="mt-3" variant="primary" icon="plus" onClick={onCreate}>新建对话</Button> : null}
     </div>
   )
@@ -70,7 +70,7 @@ export default function ChatView() {
 
   return (
     <div className="page-stack page-stack-fill">
-      <PageHeader title="对话" description="就当前工作流与运行记录向助手提问。" />
+      <PageHeader title="对话" description="本地演示 · 会话仅保存在此浏览器。" />
       <div className="panel flex min-h-[520px] min-w-0 flex-col overflow-hidden lg:min-h-0 lg:flex-1 lg:flex-row">
         <ChatSidebar
           sessions={sessions}

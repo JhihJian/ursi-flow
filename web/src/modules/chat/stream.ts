@@ -1,5 +1,5 @@
 import type { ChatMessage, ChatToolPart } from '@/shared/api/types'
-import { ApiError, apiErrorFromResponse, getApiTransport } from '@/shared/http/client'
+import { ApiError, apiErrorFromResponse, getChatTransport } from './demo/client'
 
 /** 消息流事件：正文分段、工具状态与最终助手消息，错误以 error 行或 HTTP 错误表示。 */
 export type ChatStreamEvent =
@@ -79,7 +79,7 @@ function parseLine(line: string): ChatStreamEvent | undefined {
  */
 export async function streamChatMessage(sessionId: string, text: string, options: ChatStreamOptions = {}): Promise<ChatMessage | undefined> {
   const { signal, regenerate = false, onEvent } = options
-  const response = await getApiTransport()(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
+  const response = await getChatTransport()(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },

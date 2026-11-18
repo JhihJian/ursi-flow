@@ -7,7 +7,6 @@ import subprocess
 import sys
 
 
-SERVER = ('server', 'flow-core', 'sandbox-access')
 # Also inspect literal inclusions behind inactive cfgs (which rustc won't open).
 LITERAL = r'r?\#*"([^"\n]*)"\#*'
 INCLUDE = re.compile(r'(?:\binclude(?:_str|_bytes)?!\s*[(\[{]\s*|'
@@ -24,17 +23,19 @@ def require(condition, message):
 def check(side):
     root = Path.cwd()
     ws = root if side == 'server' else root / 'ursi-sandbox'
-    sdk = root / 'ursi-sandbox/client'
-    access = root / 'sandbox-access'
+    server = root / 'server'
+    sdk = root / 'flow-runtime/client'
     if side == 'server':
-        allowed = [*(root / p for p in SERVER), sdk]
-        for directory, entries in [(sdk.parent, {'Cargo.toml', 'client'}),
-                                   (sdk, {'Cargo.toml', 'src'})]:
+        allowed = [server, sdk]
+        for p in ['flow-core', 'sandbox-access', 'ursi-sandbox', 'contracts']:
+            require(not (root / p).exists() and not (root / p).is_symlink(), f'{p} must be absent')
+        for directory, entries in [(sdk.parent, {'client'}),
+                                   (sdk, {'Cargo.toml', 'Cargo.lock', 'src'})]:
             require({p.name for p in directory.iterdir()} == entries,
                     f'{directory}: expected only {sorted(entries)}')
     else:
         allowed = [ws]
-        for p in [*SERVER, 'Cargo.toml', 'Cargo.lock']:
+        for p in ['server', 'flow-core', 'sandbox-access', 'flow-runtime', 'Cargo.toml', 'Cargo.lock']:
             require(not (root / p).exists() and not (root / p).is_symlink(), f'{p} must be absent')
 
     data = json.loads(subprocess.check_output([
@@ -55,7 +56,7 @@ def check(side):
             if 'path' in dep:
                 path = Path(dep['path']).resolve()
                 if side == 'server':
-                    ok = path in allowed and (path != sdk or crate == access) and crate != sdk
+                    ok = crate == server and path == sdk
                 else:
                     ok = path.is_relative_to(ws)
                 require(ok, f"{pid}: {dep['kind']} path {path}")
@@ -66,35 +67,18 @@ def check(side):
     if side == 'server':
         by_dir = {Path(packages[pid]['manifest_path']).parent: pid for pid in local_ids}
         members = {Path(packages[pid]['manifest_path']).parent for pid in data['workspace_members']}
-        require(members == {root / p for p in SERVER}, 'expected only the three server workspace members')
-        sdk_id = by_dir.get(sdk)
-        sdk_ids = {pid for pid, p in packages.items() if p['name'] == 'ursi-sandbox-client'}
-        require(sdk_ids == {sdk_id}, 'expected only the copied public SDK')
+        require(members == {server}, 'expected server to be the only workspace member')
+        require(set(by_dir) == {server, sdk}, 'expected server and independent Flow SDK')
+        sdk_id = by_dir[sdk]
+        require({pid for pid, p in packages.items() if p['name'] == 'ursi-flow-client'} == {sdk_id},
+                'expected only the copied Flow SDK')
+        legacy = {'flow-core', 'sandbox-access', 'ursi-sandbox-client', 'ursi-gateway', 'ursi-session-service'}
         for p in packages.values():
-            require(p['name'] not in {'ursi-gateway', 'ursi-session-service'},
-                    f"server reaches sandbox implementation: {p['id']}")
-        # Check resolved edges too: a patched or renamed dependency need not
-        # declare the SDK path in the consumer's manifest.
+            require(p['name'] not in legacy, f"server reaches legacy package: {p['id']}")
         consumers = {pid for pid, node in nodes.items() if sdk_id in node['dependencies']}
-        require(consumers == {by_dir[access]}, f'unexpected SDK consumers: {consumers}')
-        core = by_dir[root / 'flow-core']
-        seen = set()
-        pending = [core]
-        while pending:
-            for dep in nodes[pending.pop()]['deps']:
-                pid = dep['pkg']
-                require(pid not in local_ids, f"flow-core reaches {pid}: {dep['dep_kinds']}")
-                if pid not in seen:
-                    seen.add(pid)
-                    pending.append(pid)
-        # metadata unifies workspace features. Ask Cargo for the selected package
-        # graph so another member cannot turn sandbox-access back on unnoticed.
-        tree = subprocess.check_output([
-            'cargo', 'tree', '--locked', '-p', 'ursi-server', '--no-default-features',
-            '--target', 'all', '-e', 'normal,build,dev', '--prefix', 'none', '--format', '{p}'
-        ], cwd=ws, text=True)
-        require(not re.search(r'^(sandbox-access|ursi-sandbox-client) v', tree, re.M),
-                'ursi-server --no-default-features still reaches sandbox-access or the SDK')
+        require(consumers == {by_dir[server]}, f'unexpected SDK consumers: {consumers}')
+        require(any(dep['pkg'] == sdk_id and any(k['kind'] is None for k in dep['dep_kinds'])
+                    for dep in nodes[by_dir[server]]['deps']), 'server needs a normal SDK dependency')
 
     for base in allowed:
         for source in base.rglob('*.rs'):

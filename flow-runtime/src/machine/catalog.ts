@@ -11,10 +11,14 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { loadFlow } from "../core/definition/flow-loader.ts";
+import { FlowSyntaxError } from "../core/definition/parser.ts";
+import { BusinessError, invalid } from "./errors.ts";
 
+function validId(value: unknown): value is string {
+	return typeof value === "string" && /^[A-Za-z0-9][\w-]{0,95}$/.test(value);
+}
 export function id(value: unknown): string {
-	if (typeof value !== "string" || !/^[A-Za-z0-9][\w-]{0,95}$/.test(value))
-		throw Error("非法标识");
+	if (!validId(value)) throw invalid("非法标识");
 	return value;
 }
 export async function readJson(file: string) {
@@ -45,7 +49,7 @@ export function checkFiles(files: unknown): asserts files is PackageFiles {
 		Array.isArray(files) ||
 		!Object.hasOwn(files, "FLOW.md")
 	)
-		throw Error("需要包含 FLOW.md 的文件集合");
+		throw invalid("需要包含 FLOW.md 的文件集合");
 	for (const [path, text] of Object.entries(files)) {
 		if (
 			!(
@@ -55,7 +59,10 @@ export function checkFiles(files: unknown): asserts files is PackageFiles {
 			path.split("/").some((s) => s === "." || s === "..") ||
 			typeof text !== "string"
 		)
-			throw Error("非法包内文件");
+			throw invalid("非法包内文件");
+		for (let i = path.indexOf("/"); i !== -1; i = path.indexOf("/", i + 1)) {
+			if (Object.hasOwn(files, path.slice(0, i))) throw invalid("包内文件与目录重名");
+		}
 	}
 }
 async function filesAt(dir: string, prefix = ""): Promise<PackageFiles> {
@@ -78,20 +85,26 @@ export class Catalog {
 		this.home = home;
 	}
 	async current(): Promise<string | null> {
-		return optional(readJson(join(this.home, "catalog.json")), null);
+		const revision = await optional(readJson(join(this.home, "catalog.json")), undefined);
+		if (revision === undefined) return null;
+		if (!validId(revision)) throw Error("已保存的目录修订无效");
+		return revision;
 	}
 	root(version: string) {
-		return join(this.home, "versions", id(version));
+		if (!validId(version)) throw Error("目录修订无效");
+		return join(this.home, "versions", version);
 	}
 	async list() {
 		const v = await this.current();
 		return v ? (await readdir(this.root(v))).sort() : [];
 	}
 	async get(name: string) {
+		id(name);
 		const revision = await this.current();
-		if (!revision) throw Error("Flow 不存在");
+		if (!revision || !(await readdir(this.root(revision))).includes(name))
+			throw new BusinessError("not_found", "Flow 不存在");
 		return {
-			id: id(name),
+			id: name,
 			revision,
 			files: await filesAt(join(this.root(revision), name)),
 		};
@@ -99,8 +112,11 @@ export class Catalog {
 	// Only the daemon's serialized request handler publishes catalog generations.
 	async change(op: string, name: string, files: unknown, expected?: string) {
 		id(name);
+		if (expected !== undefined && typeof expected !== "string")
+			throw invalid("expectedRevision 必须是字符串");
 		const prev = await this.current();
-		if (expected !== undefined && expected !== prev) throw Error("版本冲突");
+		if (expected !== undefined && expected !== prev)
+			throw new BusinessError("conflict", "版本冲突");
 		const next = randomUUID(),
 			root = this.root(next),
 			dir = join(root, name);
@@ -111,19 +127,40 @@ export class Catalog {
 				lstat(dir).then(() => true),
 				false,
 			);
-			if (op !== "validate" && (op === "create" ? exists : !exists))
-				throw Error(exists ? "Flow 已存在" : "Flow 不存在");
+			if (op === "create" && exists) throw new BusinessError("conflict", "Flow 已存在");
+			if ((op === "update" || op === "delete") && !exists)
+				throw new BusinessError("not_found", "Flow 不存在");
 			await rm(dir, { recursive: true, force: true });
 			if (op !== "delete") {
 				checkFiles(files);
 				for (const [path, text] of Object.entries(files)) {
 					const target = join(dir, path);
-					await mkdir(join(target, ".."), { recursive: true });
-					await writeFile(target, text);
+					try {
+						await mkdir(join(target, ".."), { recursive: true });
+						await writeFile(target, text);
+					} catch (e) {
+						if ((e as NodeJS.ErrnoException).code === "ENAMETOOLONG")
+							throw invalid("包内路径过长");
+						throw e;
+					}
 				}
 			}
-			for (const entry of await readdir(root))
-				await loadFlow(join(root, entry));
+			for (const entry of await readdir(root)) {
+				try {
+					await loadFlow(join(root, entry));
+				} catch (e) {
+					// Only package validation in the staged generation is caller input.
+					if (!(e instanceof Error) || "errno" in e ||
+						(e.constructor !== Error && !(e instanceof FlowSyntaxError))) throw e;
+					// A pre-existing broken dependency is storage corruption. Check the
+					// published closure before attributing a failure to the proposed edit.
+					if (prev) {
+						const published = this.root(prev);
+						for (const pkg of await readdir(published)) await loadFlow(join(published, pkg));
+					}
+					throw invalid(e.message);
+				}
+			}
 			if (op === "validate") {
 				await rm(root, { recursive: true, force: true });
 				return { id: name, valid: true };

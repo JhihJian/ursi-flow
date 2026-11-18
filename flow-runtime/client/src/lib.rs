@@ -1,7 +1,7 @@
 //! Synchronous local Flow Runtime client. One Unix connection per operation.
 use serde_json::{Value, json};
 use std::{
-    io::{self, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     time::Duration,
@@ -12,6 +12,37 @@ pub struct FlowClient {
     socket: PathBuf,
 }
 pub type Result<T> = io::Result<T>;
+// On a blocking Unix socket SO_RCVTIMEO/SO_SNDTIMEO may report EAGAIN.
+fn transport_error(e: io::Error) -> io::Error {
+    match e.kind() {
+        ErrorKind::WouldBlock => io::Error::new(ErrorKind::TimedOut, e),
+        _ => e,
+    }
+}
+
+fn decode_reply(bytes: &[u8]) -> Result<Value> {
+    let invalid = || io::Error::new(ErrorKind::InvalidData, "无效的 Runtime 响应");
+    let mut reply: Value =
+        serde_json::from_slice(bytes).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+    if reply["v"] != 1 {
+        return Err(invalid());
+    }
+    match (reply.get("data"), reply.get("error"), reply.get("code")) {
+        (Some(_), None, None) => Ok(reply["data"].take()),
+        (None, Some(Value::String(message)), code) => {
+            let kind = match code.map(|v| v.as_str().ok_or_else(invalid)).transpose()? {
+                Some("not_found") => ErrorKind::NotFound,
+                Some("conflict") => ErrorKind::AlreadyExists,
+                Some("busy") => ErrorKind::WouldBlock,
+                Some("invalid_input") => ErrorKind::InvalidInput,
+                _ => ErrorKind::Other,
+            };
+            Err(io::Error::new(kind, message.clone()))
+        }
+        _ => Err(invalid()),
+    }
+}
+
 impl FlowClient {
     pub fn new(socket: impl Into<PathBuf>) -> Self {
         Self {
@@ -26,25 +57,21 @@ impl FlowClient {
         Ok(Self::new(home.join("runtime.sock")))
     }
     fn request(&self, op: &str, args: Value) -> Result<Value> {
-        let mut socket = UnixStream::connect(&self.socket)?;
+        let mut socket = UnixStream::connect(&self.socket).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => io::Error::new(ErrorKind::ConnectionRefused, e),
+            _ => transport_error(e),
+        })?;
         socket.set_read_timeout(Some(Duration::from_secs(40)))?;
         socket.set_write_timeout(Some(Duration::from_secs(10)))?;
-        serde_json::to_writer(&mut socket, &json!({"v":1,"op":op,"args":args}))?;
-        socket.write_all(b"\n")?;
-        socket.shutdown(std::net::Shutdown::Write)?;
+        serde_json::to_writer(&mut socket, &json!({"v":1,"op":op,"args":args}))
+            .map_err(|e| transport_error(e.into()))?;
+        socket.write_all(b"\n").map_err(transport_error)?;
+        socket
+            .shutdown(std::net::Shutdown::Write)
+            .map_err(transport_error)?;
         let mut buf = Vec::new();
-        socket.read_to_end(&mut buf)?;
-        let reply: Value = serde_json::from_slice(&buf)?;
-        if reply["v"] != 1 {
-            return Err(io::Error::other("无效的 Runtime 响应版本"));
-        }
-        if let Some(err) = reply["error"].as_str() {
-            return Err(io::Error::other(err.to_owned()));
-        }
-        reply
-            .get("data")
-            .cloned()
-            .ok_or(io::Error::other("Runtime 响应缺少 data"))
+        socket.read_to_end(&mut buf).map_err(transport_error)?;
+        decode_reply(&buf)
     }
     pub fn config(&self) -> Result<Value> {
         self.request("config.get", json!({}))
@@ -65,15 +92,32 @@ impl FlowClient {
         self.request("flow.create", json!({"id":id,"files":files}))
     }
     pub fn update(&self, id: &str, files: Value) -> Result<Value> {
-        self.request("flow.update", json!({"id":id,"files":files}))
+        self.update_if(id, files, None)
+    }
+    pub fn update_if(
+        &self,
+        id: &str,
+        files: Value,
+        expected_revision: Option<&str>,
+    ) -> Result<Value> {
+        let mut args = json!({"id":id,"files":files});
+        if let Some(revision) = expected_revision {
+            args["expectedRevision"] = json!(revision);
+        }
+        self.request("flow.update", args)
     }
     pub fn delete(&self, id: &str) -> Result<Value> {
         self.request("flow.delete", json!({"id":id}))
     }
     pub fn start(&self, run_id: &str, flow: &str, cwd: &Path, variables: Value) -> Result<Value> {
+        // Resolve relative to the client; the daemon checks and canonicalizes the directory.
+        let cwd = std::path::absolute(cwd)?;
+        let cwd = cwd
+            .to_str()
+            .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "工作目录不是 UTF-8"))?;
         self.request(
             "run.start",
-            json!({"id":run_id,"flow":flow,"cwd":cwd.canonicalize()?,"variables":variables}),
+            json!({"id":run_id,"flow":flow,"cwd":cwd,"variables":variables}),
         )
     }
     pub fn stop(&self, id: &str) -> Result<Value> {
@@ -87,5 +131,95 @@ impl FlowClient {
     }
     pub fn history(&self, id: &str) -> Result<Value> {
         self.request("run.history", json!({"id":id}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    #[test]
+    fn business_kind_depends_only_on_code() {
+        for (code, kind) in [
+            ("not_found", ErrorKind::NotFound),
+            ("conflict", ErrorKind::AlreadyExists),
+            ("busy", ErrorKind::WouldBlock),
+            ("invalid_input", ErrorKind::InvalidInput),
+            ("future_code", ErrorKind::Other),
+        ] {
+            let reply = json!({"v":1,"error":"same message","code":code});
+            assert_eq!(
+                decode_reply(reply.to_string().as_bytes())
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+        }
+        assert_eq!(
+            decode_reply(br#"{"v":1,"error":"invalid input"}"#)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn malformed_replies_are_not_validation_errors() {
+        for bytes in [
+            "",
+            "{",
+            "[]",
+            r#"{"v":2,"data":0}"#,
+            r#"{"v":1}"#,
+            r#"{"v":1,"data":1,"error":"bad","code":"invalid_input"}"#,
+            r#"{"v":1,"code":"invalid_input"}"#,
+            r#"{"v":1,"error":"bad","code":3}"#,
+        ] {
+            assert_eq!(
+                decode_reply(bytes.as_bytes()).unwrap_err().kind(),
+                ErrorKind::InvalidData
+            );
+        }
+    }
+
+    #[test]
+    fn unix_read_timeout_is_not_runtime_capacity() {
+        let (mut reader, _peer) = UnixStream::pair().unwrap();
+        reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        let error = reader.read_exact(&mut [0]).unwrap_err();
+        assert_eq!(transport_error(error).kind(), ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn update_sends_only_supplied_precondition() {
+        let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let client = FlowClient::new(&path);
+        assert_eq!(
+            client.flows().unwrap_err().kind(),
+            ErrorKind::ConnectionRefused
+        );
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            for expected in [None, Some("rev")] {
+                let (mut socket, _) = listener.accept().unwrap();
+                let req: Value = serde_json::from_reader(&mut socket).unwrap();
+                let mut args = json!({"id":"example", "files":{}});
+                if let Some(revision) = expected {
+                    args["expectedRevision"] = json!(revision);
+                }
+                assert_eq!(req, json!({"v":1,"op":"flow.update","args":args}));
+                socket.write_all(br#"{"v":1,"data":"updated"}"#).unwrap();
+            }
+        });
+        assert_eq!(client.update("example", json!({})).unwrap(), "updated");
+        assert_eq!(
+            client.update_if("example", json!({}), Some("rev")).unwrap(),
+            "updated"
+        );
+        server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
     }
 }

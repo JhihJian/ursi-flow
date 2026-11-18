@@ -51,11 +51,4 @@ Endpoint 为 `{name,port,visibility,address}`，地址由实时 Docker 查询生
 
 ## 独立 CI 使用
 
-将整个 `v1/` 目录作为同一版本的制品分发，保留 `openapi.yaml` 与 `examples/` 的相对位置。两端 CI 固定到同一制品版本，解包后设置 `URSI_GATEWAY_V1_CONTRACT_DIR` 为包含 `openapi.yaml` 的绝对目录。Server 消费方测试在运行时读取 JSON；隔离构建还需公共客户端 SDK 和它继承的 workspace 清单，无需 Gateway 或 Runtime 实现。单仓开发默认读取 `contracts/gateway/v1/`。
-
-在平台工作区根目录验证消费方的请求与响应映射。Gateway 提供方的实际响应需在其工作区独立核验。
-
-```sh
-# Server，使用生产装配与 HTTP 替身
-cargo test --locked -p ursi-server --features sandbox-access --test gateway_consumer
-```
+将整个 `v1/` 目录作为同一版本的制品分发，保留 `openapi.yaml` 与 `examples/` 的相对位置。独立检出沙箱时，设置 `URSI_GATEWAY_V1_CONTRACT_DIR` 为包含 `openapi.yaml` 的绝对目录。单仓开发默认读取 `contracts/gateway/v1/`。在仓库根目录运行 `scripts/ci/run-workspace-isolation.sh sandbox` 可验证沙箱工作区；Flow Server 通过本机 Flow Runtime SDK 工作，不消费 Gateway v1。

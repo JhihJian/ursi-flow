@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { setApiTransport } from '@/shared/http/client'
+import { setChatTransport } from './demo/client'
 import { useChatStore } from './store'
 import { createChatTestServer, emptySession, sampleSession } from './testServer'
 
@@ -27,7 +27,7 @@ function controlledStream() {
 }
 
 async function activate(server: ReturnType<typeof createChatTestServer>, id = 'chat-1') {
-  setApiTransport(server.fetch)
+  setChatTransport(server.fetch)
   await useChatStore.getState().loadSessions()
   useChatStore.getState().selectSession(id)
 }
@@ -43,12 +43,12 @@ async function waitFor(predicate: () => boolean) {
 const session = () => useChatStore.getState().sessions.find((item) => item.id === 'chat-1')
 
 beforeEach(() => { useChatStore.setState(useChatStore.getInitialState(), true) })
-afterEach(() => { setApiTransport((...args) => globalThis.fetch(...args)) })
+afterEach(() => { setChatTransport() })
 
 describe('对话状态', () => {
   it('加载会话列表并可切换当前会话', async () => {
     const server = createChatTestServer({ sessions: [sampleSession(), emptySession()] })
-    setApiTransport(server.fetch)
+    setChatTransport(server.fetch)
     await useChatStore.getState().loadSessions()
     expect(useChatStore.getState().sessions.map((item) => item.id)).toEqual(['chat-1', 'chat-2'])
 
@@ -91,7 +91,7 @@ describe('对话状态', () => {
 
   it('重新生成替换末尾的助手消息，不重复追加用户消息', async () => {
     const server = createChatTestServer()
-    setApiTransport(server.fetch)
+    setChatTransport(server.fetch)
     const sample = sampleSession()
     useChatStore.setState({ sessions: [{ ...sample, messages: [sample.messages[0]!] }], currentId: 'chat-1' })
     await useChatStore.getState().regenerate()
@@ -113,7 +113,7 @@ describe('对话状态', () => {
   })
 
   it('发送失败时显示错误且不保留空占位消息', async () => {
-    setApiTransport((() => Promise.resolve(new Response(JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂时不可用，请重试。' } }), {
+    setChatTransport((() => Promise.resolve(new Response(JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂时不可用，请重试。' } }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },
     }))) as typeof fetch)
@@ -129,7 +129,7 @@ describe('对话状态', () => {
     const streams = [controlledStream(), controlledStream()]
     const bodies: unknown[] = []
     let index = 0
-    setApiTransport((async (_input: RequestInfo | URL, init?: RequestInit) => {
+    setChatTransport((async (_input: RequestInfo | URL, init?: RequestInit) => {
       bodies.push(init?.body ? JSON.parse(String(init.body)) : undefined)
       return streams[index++]!.response
     }) as typeof fetch)

@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 
-import { setApiTransport } from '@/shared/http/client'
+import { setChatTransport } from './demo/client'
 import { useChatStore } from './store'
 import { createChatTestServer, emptySession, sampleSession } from './testServer'
 import { routes } from './routes'
@@ -22,12 +22,12 @@ async function ready() {
 beforeEach(() => { useChatStore.setState(useChatStore.getInitialState(), true) })
 afterEach(() => {
   cleanup()
-  setApiTransport((...args) => globalThis.fetch(...args))
+  setChatTransport()
 })
 
 describe('对话页', () => {
   it('直接进入会话地址渲染历史消息、推理与工具折叠块', async () => {
-    setApiTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
+    setChatTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
     renderAt('/chat/chat-1')
     await ready()
 
@@ -45,7 +45,7 @@ describe('对话页', () => {
   it('输入消息并回车发送，流式中显示停止，结束后渲染 Markdown 回复', async () => {
     let release = () => {}
     const gate = new Promise<void>((resolve) => { release = resolve })
-    setApiTransport(createChatTestServer({ hold: () => gate }).fetch)
+    setChatTransport(createChatTestServer({ hold: () => gate }).fetch)
     renderAt('/chat/chat-1')
     await ready()
 
@@ -65,7 +65,7 @@ describe('对话页', () => {
   })
 
   it('未选择会话时显示空态，新建对话后进入会话地址', async () => {
-    setApiTransport(createChatTestServer().fetch)
+    setChatTransport(createChatTestServer().fetch)
     const router = renderAt('/chat')
     await ready()
 
@@ -78,7 +78,7 @@ describe('对话页', () => {
   })
 
   it('搜索会话只保留匹配项，选中会话进入对应地址', async () => {
-    setApiTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
+    setChatTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
     const router = renderAt('/chat')
     await ready()
     const sidebar = screen.getByRole('complementary')
@@ -91,7 +91,7 @@ describe('对话页', () => {
   })
 
   it('回到 /chat 时清空选中会话，不保留上次高亮', async () => {
-    setApiTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
+    setChatTransport(createChatTestServer({ sessions: [sampleSession(), emptySession('chat-9', '支付重试排查')] }).fetch)
     const router = renderAt('/chat/chat-1')
     await ready()
     await waitFor(() => { expect(useChatStore.getState().currentId).toBe('chat-1') })
@@ -105,7 +105,7 @@ describe('对话页', () => {
   it('错误条带重试入口，重发后清除错误', async () => {
     const server = createChatTestServer({ sessions: [sampleSession()] })
     let failing = 1
-    setApiTransport((async (input: RequestInfo | URL, init?: RequestInit) => {
+    setChatTransport((async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).endsWith('/messages') && failing > 0) {
         failing -= 1
         return new Response(JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: '原始服务端文案' } }), {
@@ -132,8 +132,8 @@ describe('对话页', () => {
   it('会话列表加载失败时显示可重试错误，不显示空态', async () => {
     const server = createChatTestServer()
     let failing = 1
-    setApiTransport((async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/chat/sessions' && (init?.method ?? 'GET') === 'GET' && failing > 0) {
+    setChatTransport((async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/chat/sessions' && (init?.method ?? 'GET') === 'GET' && failing > 0) {
         failing -= 1
         return new Response(JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE' } }), {
           status: 503,
@@ -157,7 +157,7 @@ describe('对话页', () => {
   it('离开页面时中止在途消息流', async () => {
     let release = () => {}
     const gate = new Promise<void>((resolve) => { release = resolve })
-    setApiTransport(createChatTestServer({ sessions: [sampleSession()], hold: () => gate }).fetch)
+    setChatTransport(createChatTestServer({ sessions: [sampleSession()], hold: () => gate }).fetch)
     renderAt('/chat/chat-1')
     await ready()
 

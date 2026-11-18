@@ -4,6 +4,8 @@ import { mkdir, readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { join } from "node:path";
 import { Catalog, id, optional, readJson, save } from "./catalog.ts";
+import { validateVariables } from "../core/contracts/variables.ts";
+import { BusinessError, invalid } from "./errors.ts";
 
 export interface Config {
 	executor: "local-pi";
@@ -57,16 +59,26 @@ export class Runs {
 		this.catalog = catalog;
 	}
 	dir(key: string) {
-		return join(this.catalog.home, "runs", id(key));
+		return join(this.catalog.home, "runs", key);
 	}
 	async list() {
 		const ids = await optional(readdir(join(this.catalog.home, "runs")), []);
-		return Promise.all(ids.map((x) => this.get(x)));
+		return Promise.all(ids.map((x) => this.readJob(x)));
 	}
-	async get(key: string): Promise<Job> {
+	private async readJob(key: string): Promise<Job> {
 		const job: Job = await readJson(join(this.dir(key), "job.json"));
+		if (job?.id !== key || typeof job.status !== "string") throw Error("已保存的 Run 无效");
 		if (job.status === "running" && !this.active.has(key))
 			job.status = "unknown";
+		return job;
+	}
+	private async find(key: string) {
+		const exists = await optional(stat(this.dir(id(key))), null);
+		return exists ? this.readJob(key) : null;
+	}
+	async get(key: string) {
+		const job = await this.find(key);
+		if (!job) throw new BusinessError("not_found", "Run 不存在");
 		return job;
 	}
 	async history(key: string) {
@@ -89,27 +101,33 @@ export class Runs {
 	) {
 		id(key);
 		id(flow);
-		if (
-			typeof cwd !== "string" ||
-			!variables ||
-			typeof variables !== "object" ||
-			Array.isArray(variables)
-		)
-			throw Error("工作目录或变量无效");
-		cwd = await realpath(cwd);
-		if (!(await stat(cwd)).isDirectory()) throw Error("需要工作目录");
-		const previous = await optional(this.get(key), null);
+		try {
+			validateVariables(variables);
+		} catch (e) {
+			if (e instanceof Error && e.constructor === Error) throw invalid(e.message);
+			throw e;
+		}
+		if (typeof cwd !== "string" || !cwd || cwd.includes("\0")) throw invalid("工作目录无效");
+		try {
+			cwd = await realpath(cwd);
+			if (!(await stat(cwd)).isDirectory()) throw invalid("需要工作目录");
+		} catch (e) {
+			if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? ""))
+				throw invalid("工作目录不可用");
+			throw e;
+		}
+		const previous = await this.find(key);
 		if (previous) {
 			if (
 				previous.flow !== flow ||
 				previous.cwd !== cwd ||
 				!isDeepStrictEqual(previous.variables, variables)
 			)
-				throw Error("Run ID 冲突");
+				throw new BusinessError("conflict", "Run ID 冲突");
 			return previous;
 		}
 		if (this.active.size >= config.maxConcurrent)
-			throw Error("达到运行并发上限");
+			throw new BusinessError("busy", "达到运行并发上限");
 		const { revision } = await this.catalog.get(flow);
 		const dir = this.dir(key);
 		await mkdir(dir, { recursive: true });

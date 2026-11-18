@@ -4,8 +4,8 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 
-import { createMockBackend } from '@/mocks/backend'
-import { setApiTransport } from '@/shared/http/client'
+import { setToken } from '@/shared/http/session'
+import { vi } from 'vitest'
 import { useFeedbackStore } from '@/shared/stores/feedback'
 import { createAppRoutes } from './router'
 import { initTheme, PALETTE_STORAGE_KEY, THEME_STORAGE_KEY, useThemeStore } from './theme'
@@ -17,7 +17,8 @@ function renderAt(path: string) {
 
 beforeAll(() => { initTheme() })
 beforeEach(() => {
-  setApiTransport(createMockBackend(undefined, { delay: 0 }).fetch)
+  setToken('test')
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json([])))
   window.localStorage.clear()
   useFeedbackStore.setState({ toasts: [], confirmation: null })
   useThemeStore.getState().setMode('light')
@@ -25,18 +26,18 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
-  setApiTransport((...args) => globalThis.fetch(...args))
+  sessionStorage.clear()
 })
 
 describe('应用壳', () => {
   it('侧边导航切换页面并更新标题、面包屑与当前项', async () => {
-    const { router } = renderAt('/workflows')
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('工作流')
-    expect(screen.getByText('演示工作区')).toBeInTheDocument()
+    const { router } = renderAt('/flows')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Flow 包')
+    expect(screen.getByText('Flow Runtime')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
-    expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('工作流')
+    expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
 
     await userEvent.click(within(mainNav).getByRole('link', { name: '运行记录' }))
     await waitFor(() => { expect(router.state.location.pathname).toBe('/runs') })
@@ -51,20 +52,20 @@ describe('应用壳', () => {
   })
 
   it('移动抽屉展示工作区导航并在导航后关闭', async () => {
-    const { router } = renderAt('/workflows')
+    const { router } = renderAt('/flows')
     await screen.findByRole('heading', { level: 1 })
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
-    await userEvent.click(within(drawer).getByRole('link', { name: '沙箱管理' }))
+    await userEvent.click(within(drawer).getByRole('link', { name: '运行配置' }))
 
-    await waitFor(() => { expect(router.state.location.pathname).toBe('/sandboxes') })
+    await waitFor(() => { expect(router.state.location.pathname).toBe('/flow-config') })
     await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('沙箱管理')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('运行配置')
   })
 
   it('主题按钮同步 html 属性、存储与跨标签页变化', async () => {
-    renderAt('/roles')
+    renderAt('/flows')
     await screen.findByRole('heading', { level: 1 })
 
     await userEvent.click(screen.getByRole('button', { name: '切换到暗色主题' }))
@@ -80,7 +81,7 @@ describe('应用壳', () => {
   })
 
   it('黑白主题与明暗互不影响，并同步存储与跨标签页变化', async () => {
-    renderAt('/roles')
+    renderAt('/flows')
     await screen.findByRole('heading', { level: 1 })
     expect(document.documentElement.dataset.palette).toBe('color')
 

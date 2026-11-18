@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { Catalog, optional, readJson, save } from "./catalog.ts";
 import { Runs, type Config } from "./runs.ts";
+import { isRecord } from "../core/contracts/variables.ts";
+import { BusinessError, invalid } from "./errors.ts";
 
 process.umask(0o077);
 const home = resolve(
@@ -17,38 +19,35 @@ if (!st.isDirectory() || st.uid !== process.getuid?.() || st.mode & 0o077)
 const catalog = new Catalog(home),
 	runs = new Runs(catalog);
 const configFile = join(home, "config.json");
-const config = (): Promise<Config> =>
-	optional(readJson(configFile), {
-		executor: "local-pi",
-		maxConcurrent: 4,
-		model: "",
+function validConfig(c: unknown): c is Config {
+	return (
+		isRecord(c) &&
+		Object.keys(c).every((k) => ["executor", "model", "maxConcurrent"].includes(k)) &&
+		c.executor === "local-pi" &&
+		typeof c.model === "string" &&
+		typeof c.maxConcurrent === "number" &&
+		Number.isInteger(c.maxConcurrent) &&
+		c.maxConcurrent >= 1 && c.maxConcurrent <= 64
+	);
+}
+async function config(): Promise<Config> {
+	const c = await optional(readJson(configFile), {
+		executor: "local-pi", model: "", maxConcurrent: 4,
 	});
-async function dispatch({
-	v,
-	op,
-	args: a,
-}: {
-	v: number;
-	op: string;
-	args: Record<string, any>;
-}) {
-	if (v !== 1 || !a || typeof a !== "object") throw Error("无效协议请求");
+	if (!validConfig(c)) throw Error("已保存的配置无效");
+	return c;
+}
+async function dispatch(request: unknown) {
+	if (!isRecord(request) || request.v !== 1 || !isRecord(request.args))
+		throw invalid("无效协议请求");
+	const { op } = request;
+	const a: Record<string, any> = request.args;
 	switch (op) {
 		case "config.get":
 			return config();
 		case "config.update": {
 			const c = { ...(await config()), ...a };
-			if (
-				Object.keys(c).some(
-					(k) => !["executor", "model", "maxConcurrent"].includes(k),
-				) ||
-				c.executor !== "local-pi" ||
-				typeof c.model !== "string" ||
-				!Number.isInteger(c.maxConcurrent) ||
-				c.maxConcurrent < 1 ||
-				c.maxConcurrent > 64
-			)
-				throw Error("配置无效");
+			if (!validConfig(c)) throw invalid("配置无效");
 			await save(configFile, c);
 			return c;
 		}
@@ -62,7 +61,11 @@ async function dispatch({
 		case "flow.get":
 			return catalog.get(a.id);
 		case "run.start":
-			return runs.start(a.id, a.flow, a.cwd, a.variables ?? {}, await config());
+			return runs.start(
+				a.id, a.flow, a.cwd,
+				a.variables === undefined ? {} : a.variables,
+				await config(),
+			);
 		case "run.stop":
 			return runs.stop(a.id);
 		case "run.get":
@@ -72,7 +75,7 @@ async function dispatch({
 		case "run.list":
 			return runs.list();
 		default:
-			throw Error("未知操作");
+			throw invalid("未知操作");
 	}
 }
 let queue = Promise.resolve();
@@ -83,23 +86,30 @@ const server = createServer({ allowHalfOpen: true }, (socket) => {
 	socket.on("error", () => socket.destroy());
 	socket.on("data", (chunk) => {
 		size += chunk.length;
-		if (size > 4 * 1024 * 1024) socket.destroy();
-		else chunks.push(chunk);
+		if (size <= 4 * 1024 * 1024) chunks.push(chunk);
 	});
 	socket.on("end", () => {
+		socket.setTimeout(0);
 		queue = queue
 			.then(async () => {
-				if (size > 4 * 1024 * 1024 || socket.destroyed) return;
+				if (socket.destroyed) return;
 				try {
-					const data = await dispatch(
-						JSON.parse(Buffer.concat(chunks).toString("utf8")),
-					);
+					if (size > 4 * 1024 * 1024) throw invalid("请求过大");
+					let request: unknown;
+					try {
+						request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+					} catch (e) {
+						if (e instanceof SyntaxError) throw invalid("请求不是有效 JSON");
+						throw e;
+					}
+					const data = await dispatch(request);
 					socket.end(JSON.stringify({ v: 1, data }) + "\n");
 				} catch (e) {
 					socket.end(
 						JSON.stringify({
 							v: 1,
 							error: e instanceof Error ? e.message : String(e),
+							code: e instanceof BusinessError ? e.code : undefined,
 						}) + "\n",
 					);
 				}
@@ -107,7 +117,9 @@ const server = createServer({ allowHalfOpen: true }, (socket) => {
 			.catch((e) => console.error(e));
 	});
 });
-server.listen(join(home, "runtime.sock"));
+server.listen(join(home, "runtime.sock"), () => {
+	if (process.env.URSI_FLOWD_NOTIFY === "1") process.stdout.write("ready-v1\n");
+});
 for (const signal of ["SIGTERM", "SIGINT"])
 	process.once(signal, () => {
 		server.close(async () => {

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() { echo "usage: $0 server|sandbox [--check-only]" >&2; exit 2; }
 [[ $# == 1 || ( $# == 2 && $2 == --check-only ) ]] || usage
 case ${1:-} in
-  server) paths=(Cargo.toml Cargo.lock server flow-core sandbox-access); workspace=. ;;
+  server) paths=(Cargo.toml Cargo.lock server); workspace=. ;;
   sandbox) paths=(ursi-sandbox); workspace=ursi-sandbox ;;
   *) usage ;;
 esac
@@ -19,24 +19,26 @@ if [[ ${2:-} != --check-only ]]; then
   report=$(realpath "$report")
   printf 'Report: %s\n' "$report"
 fi
-mkdir -p "$scratch/src" "$scratch/contract"
+mkdir "$scratch/src"
 for config in .cargo rust-toolchain rust-toolchain.toml; do
   if [[ -e $config ]]; then paths+=("$config"); fi
 done
 rsync -a --exclude=target/ --exclude=.git/ "${paths[@]}" "$scratch/src/"
 if [[ $side == server ]]; then
-  # Cargo reads this parent manifest for workspace inheritance when resolving
-  # the external SDK. It does not need to load the other workspace members.
-  rsync -aR ursi-sandbox/Cargo.toml ursi-sandbox/client/{Cargo.toml,src} "$scratch/src/"
+  rsync -aR flow-runtime/client/{Cargo.toml,Cargo.lock,src} "$scratch/src/"
+else
+  contract=${URSI_GATEWAY_V1_CONTRACT_DIR:-$repo/contracts/gateway/v1}
+  mkdir "$scratch/contract"
+  rsync -a "$contract/" "$scratch/contract/"
+  export URSI_GATEWAY_V1_CONTRACT_DIR=$scratch/contract
+  test -s "$URSI_GATEWAY_V1_CONTRACT_DIR/openapi.yaml"
 fi
-# Preserve the contract layout, but never expose either product's source in the artifact.
-contract=${URSI_GATEWAY_V1_CONTRACT_DIR:-$repo/contracts/gateway/v1}
-rsync -a "$contract/" "$scratch/contract/"
-if find "$scratch" -type l -print -quit | grep -q .; then
-  echo 'isolation inputs may not contain symlinks' >&2; exit 1
-fi
-export URSI_GATEWAY_V1_CONTRACT_DIR=$scratch/contract
-test -s "$URSI_GATEWAY_V1_CONTRACT_DIR/openapi.yaml"
+check_symlinks() {
+  if find "$1" -type l -print -quit | grep -q .; then
+    echo 'isolation inputs may not contain symlinks' >&2; exit 1
+  fi
+}
+check_symlinks "$scratch"
 export CARGO_TARGET_DIR=$scratch/target CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 cd "$scratch/src"
@@ -60,7 +62,18 @@ run_suite() {
 }
 run_suite workspace --workspace --all-features
 if [[ $side == server ]]; then
-  run_suite server-no-default -p ursi-server --no-default-features
+  cargo build --locked --bin ursi-server
+  cargo build --locked --manifest-path flow-runtime/client/Cargo.toml --bin ursi-flow
+  # Build the daemon separately, after all Rust compilation and doctests.
+  mkdir "$scratch/daemon"
+  rsync -a "$repo"/flow-runtime/{src,package.json,package-lock.json,tsconfig.json,tsconfig.build.json} "$scratch/daemon/"
+  check_symlinks "$scratch/daemon"
+  (cd "$scratch/daemon" && npm ci --no-audit --no-fund && npm run build)
+  log="$report/server-e2e.log"
+  python3 -B server/tests/runtime_e2e.py --server "$CARGO_TARGET_DIR/debug/ursi-server" \
+    --cli "$CARGO_TARGET_DIR/debug/ursi-flow" --daemon "$scratch/daemon/dist/machine/daemon.js" \
+    2>&1 | tee "$log" || status=1
+  grep -E '^Ran |^OK|^FAILED' "$log" >> "$summary" || status=1
 else
   for dir in client/scripts runtime/scripts; do
     log="$report/${dir%/*}-python.log"

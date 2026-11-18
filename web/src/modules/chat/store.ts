@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-import { api, errorMessage } from '@/shared/api'
+import { errorMessage } from '@/shared/api'
+import { chatApi as api } from './demo/client'
 import type { ChatMessage, ChatPart, ChatSession, ChatToolPart } from '@/shared/api/types'
 import { streamChatMessage, type ChatStreamEvent } from './stream'
 

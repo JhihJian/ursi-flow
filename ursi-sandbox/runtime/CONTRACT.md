@@ -30,6 +30,6 @@ bundle 清单包含版本、内容校验值、最低镜像级别、所需环境�
 
 ## 工作区与凭据
 
-Gateway 挂载根为 `/ursi/workspace`。server 按 `/ursi/workspace/<run-id>/` 组织业务工作区，输入和产物分别为其 `input/`、`output/` 子目录。独立客户端可直接在挂载根下准备 Git 项目，session-service 校验目录归属并排除私有状态目录。工作区保留策略由 Gateway 管理的存储资源落实，bundle 装配不清空工作区。
+Gateway 挂载根为 `/ursi/workspace`。调用方负责组织挂载根下的业务目录、输入与产物。独立客户端可直接在挂载根下准备 Git 项目，session-service 校验目录归属并排除私有状态目录。工作区保留策略由 Gateway 管理的存储资源落实，bundle 装配不清空工作区。
 
 凭据通过受控运行时注入，按 CLI 或服务需要采用环境变量或限权临时文件。凭据不写入镜像、bundle 或普通元数据日志，临时凭据随会话或沙箱释放清理。读取、传输和观测路径均执行访问范围校验与敏感信息过滤。

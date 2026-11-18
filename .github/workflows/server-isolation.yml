@@ -15,13 +15,16 @@ jobs:
               /Cargo.toml
               /Cargo.lock
               /server/
-              /flow-core/
-              /sandbox-access/
-              /ursi-sandbox/Cargo.toml
-              /ursi-sandbox/client/Cargo.toml
-              /ursi-sandbox/client/src/
+              /flow-runtime/client/Cargo.toml
+              /flow-runtime/client/Cargo.lock
+              /flow-runtime/client/src/
+              /flow-runtime/package*.json
+              /flow-runtime/tsconfig*.json
+              /flow-runtime/src/
           - side: sandbox
-            sources: /ursi-sandbox/
+            sources: |
+              /ursi-sandbox/
+              /contracts/gateway/v1/
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,17 +32,14 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /scripts/ci/
-            /contracts/gateway/v1/
             /.cargo/
             /rust-toolchain
             /rust-toolchain.toml
             ${{ matrix.sources }}
-      - name: Prepare local SSH test fixture
+      - uses: actions/setup-node@v4
         if: matrix.side == 'server'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y openssh-server
-          sudo install -d -m 0755 /run/sshd
+        with:
+          node-version: '24'
       - name: Build and test isolated workspace
         run: scripts/ci/run-workspace-isolation.sh "${{ matrix.side }}"
         env:

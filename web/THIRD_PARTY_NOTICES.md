@@ -59,7 +59,7 @@ SOFTWARE.
 
 - 项目：https://github.com/shadcn-ui/chatbot-template
 - 许可证：MIT
-- 复用方式：仅参考会话消息流、流式状态与输入框的布局和交互组织方式。ursi-flow 的对话模块按本项目七域结构重写，使用自有 DTO、Zustand store、NDJSON 流解析与模拟后端，未引入 Next.js、AI SDK 或模板的独立页面外壳。
+- 复用方式：仅参考会话消息流、流式状态与输入框的布局和交互组织方式。ursi-flow 的对话模块按本项目模块结构重写，使用自有 DTO、Zustand store、NDJSON 流解析与模拟后端，未引入 Next.js、AI SDK 或模板的独立页面外壳。
 
 ## 运行时依赖
 

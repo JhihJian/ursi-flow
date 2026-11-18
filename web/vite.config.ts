@@ -4,11 +4,8 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), ['URSI_', 'VITE_'])
-  const apiMode = mode === 'live' ? 'live' : env.VITE_API_MODE || 'mock'
-  if (!['mock', 'live'].includes(apiMode)) throw new Error('VITE_API_MODE 仅支持 mock 或 live')
+  const env = loadEnv(mode, process.cwd(), 'URSI_')
   return {
-    define: { 'import.meta.env.VITE_API_MODE': JSON.stringify(apiMode) },
     plugins: [react()],
     resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
     server: {
@@ -16,10 +13,10 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       proxy: {
-        '/api': { target: env.URSI_API_PROXY || 'http://127.0.0.1:8080', ws: true },
+        '/api/v1': { target: env.URSI_API_PROXY || 'http://127.0.0.1:8080' },
       },
     },
-    preview: { host: '0.0.0.0', port: 4173, strictPort: true, proxy: {} },
+    preview: { host: '0.0.0.0', port: 4173, strictPort: true },
     test: {
       environment: 'jsdom',
       include: ['src/**/*.test.{ts,tsx}'],

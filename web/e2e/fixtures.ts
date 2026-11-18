@@ -1,7 +1,6 @@
 import { expect, test as base, type Page } from '@playwright/test'
 
-// 每个用例使用 Playwright 独立浏览器上下文，由应用自行生成并持久化演示种子。
-// 业务操作经过真实 UI 和应用 mock transport，不拦截或替换业务请求。
+// 浏览器上下文独立。业务测试在网络边界断言 HTTP 契约，Chat 使用本地会话。
 export const test = base.extend<{ browserErrors: void }>({
   browserErrors: [async ({ page }, use) => {
     const errors: string[] = []

@@ -4,7 +4,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
-const domains = ['workflows', 'roles', 'runs', 'artifacts', 'sandboxes', 'connections', 'chat']
+const domains = ['flows', 'runs', 'config', 'chat']
 const restrict = (names) => ['error', {
   patterns: [{
     regex: `^@/(${names.join('|')})(/|$)`,
@@ -33,12 +33,9 @@ export default tseslint.config(
     files: ['src/shared/**/*.{ts,tsx}'],
     rules: { 'no-restricted-imports': restrict(['app', 'modules', 'mocks']) },
   },
-  {
-    files: ['src/mocks/**/*.{ts,tsx}'],
-    rules: { 'no-restricted-imports': restrict(['app', 'modules']) },
-  },
+
   ...domains.map((domain) => ({
     files: [`src/modules/${domain}/**/*.{ts,tsx}`],
-    rules: { 'no-restricted-imports': restrict(['app', 'mocks', ...domains.filter((other) => other !== domain)]) },
+    rules: { 'no-restricted-imports': restrict(['app', ...domains.filter((other) => other !== domain).map((name) => `modules/${name}`)]) },
   })),
 )
