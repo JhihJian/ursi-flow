@@ -27,6 +27,7 @@ hex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 futures-util.workspace = true
+reqwest.workspace = true
 ursi-domain.workspace = true
 ursi-agent-runtime.workspace = true
 ursi-channel.workspace = true
