@@ -2,7 +2,7 @@
 
 为独立客户端或工作流引擎提供 Docker 执行环境。Gateway 供应资源，Runtime 管理工作区内的 Agent 会话，Client 提供 Rust 库和命令行。设计与责任划分见 [整体架构](DESIGN.md)。
 
-研发场景可以从[发布工具的合并前检查](examples/release-review/README.md)开始：在相同 Git 基线上验证两份补丁，用真实测试定位选错发布版本的回归。数据处理场景另见[门店日结](examples/daily-close/README.md)。两个示例都不需要模型密钥。
+主验收场景是[用 ursi-sandbox-client 开发 Hello World 页面](examples/hello-html/README.md)：创建沙箱，通过 SSH 编写 HTML，通过 SFTP 下载并用浏览器打开。验收不调用 Python 脚本，不需要模型密钥。此前的[发布工具检查](examples/release-review/README.md)和[门店日结](examples/daily-close/README.md)作为历史示例保留。
 
 ## 从源码构建
 

@@ -1,6 +1,10 @@
 # 独立工程验收 · 2026-11-18
 
-## 用户场景：门店日结
+## 主验收：用客户端开发 Hello World 页面
+
+[运行命令和判据](examples/hello-html/README.md)。通过 `ursi-sandbox-client` 在本机真实 Docker 沙箱创建页面，下载 `index.html`，核对远端和本地 SHA-256 均为 `dfb0e6c87a7789939dc68b37e06c1dc6c7b8e558830e890cebb1c87a311b589c`。客户端删除后查询明确得到 404。Chrome 在宿主打开下载物，将页面打印为无页眉页脚的 PDF，`pdftotext` 提取到独立一行 `Hello World`。验收编排、远端页面开发和结果检查均未调用 Python 脚本。本项验证开发者通过 SSH 编写页面，不验证模型生成代码。
+
+## 历史用户场景：门店日结
 
 [复跑说明](examples/daily-close/README.md)。两家门店共六笔样例流水经 SFTP 上传，SSH 在正式沙箱内运行日结程序，下载的 `report.csv` 与手算参考逐字节一致（SHA-256 `322b580eb24990af2c3a4b5e5a6a70392e9b32a8b16d9b454d9245da823db8eb`）。东街店净额 1549 分，西街店净额 -101 分。另一次传入重复流水时，命令退出 1，提示“第 3 行：重复流水号”，没有交付报表。两次均已回收本次容器和卷。本场景验证独立客户端的数据处理，不使用 Flow、ACP 或模型。
 
