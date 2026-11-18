@@ -1,7 +1,7 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - ../../../../server/crates/agent-cli-adapter/SPEC.md
+  - ../../../agent-cli-adapter/SPEC.md
 references:
   - ../../CONTRACT.md
   - ../../AGENT-CONTRACT.md

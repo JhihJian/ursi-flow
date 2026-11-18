@@ -1,11 +1,11 @@
 ---
 parent: ../../SPEC.md
 depends-on:
-  - ../agent-runtime/SPEC.md
-  - ../domain/SPEC.md
+  - ../../server/crates/agent-runtime/SPEC.md
+  - ../../server/crates/domain/SPEC.md
 references:
-  - ../../../sandbox-gateway/runtime/AGENT-CONTRACT.md
-  - ../../../sandbox-gateway/runtime/bundle/session-service/README.md
+  - ../runtime/AGENT-CONTRACT.md
+  - ../runtime/bundle/session-service/README.md
 ---
 
 # Agent CLI Adapter

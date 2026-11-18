@@ -26,9 +26,12 @@ Gateway 管沙箱资源，Runtime 管沙箱内进程与 agent 会话，Server Ch
 | `sandbox-gateway/runtime/bundle/session-service/` | agent 会话服务与 Agent CLI Adapter 装配 |
 | `sandbox-gateway/runtime/bundle/process-supervisor/` | 成熟监督器的配置、启动依赖与停止规则 |
 | `server/crates/channel/` | 服务端连接库，各协议在同一 crate 内组织 |
-| `server/crates/sandbox-observe/` | 预留观测契约，由现有事件接入 |
+| `sandbox-gateway/agent-cli-adapter/` | 沙箱内 CLI 适配、能力渲染与 Pi 进程监督，由 session-service 装配 |
+| `sandbox-gateway/sandbox-observe/` | 观测契约与采集接口，由现有事件生产方接入 |
 
 Gateway 内部调用方向为 gateway-api → lifecycle / tunnel，tunnel → lifecycle，lifecycle → driver。models 为 crate 内共享数据结构，store 属于 lifecycle，不单独建立 crate。
+
+CLI Adapter 与 sandbox-observe 按沙箱子系统归属放在 `sandbox-gateway/` 下，保持独立库 crate。Adapter 继续依赖共享 domain 与 agent-runtime 契约，观测库供服务端和沙箱侧接入事件。
 
 Runtime 的 session-service 是平台自有服务。sshd、code-server、Chromium 和 noVNC 使用各自原生服务。process-supervisor 复用成熟监督器，程序安装在镜像中，配置与薄适配放在 bundle 中。监督器选型依据进程回收、退出处理和就绪能力验证确定。
 
