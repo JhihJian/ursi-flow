@@ -1,6 +1,6 @@
 //! HttpGatewayClient 契约验收测试：axum mock Gateway 全路径验证。
 //!
-//! 每个测试注释标注 Gateway 契约条目（sandbox-gateway/gateway/CONTRACT.md）：
+//! 每个测试注释标注 Gateway 契约条目（ursi-sandbox/gateway/CONTRACT.md）：
 //! - 身份与响应：Bearer 鉴权（401）、错误体形状、状态码语义；
 //! - 控制面路由：POST/GET/DELETE /api/v1/sandboxes、幂等键绑定；
 //! - Sandbox 与操作意图：生命周期请求先受理（202）、异步调度。

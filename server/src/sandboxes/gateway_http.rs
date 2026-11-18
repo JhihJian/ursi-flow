@@ -1,6 +1,6 @@
 //! Gateway 控制面 HTTP 客户端（`GatewayClient` 真实实现，reqwest）。
 //!
-//! 协议对齐 `sandbox-gateway/gateway/CONTRACT.md`：
+//! 协议对齐 `ursi-sandbox/gateway/CONTRACT.md`：
 //! - `prepare`：`POST /api/v1/sandboxes`，`Authorization: Bearer <key>` 与
 //!   `Idempotency-Key: <operation_id>`，body 为 [`SandboxSpec`] JSON；
 //!   202 受理返回 Sandbox（`sandbox_id` 从响应回填），其他状态码映射为

@@ -1,6 +1,6 @@
 ---
 references:
-  - sandbox-gateway/DESIGN.md
+  - ursi-sandbox/DESIGN.md
   - server/DESIGN.md
 ---
 
@@ -18,25 +18,22 @@ ursi-flow 是基于 flow 的 agent 运行引擎。它把一次交付过程固化
 
 ## 模块地图
 
-沙箱管理分为三个边界：Gateway 管资源，Runtime 管沙箱内进程与 agent 会话，Server Channel 管连接。server 请求 Gateway 准备资源，通过 Channel 连接沙箱原生服务，Agent Runtime 通过 ACP 控制 session-service，由会话服务装配 CLI Adapter 执行任务。仓库工作区保存在沙箱的数据资源中。目录与资源归属详见 [沙箱管理模块设计](sandbox-gateway/DESIGN.md)。
+Flow 负责编排与审批，[ursi-sandbox](ursi-sandbox/DESIGN.md) 负责执行环境。独立 CLI 和 Flow 都是该环境的调用方。Flow 的 `runtime-acp` 角色通过公共客户端连接管理员已准备的 Runtime 及工作区，角色选择和业务重试留在引擎。
 
 | 模块 | 职责 |
 |---|---|
 | server | 模块化主服务：workflows、roles、runs、artifacts、sandboxes、connections 六个业务模块，app、transport、storage 三个支撑模块，详见 server/SPEC.md |
 | server/crates/domain | 唯一共享契约层：流程定义、状态机、事件契约 |
 | server/crates/agent-runtime | agent 可控接口与会话语义，服务端通过 ACP 控制沙箱会话 |
-| sandbox-gateway/agent-cli-adapter | 沙箱内 CLI 适配与能力渲染，供 session-service 装配，mock 用于测试 |
+| server/crates/agent-cli-adapter | Flow 的角色能力渲染与 Runner 适配 |
 | server/crates/channel | 通道控制：SSH/SFTP/ACP 传输/终端/code-server/CDP/noVNC/预览端口 |
-| sandbox-gateway/gateway | 沙箱控制面：生命周期接口（含重建）、tunnel 传输、public/internal 端口隔离、驱动抽象（fake/docker）、元数据存储与启动对账 |
-| sandbox-gateway/runtime | image 提供环境与成熟监督器，bundle 提供 session-service、监督配置与平台脚本 |
-| sandbox-gateway/sandbox-observe | 观测面（预留）：agent 会话记录、主机侧命令记录、流量监测 |
+| ursi-sandbox | 独立 workspace：Gateway 管资源，Runtime 管执行，Client 提供公共调用库和 CLI |
+| server/crates/sandbox-observe | Flow 侧观测记录、脱敏、采集接口 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
 | web | Vue3 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections 六域组织，app/shared 提供装配与基础能力 |
-| server bin | ursi-flow 组装入口；sandbox-gateway 为独立二进制 ursi-gateway |
+| server bin | ursi-flow 组装入口 |
 
-server 装配 Agent Runtime、Channel 和 MCP 工具，基础库不反向依赖 server crate。MCP 业务能力通过装配时注入的接口提供。CLI Adapter 与 sandbox-observe 归属 sandbox-gateway 目录，分别提供沙箱执行适配与观测契约。CLI Adapter 的真实实现随 session-service 在沙箱内运行，观测库可由服务端和沙箱侧的事件生产方共同使用。
-
-Gateway 是独立服务，内部 lifecycle、driver、tunnel、gateway-api 同属一个 crate。Runtime 是镜像和 bundle 交付物，Channel 是 server 内连接库。控制请求经 [Gateway 契约](sandbox-gateway/gateway/CONTRACT.md) 传递，运行中连接可选择直连或可选字节隧道。
+server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的领域类型。资源管理遵循 [Gateway 契约](ursi-sandbox/gateway/CONTRACT.md)，真实 ACP 角色接入方法和限制见 [Flow 调用说明](server/REAL-RUNTIME-ACP.md)。
 
 ## 关键功能与验收
 

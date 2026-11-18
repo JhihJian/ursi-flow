@@ -24,7 +24,7 @@
 //! # 隧道协议（TCP over WebSocket，ursi-tcp-v1）
 //!
 //! 与 Gateway `GET /api/v1/sandboxes/{id}/connect/{endpoint}` 对接，细节见
-//! `sandbox-gateway/gateway/CONTRACT.md`「可选 TCP over WebSocket」：
+//! `ursi-sandbox/gateway/CONTRACT.md`「可选 TCP over WebSocket」：
 //!
 //! - WebSocket 子协议 `ursi-tcp-v1`，`Authorization: Bearer <token>` 鉴权；
 //!   携带 Origin 或任何 query 参数会被拒绝。

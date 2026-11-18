@@ -3,7 +3,7 @@
 //! 本模块只依赖 [`AcpFrameTransport`] 抽象（语义与 channel crate 的
 //! 4 字节大端长度 + JSON 帧协议对齐），不关心连接如何建立。真实 ACP 对端
 //! 是沙箱内 session-service，方法集与参数形态以
-//! `sandbox-gateway/runtime/AGENT-CONTRACT.md`「ACP 子集」为准。
+//! `ursi-sandbox/runtime/AGENT-CONTRACT.md`「ACP 子集」为准。
 //!
 //! 关联纪律：每个会话持有统一的关联标识（run_id、node_id、session_id），
 //! create_session 发送的 `session/new`、prompt 发送的 `session/prompt`、

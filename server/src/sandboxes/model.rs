@@ -1,6 +1,6 @@
 //! Gateway 请求模型：沙箱规格、受理回执、平台视图与释放回执。
 //!
-//! 语义对齐 Gateway 契约（`sandbox-gateway/gateway/CONTRACT.md`）：
+//! 语义对齐 Gateway 契约（`ursi-sandbox/gateway/CONTRACT.md`）：
 //! 创建受理返回 202 与 Sandbox，生命周期状态为
 //! preparing/running/stopped/deleting/error，删除完成后查询 404。
 //! 本模块类型是 server 侧的请求身份与平台视图，由 app 装配时映射到
