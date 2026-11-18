@@ -1,7 +1,5 @@
 ---
 parent: ../SPEC.md
-depends-on:
-  - ../../../agent-cli-adapter/SPEC.md
 references:
   - ../../CONTRACT.md
   - ../../AGENT-CONTRACT.md
@@ -12,7 +10,7 @@ references:
 
 ## 功能意图
 
-沙箱内的 ACP JSON-RPC WebSocket 服务，鉴权后创建绑定工作区的会话，装配 Pi RPC Adapter，管理进程、事件、取消与持久化状态。SSH/SFTP 由独立 sshd 提供。
+沙箱内的 ACP JSON-RPC WebSocket 服务，鉴权后创建绑定工作区的会话，通过内部 Pi 模块执行 RPC，管理进程、事件、取消与持久化状态。SSH/SFTP 由独立 sshd 提供。
 
 ## 关键功能与验收
 
@@ -27,7 +25,7 @@ references:
 - cwd canonicalize 后必须为 workspace 内已有目录且位于状态目录之外，非空 MCP 和非文本 prompt 明确拒绝。
 - 创建时固定目录句柄。每轮包括复用 Pi 时重新校验请求路径、规范路径及目录设备号/inode，改名、目录替换或 symlink 重定向时拒绝本轮并清理旧 Pi。
 - 启动通过固定句柄 fchdir，减少路径重解析竞态。检查边界为请求工作目录完整性，Pi 绝对路径工具与 Bash 的容器文件访问仍受 Linux 权限及容器隔离约束。
-- 文本与工具通知按会话关联，prompt 在 Pi 真正停止后返回，模型错误不会被判为成功。
+- Pi JSONL 严格按 LF 拆帧，文本与工具通知按会话关联。只有匹配请求 ID 的接受响应、成功的最终 assistant stopReason 和 agent_settled 均已收到才报告成功；agent_end 或接受响应均不能单独结束任务。
 - 在途 prompt 不阻塞同一连接上的取消、状态或其他会话请求，并发 prompt 立即拒绝。
 
 ### 权限与配置隔离
@@ -36,6 +34,7 @@ root 服务读取管理员只读配置，将必要的 Pi 模型与认证配置�
 
 #### 验收
 
+- 禁止 Pi 自动加载扩展、MCP、skills、上下文和提示模板，执行前确认关闭自动重试与压缩。
 - Pi 使用独立 HOME 与配置目录，环境经 allowlist 重建，不继承服务 token、宿主凭据或 NODE_OPTIONS。
 - 模型配置与临时凭据为限权文件，取消、关闭、失败及崩溃恢复后清理。
 - 日志和 JSON-RPC 错误不包含提供方原始错误或凭据。

@@ -1,4 +1,5 @@
 mod config;
+mod pi;
 mod sessions;
 mod web;
 
@@ -66,7 +67,7 @@ fn main() {
             args.get(5).and_then(|s| s.parse().ok()),
         ) {
             (Some(spec), Some(parent), Some(fd), Some(receipt)) => {
-                ursi_agent_cli_adapter::supervisor::run(spec, parent, fd, receipt)
+                pi::supervisor::run(spec, parent, fd, receipt)
             }
             _ => 1,
         };

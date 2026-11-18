@@ -1,12 +1,12 @@
 use crate::{
     Outbox, RpcError,
     config::{Config, MAX_SESSIONS, WorkingDirectory, write_private},
+    pi::{PiProcess, SpawnSpec, Turn, acp_update},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::HashMap, os::fd::AsRawFd, path::PathBuf, sync::Arc};
 use tokio::sync::{Mutex, Notify, watch};
-use ursi_agent_cli_adapter::{PiProcess, SpawnSpec, Turn, acp_update};
 
 pub struct Sessions {
     pub config: Config,

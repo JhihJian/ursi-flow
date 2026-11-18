@@ -1,4 +1,4 @@
-use crate::Error;
+use super::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{

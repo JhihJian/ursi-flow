@@ -4,10 +4,10 @@
 
 ## 启动与配置
 
-在仓库根目录构建：
+在 `ursi-sandbox` 工作区根目录构建。Pi RPC 适配与进程监督内置于服务，无需 Flow 业务库。
 
 ```sh
-cargo build --release -p ursi-session-service
+cargo build --locked --release -p ursi-session-service
 ```
 
 将 `target/release/ursi-session-service` 放入 bundle 的 `bin/`。监督器直接启动该二进制，默认监听 `0.0.0.0:8765`。`GET /healthz` 返回 `200 ok`，表示服务配置和状态恢复已完成。Runtime 总体健康检查还需单独确认 SSH 就绪。
@@ -103,8 +103,8 @@ Pi 使用独立 HOME、TMPDIR、`PI_CODING_AGENT_DIR`。环境经 `env_clear` �
 ## 验证
 
 ```sh
-cargo test -p ursi-agent-cli-adapter -p ursi-session-service
-cargo clippy -p ursi-agent-cli-adapter -p ursi-session-service --all-targets -- -D warnings
+cargo test --locked -p ursi-session-service
+cargo clippy --locked -p ursi-session-service --all-targets -- -D warnings
 ```
 
 集成用例通过真实 HTTP/WebSocket 连接运行 Python fake RPC 子进程，覆盖鉴权、路径越界、请求关联、严格 LF、事件顺序、模型错误、并发拒绝、取消后代、断线重连、进程异常、消息超限、执行期限与服务重启。cwd 回归覆盖首次与复用轮次的 symlink/目录替换，以及固定句柄启动。外部 SIGKILL 回归覆盖取消中、运行中和 idle 监督器死亡，验证清理失败持久化与其他会话继续可用。该回归在独立测试 subreaper 中执行，由测试通过登记的 pidfd 终止并收割故意保留的 detached 证据进程。相同测试二进制可用 root 运行，覆盖 UID/GID 1000 降权、补充组清空及配置权限。

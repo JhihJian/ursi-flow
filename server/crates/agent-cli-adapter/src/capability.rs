@@ -4,7 +4,7 @@
 //! - 纯渲染逻辑（路径规范化、凭据占位提取、文件集与参数向量生成）可独立验证；
 //! - 渲染产物 [`RenderOutcome`] 经 [`materialize`] 写入 [`ExecutionEnv`]，
 //!   经 [`cleanup`] 幂等删除；
-//! - 凭据只产出 `{{cred:...}}` 引用占位清单，真实凭据由 session-service 注入，
+//! - 凭据只产出 `{{cred:...}}` 引用占位清单，真实凭据由执行环境装配方提供，
 //!   本模块不接触、不落盘任何真实凭据；
 //! - 具体 CLI 的参数特化通过 [`CliRenderPlan`] 扩展，默认 [`GenericCliPlan`]
 //!   生成通用参数向量。
@@ -411,7 +411,7 @@ fn skill_stub_bytes(skill: &str) -> Vec<u8> {
 
 fn credentials_env_bytes(env: &[(String, String)]) -> Vec<u8> {
     let mut out =
-        String::from("# 凭据占位清单：仅含 {{cred:...}} 引用，真实凭据由 session-service 注入。\n");
+        String::from("# 凭据占位清单：仅含 {{cred:...}} 引用，真实凭据由执行环境装配方提供。\n");
     for (key, placeholder) in env {
         out.push_str("export ");
         out.push_str(key);

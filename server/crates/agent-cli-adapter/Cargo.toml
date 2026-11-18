@@ -8,10 +8,9 @@ license.workspace = true
 [dependencies]
 async-trait.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-libc = "0.2"
 ursi-domain.workspace = true
 ursi-agent-runtime.workspace = true
 

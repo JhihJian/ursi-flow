@@ -1,5 +1,5 @@
 //! 每会话独立 subreaper。Pi 的 bash 可以 setsid，因此不能仅 killpg(Pi)。
-use crate::SpawnSpec;
+use super::SpawnSpec;
 use std::{
     collections::HashSet,
     os::unix::process::CommandExt,

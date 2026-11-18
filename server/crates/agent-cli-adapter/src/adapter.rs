@@ -11,11 +11,8 @@
 //! - exec 非零退出 → `ExecutorError::Execution`，不自动重试；
 //! - CLI 输出不含产物声明时的产物行为：声明文件缺失按无产物处理。
 //!
-//! 取消语义：本接口为单发执行，没有取消入口。取消由 session-service
-//! 在会话层控制（终止进程或关闭会话），不进入本 trait 调用路径。
-//!
-//! 凭据：渲染只产出 `{{cred:...}}` 占位清单，真实凭据由 session-service
-//! 在启动 CLI 进程时注入环境；凭据占位文件在 cleanup 中删除（有测试）。
+//! Runner 接口为单次执行，没有会话取消入口。渲染只产出 `{{cred:...}}`
+//! 占位清单，真实凭据由执行环境装配方提供，占位文件由 cleanup 删除。
 
 use std::sync::Arc;
 
@@ -28,7 +25,7 @@ use crate::capability::{
 };
 
 /// CLI 可把最终 stdout 同步写入的约定文件名。本 crate 以 env.exec 合并输出
-/// 作为最终输出，该文件供会话服务装配侧按需读取，CliAdapter 不主动读写。
+/// 作为最终输出，该文件供装配方按需读取，CliAdapter 不主动读写。
 pub const OUTPUT_CAPTURE_FILE: &str = ".ursi/session/stdout.txt";
 
 /// 事件名：配置写入 / CLI 启动 / 产物采集 / 清理。
@@ -56,7 +53,7 @@ impl CliAdapter {
         }
     }
 
-    /// 单次执行（独立函数，供会话服务以任意 env 调用）。
+    /// 单次执行（独立函数，供装配方以任意 env 调用）。
     ///
     /// Runner::run 经由本函数完成实际工作；`sink` 可为空实现。
     pub async fn execute(
@@ -217,11 +214,7 @@ fn emit(sink: EventSink<'_>, name: &str, message: &str, attrs: &[(&str, serde_js
 
 /// mock 执行器：与 agent-runtime::MockRunner 对齐的本地确定性 mock。
 ///
-/// 语义：本 crate 的 mock 用于沙箱内 session-service 侧测试，不依赖
-/// ExecutionEnv 也可运行（env 参数被忽略）；agent-runtime::MockRunner
-/// 是 server 侧的通用 mock 契约实现，两者输出语义一致（回显提示词、
-/// 无产物、零 token）但装配方不同。命名 [`StubAdapter`] 避免与并行开发
-/// 中的 agent-runtime::MockRunner 重名。
+/// 用于 Flow 流程测试，忽略 ExecutionEnv，通过输入构造结果或模拟失败。
 pub struct StubAdapter;
 
 #[async_trait]
