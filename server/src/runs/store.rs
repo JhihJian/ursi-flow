@@ -10,6 +10,13 @@
 //! - `node_runs`：节点状态行。attempts / reworks 随节点状态保存。
 //! - `events`：持久事件。seq 由提交事务内 `max(seq)+1` 确定，提交、查询
 //!   和广播使用同一记录身份。
+//! - `node_artifacts`：产物归属（DESIGN「状态、事件与产物」）。按
+//!   (run, node, generation, attempt, name) 记录节点声明产物的轮次归属；
+//!   返工后新 attempt 的新记录不覆盖旧轮，旧轮记录保留可查询但不参与
+//!   当前轮次。与 artifacts 域联调点：内容存取归 artifacts，本表是 runs
+//!   侧的轮次有效性判据。
+//! - `cleanup_status`：运行终态后的资源清理结果（pending/done/failed），
+//!   失败可查询并重试，与运行执行结果独立。
 //!
 //! 一致性契约（DESIGN「一致性归属」）：状态、节点与事件在同一事务内原子
 //! 提交，任一步失败整体回滚；代数过期（CAS 影响 0 行）返回
@@ -27,8 +34,8 @@ use ursi_domain::{NodeRun, NodeStatus, Run, RunStatus};
 use crate::storage::{Database, Migration, StoreError};
 
 use super::{
-    Clock, FrozenRoles, LeaseError, LeaseState, LeaseTable, RunEventRecord, RunRepository,
-    RunSnapshot,
+    CleanupState, CleanupStatus, Clock, FrozenRoles, LeaseError, LeaseState, LeaseTable,
+    NodeArtifactRecord, RunEventRecord, RunRepository, RunSnapshot,
 };
 
 /// runs 域迁移（登记到 app 的统一迁移列表，顺序只可追加）。
@@ -58,6 +65,23 @@ pub const RUNS_MIGRATIONS: &[Migration] = &[Migration::new(
         seq        INTEGER NOT NULL,
         event_json TEXT NOT NULL,
         PRIMARY KEY (run_id, seq)
+    );
+    CREATE TABLE node_artifacts (
+        run_id     TEXT NOT NULL REFERENCES runs(id),
+        node_id    TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        attempt    INTEGER NOT NULL,
+        name       TEXT NOT NULL,
+        path       TEXT NOT NULL,
+        media_type TEXT,
+        required   INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (run_id, node_id, generation, attempt, name)
+    );
+    CREATE TABLE cleanup_status (
+        run_id    TEXT PRIMARY KEY,
+        state     TEXT NOT NULL,
+        error     TEXT,
+        updated_at_ms INTEGER NOT NULL
     );",
 )];
 
@@ -149,6 +173,32 @@ fn update_run_cas(
     Ok(())
 }
 
+/// attempt 回退防护（SPEC「在同一持有代数内返工后，旧 attempt 的迟到状态、
+/// 事件或产物不能覆盖当前执行结果」）：提交携带的节点 attempt 小于库内值，
+/// 说明是旧 attempt 的迟到提交（同一代数内的返工已推进执行编号），拒绝
+/// 整个提交（状态与事件都不落库），当前结果不被覆盖。代数过期检查先行，
+/// 这里只补「同代数内」的迟到窗口。
+fn guard_attempt_regression(conn: &Connection, run: &Run) -> Result<(), StoreError> {
+    for node in &run.nodes {
+        let stored: Option<i64> = conn
+            .query_row(
+                "SELECT attempts FROM node_runs WHERE run_id = ?1 AND node_id = ?2",
+                params![run.id, node.node_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(stored) = stored {
+            if (node.attempts as i64) < stored {
+                return Err(StoreError::StaleGeneration(format!(
+                    "节点 {} 提交 attempt {} 小于库内 {}（旧 attempt 迟到提交被拒）",
+                    node.node_id, node.attempts, stored
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 覆盖节点状态行（UPSERT，随 commit_run 同事务保存）。
 fn upsert_node(conn: &Connection, run_id: &str, node: &NodeRun) -> rusqlite::Result<()> {
     conn.execute(
@@ -205,6 +255,43 @@ fn load_snapshot(conn: &Connection, id: &str) -> rusqlite::Result<Option<String>
         |row| row.get(0),
     )
     .optional()
+}
+
+/// 解析快照 JSON。
+fn parse_snapshot(id: &str, json: &str) -> Result<RunSnapshot, StoreError> {
+    serde_json::from_str(json).map_err(|e| {
+        StoreError::Storage(format!("运行 {id} 快照反序列化失败：{e}"))
+    })
+}
+
+/// 写入节点产物归属：节点声明逐项落库，同一身份重复记录幂等跳过
+/// （INSERT OR IGNORE 主键去重，重试/迟到写不产生重复行）。
+fn insert_node_artifacts(
+    conn: &Connection,
+    run_id: &str,
+    node_id: &str,
+    generation: u64,
+    attempt: u32,
+    declared: &[ursi_domain::ArtifactContract],
+) -> Result<(), StoreError> {
+    for c in declared {
+        conn.execute(
+            "INSERT OR IGNORE INTO node_artifacts
+             (run_id, node_id, generation, attempt, name, path, media_type, required)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                run_id,
+                node_id,
+                generation as i64,
+                attempt as i64,
+                c.name,
+                c.path,
+                c.media_type,
+                c.required as i64
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 /// 组装运行对象：主键 + 快照 + 全部节点状态行。
@@ -287,6 +374,99 @@ impl RunRepository for SqliteRunStore {
         self.with_conn(|conn| load_run(conn, id))
     }
 
+    async fn get_snapshot(&self, id: &str) -> Result<Option<RunSnapshot>, StoreError> {
+        self.with_conn(|conn| {
+            match load_snapshot(conn, id)? {
+                None => Ok(None),
+                Some(json) => Ok(Some(parse_snapshot(id, &json)?)),
+            }
+        })
+    }
+
+    async fn record_node_artifacts(
+        &self,
+        run_id: &str,
+        node_id: &str,
+        generation: u64,
+        attempt: u32,
+        declared: &[ursi_domain::ArtifactContract],
+    ) -> Result<(), StoreError> {
+        self.with_conn(|conn| {
+            let tx = conn.transaction()?;
+            insert_node_artifacts(&tx, run_id, node_id, generation, attempt, declared)?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    async fn list_node_artifacts(
+        &self,
+        run_id: &str,
+    ) -> Result<Vec<NodeArtifactRecord>, StoreError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT node_id, generation, attempt, name, path, media_type, required
+                 FROM node_artifacts WHERE run_id = ?1
+                 ORDER BY node_id ASC, generation ASC, attempt ASC, name ASC",
+            )?;
+            let rows = stmt.query_map(params![run_id], |row| {
+                Ok(NodeArtifactRecord {
+                    run_id: run_id.to_string(),
+                    node_id: row.get(0)?,
+                    generation: row.get::<_, i64>(1)? as u64,
+                    attempt: row.get::<_, i64>(2)? as u32,
+                    name: row.get(3)?,
+                    path: row.get(4)?,
+                    media_type: row.get(5)?,
+                    required: row.get::<_, i64>(6)? != 0,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    async fn set_cleanup_status(
+        &self,
+        run_id: &str,
+        state: CleanupState,
+        error: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let now_ms = self.now_millis();
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO cleanup_status (run_id, state, error, updated_at_ms)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(run_id) DO UPDATE SET
+                    state = excluded.state,
+                    error = excluded.error,
+                    updated_at_ms = excluded.updated_at_ms",
+                params![run_id, state.as_str(), error, now_ms],
+            )?;
+            Ok(())
+        })
+    }
+
+    async fn cleanup_status(&self, run_id: &str) -> Result<Option<CleanupStatus>, StoreError> {
+        self.with_conn(|conn| {
+            let row: Option<(String, Option<String>)> = conn
+                .query_row(
+                    "SELECT state, error FROM cleanup_status WHERE run_id = ?1",
+                    params![run_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            match row {
+                None => Ok(None),
+                Some((state, error)) => {
+                    let state = CleanupState::parse(&state).ok_or_else(|| {
+                        StoreError::Storage(format!("清理状态非法：{state}"))
+                    })?;
+                    Ok(Some(CleanupStatus { run_id: run_id.to_string(), state, error }))
+                }
+            }
+        })
+    }
+
     async fn commit_run(
         &self,
         run: &Run,
@@ -297,6 +477,7 @@ impl RunRepository for SqliteRunStore {
         self.with_conn(|conn| {
             let tx = conn.transaction()?;
             update_run_cas(&tx, run, expected_generation, now_ms)?;
+            guard_attempt_regression(&tx, run)?;
             for node in &run.nodes {
                 upsert_node(&tx, &run.id, node)?;
             }

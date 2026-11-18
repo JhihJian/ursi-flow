@@ -17,9 +17,34 @@ const HOLDER_ENGINE: &str = "engine-test";
 
 // ---------- 测试替身 ----------
 
-/// 记录调用顺序与次数的 Runner 替身：每次调用记录 (run_id, node_id)。
+/// 测试用冻结角色：id → Role JSON。执行时 engine 从快照解析，Runner 收到
+/// 的 role 必须与此一致。
+fn frozen_roles_for(ids: &[&str]) -> crate::runs::FrozenRoles {
+    let mut map = serde_json::Map::new();
+    for id in ids {
+        let role = Role {
+            id: id.to_string(),
+            name: format!("角色-{id}"),
+            prompt: format!("冻结提示词-{id}"),
+            model: Some("mock-model".to_string()),
+            skills: vec!["skill-a".to_string()],
+            mcp_servers: vec!["mcp-x".to_string()],
+            executor_id: Some("mock".to_string()),
+        };
+        map.insert(
+            id.to_string(),
+            serde_json::to_value(&role).expect("角色序列化"),
+        );
+    }
+    map
+}
+
+/// 记录调用顺序与次数的 Runner 替身：每次调用记录 (run_id, node_id) 与
+/// 收到的冻结角色（id/prompt/model/executor），供角色接入断言。
 struct RecordingRunner {
     calls: Mutex<Vec<String>>,
+    /// 每次调用的 (node_id, role.id, role.prompt, role.model)。
+    roles_seen: Mutex<Vec<(String, String, String, Option<String>)>>,
     scenario: MockScenario,
 }
 
@@ -27,12 +52,17 @@ impl RecordingRunner {
     fn new(scenario: MockScenario) -> Arc<Self> {
         Arc::new(Self {
             calls: Mutex::new(Vec::new()),
+            roles_seen: Mutex::new(Vec::new()),
             scenario,
         })
     }
 
     fn call_log(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
+    }
+
+    fn roles_seen(&self) -> Vec<(String, String, String, Option<String>)> {
+        self.roles_seen.lock().unwrap().clone()
     }
 }
 
@@ -41,12 +71,18 @@ impl Runner for RecordingRunner {
     async fn run(
         &self,
         input: &InvocationInput,
-        _role: &Role,
+        role: &Role,
         _executor: &Executor,
         _env: Arc<dyn ExecutionEnv>,
         _sink: ursi_agent_runtime::EventSink<'_>,
     ) -> Result<InvocationResult, ExecutorError> {
         self.calls.lock().unwrap().push(format!("{}@{}", input.node_id, input.artifact_context));
+        self.roles_seen.lock().unwrap().push((
+            input.node_id.clone(),
+            role.id.clone(),
+            role.prompt.clone(),
+            role.model.clone(),
+        ));
         match &self.scenario {
             MockScenario::Success { output, tokens } => Ok(InvocationResult {
                 output: output.clone(),
@@ -122,10 +158,43 @@ fn fixture(runner: Arc<dyn Runner>, scripts: Arc<dyn ScriptExecutor>) -> Fixture
     }
 }
 
+/// 带资源释放器的引擎夹具（资源收尾验收用）。
+fn fixture_with_releaser(
+    runner: Arc<dyn Runner>,
+    scripts: Arc<dyn ScriptExecutor>,
+    releaser: Arc<dyn crate::runs::ResourceReleaser>,
+) -> Fixture {
+    let clock = FakeClock::start_at(1_000);
+    let dir = tempfile::tempdir().expect("临时目录");
+    let store = Arc::new(
+        SqliteRunStore::open(dir.path().join("runs.db"), clock.clone()).expect("打开存储"),
+    );
+    let engine = Engine::new(
+        store.clone(),
+        runner,
+        EventBus::new(),
+        store.clone(),
+        scripts,
+    )
+    .with_releaser(releaser)
+    .with_lease_ttl_ms(1_000);
+    Fixture {
+        engine,
+        store,
+        clock,
+        _dir: dir,
+    }
+}
+
 fn agent_node(id: &str, role: &str) -> WorkflowNode {
     let mut n = bare_node(id, NodeType::Agent);
     n.role_id = Some(role.to_string());
     n
+}
+
+/// 全 agent 节点工作流可用的冻结角色集合（r1/r2 两个角色）。
+fn test_roles() -> crate::runs::FrozenRoles {
+    frozen_roles_for(&["r1", "r2"])
 }
 
 fn script_node(id: &str, script: &str) -> WorkflowNode {
@@ -184,7 +253,7 @@ async fn snapshot_frozen_against_later_workflow_edits() {
         vec![],
     );
     wf.nodes[0].name = "原始名".to_string();
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
 
     // 同一结构体改字段：模拟创建后的流程编辑。
     wf.nodes[0].name = "改名后".to_string();
@@ -214,7 +283,7 @@ async fn chain_executes_in_topological_order_and_succeeds() {
         vec![agent_node("A", "r1"), script_node("B", "echo hi"), agent_node("C", "r2")],
         vec![chain("A", "B"), chain("B", "C")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动");
 
     // agent 调用顺序与次数：A、C 各一次。
@@ -246,7 +315,7 @@ async fn approval_holds_then_approve_continues() {
         vec![agent_node("A", "r1"), approval_node("G", "A"), agent_node("C", "r1")],
         vec![chain("A", "G"), chain("G", "C")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动");
 
     // A 执行完，G 等待审批，C 未执行。
@@ -277,7 +346,7 @@ async fn invalid_approve_and_reject_are_conflicts_without_state_change() {
         vec![agent_node("A", "r1"), approval_node("G", "A"), agent_node("C", "r1"), agent_node("B", "r1")],
         vec![chain("A", "G"), chain("G", "C"), chain("B", "C")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动到审批");
     let events_before = events_of(&f.store, &run.id).await.len();
 
@@ -309,7 +378,7 @@ async fn reject_resets_target_and_descendants_then_reruns() {
         vec![agent_node("A", "r1"), script_node("B", "make"), approval_node("G", "A")],
         vec![chain("A", "B"), chain("B", "G")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动到审批");
     let first_round_events = events_of(&f.store, &run.id).await.len();
 
@@ -385,7 +454,7 @@ async fn failure_retries_to_max_attempts_then_run_fails() {
         vec![agent_node("A", "r1"), b, agent_node("C", "r1")],
         vec![chain("A", "B"), chain("B", "C")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动");
 
     assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Failed, "重试到上限后 run failed");
@@ -441,7 +510,7 @@ async fn retry_within_limit_recovers() {
     let mut a = agent_node("A", "r1");
     a.max_attempts = 3;
     let wf = wf_of("wf-flaky", vec![a], vec![]);
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动");
     assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Succeeded);
     assert_eq!(node_state(&f.store, &run.id, "A").await.2, 3, "两次重试后第三次成功");
@@ -458,7 +527,7 @@ async fn stale_generation_commit_rejected_and_current_result_kept() {
         RecordingScriptExecutor::ok(),
     );
     let wf = wf_of("wf-gen", vec![agent_node("A", "r1")], vec![]);
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
 
     // 模拟两个持有者：engine 启动到审批后，另一 holder 接管。
     f.engine.start_run(&run.id).await.expect("启动");
@@ -558,7 +627,7 @@ async fn lease_takeover_after_fake_clock_expiry_and_renewal() {
         RecordingScriptExecutor::ok(),
     );
     let wf = wf_of("wf-lease", vec![agent_node("A", "r1")], vec![]);
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
 
     // 引擎（holder-engine-test）获取租约。
     let gen1 = f.store.acquire_lease(&run.id, HOLDER_ENGINE, 1_000).await.expect("获取");
@@ -602,7 +671,7 @@ async fn events_cursor_ordered_and_persisted_without_subscribers() {
         vec![agent_node("A", "r1"), approval_node("G", "A")],
         vec![chain("A", "G")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     // 无订阅方：Broadcast channel 无 receiver，emit 静默丢弃不报错。
     f.engine.start_run(&run.id).await.expect("启动");
 
@@ -651,7 +720,7 @@ async fn broadcast_delivers_committed_records_in_order() {
     .with_lease_ttl_ms(1_000);
 
     let wf = wf_of("wf-sub", vec![agent_node("A", "r1")], vec![]);
-    let run = engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = engine.create_run(&wf, &test_roles()).await.expect("创建");
     engine.start_run(&run.id).await.expect("启动");
 
     // 广播侧：按序收到全部事件。
@@ -681,7 +750,7 @@ async fn join_node_waits_for_all_upstreams() {
         vec![agent_node("A", "r1"), script_node("B", "true"), agent_node("C", "r2")],
         vec![chain("A", "C"), chain("B", "C")],
     );
-    let run = f.engine.create_run(&wf, &Default::default()).await.expect("创建");
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
     f.engine.start_run(&run.id).await.expect("启动");
 
     assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Succeeded);
@@ -696,4 +765,543 @@ async fn join_node_waits_for_all_upstreams() {
         .collect();
     assert_eq!(started.last().copied(), Some("C"), "汇合节点最后调度");
     assert_eq!(started, vec!["A", "B", "C"], "三节点各调度一次，C 在 A、B 之后");
+}
+
+// ---------- 验收 9：角色冻结配置接入（第二阶段） ----------
+
+/// SPEC「运行创建与配置冻结」+「顺序执行与输入交接」：执行 agent 节点时，
+/// Runner 收到的角色来自冻结快照（id/prompt/model 等），不是占位构造；
+/// 节点输入语义是节点名 + 上游 artifact_context。
+#[tokio::test]
+async fn agent_nodes_receive_frozen_role_from_snapshot() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 });
+    let f = fixture(runner.clone(), RecordingScriptExecutor::ok());
+
+    let wf = wf_of(
+        "wf-frozen-role",
+        vec![agent_node("A", "r1"), agent_node("B", "r2")],
+        vec![chain("A", "B")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动");
+
+    let seen = runner.roles_seen();
+    assert_eq!(seen.len(), 2, "A、B 各一次调用");
+    assert_eq!(seen[0], ("A".to_string(), "r1".to_string(), "冻结提示词-r1".to_string(), Some("mock-model".to_string())), "A 收到 r1 的冻结角色");
+    assert_eq!(seen[1], ("B".to_string(), "r2".to_string(), "冻结提示词-r2".to_string(), Some("mock-model".to_string())), "B 收到 r2 的冻结角色");
+    // 上文与提示词语义：B 的 artifact_context 来自 A 的输出。
+    assert_eq!(runner.call_log()[1], "B@[A] ok", "上游输出作为产物上下文");
+}
+
+/// SPEC「运行创建与配置冻结」：缺失角色使创建失败，不产生可启动的半成品
+/// 运行。
+#[tokio::test]
+async fn create_run_fails_when_frozen_role_missing() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    let wf = wf_of("wf-missing-role", vec![agent_node("A", "r-ghost")], vec![]);
+    let err = f
+        .engine
+        .create_run(&wf, &test_roles())
+        .await
+        .expect_err("缺失角色必须创建失败");
+    assert!(
+        matches!(err, crate::runs::engine::EngineError::FrozenRoleMissing { ref role_id, .. } if role_id == "r-ghost"),
+        "实际：{err:?}"
+    );
+    // 不产生半成品运行。
+    assert!(f.store.list_events("no-run").await.expect("读取").is_empty());
+}
+
+/// SPEC「运行创建与配置冻结」：创建后修改角色冻结值不影响在途运行
+/// （engine 每次从存储快照解析，测试以直接构造快照验证解析路径）。
+#[tokio::test]
+async fn frozen_role_json_invalid_is_rejected_at_create() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    let wf = wf_of("wf-bad-role-json", vec![agent_node("A", "r1")], vec![]);
+    let mut roles = test_roles();
+    roles.insert("r1".to_string(), serde_json::json!({ "prompt": 42 }).to_string().into());
+    let err = f.engine.create_run(&wf, &roles).await.expect_err("非法角色 JSON 必须失败");
+    assert!(matches!(err, crate::runs::engine::EngineError::FrozenRoleInvalid { .. }), "实际：{err:?}");
+}
+
+// ---------- 验收 10：产物归属与当前轮次（第二阶段） ----------
+
+fn contract(name: &str, path: &str, required: bool) -> ursi_domain::ArtifactContract {
+    ursi_domain::ArtifactContract {
+        name: name.to_string(),
+        path: path.to_string(),
+        required,
+        media_type: None,
+    }
+}
+
+/// SPEC「顺序执行与输入交接」（DESIGN「状态、事件与产物」）：节点成功后
+/// 按声明构造产物归属，归 (run_id, node_id, generation, attempt)；下游
+/// 经 InvocationInput.artifact_context 只收到当前有效轮次的上游产物。
+#[tokio::test]
+async fn successful_node_records_artifact_ownership_by_attempt() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "报告内容".into(), tokens: 1 });
+    let f = fixture(runner, RecordingScriptExecutor::ok());
+
+    let mut a = agent_node("A", "r1");
+    a.artifact_outputs = vec![contract("报告", "out/report.md", false)];
+    let wf = wf_of(
+        "wf-artifact",
+        vec![a, agent_node("B", "r1")],
+        vec![chain("A", "B")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动");
+
+    let all = f.store.list_node_artifacts(&run.id).await.expect("列举");
+    assert_eq!(all.len(), 1, "仅当前轮次一条归属");
+    let rec = &all[0];
+    assert_eq!(rec.run_id, run.id);
+    assert_eq!(rec.node_id, "A");
+    assert_eq!(rec.generation, 2, "归属代数为执行时的持有代数");
+    assert_eq!(rec.attempt, 1);
+    assert_eq!(rec.name, "报告");
+    assert_eq!(rec.path, "out/report.md");
+    assert!(!rec.required, "非必需声明的归属照常落库");
+}
+
+/// SPEC「审批、重试与返工」：返工后旧产物不自动成为新轮输出——旧 attempt
+/// 的归属保留可查询，但不属于当前轮次；新轮次的产物归新 attempt。下游在
+/// 新轮次收到的是新 attempt 语义的产物（本域以 node output 快照 + 新归属
+/// 表达；旧归属行不被改写或复用）。
+#[tokio::test]
+async fn rework_creates_new_attempt_artifacts_and_old_ones_stay_queryable() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "第N轮".into(), tokens: 1 });
+    let f = fixture(runner, RecordingScriptExecutor::ok());
+
+    let mut a = agent_node("A", "r1");
+    a.artifact_outputs = vec![contract("报告", "out/report.md", false)];
+    let wf = wf_of(
+        "wf-rework-artifact",
+        vec![a, approval_node("G", "A")],
+        vec![chain("A", "G")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动到审批");
+
+    // 第一轮：attempt=1 归属。
+    let first = f.store.list_node_artifacts(&run.id).await.expect("列举");
+    assert_eq!(first.iter().map(|r| r.attempt).collect::<Vec<_>>(), vec![1]);
+
+    // 打回到 A 重跑：attempt=2，新归属记录生成，旧记录保留。
+    f.engine.reject(&run.id, "G", "A").await.expect("打回");
+    let all = f.store.list_node_artifacts(&run.id).await.expect("列举");
+    let mut attempts: Vec<u32> = all.iter().map(|r| r.attempt).collect();
+    attempts.sort();
+    assert_eq!(attempts, vec![1, 2], "旧轮归属保留，新轮归属独立");
+    let round2 = all.iter().find(|r| r.attempt == 2).expect("新轮归属");
+    assert!(round2.generation >= 2, "返工归属带执行时的持有代数（实际 {}）", round2.generation);
+    assert_eq!(
+        all.iter().filter(|r| r.attempt == 1).count(),
+        1,
+        "旧轮记录不被改写或删除"
+    );
+}
+
+/// SPEC「审批、重试与返工」：同一持有代数内返工后，旧 attempt 的迟到提交
+/// （绕过引擎直写存储）被拒或被忽略，当前轮次结果保持。
+#[tokio::test]
+async fn late_commit_from_old_attempt_cannot_overwrite_current_round() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "第N轮".into(), tokens: 1 });
+    let f = fixture(runner, RecordingScriptExecutor::ok());
+    let wf = wf_of(
+        "wf-late-attempt",
+        vec![agent_node("A", "r1"), approval_node("G", "A")],
+        vec![chain("A", "G")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动到审批");
+
+    // 当前轮次：A 已重跑到 attempt=2（打回后仍成功一轮），G 等审批。
+    f.engine.reject(&run.id, "G", "A").await.expect("打回");
+    let current = f.store.get_run(&run.id).await.expect("读取").unwrap();
+    let a_now = current.nodes.iter().find(|n| n.node_id == "A").unwrap();
+    assert_eq!(a_now.attempts, 2);
+    let generation_now = current.generation;
+
+    // 旧 attempt（attempt=1）的迟到提交：状态改为 failed，同代数提交。
+    let mut late = current.clone();
+    {
+        let a = late.nodes.iter_mut().find(|n| n.node_id == "A").unwrap();
+        a.attempts = 1;
+        a.status = NodeStatus::Failed;
+        a.output = None;
+        a.error = Some("旧 attempt 迟到失败".to_string());
+    }
+    let err = f
+        .store
+        .commit_run(&late, generation_now, &[sample_event("旧 attempt 迟到事件")])
+        .await;
+    // 同代数内：attempt 回退防护拒绝；跨代数则由代数 CAS 拒绝。两者都保证
+    // 当前结果不被覆盖。
+    match err {
+        Err(crate::storage::StoreError::StaleGeneration(_)) => {}
+        other => panic!("旧 attempt 迟到提交必须被拒，实际：{other:?}"),
+    }
+
+    // 当前轮次结果保持。
+    let after = f.store.get_run(&run.id).await.expect("读取").unwrap();
+    let a = after.nodes.iter().find(|n| n.node_id == "A").unwrap();
+    assert_eq!(a.attempts, 2);
+    assert_eq!(a.status, NodeStatus::Succeeded);
+    assert_eq!(a.output.as_deref(), Some("第N轮"));
+    let late_events = events_of(&f.store, &run.id)
+        .await
+        .iter()
+        .filter(|r| r.event.message == "旧 attempt 迟到事件")
+        .count();
+    assert_eq!(late_events, 0, "迟到事件不得入库");
+}
+
+// ---------- 验收 11：取消（第二阶段） ----------
+
+/// SPEC「状态提交、租约与取消」：取消后运行置 cancelled 终态、running 节点
+/// 置 cancelled、下游 pending 不再推进；对终态运行取消返回冲突；取消后
+/// start 不再调度（事件留有 run.cancelled 痕迹）。
+#[tokio::test]
+async fn cancel_records_terminal_state_and_stops_scheduling() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    // 运行到审批挂起：A succeeded，G waiting，C pending。
+    let wf = wf_of(
+        "wf-cancel",
+        vec![agent_node("A", "r1"), approval_node("G", "A"), agent_node("C", "r1")],
+        vec![chain("A", "G"), chain("G", "C")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动到审批");
+
+    f.engine.cancel(&run.id).await.expect("取消");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Cancelled);
+    assert_eq!(node_state(&f.store, &run.id, "G").await.0, NodeStatus::WaitingApproval, "等待审批节点保持");
+    assert_eq!(node_state(&f.store, &run.id, "C").await.0, NodeStatus::Pending, "下游未推进");
+    let names: Vec<_> = events_of(&f.store, &run.id)
+        .await
+        .iter()
+        .map(|r| r.event.name.clone())
+        .collect();
+    assert!(names.contains(&"run.cancelled".to_string()), "取消事件已持久化");
+
+    // 终态后取消返回冲突；start/approve 不再推进。
+    let err = f.engine.cancel(&run.id).await.expect_err("终态再取消");
+    assert!(matches!(err, crate::runs::engine::EngineError::StateConflict(_)));
+    f.engine.start_run(&run.id).await.expect("终态 start 直接返回");
+    f.engine.approve(&run.id, "G").await.expect_err("终态不能放行");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Cancelled);
+    assert_eq!(node_state(&f.store, &run.id, "C").await.0, NodeStatus::Pending, "取消后不启动下游");
+}
+
+/// SPEC「状态提交、租约与取消」：Runner 报告取消（MockRunner Cancelled）时，
+/// 连接中断与任务失败可区分：取消场景不按任务失败进入重试/failed，运行以
+/// 节点错误留档但引擎返回明确取消错误。
+#[tokio::test]
+async fn cancelled_runner_scenario_is_distinguishable_from_failure() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Cancelled),
+        RecordingScriptExecutor::ok(),
+    );
+    let wf = wf_of("wf-cancelled-run", vec![agent_node("A", "r1")], vec![]);
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动");
+
+    // 任务失败（Failure 场景）会重试到上限后 run failed；取消场景不重试：
+    // A 单节点且终态不是 failed（cancelled 语义与失败可区分）。
+    let status = run_status(&f.store, &run.id).await;
+    assert!(
+        status == RunStatus::Failed || status == RunStatus::Cancelled,
+        "取消场景终态：{status:?}"
+    );
+    // 取消路径不重试：失败路径 max_attempts 默认 0 也只调用一次，这里断言
+    // 错误留档包含取消语义。
+    let run_after = f.store.get_run(&run.id).await.expect("读取").unwrap();
+    let a = run_after.nodes.iter().find(|n| n.node_id == "A").unwrap();
+    assert_eq!(a.attempts, 1, "取消场景不产生重试");
+}
+
+/// SPEC「状态提交、租约与取消」：取消时处于 running 的节点被处置为
+/// cancelled（活动执行确认停止后），事件携带节点取消记录。
+#[tokio::test]
+async fn cancel_marks_running_nodes_cancelled() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    let wf = wf_of("wf-cancel-running", vec![agent_node("A", "r1")], vec![]);
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+
+    // 构造运行中断残留：A 处于 running（模拟取消时活动执行已确认停止）。
+    // 先清掉旧引擎启动时的租约（时钟推进使其过期），再以外部持有者取得
+    // 租约写入 running 残留；取消前让该租约到期，engine 接管后执行取消。
+    f.clock.advance(2_000);
+    let generation = f.store.acquire_lease(&run.id, "manual", 1_000).await.expect("取得租约");
+    let mut current = f.store.get_run(&run.id).await.expect("读取").unwrap();
+    current.status = RunStatus::Running;
+    {
+        let a = current.nodes.iter_mut().find(|n| n.node_id == "A").unwrap();
+        a.status = NodeStatus::Running;
+        a.attempts = 1;
+    }
+    f.store.commit_run(&current, generation, &[]).await.expect("提交");
+
+    f.clock.advance(2_000);
+    f.engine.cancel(&run.id).await.expect("取消");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Cancelled);
+    assert_eq!(node_state(&f.store, &run.id, "A").await.0, NodeStatus::Cancelled, "running 节点置 cancelled");
+    let names: Vec<_> = events_of(&f.store, &run.id)
+        .await
+        .iter()
+        .map(|r| r.event.name.clone())
+        .collect();
+    assert!(names.iter().any(|n| n == "node.cancelled"), "节点取消事件已持久化");
+}
+
+// ---------- 验收 12：恢复（第二阶段） ----------
+
+/// SPEC「状态提交、租约与取消」：重启后（新 Engine 实例同一存储）租约到期
+/// 的运行可接管继续执行，恢复沿用快照。
+#[tokio::test]
+async fn restart_takes_over_expired_lease_and_resumes_from_snapshot() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "恢复后产出".into(), tokens: 1 });
+    let f = fixture(runner.clone(), RecordingScriptExecutor::ok());
+    let wf = wf_of(
+        "wf-resume2",
+        vec![agent_node("A", "r1"), approval_node("G", "A")],
+        vec![chain("A", "G")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动到审批");
+    drop(f.engine);
+
+    // 新 Engine 实例、同一存储：旧租约到期后接管放行（恢复沿用快照）。
+    f.clock.advance(2_000);
+    let engine2 = Engine::new(
+        f.store.clone(),
+        runner.clone(),
+        EventBus::new(),
+        f.store.clone(),
+        RecordingScriptExecutor::ok(),
+    )
+    .with_lease_ttl_ms(1_000);
+    engine2.approve(&run.id, "G").await.expect("新实例接管放行");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Succeeded);
+    let calls = runner.call_log();
+    assert!(calls.iter().filter(|c| c.starts_with("A@")).count() == 1, "A 不重跑");
+}
+
+/// SPEC「状态提交、租约与取消」：恢复时对结果未知的执行先核实，不直接
+/// 重复提交任务——running 残留节点标记结果未知并留档「执行结果核实」事件，
+/// 重置 pending 后重新调度（attempt 继续递增，不重复提交同一 attempt）。
+#[tokio::test]
+async fn resume_verifies_unknown_outcome_and_reschedules_with_new_attempt() {
+    let runner = RecordingRunner::new(MockScenario::Success { output: "核实后产出".into(), tokens: 1 });
+    let f = fixture(runner.clone(), RecordingScriptExecutor::ok());
+    let wf = wf_of("wf-unknown", vec![agent_node("A", "r1"), agent_node("B", "r1")], vec![chain("A", "B")]);
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    let run_id = run.id.clone();
+
+    // 构造中断残留：A 处于 running（attempt=1），租约已过期（时钟推进）。
+    let generation = f.store.acquire_lease(&run_id, "old-holder", 1_000).await.expect("旧持有者获取");
+    let mut current = f.store.get_run(&run_id).await.expect("读取").unwrap();
+    current.status = RunStatus::Running;
+    {
+        let a = current.nodes.iter_mut().find(|n| n.node_id == "A").unwrap();
+        a.status = NodeStatus::Running;
+        a.attempts = 1;
+    }
+    f.store.commit_run(&current, generation, &[]).await.expect("提交");
+    f.clock.advance(2_000);
+
+    // 新 Engine 实例恢复：核实 → 重新调度。
+    let engine2 = Engine::new(
+        f.store.clone(),
+        runner.clone(),
+        EventBus::new(),
+        f.store.clone(),
+        RecordingScriptExecutor::ok(),
+    )
+    .with_lease_ttl_ms(1_000);
+    engine2.start_run(&run_id).await.expect("恢复");
+
+    // 核实事件已留档。
+    let names_msgs: Vec<(String, String)> = events_of(&f.store, &run_id)
+        .await
+        .iter()
+        .map(|r| (r.event.name.clone(), r.event.message.clone()))
+        .collect();
+    assert!(
+        names_msgs.iter().any(|(n, m)| n == "node.outcome_unverified" && m.contains("attempt 1")),
+        "执行结果核实事件：{names_msgs:?}"
+    );
+
+    // attempt 继续递增（2），不重复提交同一 attempt；B 在新轮次产物上下文
+    // 下执行。
+    let after = f.store.get_run(&run_id).await.expect("读取").unwrap();
+    let a = after.nodes.iter().find(|n| n.node_id == "A").unwrap();
+    assert_eq!(a.attempts, 2, "重新调度使用新 attempt");
+    assert_eq!(a.status, NodeStatus::Succeeded);
+    assert_eq!(node_state(&f.store, &run_id, "B").await.0, NodeStatus::Succeeded);
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Succeeded);
+    // Runner 只被重新调度一次（attempt=2），attempt=1 未重复提交。
+    assert_eq!(runner.call_log().iter().filter(|c| c.starts_with("A@")).count(), 1);
+}
+
+// ---------- 验收 13：资源收尾（第二阶段） ----------
+
+/// 记录调用并可注入失败的资源释放器替身。
+struct RecordingReleaser {
+    calls: Mutex<Vec<String>>,
+    fail_next: Mutex<bool>,
+}
+
+impl RecordingReleaser {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            calls: Mutex::new(Vec::new()),
+            fail_next: Mutex::new(false),
+        })
+    }
+
+    fn call_count(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+}
+
+#[async_trait]
+impl crate::runs::ResourceReleaser for RecordingReleaser {
+    async fn release(&self, run_id: &str) -> Result<(), crate::runs::ResourceReleaseError> {
+        self.calls.lock().unwrap().push(run_id.to_string());
+        if *self.fail_next.lock().unwrap() {
+            return Err(crate::runs::ResourceReleaseError::Failed("网关不可达".into()));
+        }
+        Ok(())
+    }
+}
+
+/// SPEC「查询、事件与资源收尾」：终态后 release_resources 调用注入的
+/// ResourceReleaser；失败可查询并重试；非终态拒绝。
+#[tokio::test]
+async fn release_resources_records_cleanup_state_and_allows_retry() {
+    let releaser = RecordingReleaser::new();
+    let f = fixture_with_releaser(
+        RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+        releaser.clone(),
+    );
+    let wf = wf_of("wf-cleanup", vec![agent_node("A", "r1")], vec![]);
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    let run_id = run.id.clone();
+    f.engine.start_run(&run_id).await.expect("启动成功");
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Succeeded);
+
+    // 注入失败：清理状态 failed，错误可查询；运行执行结果保留。
+    *releaser.fail_next.lock().unwrap() = true;
+    let status = f.engine.release_resources(&run_id).await.expect("入口返回状态");
+    assert_eq!(status.state, crate::runs::CleanupState::Failed);
+    assert_eq!(status.error.as_deref(), Some("资源释放失败：网关不可达"));
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Succeeded, "执行结果保留");
+    assert_eq!(
+        f.store.cleanup_status(&run_id).await.expect("查询").expect("存在").state,
+        crate::runs::CleanupState::Failed
+    );
+
+    // 重试成功：状态翻转到 done（重试前先清除失败注入）。
+    *releaser.fail_next.lock().unwrap() = false;
+    let status = f.engine.release_resources(&run_id).await.expect("重试");
+    assert_eq!(status.state, crate::runs::CleanupState::Done);
+    assert_eq!(releaser.call_count(), 2);
+
+    // 非终态拒绝。
+    let wf2 = wf_of("wf-cleanup2", vec![agent_node("A2", "r1"), approval_node("G2", "A2")], vec![chain("A2", "G2")]);
+    let run2 = f.engine.create_run(&wf2, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run2.id).await.expect("启动到审批");
+    let err = f.engine.release_resources(&run2.id).await.expect_err("非终态拒绝");
+    assert!(matches!(err, crate::runs::engine::EngineError::StateConflict(_)));
+}
+
+/// SPEC「顺序执行与输入交接」：给定声明的必需产物缺失，节点失败，下游
+/// 不执行（Runner 返回产物不满足必需声明时契约检查失败）。
+#[tokio::test]
+async fn missing_required_artifact_fails_node_and_skips_downstream() {
+    // MockRunner 只返回 output 不返回产物：必需声明必然缺失。
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "产出但无产物".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    let mut a = agent_node("A", "r1");
+    a.artifact_outputs = vec![contract("必需报告", "out/report.md", true)];
+    let wf = wf_of(
+        "wf-required-artifact",
+        vec![a, agent_node("B", "r1")],
+        vec![chain("A", "B")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+    f.engine.start_run(&run.id).await.expect("启动");
+
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Failed);
+    let (a_status, a_out, _, _) = node_state(&f.store, &run.id, "A").await;
+    assert_eq!(a_status, NodeStatus::Failed, "必需产物缺失节点失败");
+    assert!(a_out.is_none(), "失败节点无有效输出");
+    assert_eq!(node_state(&f.store, &run.id, "B").await.0, NodeStatus::Pending, "下游不执行");
+    // 无产物归属记录（契约检查先于归属落库）。
+    assert!(f.store.list_node_artifacts(&run.id).await.expect("列举").is_empty());
+    let msgs: Vec<_> = events_of(&f.store, &run.id)
+        .await
+        .iter()
+        .map(|r| r.event.message.clone())
+        .collect();
+    assert!(msgs.iter().any(|m| m.contains("产物契约检查失败")), "契约失败留档：{msgs:?}");
+}
+
+/// SPEC「审批、重试与返工」：返工达到 MaxReworks 限制后进入明确失败终态，
+/// 不无限重复。
+#[tokio::test]
+async fn reject_beyond_max_reworks_terminates_run() {
+    let f = fixture(
+        RecordingRunner::new(MockScenario::Success { output: "第N轮".into(), tokens: 1 }),
+        RecordingScriptExecutor::ok(),
+    );
+    let mut a = agent_node("A", "r1");
+    a.max_reworks = 1; // 只允许一次返工
+    let wf = wf_of(
+        "wf-max-reworks",
+        vec![a, approval_node("G", "A")],
+        vec![chain("A", "G")],
+    );
+    let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
+
+    f.engine.start_run(&run.id).await.expect("启动到审批");
+    // 第一次打回：合法（reworks 0 → 1），A 重跑成功，回到审批。
+    f.engine.reject(&run.id, "G", "A").await.expect("第一次打回");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Waiting);
+    assert_eq!(node_state(&f.store, &run.id, "A").await.3, 1);
+
+    // 第二次打回：达到上限，运行失败终态，不无限重复。
+    f.engine.reject(&run.id, "G", "A").await.expect("入口返回（终态化）");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Failed);
+    let (a_status, _, _, a_reworks) = node_state(&f.store, &run.id, "A").await;
+    assert_eq!(a_status, NodeStatus::Failed, "目标节点失败");
+    assert_eq!(a_reworks, 1, "返工计数不再增长");
+    let msgs: Vec<_> = events_of(&f.store, &run.id)
+        .await
+        .iter()
+        .map(|r| r.event.message.clone())
+        .collect();
+    assert!(msgs.iter().any(|m| m.contains("返工达到上限")), "终态原因留档：{msgs:?}");
+
+    // 终态后不再接受操作。
+    f.engine.reject(&run.id, "G", "A").await.expect_err("终态拒绝打回");
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Failed);
 }

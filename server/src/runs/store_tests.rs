@@ -13,7 +13,7 @@ use ursi_domain::{NodeStatus, RunStatus};
 
 use super::store::SqliteRunStore;
 use super::testing::{FakeClock, chain_workflow, initial_run, node};
-use super::{FrozenRoles, LeaseError, LeaseTable, RunRepository};
+use super::{CleanupState, FrozenRoles, LeaseError, LeaseTable, RunRepository};
 
 const HOLDER_A: &str = "engine-a";
 const HOLDER_B: &str = "engine-b";
@@ -349,4 +349,155 @@ async fn node_counters_persist_across_commits() {
     assert_eq!(a.status, NodeStatus::Failed);
     assert_eq!(a.error.as_deref(), Some("执行失败"));
     assert_eq!(node(&final_run, "B").status, NodeStatus::Pending);
+}
+
+// ---------- 产物归属（第二阶段） ----------
+
+fn contract(name: &str, path: &str) -> ursi_domain::ArtifactContract {
+    ursi_domain::ArtifactContract {
+        name: name.to_string(),
+        path: path.to_string(),
+        required: false,
+        media_type: None,
+    }
+}
+
+/// SPEC「顺序执行与输入交接」（DESIGN「状态、事件与产物」）：产物归属按
+/// (run, node, generation, attempt) 落库，同一身份重复记录幂等，可枚举。
+#[tokio::test]
+async fn node_artifacts_recorded_by_execution_identity() {
+    let clock = FakeClock::start_at(0);
+    let (_dir, store) = open_store(clock);
+    let wf = chain_workflow();
+    let run = initial_run(&wf);
+    store.create_run(&run, &empty_roles()).await.expect("创建运行");
+    let run_id = run.id.clone();
+
+    let declared = vec![contract("报告", "out/report.md"), contract("附录", "out/appendix.md")];
+    store
+        .record_node_artifacts(&run_id, "A", 2, 1, &declared)
+        .await
+        .expect("记录产物归属");
+    // 同一身份重复记录：幂等（主键去重），不产生重复行。
+    store
+        .record_node_artifacts(&run_id, "A", 2, 1, &declared)
+        .await
+        .expect("重复记录幂等");
+    // 返工后新 attempt：新记录与旧记录并存，旧记录保留可查询。
+    store
+        .record_node_artifacts(&run_id, "A", 2, 2, &declared)
+        .await
+        .expect("新轮次归属");
+
+    let all = store.list_node_artifacts(&run_id).await.expect("列举");
+    assert_eq!(all.len(), 4, "2 声明 × 2 attempt，无重复");
+    assert!(all
+        .iter()
+        .all(|r| r.run_id == run_id && r.node_id == "A" && r.generation == 2));
+    assert_eq!(
+        all.iter().map(|r| r.attempt).collect::<std::collections::BTreeSet<_>>(),
+        [1, 2].into_iter().collect(),
+        "两个轮次的归属各自独立"
+    );
+    let round2: Vec<_> = all.iter().filter(|r| r.attempt == 2).collect();
+    assert_eq!(
+        round2.iter().map(|r| (r.name.as_str(), r.path.as_str())).collect::<Vec<_>>(),
+        vec![("报告", "out/report.md"), ("附录", "out/appendix.md")]
+    );
+    // 未知运行返回空。
+    assert!(store.list_node_artifacts("ghost").await.expect("读取").is_empty());
+}
+
+/// SPEC「查询、事件与资源收尾」：清理状态 pending → done / failed 持久化，
+/// 重开存储后可查询。
+#[tokio::test]
+async fn cleanup_status_persists_and_roundtrips() {
+    let clock = FakeClock::start_at(1_000);
+    let dir = tempfile::tempdir().expect("临时目录");
+    let path = dir.path().join("runs.db");
+    let store = SqliteRunStore::open(&path, clock.clone()).expect("打开");
+    let wf = chain_workflow();
+    let run = initial_run(&wf);
+    store.create_run(&run, &empty_roles()).await.expect("创建运行");
+    let run_id = run.id.clone();
+
+    // 未记录返回 None。
+    assert!(store.cleanup_status(&run_id).await.expect("查询").is_none());
+    store.set_cleanup_status(&run_id, CleanupState::Pending, None).await.expect("记录");
+    let s = store.cleanup_status(&run_id).await.expect("查询").expect("存在");
+    assert_eq!(s.state, CleanupState::Pending);
+
+    store.set_cleanup_status(&run_id, CleanupState::Failed, Some("网关超时")).await.expect("记录");
+    let s = store.cleanup_status(&run_id).await.expect("查询").expect("存在");
+    assert_eq!(s.state, CleanupState::Failed);
+    assert_eq!(s.error.as_deref(), Some("网关超时"));
+
+    // 失败后重试成功：状态翻转到 done。
+    store.set_cleanup_status(&run_id, CleanupState::Done, None).await.expect("记录");
+    assert_eq!(
+        store.cleanup_status(&run_id).await.expect("查询").expect("存在").state,
+        CleanupState::Done
+    );
+
+    drop(store);
+    let reopened = SqliteRunStore::open(&path, clock).expect("重开");
+    let s = reopened.cleanup_status(&run_id).await.expect("查询").expect("重开后仍在");
+    assert_eq!(s.state, CleanupState::Done);
+}
+
+/// SPEC「状态提交、租约与取消」+「审批、重试与返工」：同一持有代数内，
+/// 旧 attempt 的迟到提交（节点 attempt 回退）被整体拒绝，状态与事件均不
+/// 落库，当前结果不被覆盖。
+#[tokio::test]
+async fn stale_attempt_commit_rejected_within_same_generation() {
+    let clock = FakeClock::start_at(0);
+    let (_dir, store) = open_store(clock);
+    let wf = chain_workflow();
+    let run = initial_run(&wf);
+    store.create_run(&run, &empty_roles()).await.expect("创建运行");
+    let run_id = run.id.clone();
+
+    // 当前轮次：A attempts=2、succeeded，带事件。
+    let mut current = store.get_run(&run_id).await.expect("读取").unwrap();
+    current.status = RunStatus::Running;
+    {
+        let a = current.nodes.iter_mut().find(|n| n.node_id == "A").unwrap();
+        a.attempts = 2;
+        a.status = NodeStatus::Succeeded;
+        a.output = Some("第二轮产出".to_string());
+    }
+    store
+        .commit_run(&current, 1, &[event("第二轮 node.succeeded")])
+        .await
+        .expect("提交");
+
+    // 迟到提交：同一代数内以旧 attempt=1 的状态与事件提交，被拒。
+    let mut late = store.get_run(&run_id).await.expect("读取").unwrap();
+    {
+        let a = late.nodes.iter_mut().find(|n| n.node_id == "A").unwrap();
+        a.attempts = 1;
+        a.status = NodeStatus::Failed;
+        a.output = None;
+        a.error = Some("旧 attempt 的迟到失败".to_string());
+    }
+    let err = store
+        .commit_run(&late, 1, &[event("旧 attempt 迟到事件")])
+        .await
+        .expect_err("旧 attempt 提交必须被拒");
+    assert!(matches!(err, crate::storage::StoreError::StaleGeneration(_)), "实际：{err:?}");
+
+    // 当前结果不被覆盖，迟到事件未入库。
+    let after = store.get_run(&run_id).await.expect("读取").unwrap();
+    let a = node(&after, "A");
+    assert_eq!(a.attempts, 2);
+    assert_eq!(a.status, NodeStatus::Succeeded);
+    assert_eq!(a.output.as_deref(), Some("第二轮产出"));
+    let msgs: Vec<_> = store
+        .list_events(&run_id)
+        .await
+        .expect("读取事件")
+        .into_iter()
+        .map(|r| r.event.message)
+        .collect();
+    assert_eq!(msgs, vec!["第二轮 node.succeeded".to_string()], "迟到事件不得入库");
 }
