@@ -324,6 +324,9 @@ impl<G: GatewayClient, C: ChannelGateway> SandboxService<G, C> {
                 self.store.record_request(&record)?;
             }
             Err(GatewayError::Unknown(_)) => {}
+            // Deleted 仅由 release 路径内部产生（404 信号），prepare/reconcile
+            // 不会遇到；防御性归入未知结果核实。
+            Err(GatewayError::Deleted(_)) => {}
         }
         Ok(self.store.platform_view(run_id)?.expect("记录存在"))
     }

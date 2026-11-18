@@ -20,7 +20,7 @@ pub enum SandboxError {
     NotImplemented(String),
 }
 
-/// Gateway 操作结果错误：受理被拒、操作身份冲突与结果未知三类可区分状态。
+/// Gateway 操作结果错误：受理被拒、操作身份冲突、结果未知与已删除四类可区分状态。
 #[derive(Debug, Error)]
 pub enum GatewayError {
     /// Gateway 拒绝受理（对应契约 4xx/5xx，含运行不能当作可执行环境的失败状态）。
@@ -32,6 +32,11 @@ pub enum GatewayError {
     /// 网络结果未知：响应丢失或超时，须保留记录并经查询核实。
     #[error("请求结果未知：{0}")]
     Unknown(String),
+    /// 平台资源不存在（对应契约 404，HTTP 客户端释放路径的内部信号：
+    /// 视为已删除，不外泄给调用方）。
+    #[error("资源不存在：{0}")]
+    #[doc(hidden)]
+    Deleted(String),
 }
 
 /// 连接接入错误：拒绝访问与连接故障两大类。

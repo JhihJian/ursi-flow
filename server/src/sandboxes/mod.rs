@@ -11,8 +11,12 @@
 //! - [`model`]：沙箱规格、受理回执、平台视图与释放回执（语义对齐
 //!   Gateway 契约）；
 //! - [`state`]：本域关联状态、请求记录与平台视图（请求身份持久化）；
-//! - [`traits`]：`GatewayClient` 与 `ChannelGateway` 窄接口（真实实现由
-//!   app 装配，测试注入替身，不引入 HTTP 客户端）；
+//! - [`traits`]：`GatewayClient` 与 `ChannelGateway` 窄接口（实现见下，
+//!   测试注入替身）；
+//! - [`gateway_http`]：`GatewayClient` 真实实现（HTTP，协议对齐 Gateway
+//!   契约）；
+//! - [`channel_impl`]：`ChannelGateway` 真实实现（基于 ursi-channel，
+//!   SSH exec / SFTP / 隧道接入）；
 //! - [`store`]：`SandboxStore`（rusqlite 直连，自管 sandboxes_domain 迁移）；
 //! - [`record`]：请求记录的收敛变体（读改写的状态收敛）；
 //! - [`service`]：`SandboxService`（准备与关联、状态查询与释放、
@@ -29,17 +33,29 @@ mod state;
 pub mod store;
 mod traits;
 
+/// Gateway 控制面 HTTP 客户端（`GatewayClient` 真实实现，app 装配）。
+pub mod gateway_http;
+/// 文件/命令/终端通道网关（`ChannelGateway` 真实实现，app 装配）。
+pub mod channel_impl;
+
 #[cfg(test)]
 mod testing;
 #[cfg(test)]
 mod tests;
 
 pub use error::{AccessError, GatewayError, SandboxError, SandboxServiceError, StoreError};
-pub use model::{EndpointView, GatewaySandboxStatus, PrepareReceipt, PrepareStatus, ReleaseReceipt, SandboxSpec};
+pub use model::{
+    EndpointView, GatewaySandboxStatus, GatewaySandboxView, PrepareReceipt, PrepareStatus,
+    ReleaseReceipt, SandboxSpec, PortSpec,
+};
 pub use service::{FrozenSandboxConfig, SandboxService};
 pub use state::{DomainSandboxState, PlatformView, RequestRecord};
 pub use store::SandboxStore;
-pub use traits::{ChannelAccessError, ChannelGateway, ChannelTarget, CommandOutcome, GatewayClient, TerminalHandle};
+pub use traits::{
+    ChannelAccessError, ChannelGateway, ChannelTarget, CommandOutcome, GatewayClient, TerminalHandle,
+};
+pub use gateway_http::HttpGatewayClient;
+pub use channel_impl::{ChannelAccessConfig, ChannelGatewayImpl};
 
 /// 当前 UTC 时间戳（RFC 3339，秒精度；无 chrono 依赖，civ_days 算法）。
 pub(crate) fn now_rfc3339() -> String {
