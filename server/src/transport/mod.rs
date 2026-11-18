@@ -14,7 +14,19 @@ use error::error;
 use std::sync::Arc;
 
 pub fn router(service: FlowService, token: String) -> Router {
-    let api = http::routes(service)
+    protected(http::routes(service), token)
+}
+
+pub(crate) fn combined(flow: Option<FlowService>, work: Router, token: String) -> Router {
+    let routes = match flow {
+        Some(s) => work.merge(http::routes(s)),
+        None => work,
+    };
+    protected(routes, token)
+}
+
+fn protected(routes: Router, token: String) -> Router {
+    let api = routes
         .fallback(|| async { error(StatusCode::NOT_FOUND) })
         .layer(middleware::from_fn_with_state(
             Arc::<str>::from(token),

@@ -1,4 +1,6 @@
 """From flow-runtime/: npm run build && cargo build --manifest-path client/Cargo.toml && python3 client/tests/acceptance.py"""
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import json
 import os
 from pathlib import Path
@@ -44,6 +46,94 @@ class Acceptance(unittest.TestCase):
         self.assertIsInstance(reply['error'], str)
         self.assertEqual(reply.get('code'), code, reply)
 
+    def start_daemon(self, home):
+        env = dict(os.environ, URSI_FLOW_HOME=str(home))
+        p = subprocess.Popen(['node', ROOT/'dist/machine/daemon.js'], env=env)
+        def stop():
+            if p.poll() is None:
+                p.terminate()
+                p.wait(timeout=8)
+        self.addCleanup(stop)
+        self.wait(lambda: (home/'runtime.sock').exists())
+        return p
+
+    def wait(self, fn):
+        for _ in range(200):
+            if fn():
+                return
+            time.sleep(.02)
+        self.fail('等待超时')
+
+    def test_pinned_start(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        home = Path(temp.name)
+        daemon = self.start_daemon(home)
+        def data(op, **args):
+            reply = request(home, op, args)
+            self.assertIn('data', reply, reply)
+            return reply['data']
+        def files(label):
+            script = f"import fs from 'node:fs'; fs.appendFileSync('effects', '{label}\\n'); console.log('{label}')"
+            return {'FLOW.md': FLOW, 'scripts/task.mjs': script}
+        start = 'run.startPinned'
+        rev = data('flow.create', id='work', files=files('old'))['revision']
+        args = dict(id='pinned', flow='work', cwd=str(home), variables={})
+        pin = {**args, 'revision': rev}
+        for patch in ({}, {'revision': None}, {'revision': ''}, {'revision': 1}):
+            self.assert_code(home, start, {**args, **patch}, 'invalid_input')
+        # The target package is untouched, but publishing another package invalidates the pin.
+        next_rev = data('flow.create', id='other', files=files('other'))['revision']
+        self.assert_code(home, start, pin, 'conflict')
+        self.assertEqual(data('run.list'), [])
+        self.assert_code(home, 'run.history', {'id': args['id']}, 'not_found')
+        self.assertFalse((home/'effects').exists())
+        pin['revision'] = next_rev
+        self.assertEqual(data(start, **pin)['revision'], next_rev)
+
+        # Two socket clients race publication against a start at next_rev.
+        race = {**pin, 'id': 'race'}
+        barrier = Barrier(2)
+        def publish():
+            barrier.wait(timeout=5)
+            return data('flow.update', id='work', files=files('new'))['revision']
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            update = pool.submit(publish)
+            barrier.wait(timeout=5)
+            reply = request(home, start, race)
+            current = update.result()
+        accepted = 'data' in reply
+        if accepted:
+            self.assertEqual(reply['data']['revision'], next_rev)
+            self.wait(lambda: data('run.get', id='race')['status'] == 'completed')
+            self.assertEqual(data('run.history', id='race')['nodeRuns'][0]['commandResult']['stdout'].strip(), 'old')
+        else:
+            self.assertEqual(reply['code'], 'conflict')
+            self.assert_code(home, 'run.history', {'id': 'race'}, 'not_found')
+
+        self.wait(lambda: data('run.get', id='pinned')['status'] == 'completed')
+        history = data('run.history', id='pinned')
+        self.assertEqual(len(history['nodeRuns']), 1)
+        self.assertEqual(history['nodeRuns'][0]['commandResult']['stdout'].strip(), 'old')
+        self.assertEqual(data(start, **pin), history['job'])
+        self.assertEqual(data('run.start', **args), history['job'])
+        other_cwd = home/'other-cwd'
+        other_cwd.mkdir()
+        for patch in ({'revision': current}, {'flow': 'other'}, {'variables': {'x': 1}}, {'cwd': str(other_cwd)}):
+            self.assert_code(home, start, {**pin, **patch}, 'conflict')
+        data('flow.delete', id='work')
+        daemon.terminate()
+        daemon.wait(timeout=8)
+        self.start_daemon(home)
+        self.assertEqual(data(start, **pin), history['job'])
+        self.assert_code(home, start, {**pin, 'id': 'deleted'}, 'conflict')
+        cli_history = subprocess.check_output([CLI, 'run', 'history', 'pinned'],
+                                              env=dict(os.environ, URSI_FLOW_HOME=str(home)), timeout=10)
+        self.assertEqual(json.loads(cli_history), history)
+        self.assertFalse((other_cwd/'effects').exists())
+        self.assertEqual(len(data('run.list')), 1 + accepted)
+        self.assertEqual((home/'effects').read_text().splitlines(), ['old'] * (1 + accepted))
+
     def test_independent_processes(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp)
@@ -53,16 +143,8 @@ class Acceptance(unittest.TestCase):
                 if not ok:
                     self.assertNotEqual(p.returncode,0); return
                 self.assertEqual(p.returncode,0,p.stderr); return json.loads(p.stdout)
-            def wait(fn):
-                for _ in range(200):
-                    if fn(): return
-                    time.sleep(.02)
-                self.fail('等待超时')
-            def daemon():
-                p=subprocess.Popen(['node',ROOT/'dist/machine/daemon.js'],env=env)
-                self.addCleanup(lambda: p.poll() is None and (p.terminate(),p.wait(timeout=8)))
-                wait(lambda:(home/'runtime.sock').exists()); return p
-            p=daemon()
+            wait = self.wait
+            p = self.start_daemon(home)
             for op in ('flow.get', 'flow.update', 'flow.delete', 'run.get', 'run.stop', 'run.history'):
                 self.assert_code(home, op, {'id': 'missing'}, 'not_found')
             for bad in ([], {'model': None}, {'maxConcurrent': 0}, {'unknown': True}):
@@ -110,7 +192,7 @@ class Acceptance(unittest.TestCase):
             wait(lambda:cli('run','get','second')['status']=='completed')
             cli('flow','delete','work'); self.assertEqual(cli('flow','list'),[])
             self.assertEqual(len(cli('run','list')),2)
-            p.terminate();p.wait(timeout=8); daemon()
+            p.terminate();p.wait(timeout=8); self.start_daemon(home)
             fact=cli('run','history','second')['nodeRuns'][0]
             self.assertEqual(fact['outcome']['result'],'已执行'); self.assertEqual(fact['commandResult']['stdout'].strip(),'新版')
             # Broken persisted data is neither missing business data nor bad caller input.

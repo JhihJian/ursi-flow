@@ -97,7 +97,8 @@ export class Runs {
 		flow: string,
 		cwd: string,
 		variables: Record<string, unknown>,
-		config: Config,
+		readConfig: () => Promise<Config>,
+		expectedRevision?: string,
 	) {
 		id(key);
 		id(flow);
@@ -119,6 +120,7 @@ export class Runs {
 		const previous = await this.find(key);
 		if (previous) {
 			if (
+				(expectedRevision !== undefined && previous.revision !== expectedRevision) ||
 				previous.flow !== flow ||
 				previous.cwd !== cwd ||
 				!isDeepStrictEqual(previous.variables, variables)
@@ -126,9 +128,15 @@ export class Runs {
 				throw new BusinessError("conflict", "Run ID 冲突");
 			return previous;
 		}
+		// Catalog publication and registration share the daemon request queue. A stale
+		// pin conflicts even at capacity; ordinary starts retain their busy-first check.
+		const pinned = expectedRevision === undefined
+			? undefined
+			: await this.catalog.get(flow, expectedRevision);
+		const config = await readConfig();
 		if (this.active.size >= config.maxConcurrent)
 			throw new BusinessError("busy", "达到运行并发上限");
-		const { revision } = await this.catalog.get(flow);
+		const { revision } = pinned ?? (await this.catalog.get(flow));
 		const dir = this.dir(key);
 		await mkdir(dir, { recursive: true });
 		const job: Job = {

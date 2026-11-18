@@ -98,9 +98,11 @@ export class Catalog {
 		const v = await this.current();
 		return v ? (await readdir(this.root(v))).sort() : [];
 	}
-	async get(name: string) {
+	async get(name: string, expectedRevision?: string) {
 		id(name);
 		const revision = await this.current();
+		if (expectedRevision !== undefined && revision !== expectedRevision)
+			throw new BusinessError("conflict", "目录修订冲突");
 		if (!revision || !(await readdir(this.root(revision))).includes(name))
 			throw new BusinessError("not_found", "Flow 不存在");
 		return {

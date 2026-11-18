@@ -4,6 +4,7 @@ pub(super) struct Config {
     pub listen: SocketAddr,
     pub token: String,
     pub flowd: OsString,
+    pub flow_enabled: bool,
     pub home: PathBuf,
     pub workspace: PathBuf,
 }
@@ -28,6 +29,11 @@ impl Config {
                 .map_err(|_| invalid("无效的 URSI_LISTEN_ADDR"))?,
             home: PathBuf::from(env::var_os("URSI_DATA_DIR").unwrap_or_else(|| "data".into()))
                 .join("flow-runtime"),
+            flow_enabled: match env::var("URSI_FLOW_ENABLED").as_deref() {
+                Ok("0") => false,
+                Ok("1") | Err(env::VarError::NotPresent) => true,
+                _ => return Err(invalid("URSI_FLOW_ENABLED 应为 0 或 1")),
+            },
             flowd: env::var_os("URSI_FLOWD_BIN").unwrap_or_else(|| "ursi-flowd".into()),
             workspace,
             token,

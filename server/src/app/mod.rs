@@ -15,10 +15,22 @@ pub async fn run() -> io::Result<()> {
     let mut term = signal(SignalKind::terminate())?;
     let mut interrupt = signal(SignalKind::interrupt())?;
     let listener = TcpListener::bind(config.listen).await?;
-    let mut child = daemon::start(&config).await?;
-    let client = FlowClient::new(config.home.join("runtime.sock"));
-    let service = FlowService::new(crate::flow::FlowClient::new(client), config.workspace);
-    let router = transport::router(service, config.token);
+    let client = config
+        .flow_enabled
+        .then(|| FlowClient::new(config.home.join("runtime.sock")));
+    let work = crate::work::routes(
+        config.home.with_file_name("work"),
+        config.workspace.clone(),
+        client.clone(),
+    )?;
+    let mut child = if config.flow_enabled {
+        Some(daemon::start(&config).await?)
+    } else {
+        None
+    };
+    let service =
+        client.map(|c| FlowService::new(crate::flow::FlowClient::new(c), config.workspace));
+    let router = transport::combined(service, work, config.token);
     let (shutdown, drain) = oneshot::channel();
     let mut http = tokio::spawn(async move {
         axum::serve(listener, router)
@@ -30,9 +42,9 @@ pub async fn run() -> io::Result<()> {
     tokio::select! {
         _ = term.recv() => (),
         _ = interrupt.recv() => (),
-        exited = child.wait() => return Err(io::Error::other(format!("ursi-flowd 提前退出: {}", exited?))),
+        exited = async { match child.as_mut() { Some(c) => c.wait().await, None => std::future::pending().await } } => return Err(io::Error::other(format!("ursi-flowd 提前退出: {}", exited?))),
         res = &mut http => {
-            daemon::stop(&mut child).await?;
+            if let Some(c) = &mut child { daemon::stop(c).await?; }
             return res.map_err(io::Error::other)?;
         }
     }
@@ -40,12 +52,17 @@ pub async fn run() -> io::Result<()> {
     // Do not let an idle HTTP connection keep an executing flow alive indefinitely.
     match tokio::time::timeout(std::time::Duration::from_secs(3), &mut http).await {
         Ok(res) => {
-            daemon::stop(&mut child).await?;
+            if let Some(c) = &mut child {
+                daemon::stop(c).await?;
+            }
             res.map_err(io::Error::other)?
         }
         Err(_) => {
             http.abort();
-            daemon::stop(&mut child).await
+            match &mut child {
+                Some(c) => daemon::stop(c).await,
+                None => Ok(()),
+            }
         }
     }
 }

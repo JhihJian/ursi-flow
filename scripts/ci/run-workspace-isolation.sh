@@ -69,11 +69,21 @@ if [[ $side == server ]]; then
   rsync -a "$repo"/flow-runtime/{src,package.json,package-lock.json,tsconfig.json,tsconfig.build.json} "$scratch/daemon/"
   check_symlinks "$scratch/daemon"
   (cd "$scratch/daemon" && npm ci --no-audit --no-fund && npm run build)
-  log="$report/server-e2e.log"
-  python3 -B server/tests/runtime_e2e.py --server "$CARGO_TARGET_DIR/debug/ursi-server" \
-    --cli "$CARGO_TARGET_DIR/debug/ursi-flow" --daemon "$scratch/daemon/dist/machine/daemon.js" \
-    2>&1 | tee "$log" || status=1
-  grep -E '^Ran |^OK|^FAILED' "$log" >> "$summary" || status=1
+  bins=(--server "$CARGO_TARGET_DIR/debug/ursi-server" --cli "$CARGO_TARGET_DIR/debug/ursi-flow"
+        --daemon "$scratch/daemon/dist/machine/daemon.js")
+  run_e2e() {
+    local name=$1; shift
+    local log="$report/$name.log"
+    python3 -B "$@" 2>&1 | tee "$log" || status=1
+    printf '%s:\n' "$name" >> "$summary"
+    grep -E '^Ran |^OK|^FAILED' "$log" >> "$summary" || status=1
+  }
+  run_e2e server-e2e server/tests/runtime_e2e.py "${bins[@]}"
+  run_e2e work-flow server/tests/work_e2e.py --stage flow "${bins[@]}"
+  # Install outside the workspace and select this CLI even if PATH contains another pi.
+  npm install --global --prefix "$scratch/pi" --no-audit --no-fund @earendil-works/pi-coding-agent@1.5.2
+  "$scratch/pi/bin/pi" --version
+  run_e2e work-agent server/tests/work_e2e.py --stage agent "${bins[@]}" --pi "$scratch/pi/bin/pi"
 else
   for dir in client/scripts runtime/scripts; do
     log="$report/${dir%/*}-python.log"

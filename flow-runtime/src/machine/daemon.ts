@@ -61,10 +61,13 @@ async function dispatch(request: unknown) {
 		case "flow.get":
 			return catalog.get(a.id);
 		case "run.start":
+		case "run.startPinned":
+			if (op === "run.startPinned" && (typeof a.revision !== "string" || !a.revision))
+				throw invalid("需要目录修订");
 			return runs.start(
 				a.id, a.flow, a.cwd,
 				a.variables === undefined ? {} : a.variables,
-				await config(),
+				config, op === "run.startPinned" ? a.revision : undefined,
 			);
 		case "run.stop":
 			return runs.stop(a.id);

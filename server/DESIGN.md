@@ -1,5 +1,7 @@
 # Server 与 Flow Runtime
 
+本页描述当前实现。以工作包和工作项为中心的目标架构见 [Server v2：从工作包到交付](DESIGN-v2.md)。
+
 `ursi-server` 管理 HTTP 入口和本机 daemon 的生命周期。`ursi-flowd` 是包目录、运行配置、活动任务与历史的唯一管理者。HTTP 和本机 CLI 共用 Rust `FlowClient` 协议，因此同一运行 ID 经两个入口查询时指向同一条记录。
 
 ## 一次运行的请求路径

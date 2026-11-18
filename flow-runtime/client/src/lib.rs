@@ -110,15 +110,39 @@ impl FlowClient {
         self.request("flow.delete", json!({"id":id}))
     }
     pub fn start(&self, run_id: &str, flow: &str, cwd: &Path, variables: Value) -> Result<Value> {
+        self.start_request(run_id, flow, cwd, variables, None)
+    }
+    /// Start only at the specified catalog revision, or return the matching existing run.
+    pub fn start_pinned(
+        &self,
+        run_id: &str,
+        flow: &str,
+        cwd: &Path,
+        variables: Value,
+        revision: &str,
+    ) -> io::Result<Value> {
+        self.start_request(run_id, flow, cwd, variables, Some(revision))
+    }
+    fn start_request(
+        &self,
+        run_id: &str,
+        flow: &str,
+        cwd: &Path,
+        variables: Value,
+        revision: Option<&str>,
+    ) -> Result<Value> {
         // Resolve relative to the client; the daemon checks and canonicalizes the directory.
         let cwd = std::path::absolute(cwd)?;
         let cwd = cwd
             .to_str()
             .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "工作目录不是 UTF-8"))?;
-        self.request(
-            "run.start",
-            json!({"id":run_id,"flow":flow,"cwd":cwd,"variables":variables}),
-        )
+        let mut args = json!({"id":run_id,"flow":flow,"cwd":cwd,"variables":variables});
+        if let Some(revision) = revision {
+            args["revision"] = json!(revision);
+            self.request("run.startPinned", args)
+        } else {
+            self.request("run.start", args)
+        }
     }
     pub fn stop(&self, id: &str) -> Result<Value> {
         self.request("run.stop", json!({"id":id}))
@@ -191,6 +215,37 @@ mod tests {
             .unwrap();
         let error = reader.read_exact(&mut [0]).unwrap_err();
         assert_eq!(transport_error(error).kind(), ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn start_pinned_sends_one_conditional_start_and_surfaces_conflict() {
+        let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let req: Value = serde_json::from_reader(&mut socket).unwrap();
+            assert_eq!(
+                req,
+                json!({"v":1,"op":"run.startPinned","args":{
+                    "id":"attempt", "flow":"example", "cwd":"/work", "variables":{"x":1}, "revision":"rev"
+                }})
+            );
+            socket
+                .write_all(br#"{"v":1,"error":"changed","code":"conflict"}"#)
+                .unwrap();
+        });
+        let err = FlowClient::new(&path)
+            .start_pinned(
+                "attempt",
+                "example",
+                Path::new("/work"),
+                json!({"x":1}),
+                "rev",
+            )
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::AlreadyExists);
+        server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
