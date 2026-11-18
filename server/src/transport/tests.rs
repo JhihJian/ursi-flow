@@ -1,6 +1,6 @@
 use super::*;
 use serde_json::{Value, json};
-use std::{fs, io, os::unix::fs::symlink};
+use std::{fs, io, path::PathBuf};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -25,10 +25,7 @@ impl Drop for Fixture {
 impl Fixture {
     fn new(token: &str) -> Self {
         let root = std::env::temp_dir().join(Uuid::new_v4().to_string());
-        let dist = root.join("dist");
-        fs::create_dir_all(dist.join("api")).unwrap();
-        fs::write(dist.join("index.html"), "SPA").unwrap();
-        fs::write(dist.join("api/missing"), "STATIC").unwrap();
+        fs::create_dir_all(&root).unwrap();
         let socket = root.join("runtime.sock");
         let listener = UnixListener::bind(&socket).unwrap();
         let runtime = tokio::spawn(async move {
@@ -51,7 +48,7 @@ impl Fixture {
             crate::flow::FlowClient::new(FlowClient::new(socket)),
             root.clone(),
         );
-        let app = router(service, token.into(), Some(dist));
+        let app = router(service, token.into());
         let listener = UnixListener::bind(root.join("http.sock")).unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
@@ -286,40 +283,11 @@ async fn api_auth_includes_fallback_and_method_rejections() {
 }
 
 #[tokio::test]
-async fn static_assets_and_index_fallback_respect_root() {
+async fn non_api_paths_are_not_served() {
     let app = Fixture::new("test-token");
-    let dist = app.root.join("dist");
-    fs::write(dist.join("app.js"), "JS").unwrap();
-    fs::write(app.root.join("secret"), "OUTSIDE").unwrap();
-    symlink(app.root.join("secret"), dist.join("link")).unwrap();
-    for (path, status) in [
-        ("/", 200),
-        ("/runs/r", 200),
-        ("/app.js", 200),
-        ("/missing.js", 404),
-        ("/../secret", 403),
-        ("/%2e%2E/secret", 403),
-        ("/link", 403),
-    ] {
-        let (actual, headers, body) = app.request("GET", path, "", Value::Null).await;
-        assert_eq!(actual, status, "{path}");
-        match path {
-            "/" | "/runs/r" => assert_eq!(body, "SPA"),
-            "/app.js" => assert!(headers.contains("text/javascript")),
-            _ => assert!(!body.contains("OUTSIDE")),
-        }
+    for path in ["/", "/runs/r", "/app.js"] {
+        assert_eq!(app.request("GET", path, "", Value::Null).await.0, 404);
     }
-    fs::remove_file(dist.join("index.html")).unwrap();
-    symlink(app.root.join("secret"), dist.join("index.html")).unwrap();
-    for path in ["/", "/runs/r"] {
-        assert_eq!(app.request("GET", path, "", Value::Null).await.0, 403);
-    }
-    fs::remove_dir_all(dist).unwrap();
-    assert_eq!(app.request("GET", "/", "", Value::Null).await.0, 404);
-    assert_eq!(
-        static_assets::serve(None, "/").await.status(),
-        StatusCode::NOT_FOUND
-    );
 }
 
 #[tokio::test]

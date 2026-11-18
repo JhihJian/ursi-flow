@@ -72,9 +72,6 @@ class RuntimeAcceptance(unittest.TestCase):
         self.workspace = self.root / 'workspace'
         self.home = self.root / 'data/flow-runtime'
         self.workspace.mkdir()
-        static = self.root / 'web'
-        static.mkdir()
-        (static / 'index.html').write_text('static fixture', encoding='utf-8')
         self.pidfile = self.root / 'flowd.pid'
         wrapper = self.root / 'flowd'
         wrapper.write_text('#!/bin/sh\n' + f'echo $$ > {shlex.quote(str(self.pidfile))}\n'
@@ -86,7 +83,7 @@ class RuntimeAcceptance(unittest.TestCase):
         self.token = secrets.token_hex(32)
         self.env = dict(PATH=os.environ['PATH'], HOME=str(self.root),
                         URSI_LISTEN_ADDR=f'127.0.0.1:{self.port}', URSI_API_TOKEN=self.token,
-                        URSI_STATIC_ROOT=str(static), URSI_WORKSPACE_DIR=str(self.workspace),
+                        URSI_WORKSPACE_DIR=str(self.workspace),
                         URSI_DATA_DIR=str(self.home.parent), URSI_FLOWD_BIN=str(wrapper))
         self.log = self.root / 'server.log'
         self.server = None
@@ -159,7 +156,8 @@ class RuntimeAcceptance(unittest.TestCase):
         return json.loads(p.stdout)
 
     def test_http_boundary_and_config(self):
-        self.assertEqual(self.request('GET', '/', auth=False), (200, b'static fixture'))
+        for path in ('/', '/runs/example', '/app.js'):
+            self.assertEqual(self.request('GET', path, auth=False)[0], 404)
         config = self.cli('config', 'get')
         for auth in (False, 'wrong-token'):
             self.http('GET', '/flows', auth=auth, expect=(401,))

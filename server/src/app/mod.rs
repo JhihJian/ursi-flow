@@ -18,7 +18,7 @@ pub async fn run() -> io::Result<()> {
     let mut child = daemon::start(&config).await?;
     let client = FlowClient::new(config.home.join("runtime.sock"));
     let service = FlowService::new(crate::flow::FlowClient::new(client), config.workspace);
-    let router = transport::router(service, config.token, config.static_root);
+    let router = transport::router(service, config.token);
     let (shutdown, drain) = oneshot::channel();
     let mut http = tokio::spawn(async move {
         axum::serve(listener, router)

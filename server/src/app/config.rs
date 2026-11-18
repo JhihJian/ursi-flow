@@ -6,7 +6,6 @@ pub(super) struct Config {
     pub flowd: OsString,
     pub home: PathBuf,
     pub workspace: PathBuf,
-    pub static_root: Option<PathBuf>,
 }
 
 impl Config {
@@ -30,7 +29,6 @@ impl Config {
             home: PathBuf::from(env::var_os("URSI_DATA_DIR").unwrap_or_else(|| "data".into()))
                 .join("flow-runtime"),
             flowd: env::var_os("URSI_FLOWD_BIN").unwrap_or_else(|| "ursi-flowd".into()),
-            static_root: env::var_os("URSI_STATIC_ROOT").map(PathBuf::from),
             workspace,
             token,
         })
