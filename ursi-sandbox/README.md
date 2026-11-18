@@ -2,7 +2,7 @@
 
 为独立客户端或工作流引擎提供 Docker 执行环境。Gateway 供应资源，Runtime 管理工作区内的 Agent 会话，Client 提供 Rust 库和命令行。设计与责任划分见 [整体架构](DESIGN.md)。
 
-第一次使用可从[门店日结实例](examples/daily-close/README.md)开始：上传当天流水，在沙箱里执行日结，下载可以对账的 CSV。支持替换为自己的订单，不需要模型密钥。
+研发场景可以从[发布工具的合并前检查](examples/release-review/README.md)开始：在相同 Git 基线上验证两份补丁，用真实测试定位选错发布版本的回归。数据处理场景另见[门店日结](examples/daily-close/README.md)。两个示例都不需要模型密钥。
 
 ## 从源码构建
 
