@@ -15,7 +15,7 @@ references:
 
 ## 模块地图
 
-工程采用 React 19、TypeScript、Vite、React Router 7、Zustand 和 Tailwind CSS，组件基于 shadcn/ui（Radix UI）以源码形式维护。基础 UI、图标与主题样式复用并适配 Grasp，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+工程采用 React 19、TypeScript、Vite、React Router 7、Zustand 和 Tailwind CSS，组件基于 shadcn/ui（Radix UI）以源码形式维护。基础 UI、图标与明暗、主色调样式复用并适配 Grasp，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 | 模块 | 职责 |
 | --- | --- |
@@ -34,13 +34,13 @@ references:
 
 ### 工程与七域入口
 
-提供可重复安装、检查、构建及桌面和移动导航，明暗主题与通用反馈保持一致。
+提供可重复安装、检查、构建及桌面和移动导航，明暗与黑白主色调、通用反馈保持一致。
 
 #### 验收
 
 - Node.js 24 下运行 `npm ci`、`npm run check`，完成安装、lint、单元测试、类型检查和默认构建。
 - 七域均显示业务页面，根地址进入工作流，运行深链可刷新，未知地址显示 404 与返回入口。
-- 桌面侧边栏和移动抽屉均可导航，主题切换后刷新保持，键盘可跳到主要内容。
+- 桌面侧边栏和移动抽屉均可导航，明暗与黑白主色调切换后刷新各自保持，键盘可跳到主要内容。
 - 懒加载失败保留目标地址，恢复后可重新打开。独立浏览器验收执行 `npm run test:e2e`。
 - 生产 history 回退、API 和静态资源错误隔离由真实托管环境联合验收。
 

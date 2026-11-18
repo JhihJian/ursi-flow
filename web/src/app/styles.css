@@ -75,6 +75,53 @@
   --shadow-card: 0 1px 2px rgb(0 0 0 / .25), 0 3px 8px rgb(0 0 0 / .12);
 }
 
+/*
+ * 黑白主色调：只替换调色板，明暗基座仍由 data-theme 决定，因此共有
+ * 黑白亮色与黑白暗色两套组合。用明度而不是色相表达层级与状态：
+ * 强调色取明度端点，状态色按强调程度从最高对比依次减弱。
+ */
+:root[data-palette='mono'] {
+  --c-base: 255 255 255;
+  --c-surface: 255 255 255;
+  --c-elevated: 245 245 245;
+  --c-overlay: 233 233 233;
+  --c-line: 226 226 226;
+  --c-line-strong: 203 203 203;
+  --c-txt: 17 17 17;
+  --c-txt2: 64 64 64;
+  --c-txt3: 112 112 112;
+  --c-accent: 24 24 24;
+  --c-accent-2: 64 64 64;
+  --c-accent-hover: 0 0 0;
+  --c-accent-dim: 238 238 238;
+  --c-ok: 40 40 40;
+  --c-warn: 105 105 105;
+  --c-err: 0 0 0;
+  --c-info: 75 75 75;
+  --primary-foreground: 255 255 255;
+}
+
+:root[data-theme='dark'][data-palette='mono'] {
+  --c-base: 9 9 9;
+  --c-surface: 20 20 20;
+  --c-elevated: 30 30 30;
+  --c-overlay: 42 42 42;
+  --c-line: 42 42 42;
+  --c-line-strong: 62 62 62;
+  --c-txt: 245 245 245;
+  --c-txt2: 198 198 198;
+  --c-txt3: 150 150 150;
+  --c-accent: 236 236 236;
+  --c-accent-2: 229 229 229;
+  --c-accent-hover: 255 255 255;
+  --c-accent-dim: 36 36 36;
+  --c-ok: 216 216 216;
+  --c-warn: 150 150 150;
+  --c-err: 255 255 255;
+  --c-info: 180 180 180;
+  --primary-foreground: 17 17 17;
+}
+
 @layer base {
   html { @apply bg-base font-sans text-txt antialiased; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { margin: 0; min-width: 320px; font-size: 14px; line-height: 1.5; }
@@ -147,6 +194,8 @@
   .page-stack-fill { flex: 1 1 auto; overflow: hidden; }
 }
 .scroll-area { scrollbar-width: thin; scrollbar-color: rgb(var(--c-line-strong)) transparent; overscroll-behavior: contain; }
+/* 识别色来自业务数据而非 token，黑白主色调下按明度转灰，保留个体区分。 */
+:root[data-palette='mono'] [data-identity-color] { filter: grayscale(1); }
 .ui-pressable { transition: transform var(--dur-press) var(--ease-out-expo); }
 .ui-pressable:active:not(:disabled) { transform: translateY(1px); }
 @keyframes skeleton-pulse { 50% { opacity: .45; } }

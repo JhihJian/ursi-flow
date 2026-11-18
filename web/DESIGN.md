@@ -6,7 +6,9 @@ Web 为流程维护者和运行操作者提供七个业务域的工作台：工�
 
 工程采用 React 19、TypeScript、Vite、React Router 7、Zustand 和 Tailwind CSS，组件基于 shadcn/ui（Radix UI + class-variance-authority）以源码形式维护在 `src/shared/ui`，以独立 npm 包和锁文件管理依赖。Node.js 24 用于安装与构建，产物输出到 `web/dist`。Zustand 只承载应用级状态（主题、全局反馈和对话会话），业务页面使用本域 hook 与组件状态。
 
-基础 UI、图标、明暗主题 tokens 复用并适配 Grasp，shadcn/ui 组件统一映射到现有 CSS 变量。应用壳、业务布局与页面围绕 ursi-flow 七域组织，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+基础 UI、图标与主题 tokens 复用并适配 Grasp，shadcn/ui 组件统一映射到现有 CSS 变量。应用壳、业务布局与页面围绕 ursi-flow 七域组织，来源与许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+外观分为明暗与主色调两个独立维度：明暗由 `data-theme` 控制，主色调由 `data-palette` 控制，默认提供彩色与黑白灰两种，共四种组合。业务组件只使用 `--c-*` 语义 token 与 shadcn 映射 token，不直接写颜色。
 
 ## 目录与职责
 
@@ -84,7 +86,7 @@ Vite 开发代理将 `/api` 转发到 `URSI_API_PROXY`，默认 `http://127.0.0.
 
 七个一级地址为 `/workflows`、`/roles`、`/runs`、`/artifacts`、`/sandboxes`、`/connections`、`/chat`。运行详情位于 `/runs/:id`，对话详情位于 `/chat/:sessionId`。根地址进入工作流，未知地址显示 404，懒加载失败保留目标地址并提供重新打开入口。
 
-桌面使用侧边导航，小屏使用顶部按钮打开抽屉。主题在挂载前应用，偏好存于独立 localStorage 键。通用组件统一加载、空态、错误、确认、通知与未保存编辑保护。模态框提供焦点约束与恢复，标签页支持键盘切换，页面提供跳到主要内容入口。
+桌面使用侧边导航，小屏使用顶部按钮打开抽屉。明暗与主色调均在挂载前应用，偏好分别存于 `ursi-flow:theme` 与 `ursi-flow:palette` 两个存储键。黑白主色调把背景、文本、强调与状态色全部映射为不同灰度的灰阶，用明度表达层级与状态。通用组件统一加载、空态、错误、确认、通知与未保存编辑保护。模态框提供焦点约束与恢复，标签页支持键盘切换，页面提供跳到主要内容入口。
 
 ## 验收边界
 

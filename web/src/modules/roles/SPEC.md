@@ -33,7 +33,7 @@ references:
 
 ### 身份、提示词与能力配置
 
-基本信息包括名称、描述、图标、标识颜色、执行器、连接引用与模型名称。Skills 使用共享 DTO 的 `{name, content}` 文本结构，MCP 使用 `{name, transport, command/url, credentialRef}` 结构。
+基本信息包括名称、描述、图标、标识颜色、执行器、连接引用与模型名称。标识颜色是角色数据的一部分，头像与色板以业务数据着色，黑白主色调下由外观层统一按明度转为灰阶。Skills 使用共享 DTO 的 `{name, content}` 文本结构，MCP 使用 `{name, transport, command/url, credentialRef}` 结构。
 
 实现约定：四个标签页用共享 `TabBar` 渲染（`Skills · n`、`MCP · n` 计数标签），表单控件用共享 `Input` / `Textarea` / `Select` 与原生 `label` 包裹，保持 `getByLabel` 语义。编辑一律经钩子导出的 `updateDraft` / `updateSkill` / `updateMcp` 等不可变更新函数，界面不直接改草稿对象。执行器与连接下拉切换后由 `changeConnection` 回填默认模型。
 

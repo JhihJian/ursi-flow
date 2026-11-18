@@ -33,6 +33,7 @@ function RoleAvatar({ icon, color, size }: { icon: string; color: string; size: 
   return (
     <span
       className="grid shrink-0 place-items-center rounded-[10px]"
+      data-identity-color
       style={{ ...avatarStyle(color), width: size, height: size, borderRadius: size > 40 ? 13 : 10 }}
     >
       {icon && icon.length <= 2 ? <span>{icon}</span> : <Icon name={icon || 'robot'} size={Math.round(size / 2)} />}
@@ -251,6 +252,7 @@ function BasicTab({ studio, draft }: { studio: RoleStudio; draft: Role }) {
                 key={color}
                 type="button"
                 className={`mt-1 grid h-[25px] w-[25px] place-items-center rounded-full ${draft.color === color ? 'outline outline-2 outline-offset-2 outline-current' : ''}`}
+                data-identity-color
                 style={avatarStyle(color)}
                 aria-label={`选择${COLOR_LABELS[index]}`}
                 aria-pressed={draft.color === color}

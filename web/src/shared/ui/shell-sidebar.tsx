@@ -16,22 +16,27 @@ export interface ShellNavGroup {
 
 export interface ShellSidebarProps {
   groups: ShellNavGroup[]
-  /** 当前是否为暗色主题，决定主题按钮文案与图标。 */
-  dark: boolean
+  /** 当前明暗外观，决定明暗按钮的文案与图标。 */
+  mode: 'light' | 'dark'
+  /** 当前主色调，`mono` 为黑白灰主题。 */
+  palette: 'color' | 'mono'
   /** 演示模式下展示演示设置入口。 */
   demo: boolean
   onNavigate?: () => void
-  onTheme?: () => void
+  onToggleMode?: () => void
+  onTogglePalette?: () => void
   onSettings?: () => void
   className?: string
 }
 
 /** 侧边导航：桌面固定栏与移动抽屉共用同一份结构与文案。 */
-export function ShellSidebar({ groups, dark, demo, onNavigate, onTheme, onSettings, className }: ShellSidebarProps) {
+export function ShellSidebar({ groups, mode, palette, demo, onNavigate, onToggleMode, onTogglePalette, onSettings, className }: ShellSidebarProps) {
+  const dark = mode === 'dark'
+  const mono = palette === 'mono'
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
       <Link to="/workflows" className="flex items-center gap-3 px-5 py-6" aria-label="ursi-flow 首页" onClick={onNavigate}>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-white">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-primary-foreground">
           <Icon name="workflow" size={23} />
         </span>
         <span>
@@ -64,10 +69,19 @@ export function ShellSidebar({ groups, dark, demo, onNavigate, onTheme, onSettin
           type="button"
           className="sidebar-link w-full"
           aria-label={dark ? '切换到亮色主题' : '切换到暗色主题'}
-          onClick={onTheme}
+          onClick={onToggleMode}
         >
           <Icon name={dark ? 'sun' : 'moon'} />
           <span>{dark ? '亮色外观' : '暗色外观'}</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-link w-full"
+          aria-label={mono ? '切换到彩色主题' : '切换到黑白主题'}
+          onClick={onTogglePalette}
+        >
+          <Icon name="contrast" />
+          <span>{mono ? '彩色主题' : '黑白主题'}</span>
         </button>
         {demo ? (
           <button type="button" className="sidebar-link w-full" onClick={onSettings}>

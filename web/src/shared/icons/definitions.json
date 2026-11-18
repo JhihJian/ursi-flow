@@ -1134,5 +1134,13 @@
     "filled": false,
     "strokeWidth": 1.7,
     "note": "尚未创建工作流"
+  },
+  "contrast": {
+    "body": "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 3.5a8.5 8.5 0 0 0 0 17Z\" fill=\"currentColor\" stroke=\"none\"/>",
+    "duration": 520,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "半填充圆，表示明暗与主色调的切换"
   }
 }

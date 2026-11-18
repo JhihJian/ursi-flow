@@ -33,7 +33,9 @@ export default function AppShell() {
   const matches = useMatches()
   const isDemo = import.meta.env.VITE_API_MODE !== 'live'
   const themeMode = useThemeStore((state) => state.mode)
+  const palette = useThemeStore((state) => state.palette)
   const toggleTheme = useThemeStore((state) => state.toggleTheme)
+  const togglePalette = useThemeStore((state) => state.togglePalette)
   const toasts = useFeedbackStore((state) => state.toasts)
   const dismissToast = useFeedbackStore((state) => state.dismissToast)
   const confirmation = useFeedbackStore((state) => state.confirmation)
@@ -124,7 +126,7 @@ export default function AppShell() {
       <a href="#main-content" className="skip-link">跳到主要内容</a>
       <div className="app-shell">
         <aside className="desktop-sidebar">
-          <ShellSidebar groups={navigationGroups} dark={themeMode === 'dark'} demo={isDemo} onTheme={toggleTheme} onSettings={openSettings} />
+          <ShellSidebar groups={navigationGroups} mode={themeMode} palette={palette} demo={isDemo} onToggleMode={toggleTheme} onTogglePalette={togglePalette} onSettings={openSettings} />
         </aside>
         <div className="shell-col">
           <header className="shell-topbar">
@@ -158,7 +160,7 @@ export default function AppShell() {
 
       <Sheet open={drawerOpen} onOpenChange={changeDrawer}>
         <SheetContent side="left" title="工作区导航" className="w-[280px] border-r border-line sm:max-w-[280px]">
-          <ShellSidebar groups={navigationGroups} dark={themeMode === 'dark'} demo={isDemo} onNavigate={closeDrawer} onTheme={toggleTheme} onSettings={openSettings} />
+          <ShellSidebar groups={navigationGroups} mode={themeMode} palette={palette} demo={isDemo} onNavigate={closeDrawer} onToggleMode={toggleTheme} onTogglePalette={togglePalette} onSettings={openSettings} />
         </SheetContent>
       </Sheet>
 

@@ -8,7 +8,7 @@ import { createMockBackend } from '@/mocks/backend'
 import { setApiTransport } from '@/shared/http/client'
 import { useFeedbackStore } from '@/shared/stores/feedback'
 import { createAppRoutes } from './router'
-import { initTheme, THEME_STORAGE_KEY, useThemeStore } from './theme'
+import { initTheme, PALETTE_STORAGE_KEY, THEME_STORAGE_KEY, useThemeStore } from './theme'
 
 function renderAt(path: string) {
   const router = createMemoryRouter(createAppRoutes(), { initialEntries: [path] })
@@ -21,6 +21,7 @@ beforeEach(() => {
   window.localStorage.clear()
   useFeedbackStore.setState({ toasts: [], confirmation: null })
   useThemeStore.getState().setMode('light')
+  useThemeStore.getState().setPalette('color')
 })
 afterEach(() => {
   cleanup()
@@ -76,5 +77,26 @@ describe('应用壳', () => {
     await waitFor(() => { expect(document.documentElement.dataset.theme).toBe('light') })
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(screen.getByRole('button', { name: '切换到暗色主题' })).toBeInTheDocument()
+  })
+
+  it('黑白主题与明暗互不影响，并同步存储与跨标签页变化', async () => {
+    renderAt('/roles')
+    await screen.findByRole('heading', { level: 1 })
+    expect(document.documentElement.dataset.palette).toBe('color')
+
+    await userEvent.click(screen.getByRole('button', { name: '切换到黑白主题' }))
+    expect(document.documentElement.dataset.palette).toBe('mono')
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('mono')
+    expect(screen.getByRole('button', { name: '切换到彩色主题' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '切换到暗色主题' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(document.documentElement.dataset.palette).toBe('mono')
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+
+    window.dispatchEvent(new StorageEvent('storage', { key: PALETTE_STORAGE_KEY, newValue: 'color' }))
+    await waitFor(() => { expect(document.documentElement.dataset.palette).toBe('color') })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(screen.getByRole('button', { name: '切换到黑白主题' })).toBeInTheDocument()
   })
 })

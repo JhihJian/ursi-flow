@@ -22,7 +22,7 @@ const Switch = React.forwardRef<
       )}
       {...props}
     >
-      <SwitchPrimitive.Thumb className="app-switch-thumb pointer-events-none block h-4 w-4 rounded-full bg-txt2 data-[state=checked]:bg-white" />
+      <SwitchPrimitive.Thumb className="app-switch-thumb pointer-events-none block h-4 w-4 rounded-full bg-txt2 data-[state=checked]:bg-primary-foreground" />
     </SwitchPrimitive.Root>
   )
 })
