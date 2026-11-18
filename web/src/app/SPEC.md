@@ -51,7 +51,7 @@ references:
 
 ### 响应式应用壳、主题与键盘
 
-桌面提供侧边导航，小屏通过顶部按钮打开 `sheet.tsx` 的左侧抽屉（标题“工作区导航”）。桌面（≥1024px）壳层锁定视口高度：侧边导航与顶栏不动，`.shell-scroll` 单独承载内容区滚动，`.shell-content` 宽度上限 1680px，`.page-stack` 至少填满内容区。需要满高面板的页面追加 `.page-stack-fill`，滚动落在面板内部（列表、编辑区或消息区），页面本身不滚动。亮色为默认主题，主题偏好在挂载前读取并保存到独立 localStorage 键 `ursi-flow:theme`，`storage` 事件同步其他标签页。深色同时写 `data-theme="dark"` 与 `.dark`。
+桌面提供侧边导航，小屏通过顶部按钮打开 `sheet.tsx` 的左侧抽屉（标题“工作区导航”）。桌面（≥1024px）壳层锁定视口高度：侧边导航与顶栏不动，`.shell-scroll` 单独承载内容区滚动，`.shell-content` 宽度上限 1920px，`.page-stack` 至少填满内容区。需要满高面板的页面追加 `.page-stack-fill`，滚动落在面板内部（列表、编辑区或消息区），页面本身不滚动。亮色为默认主题，主题偏好在挂载前读取并保存到独立 localStorage 键 `ursi-flow:theme`，`storage` 事件同步其他标签页。深色同时写 `data-theme="dark"` 与 `.dark`。
 
 #### 验收
 

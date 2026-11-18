@@ -97,7 +97,7 @@
   .shell-col { @apply min-w-0; }
   .shell-topbar { @apply flex h-16 min-w-0 flex-none items-center gap-3 border-b border-line bg-base px-4 sm:px-7; }
   .shell-scroll { @apply min-w-0; }
-  .shell-content { @apply mx-auto w-full min-w-0 max-w-[1680px] px-4 py-6 sm:px-7 lg:px-9; overflow-wrap: anywhere; }
+  .shell-content { @apply mx-auto w-full min-w-0 max-w-[1920px] px-4 py-6 sm:px-6 lg:px-7; overflow-wrap: anywhere; }
   .sidebar-link { @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-txt3 transition-colors hover:bg-overlay/50 hover:text-txt; }
   .sidebar-link.nav-active { @apply bg-accent-dim text-accent-2; }
   .icon-button { @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-txt3 transition-colors hover:bg-elevated hover:text-txt; }
