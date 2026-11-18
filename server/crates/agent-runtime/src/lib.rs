@@ -66,7 +66,8 @@ pub type EventSink<'a> = &'a (dyn Fn(TelemetryEvent) + Send + Sync);
 /// 执行器统一接口。
 #[async_trait]
 pub trait Runner: Send + Sync {
-    /// 运行一次执行。环境由装配方注入，具体执行位置由实现决定。
+    /// 运行一次执行。返回时执行应已结束；如果无法确认（如连接中断），
+    /// 返回 [`ExecutorError::OutcomeUnknown`]。执行环境由装配方注入。
     async fn run(
         &self,
         input: &InvocationInput,
@@ -86,9 +87,11 @@ pub enum ExecutorError {
     Launch(String),
     #[error("执行失败：{0}")]
     Execution(String),
-    /// prompt 结果未知、已取消或已完成但收尾失败。调用方不得重新提交。
+    /// 确定不可重试，例如执行已取消或已完成但收尾失败。调用方不得重新提交。
     #[error("执行不可重试：{0}")]
     DoNotRetry(String),
     #[error("解析执行器输出失败：{0}")]
     Parse(String),
+    #[error("执行结果未知：{0}")]
+    OutcomeUnknown(String),
 }

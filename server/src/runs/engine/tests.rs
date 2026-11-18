@@ -4,12 +4,14 @@
 //! 每个测试注释标注对应 SPEC 条目（runs/SPEC.md）。
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::sync::{Semaphore, mpsc};
 use ursi_agent_runtime::{ExecutorError, InvocationInput, InvocationResult, MockScenario, Runner};
 use ursi_domain::{EventPhase, ExecutionEnv, NodeStatus, Role, RunStatus, Executor, TelemetryEvent, WorkflowDefinition, WorkflowEdge, WorkflowNode, NodeType};
 
-use crate::runs::engine::{Engine, EventBus, ScriptExecutionError, ScriptExecutor};
+use crate::runs::engine::{Engine, EngineError, EventBus, ScriptExecutionError, ScriptExecutor};
 use crate::runs::testing::{FakeClock, bare_node};
 use crate::runs::{LeaseError, LeaseTable, RunEventRecord, RunRepository, SqliteRunStore};
 
@@ -1049,10 +1051,150 @@ async fn cancelled_runner_scenario_is_distinguishable_from_failure() {
     assert_eq!(a.attempts, 1, "取消场景不产生重试");
 }
 
-/// SPEC「状态提交、租约与取消」：取消时处于 running 的节点被处置为
-/// cancelled（活动执行确认停止后），事件携带节点取消记录。
+/// 运行停在 A，测试明确放行后 Runner 才返回结果。
+struct PausedRunner {
+    entered: mpsc::UnboundedSender<String>,
+    release: Semaphore,
+    result: Result<InvocationResult, ExecutorError>,
+}
+
+#[async_trait]
+impl Runner for PausedRunner {
+    async fn run(
+        &self,
+        input: &InvocationInput,
+        _role: &Role,
+        _executor: &Executor,
+        _env: Arc<dyn ExecutionEnv>,
+        _sink: ursi_agent_runtime::EventSink<'_>,
+    ) -> Result<InvocationResult, ExecutorError> {
+        self.entered.send(input.node_id.clone()).unwrap();
+        if input.node_id == "A" {
+            self.release.acquire().await.unwrap().forget();
+        }
+        self.result.clone()
+    }
+}
+
+async fn start_paused(
+    result: Result<InvocationResult, ExecutorError>,
+) -> (
+    Fixture,
+    Arc<PausedRunner>,
+    mpsc::UnboundedReceiver<String>,
+    String,
+    tokio::task::JoinHandle<Result<(), EngineError>>,
+) {
+    let (entered, mut calls) = mpsc::unbounded_channel();
+    let runner = Arc::new(PausedRunner { entered, release: Semaphore::new(0), result });
+    let f = fixture(runner.clone(), RecordingScriptExecutor::ok());
+    let wf = wf_of(
+        "wf-paused",
+        vec![agent_node("A", "r1"), approval_node("G", "A"), agent_node("B", "r1")],
+        vec![chain("A", "G"), chain("G", "B")],
+    );
+    let run_id = f.engine.create_run(&wf, &test_roles()).await.unwrap().id;
+    let engine = f.engine.clone();
+    let id = run_id.clone();
+    let start = tokio::spawn(async move { engine.start_run(&id).await });
+    let first = tokio::time::timeout(Duration::from_secs(5), calls.recv())
+        .await
+        .expect("Runner 进入 A");
+    assert_eq!(first.as_deref(), Some("A"));
+    (f, runner, calls, run_id, start)
+}
+
 #[tokio::test]
-async fn cancel_marks_running_nodes_cancelled() {
+async fn concurrent_commands_do_not_replace_active_driver() {
+    let (f, runner, mut calls, run_id, start) = start_paused(Ok(InvocationResult::default())).await;
+    let generation = f.store.get_run(&run_id).await.unwrap().unwrap().generation;
+    let retry = tokio::time::timeout(Duration::from_secs(5), f.engine.start_run(&run_id)).await.unwrap();
+    assert!(matches!(retry, Err(EngineError::StateConflict(_))));
+    assert!(matches!(f.engine.approve(&run_id, "G").await, Err(EngineError::StateConflict(_))));
+    assert!(matches!(f.engine.reject(&run_id, "G", "A").await, Err(EngineError::StateConflict(_))));
+    assert_eq!(f.store.get_run(&run_id).await.unwrap().unwrap().generation, generation);
+    assert!(calls.try_recv().is_err());
+
+    runner.release.add_permits(1);
+    start.await.unwrap().unwrap();
+    assert_eq!(node_state(&f.store, &run_id, "A").await.2, 1);
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Waiting);
+    f.engine.approve(&run_id, "G").await.unwrap();
+    assert_eq!(calls.try_recv().unwrap(), "B");
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Succeeded);
+}
+
+#[tokio::test]
+async fn active_driver_renews_lease_without_advancing_generation() {
+    let (f, runner, _calls, run_id, start) = start_paused(Ok(InvocationResult::default())).await;
+    let before = f.store.check_lease(&run_id).await.unwrap().unwrap();
+    f.clock.advance(950);
+    let renewed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let lease = f.store.check_lease(&run_id).await.unwrap().unwrap();
+            if lease.expires_at_ms > before.expires_at_ms {
+                break lease;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("在途执行应续租");
+    assert_eq!(renewed.generation, before.generation);
+
+    // 越过原本的到期点，另一持有者仍不能接管。
+    f.clock.advance(100);
+    assert!(matches!(
+        f.store.acquire_lease(&run_id, "other", 1_000).await,
+        Err(LeaseError::Held { .. })
+    ));
+    runner.release.add_permits(1);
+    start.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn cancel_waits_for_executor_even_if_start_request_disconnected() {
+    let (f, runner, mut calls, run_id, start) = start_paused(Ok(InvocationResult::default())).await;
+    start.abort();
+    assert!(start.await.unwrap_err().is_cancelled());
+    assert!(matches!(f.engine.start_run(&run_id).await, Err(EngineError::StateConflict(_))));
+
+    let mut cancel = Box::pin(f.engine.cancel(&run_id));
+    assert!(futures_util::poll!(&mut cancel).is_pending());
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Running);
+    assert_eq!(node_state(&f.store, &run_id, "A").await.0, NodeStatus::Running);
+    assert!(!events_of(&f.store, &run_id).await.iter().any(|r| r.event.name == "run.cancelled"));
+
+    runner.release.add_permits(1);
+    tokio::time::timeout(Duration::from_secs(5), cancel).await.unwrap().unwrap();
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Cancelled);
+    assert_eq!(node_state(&f.store, &run_id, "A").await.0, NodeStatus::Cancelled);
+    assert_eq!(node_state(&f.store, &run_id, "G").await.0, NodeStatus::Pending);
+    assert_eq!(node_state(&f.store, &run_id, "B").await.0, NodeStatus::Pending);
+    assert!(calls.try_recv().is_err());
+    let events = events_of(&f.store, &run_id).await;
+    assert_eq!(events[events.len() - 2].event.name, "node.cancelled");
+    assert_eq!(events.last().unwrap().event.name, "run.cancelled");
+}
+
+#[tokio::test]
+async fn cancel_does_not_confirm_unknown_executor_outcome() {
+    let (f, runner, mut calls, run_id, start) =
+        start_paused(Err(ExecutorError::OutcomeUnknown("连接中断".into()))).await;
+    let mut cancel = Box::pin(f.engine.cancel(&run_id));
+    assert!(futures_util::poll!(&mut cancel).is_pending());
+    runner.release.add_permits(1);
+    assert!(matches!(start.await.unwrap(), Err(EngineError::OutcomeUnknown(_))));
+    assert!(matches!(cancel.await, Err(EngineError::StateConflict(_))));
+    assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Running);
+    assert_eq!(node_state(&f.store, &run_id, "A").await.0, NodeStatus::Running);
+    assert!(calls.try_recv().is_err());
+    assert!(!events_of(&f.store, &run_id).await.iter().any(|r| r.event.name == "run.cancelled"));
+}
+
+/// 只有中断残留记录时，没有证据证明 executor 已停止。
+#[tokio::test]
+async fn cancel_rejects_unconfirmed_running_nodes() {
     let f = fixture(
         RecordingRunner::new(MockScenario::Success { output: "ok".into(), tokens: 1 }),
         RecordingScriptExecutor::ok(),
@@ -1060,10 +1202,7 @@ async fn cancel_marks_running_nodes_cancelled() {
     let wf = wf_of("wf-cancel-running", vec![agent_node("A", "r1")], vec![]);
     let run = f.engine.create_run(&wf, &test_roles()).await.expect("创建");
 
-    // 构造运行中断残留：A 处于 running（模拟取消时活动执行已确认停止）。
-    // 先清掉旧引擎启动时的租约（时钟推进使其过期），再以外部持有者取得
-    // 租约写入 running 残留；取消前让该租约到期，engine 接管后执行取消。
-    f.clock.advance(2_000);
+    // 以外部持有者写入中断残留，然后让租约到期。
     let generation = f.store.acquire_lease(&run.id, "manual", 1_000).await.expect("取得租约");
     let mut current = f.store.get_run(&run.id).await.expect("读取").unwrap();
     current.status = RunStatus::Running;
@@ -1075,15 +1214,10 @@ async fn cancel_marks_running_nodes_cancelled() {
     f.store.commit_run(&current, generation, &[]).await.expect("提交");
 
     f.clock.advance(2_000);
-    f.engine.cancel(&run.id).await.expect("取消");
-    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Cancelled);
-    assert_eq!(node_state(&f.store, &run.id, "A").await.0, NodeStatus::Cancelled, "running 节点置 cancelled");
-    let names: Vec<_> = events_of(&f.store, &run.id)
-        .await
-        .iter()
-        .map(|r| r.event.name.clone())
-        .collect();
-    assert!(names.iter().any(|n| n == "node.cancelled"), "节点取消事件已持久化");
+    assert!(matches!(f.engine.cancel(&run.id).await, Err(EngineError::StateConflict(_))));
+    assert_eq!(run_status(&f.store, &run.id).await, RunStatus::Running);
+    assert_eq!(node_state(&f.store, &run.id, "A").await.0, NodeStatus::Running);
+    assert!(events_of(&f.store, &run.id).await.is_empty());
 }
 
 // ---------- 验收 12：恢复（第二阶段） ----------
@@ -1174,6 +1308,25 @@ async fn resume_verifies_unknown_outcome_and_reschedules_with_new_attempt() {
     assert_eq!(run_status(&f.store, &run_id).await, RunStatus::Succeeded);
     // Runner 只被重新调度一次（attempt=2），attempt=1 未重复提交。
     assert_eq!(runner.call_log().iter().filter(|c| c.starts_with("A@")).count(), 1);
+}
+
+#[tokio::test]
+async fn resume_does_not_replay_interrupted_runtime_acp_prompt() {
+    let acp = RecordingRunner::new(MockScenario::Failure(ExecutorError::OutcomeUnknown("断线".into())));
+    let mock = RecordingRunner::new(MockScenario::Cancelled);
+    let mut f = fixture(mock.clone(), RecordingScriptExecutor::ok());
+    f.engine = f.engine.with_runtime_acp(Some(acp.clone()));
+    let wf = wf_of("wf-acp", vec![agent_node("A", "r1")], vec![]);
+    let mut roles = test_roles();
+    roles["r1"]["executorKind"] = serde_json::json!("runtime-acp");
+    let id = f.engine.create_run(&wf, &roles).await.unwrap().id;
+    assert!(matches!(f.engine.start_run(&id).await, Err(EngineError::OutcomeUnknown(_))));
+    f.clock.advance(2_000);
+    assert!(matches!(f.engine.start_run(&id).await, Err(EngineError::OutcomeUnknown(_))));
+    assert!(matches!(f.engine.cancel(&id).await, Err(EngineError::StateConflict(_))));
+    assert_eq!(acp.call_log().len(), 1);
+    assert!(mock.call_log().is_empty());
+    assert_eq!(node_state(&f.store, &id, "A").await.0, NodeStatus::Running);
 }
 
 // ---------- 验收 13：资源收尾（第二阶段） ----------

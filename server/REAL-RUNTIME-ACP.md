@@ -37,9 +37,15 @@ URSI_FLOW_REAL_ACP=1 CARGO_TARGET_DIR=/data/dev/ursi-flow/target \
   cargo test --locked -p ursi-server --test real_runtime_acp -- --ignored --nocapture
 ```
 
-该测试会创建真实会话并提交一轮 prompt，可能产生模型费用。它要求收到文本、`end_turn` 以及关闭确认。断线或响应无效时不能推断任务已结束，引擎不自动重放结果未知的 prompt。
+该测试会创建真实会话并提交一轮 prompt，可能产生模型费用。它要求收到文本、`end_turn` 以及关闭确认。
+
+## 运行取消与中断
+
+Flow 收到运行取消请求后停止调度下游，等待当前 Runner 返回。即使启动请求的 HTTP 连接断开，调度者也会继续等待。只有确认执行已结束，引擎才提交取消状态和事件。运行取消不会向 Runtime 发送 `session/cancel`；直接调用 ACP 控制器可以单独发送该通知，但发送成功不代表 prompt 已停止。
+
+prompt 提交后断线、超时或收到无效终态时，Runner 返回 `OutcomeUnknown`。引擎保留节点的 `running` 记录，取消请求返回冲突。重启后 Flow 没有持久化的 ACP 会话句柄可供核实，因此不会自动重放这轮 prompt。
 
 ## 验证边界
 
 - 本地 WebSocket 对端测试覆盖初始化、建会话、文本和工具通知映射、取消、状态查询与关闭；HTTP 和 SQLite 测试用 Runner 替身验证角色保存、运行快照和重启后的分派。
-- 上述 opt-in 命令单独验证 Flow Runner 到正式 Runtime 的连接。它不验证 HTTP 工作流端到端、Gateway 生命周期、工作区准备、产物回收或多租户隔离。Flow 的运行取消仍遵循现有引擎语义，不等同于控制器的在途 `session/cancel` 通知。
+- 上述 opt-in 命令单独验证 Flow Runner 到正式 Runtime 的连接。它不验证 HTTP 工作流端到端、Gateway 生命周期、工作区准备、产物回收或多租户隔离。

@@ -173,6 +173,8 @@ pub(super) async fn assemble_with_runtime_acp(
     runtime_acp: Option<Arc<dyn ursi_agent_runtime::Runner>>,
 ) -> Result<App, String> {
     let (status_tx, status_rx) = watch::channel(AppStatus::Starting);
+    std::fs::create_dir_all(&config.data_dir)
+        .map_err(|e| format!("创建数据目录 {} 失败：{e}", config.data_dir.display()))?;
 
     // 1. 存储与迁移。共享库版本治理（文档化约束）：
     // WorkflowStore::open 以硬编码的单迁移列表打开共享库（构造函数不

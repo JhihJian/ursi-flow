@@ -6,11 +6,10 @@
 //! 顺序不可颠倒（DESIGN「一致性归属」：广播是实时通知，数据库事件是历史
 //! 重放的事实来源）。
 //!
-//! 调度模型：运行由调度循环同步驱动到终态或审批挂起。start_run / approve /
-//! reject / cancel 先取得租约（空闲或到期时接管，代数递增），此后每轮提交
-//! 都以该代数做 CAS；租约被他人接管后，旧持有者的提交因代数过期被拒，
-//! 不覆盖当前结果。失败终态后不再调度新节点；终态运行拒绝审批、打回与
-//! 再次取消。
+//! 调度模型：同一引擎内每次运行只有一个调度者。启动、放行和打回取得
+//! 调度权和租约后，由独立于请求的任务驱动到终态或审批挂起。取消通知
+//! 活动调度者停止推进；只有确认执行结束后才提交取消终态。所有提交以
+//! 租约代数做 CAS，旧持有者的提交不能覆盖接管后的结果。
 //!
 //! 第二阶段已落实：
 //! - 角色冻结配置：agent 执行时从存储快照解析冻结的
@@ -29,6 +28,7 @@
 //! - 沙箱脚本执行：[`ScriptExecutor`] 注入实现，真实沙箱执行后续阶段接
 //!   channel。
 
+mod driver;
 mod events;
 
 #[cfg(test)]
@@ -45,6 +45,7 @@ use ursi_domain::{
 };
 
 use crate::runs::{CleanupState, FrozenRole, FrozenRoles, ResourceReleaser, RunRepository};
+use driver::{ActiveDriver, DriverGuard, Drivers};
 pub use crate::runs::{LeaseError, LeaseState, LeaseTable};
 
 pub use events::EventBus;
@@ -52,7 +53,8 @@ pub use events::EventBus;
 /// 恢复时对结果未知执行的处置语义（SPEC「恢复时对结果未知的执行先查询或
 /// 核实，不直接重复提交任务」）。本版取值唯一，枚举保留语义命名供文档
 /// 与后续策略扩展（如远端任务查询核实后复用原 attempt）。
-/// 当前实现固定使用 [`UnknownOutcomeResolution::MarkUnknownAndReschedule`]。
+/// 默认执行路径使用 [`UnknownOutcomeResolution::MarkUnknownAndReschedule`]；
+/// Runtime ACP 无法核实残留会话时保留 running 并返回结果未知。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnknownOutcomeResolution {
     /// 本版语义：标记该 attempt 结果未知，按「执行结果核实」事件留档，
@@ -64,9 +66,8 @@ pub enum UnknownOutcomeResolution {
 /// 取消时活动执行的处置语义（SPEC「取消后不启动下游，只有确认执行停止
 /// 后才报告取消完成；连接中断与任务失败可区分」）。
 ///
-/// 本版语义：Runner 无中断入口，取消请求在当前执行返回后生效——等待当前
-/// 执行完成后不再推进下游，事件记录 cancelled；执行结果为取消错误时节点
-/// 置 cancelled，其他结果（成功/失败）如实保留。
+/// Runner 无中断入口，取消等待当前执行确认结束，不再采纳该节点的结果或
+/// 推进下游。结果未知时保留可恢复状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveCancellationPolicy {
     WaitForActiveCompletion,
@@ -75,7 +76,7 @@ pub enum ActiveCancellationPolicy {
 /// 脚本执行器接口：本阶段注入替身，真实沙箱执行后续阶段接 channel。
 #[async_trait]
 pub trait ScriptExecutor: Send + Sync {
-    /// 执行脚本，返回输出。language 如 "shell" / "python"。
+    /// 执行脚本，返回输出。无法确认执行已停止时返回 `OutcomeUnknown`。
     async fn exec(&self, script: &str, language: &str) -> Result<String, ScriptExecutionError>;
 }
 
@@ -86,10 +87,14 @@ pub enum ScriptExecutionError {
     Failed(String),
     #[error("不支持的语言：{0}")]
     UnsupportedLanguage(String),
+    #[error("脚本执行结果未知：{0}")]
+    OutcomeUnknown(String),
 }
 
 /// 流程执行引擎：编排调度、状态机、人工审批、重试与事件广播。
+#[derive(Clone)]
 pub struct Engine {
+    drivers: Arc<Drivers>,
     store: Arc<dyn RunRepository>,
     runner: Arc<dyn Runner>,
     runtime_acp: Option<Arc<dyn Runner>>,
@@ -115,6 +120,7 @@ impl Engine {
         script_executor: Arc<dyn ScriptExecutor>,
     ) -> Self {
         Self {
+            drivers: Arc::new(Drivers::default()),
             store,
             runner,
             runtime_acp: None,
@@ -223,10 +229,11 @@ impl Engine {
     /// 运行同样适用：恢复沿用快照，恢复时对 running 节点先核实结果
     /// （见 [`Engine::reconcile_interrupted`]），再继续调度。
     pub async fn start_run(&self, run_id: &str) -> Result<(), EngineError> {
+        let driver = self.claim_driver(run_id)?;
         let generation = self.acquire(run_id).await?;
         let mut run = self.load(run_id).await?;
         run.generation = generation;
-        self.drive(&mut run, generation).await
+        self.spawn_driver(driver, run, generation).await
     }
 
     /// 恢复入口：接管存储中非终态且租约已过期的运行并继续调度。
@@ -249,57 +256,30 @@ impl Engine {
         outcomes
     }
 
-    /// 取消运行：停止新调度、向活动执行发送取消并核实执行结果。
-    ///
-    /// 当前调度模型下取消请求只能由外部并发发起，而 engine 调度循环是
-    /// 单线程驱动；本入口约定：
-    /// - 停止新调度：running 节点置 cancelled、pending 节点保持 pending、
-    ///   运行置 cancelled（终态，后续 start/approve/reject 直接拒绝推进）；
-    /// - 活动执行：由调用方在执行完成返回后调用本入口（或经取消令牌通知
-    ///   Runner，本版 Runner 契约无取消入口，见模块文档语义）；
-    /// - 只有确认执行停止后才报告取消完成：本入口提交 cancelled 终态成功
-    ///   即代表确认（pending/running 节点已处置完毕，无后续调度）。
-    /// - 连接中断与任务失败可区分：取消是显式终态，与 Runner 的连接错误
-    ///   / 执行失败错误变体不同路径、不同事件。
+    /// 通知活动调度者取消，并等待已提交的取消终态。无活动调度者时，
+    /// 只允许取消没有未确认执行的运行。
     pub async fn cancel(&self, run_id: &str) -> Result<(), EngineError> {
+        let _driver = match self.drivers.claim(run_id) {
+            Ok(driver) => driver,
+            Err(active) => {
+                active.request_cancel_and_wait().await;
+                let run = self.load(run_id).await?;
+                return if run.status == RunStatus::Cancelled {
+                    Ok(())
+                } else {
+                    Err(EngineError::StateConflict(format!(
+                        "未能确认取消（当前状态 {}）",
+                        run.status.as_str()
+                    )))
+                };
+            }
+        };
+        let run = self.load(run_id).await?;
+        Self::check_cancellable(&run, None)?;
         let generation = self.acquire(run_id).await?;
         let mut run = self.load(run_id).await?;
-        if matches!(
-            run.status,
-            RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled
-        )
-        {
-            return Err(EngineError::StateConflict(format!(
-                "运行已是终态（{}），不能取消",
-                run.status.as_str()
-            )));
-        }
-        let mut events = Vec::new();
-        let cancelled_node_ids: Vec<String> = run
-            .nodes
-            .iter()
-            .filter(|n| n.status == NodeStatus::Running)
-            .map(|n| n.node_id.clone())
-            .collect();
-        for node_id in &cancelled_node_ids {
-            // 活动执行已确认停止后置 cancelled；结果未知的情况由
-            // 恢复路径的核实语义负责。
-            let node = run.nodes.iter_mut().find(|n| &n.node_id == node_id).expect("running 节点存在");
-            node.status = NodeStatus::Cancelled;
-            events.push(node_event(
-                &run,
-                node_id,
-                "node.cancelled",
-                "运行取消，执行确认停止",
-                EventPhase::Finish,
-            ));
-            // pending / waiting_approval 节点保持原状态，下游不再推进
-            // （终态运行不会被再次调度）。
-        }
-        run.status = RunStatus::Cancelled;
-        events.push(lifecycle_event(&run, "run.cancelled", "运行已取消，停止新调度"));
-        self.commit_and_emit(&run, generation, events).await?;
-        Ok(())
+        run.generation = generation;
+        self.commit_cancelled(&mut run, generation, None, Vec::new()).await
     }
 
     /// 资源收尾：运行终态后释放沙箱、会话等关联资源。
@@ -370,6 +350,13 @@ impl Engine {
         }
         let mut events = Vec::new();
         for node_id in &running {
+            if let Some(spec) = run.workflow.nodes.iter().find(|n| &n.id == node_id && n.node_type == ursi_domain::NodeType::Agent) {
+                let role = this.frozen_role(&run.id, spec.role_id.as_deref()).await?;
+                if role.executor_kind.as_ref().map(|kind| kind.as_str()) == Some(ursi_agent_runtime::RUNTIME_ACP) {
+                    // 没有持久化的 ACP 会话句柄，不能以新的 attempt 重放 prompt。
+                    return Err(EngineError::OutcomeUnknown(format!("节点 {node_id} 的 runtime-acp 执行尚未核实")));
+                }
+            }
             let node = node_mut(run, node_id)?;
             let unknown_attempt = node.attempts;
             node.status = NodeStatus::Pending;
@@ -391,6 +378,7 @@ impl Engine {
     /// 审批放行：让等待审批的节点继续，推进下游。
     /// 终态运行（succeeded/failed/cancelled）拒绝操作，状态不变。
     pub async fn approve(&self, run_id: &str, node_id: &str) -> Result<(), EngineError> {
+        let driver = self.claim_driver(run_id)?;
         let generation = self.acquire(run_id).await?;
         let mut run = self.load(run_id).await?;
         run.generation = generation;
@@ -415,7 +403,7 @@ impl Engine {
             node.output = Some("已审批放行".to_string());
             node.error = None;
         }
-        self.drive(&mut run, generation).await
+        self.spawn_driver(driver, run, generation).await
     }
 
     /// 审批打回：把运行重置到目标环节重新执行。
@@ -431,6 +419,7 @@ impl Engine {
         node_id: &str,
         target_node_id: &str,
     ) -> Result<(), EngineError> {
+        let driver = self.claim_driver(run_id)?;
         let generation = self.acquire(run_id).await?;
         let mut run = self.load(run_id).await?;
         run.generation = generation;
@@ -508,11 +497,67 @@ impl Engine {
             }
         }
         run.status = RunStatus::Running;
-        self.drive(&mut run, generation).await
+        self.spawn_driver(driver, run, generation).await
     }
 }
 
 impl Engine {
+    fn claim_driver(&self, run_id: &str) -> Result<DriverGuard, EngineError> {
+        self.drivers.claim(run_id).map_err(|_| {
+            EngineError::StateConflict(format!("运行 {run_id} 已有活动调度者"))
+        })
+    }
+
+    async fn spawn_driver(
+        &self,
+        driver: DriverGuard,
+        mut run: Run,
+        generation: u64,
+    ) -> Result<(), EngineError> {
+        let engine = self.clone();
+        // 请求断开只放弃等待结果。调度和所有权仍保留到活动执行结束。
+        tokio::spawn(async move { engine.drive(&mut run, generation, &driver.active).await })
+            .await
+            .map_err(EngineError::DriverTask)?
+    }
+
+    fn check_cancellable(run: &Run, stopped_node: Option<&str>) -> Result<(), EngineError> {
+        if matches!(run.status, RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled) {
+            return Err(EngineError::StateConflict(format!(
+                "运行已是终态（{}），不能取消",
+                run.status.as_str()
+            )));
+        }
+        if run.nodes.iter().any(|node| {
+            node.status == NodeStatus::Running && Some(node.node_id.as_str()) != stopped_node
+        }) {
+            return Err(EngineError::StateConflict("无法确认活动执行已停止".into()));
+        }
+        Ok(())
+    }
+
+    async fn commit_cancelled(
+        &self,
+        run: &mut Run,
+        generation: u64,
+        stopped_node: Option<&str>,
+        mut events: Vec<TelemetryEvent>,
+    ) -> Result<(), EngineError> {
+        Self::check_cancellable(run, stopped_node)?;
+        if let Some(node_id) = stopped_node {
+            node_mut(run, node_id)?.status = NodeStatus::Cancelled;
+            events.push(node_event(
+                run,
+                node_id,
+                "node.cancelled",
+                "运行取消，执行确认停止",
+                EventPhase::Finish,
+            ));
+        }
+        run.status = RunStatus::Cancelled;
+        events.push(lifecycle_event(run, "run.cancelled", "运行已取消，停止新调度"));
+        self.commit_and_emit(run, generation, events).await
+    }
     /// 获取运行租约，返回本次持有的代数。
     async fn acquire(&self, run_id: &str) -> Result<u64, EngineError> {
         Ok(self
@@ -531,13 +576,21 @@ impl Engine {
 
     /// 调度主循环：从当前运行状态出发，逐个执行就绪节点直到终态或审批
     /// 挂起。失败终态后不调度新节点。
-        async fn drive(&self, run: &mut Run, generation: u64) -> Result<(), EngineError> {
+    async fn drive(
+        &self,
+        run: &mut Run,
+        generation: u64,
+        driver: &ActiveDriver,
+    ) -> Result<(), EngineError> {
         let wf = run.workflow.clone();
         if matches!(
             run.status,
             RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled
         ) {
             return Ok(());
+        }
+        if driver.cancel_requested() {
+            return self.commit_cancelled(run, generation, None, Vec::new()).await;
         }
         // 进入调度即标记 running（queued 首次启动或 waiting 恢复），
         // 同事务写入启动事件，可观测。
@@ -554,13 +607,19 @@ impl Engine {
         }
         // 恢复核实：载入后仍处于 running 的节点是中断残留（正常调度路径
         // 下 drive 返回前不会留 running 节点），先核实再调度。
-        let () = Self::reconcile_interrupted(self, run, generation).await?;
+        if driver.cancel_requested() {
+            return self.commit_cancelled(run, generation, None, Vec::new()).await;
+        }
+        Self::reconcile_interrupted(self, run, generation).await?;
         loop {
             if matches!(
                 run.status,
                 RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled
             ) {
                 return Ok(());
+            }
+            if driver.cancel_requested() {
+                return self.commit_cancelled(run, generation, None, Vec::new()).await;
             }
             // 安全网：载入的运行已含失败节点（如恢复场景）时直接终态。
             if run.nodes.iter().any(|n| n.status == NodeStatus::Failed) {
@@ -598,10 +657,13 @@ impl Engine {
             };
 
             if self
-                .execute_node(run, &wf, &node_id, generation)
+                .execute_node(run, &wf, &node_id, generation, driver)
                 .await?
                 .is_waiting_approval()
             {
+                if driver.cancel_requested() {
+                    return self.commit_cancelled(run, generation, None, Vec::new()).await;
+                }
                 return Ok(());
             }
         }
@@ -615,6 +677,7 @@ impl Engine {
         wf: &WorkflowDefinition,
         node_id: &str,
         generation: u64,
+        driver: &ActiveDriver,
     ) -> Result<NodeOutcome, EngineError> {
         let spec = wf
             .nodes
@@ -640,8 +703,26 @@ impl Engine {
         // 保证存储与广播是同一记录身份。
         let attempt_before = node_of(run, node_id)?.attempts;
         let runner_events = Mutex::new(Vec::new());
-        let (invocation, result_artifacts) = self.invoke(&spec, run, node_id, &runner_events).await;
+        if driver.cancel_requested() {
+            self.commit_cancelled(run, generation, Some(node_id), Vec::new()).await?;
+            return Ok(NodeOutcome::Completed);
+        }
+        let (invocation, result_artifacts) = self
+            .keep_lease(&run.id, self.invoke(&spec, run, node_id, &runner_events))
+            .await?;
         let runner_events = runner_events.into_inner().expect("事件收集互斥锁可用");
+        match &invocation {
+            Err(NodeInvocationError::Runner(ursi_agent_runtime::ExecutorError::OutcomeUnknown(reason)))
+            | Err(NodeInvocationError::Script(ScriptExecutionError::OutcomeUnknown(reason))) => {
+                // 断线等未知结果既不能确认取消，也不能当普通失败重试。
+                return Err(EngineError::OutcomeUnknown(reason.clone()));
+            }
+            _ => {}
+        }
+        if driver.cancel_requested() {
+            self.commit_cancelled(run, generation, Some(node_id), runner_events).await?;
+            return Ok(NodeOutcome::Completed);
+        }
         let result_artifacts = result_artifacts.unwrap_or_default();
 
         // 迟到防护（SPEC「在同一持有代数内返工后，旧 attempt 的迟到状态、
@@ -781,6 +862,27 @@ impl Engine {
                     self.commit_and_emit(run, generation, events).await?;
                 }
                 Ok(NodeOutcome::Completed)
+            }
+        }
+    }
+
+    /// 执行期间定期续约。失去租约也要等执行返回，不以丢弃 future 代替停止。
+    async fn keep_lease<T>(
+        &self,
+        run_id: &str,
+        operation: impl std::future::Future<Output = T>,
+    ) -> Result<T, EngineError> {
+        let period = std::time::Duration::from_millis((self.lease_ttl_ms / 3).max(1));
+        tokio::pin!(operation);
+        loop {
+            tokio::select! {
+                result = &mut operation => return Ok(result),
+                _ = tokio::time::sleep(period) => {
+                    if let Err(err) = self.leases.renew_lease(run_id, &self.holder, self.lease_ttl_ms).await {
+                        operation.await;
+                        return Err(err.into());
+                    }
+                }
             }
         }
     }
@@ -956,6 +1058,10 @@ pub enum EngineError {
     NodeNotFound(String, String),
     #[error("状态冲突：{0}")]
     StateConflict(String),
+    #[error("无法确认执行已结束：{0}")]
+    OutcomeUnknown(String),
+    #[error("运行调度任务异常退出：{0}")]
+    DriverTask(#[source] tokio::task::JoinError),
     #[error("工作流定义不合法：{0}")]
     InvalidDefinition(#[from] ursi_domain::WorkflowError),
     #[error("脚本执行错误：{0}")]

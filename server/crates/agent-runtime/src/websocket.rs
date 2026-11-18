@@ -392,10 +392,15 @@ impl Runner for AcpRunner {
                 }
             }
             Err(error @ SessionError::Execution(_)) => {
-                let _ = self.controller.close_remote(&handle).await;
+                // Runtime 也以 RPC 错误报告进程清理失败；须确认会话关闭。
+                self.controller.close_remote(&handle).await.map_err(|close| {
+                    ExecutorError::OutcomeUnknown(format!(
+                        "会话 {} 的 prompt 报错：{error}，无法确认关闭：{close}", handle.session_id
+                    ))
+                })?;
                 Err(map_runner_error(error))
             }
-            Err(error) => Err(ExecutorError::DoNotRetry(format!(
+            Err(error) => Err(ExecutorError::OutcomeUnknown(format!(
                 "会话 {} 的 prompt 结果未知：{error}",
                 handle.session_id
             ))),
@@ -408,7 +413,7 @@ fn map_runner_error(error: SessionError) -> ExecutorError {
         SessionError::UnsupportedCapability(error) => ExecutorError::Launch(error.to_string()),
         SessionError::SessionSetup(error) => ExecutorError::Launch(error),
         SessionError::ConnectionClosed => {
-            ExecutorError::Execution("ACP 连接已断开，执行结果未知".into())
+            ExecutorError::Launch("提交 prompt 前 ACP 连接已断开".into())
         }
         SessionError::Execution(error) | SessionError::UnknownSession(error) => {
             ExecutorError::Execution(error)
@@ -791,16 +796,29 @@ mod tests {
                 }
             });
             let runner = AcpRunner::new(config(url)).unwrap();
-            assert!(
-                matches!(
-                    run(&runner, &role(), ExecutorKind::Cli("runtime-acp".into())).await,
-                    Err(ExecutorError::DoNotRetry(_))
-                ),
-                "{reason:?}"
-            );
+            let result = run(&runner, &role(), ExecutorKind::Cli("runtime-acp".into())).await;
+            match reason {
+                None | Some("invalid") => assert!(matches!(result, Err(ExecutorError::OutcomeUnknown(_)))),
+                _ => assert!(matches!(result, Err(ExecutorError::DoNotRetry(_)))),
+            }
             assert!(runner.controller.sessions.lock().unwrap().is_empty());
             server.await.unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn runner_requires_confirmed_close_after_prompt_rpc_error() {
+        let (url, listener) = peer().await;
+        let server = tokio::spawn(async move {
+            new_session(&listener).await;
+            let (mut ws, req) = request(&listener, "session/prompt").await;
+            send(&mut ws, json!({"jsonrpc":"2.0", "id":req["id"], "error":{"code":-32000,"message":"process cleanup failed"}})).await;
+            let (_ws, _) = request(&listener, "_ursi/session/close").await;
+        });
+        let runner = AcpRunner::new(config(url)).unwrap();
+        let result = run(&runner, &role(), ExecutorKind::Cli("runtime-acp".into())).await;
+        assert!(matches!(result, Err(ExecutorError::OutcomeUnknown(_))));
+        server.await.unwrap();
     }
 
     #[test]

@@ -2657,7 +2657,6 @@ name = "ursi-agent-cli-adapter"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "libc",
  "serde",
  "serde_json",
  "tempfile",

@@ -35,6 +35,19 @@ fn temp_dir(tag: &str) -> PathBuf {
     dir
 }
 
+#[tokio::test]
+async fn first_start_creates_missing_data_directory() {
+    let root = tempfile::tempdir().expect("临时目录");
+    let data_dir = root.path().join("new").join("data");
+    assert!(!data_dir.exists());
+    let config = AppConfig::for_test(data_dir);
+    let db_path = config.shared_db_path();
+    let app = assemble(config).await.expect("首次启动应创建数据目录");
+    assert!(app.ready());
+    assert!(db_path.is_file());
+    app.shutdown().await;
+}
+
 /// 基础配置夹具：连接 → 角色 → 流程（单 agent 节点 + 审批节点）。
 async fn seed_fixture(base: &str, client: &reqwest::Client) -> String {
     let conn: Value = client
