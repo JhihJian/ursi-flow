@@ -1,5 +1,5 @@
 ---
-parent: ../../SPEC.md
+parent: ../SPEC.md
 references:
   - ../runtime/AGENT-CONTRACT.md
   - ../gateway/CONTRACT.md

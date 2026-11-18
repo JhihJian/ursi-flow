@@ -4,11 +4,13 @@
 
 ## 构建与定向验证
 
+以下命令从独立产品根 `ursi-sandbox/` 执行，产物位于该根目录的 `target/`。
+
 ```bash
 cargo build -p ursi-sandbox-client
 cargo test -p ursi-sandbox-client
 cargo clippy -p ursi-sandbox-client --all-targets -- -D warnings
-python3 -B -m unittest discover -s sandbox-gateway/client/scripts -p 'test_*.py' -v
+python3 -B -m unittest discover -s client/scripts -p 'test_*.py' -v
 ./target/debug/ursi-sandbox-client --help
 ```
 
@@ -120,7 +122,7 @@ Rust 库暴露 `Gateway`、`Acp`、`Ssh`、`Secret` 和 `PromptOutcome`。每条
 bundle 的默认发布地址来自 `docker network inspect bridge` 的网关配置。该地址是否能下载由正式 Runtime 启动验证。自定义 Docker 网络、防火墙等环境可使用 `--bundle-host` 指定容器可达的宿主地址。
 
 ```bash
-sudo env URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_acceptance.py \
+sudo env URSI_AGENT_ACCEPTANCE=1 python3 client/scripts/agent_acceptance.py \
   --gateway /absolute/path/ursi-gateway \
   --client "$PWD/target/debug/ursi-sandbox-client" \
   --image ursi-runtime-pi:local \
@@ -131,7 +133,7 @@ sudo env URSI_AGENT_ACCEPTANCE=1 python3 sandbox-gateway/client/scripts/agent_ac
 
 复用操作方 SSH 身份时增加 `--ssh-key /private/id_ed25519`。可调期限为 `--operation-timeout 60`、`--lifecycle-timeout 240`、`--prompt-timeout 300`，单位为秒，每项范围 1..3600。每个命令、轮询和进程回收都有期限。
 
-Cargo ignored 测试使用同一个脚本，也要求 root。以下命令在已配置 Rust 工具链的 root shell（`sudo -i`）中进入项目目录后执行。日常验证使用前面的非 ignored 定向测试，无需 root：
+Cargo ignored 测试使用同一个脚本，也要求 root。以下命令从独立产品根 `ursi-sandbox/` 执行。先在已配置 Rust 工具链的 root shell（`sudo -i`）中进入该目录。日常验证使用前面的非 ignored 定向测试，无需 root：
 
 ```bash
 export URSI_AGENT_ACCEPTANCE=1
