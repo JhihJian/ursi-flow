@@ -162,6 +162,8 @@ impl Drop for App {
 /// 失败——失败点全部在后台任务启动之前，无组件需要回滚。
 pub async fn assemble(config: AppConfig) -> Result<App, String> {
     let (status_tx, status_rx) = watch::channel(AppStatus::Starting);
+    std::fs::create_dir_all(&config.data_dir)
+        .map_err(|e| format!("创建数据目录 {} 失败：{e}", config.data_dir.display()))?;
 
     // 1. 存储与迁移。共享库版本治理（文档化约束）：
     // WorkflowStore::open 以硬编码的单迁移列表打开共享库（构造函数不

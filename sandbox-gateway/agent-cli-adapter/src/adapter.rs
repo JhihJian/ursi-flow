@@ -104,7 +104,7 @@ impl CliAdapter {
         let (code, output) = env
             .exec(&cmd)
             .await
-            .map_err(|e| ExecutorError::Launch(format!("命令启动失败：{e}")))?;
+            .map_err(|e| ExecutorError::OutcomeUnknown(format!("未收到命令退出结果：{e}")))?;
 
         let result = if code != 0 {
             // 失败不自动重试：直接报告失败，由上层决定重试策略。

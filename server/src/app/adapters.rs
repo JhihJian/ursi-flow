@@ -92,7 +92,9 @@ fn engine_to_api(err: crate::runs::engine::EngineError) -> ApiError {
     match err {
         EngineError::RunNotFound(id) => ApiError::not_found(format!("运行 {id}")),
         EngineError::NodeNotFound(..) => ApiError::not_found(err.to_string()),
-        EngineError::StateConflict(_) => ApiError::conflict(err.to_string()),
+        EngineError::StateConflict(_) | EngineError::OutcomeUnknown(_) => {
+            ApiError::conflict(err.to_string())
+        }
         EngineError::InvalidDefinition(source) => {
             ApiError::bad_request(format!("定义结构校验失败：{source}"))
         }
@@ -104,7 +106,7 @@ fn engine_to_api(err: crate::runs::engine::EngineError) -> ApiError {
         EngineError::Lease(_)
         | EngineError::Script(_)
         | EngineError::LateAttemptDiscarded { .. } => ApiError::conflict(err.to_string()),
-        EngineError::ReleaserNotConfigured => ApiError::Internal,
+        EngineError::ReleaserNotConfigured | EngineError::DriverTask(_) => ApiError::Internal,
     }
 }
 
