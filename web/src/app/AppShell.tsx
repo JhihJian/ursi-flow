@@ -130,7 +130,7 @@ export default function AppShell() {
           <header className="shell-topbar">
             <button
               type="button"
-              className="icon-button lg:hidden"
+              className="icon-button -ml-2"
               aria-label="打开导航菜单"
               aria-expanded={drawerOpen}
               aria-haspopup="dialog"
@@ -139,8 +139,6 @@ export default function AppShell() {
               <Icon name="menu" size={21} />
             </button>
             <nav aria-label="面包屑" className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="hidden shrink-0 text-txt3 sm:inline">工作台</span>
-              <Icon name="chevron-right" size={13} className="hidden text-txt3 sm:inline" />
               {currentDomain && location.pathname !== currentDomain.path ? (
                 <>
                   <Link to={currentDomain.path} className="shrink-0 text-txt3 hover:text-txt">{currentDomain.title}</Link>
@@ -149,10 +147,6 @@ export default function AppShell() {
               ) : null}
               <span aria-current="page" className="truncate font-medium text-txt">{pageTitle}</span>
             </nav>
-            <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 text-xs text-txt3">
-              <span className={cn('h-1.5 w-1.5 rounded-full', isDemo ? 'bg-accent' : 'bg-info')} aria-hidden="true" />
-              {isDemo ? '演示工作区' : '真实服务'}
-            </span>
           </header>
           <div className="shell-scroll">
             <main id="main-content" tabIndex={-1} className="shell-content">

@@ -87,7 +87,10 @@ export function ShellSidebar({ groups, dark, demo, onNavigate, onTheme, onSettin
           </span>
           <div className="min-w-0">
             <p className="truncate text-xs font-medium text-txt">默认工作区</p>
-            <p className="mt-0.5 text-[11px] text-txt3">{demo ? '本地演示空间' : '协作工作空间'}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-txt3">
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', demo ? 'bg-accent' : 'bg-info')} aria-hidden="true" />
+              {demo ? '演示工作区' : '真实服务'}
+            </p>
           </div>
         </div>
       </div>
