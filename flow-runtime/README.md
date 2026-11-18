@@ -9,7 +9,7 @@ node dist/cli.js check examples/ordinary
 node dist/cli.js run examples/ordinary --variables '{"任务":"评审改动"}'
 ```
 
-`--model provider/id` 选择 Pi 模型。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。测试真实 Pi CLI（已验证 1.5.2）运行 `TEST_REAL_PI=1 npm test`；模型响应由本地测试服务提供，不消费模型额度。`npm pack` 生成可独立安装的压缩包，安装后用 `ursi-flow check|run`。
+`--model provider/id` 选择 Pi 模型。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。测试真实 Pi CLI（已验证 1.5.2）运行 `TEST_REAL_PI=1 npm test`；模型响应由本地测试服务提供，不消费模型额度。`npm pack` 生成可独立安装的压缩包，安装后用 `ursi-flow-local check|run` 做单次执行。常驻管理服务的入口是 `ursi-flowd`。安装 [独立 Rust 客户端](client/README.md) 后用 `ursi-flow` 管理流程、后台运行和配置。
 
 ## 项目边界
 
