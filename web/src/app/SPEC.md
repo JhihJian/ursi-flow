@@ -9,6 +9,7 @@ depends-on:
   - ../modules/artifacts/SPEC.md
   - ../modules/sandboxes/SPEC.md
   - ../modules/connections/SPEC.md
+  - ../modules/chat/SPEC.md
 references:
   - ../../DESIGN.md
 ---
@@ -17,9 +18,11 @@ references:
 
 ## 功能意图
 
-装配 Vue、Router、Pinia 与 API 模式，提供响应式应用壳、导航、主题、全局反馈和演示控制。六个业务域经公开路由接入，页面状态归所属业务域，模拟业务状态归 mocks，DTO 与通用控件归 shared。
+装配 React、React Router 数据路由、Zustand 与 API 模式，提供响应式应用壳、导航、主题、全局反馈和演示控制。七个业务域经公开路由接入，页面状态归所属业务域，模拟业务状态归 mocks，DTO 与通用控件归 shared。
 
-应用主题与基础控件复用并适配 Grasp，来源及许可证见 [第三方声明](../../THIRD_PARTY_NOTICES.md)。
+入口为 `main.tsx`：挂载前同步执行 `theme.ts` 的 `initTheme()`，再按需注入模拟 transport，最后用 `router.tsx` 的 `createBrowserRouter` 渲染。应用壳为 `AppShell.tsx`，404 为 `NotFoundView.tsx`，按需加载失败提示为 `RouteErrorAlert.tsx`。
+
+应用主题与基础控件复用并适配 Grasp，经 shadcn/ui（new-york 源码）落到 `shared/ui`，来源及许可证见 [第三方声明](../../THIRD_PARTY_NOTICES.md)。
 
 ## 关键功能与验收
 
@@ -29,37 +32,37 @@ references:
 
 #### 验收
 
-- 默认启动可在 server 未运行时进入六域业务页，顶部显示“演示工作区”，侧边栏可打开演示设置。
+- 默认启动可在 server 未运行时进入七域业务页，顶部显示“演示工作区”，侧边栏可打开演示设置。
 - 注入模拟 API 后全局 fetch 保持原行为，业务请求通过 shared HTTP 入口处理。
 - `VITE_API_MODE=live` 时显示真实服务模式标识并隐藏演示设置，网络错误保持请求失败，不回退 mock。
 - 默认构建包含演示能力，`build:live` 使用 live 模式并排除模拟 API。独立验收确认模式与资源选择，真实 API 协议仍需联调。
 
-### 六域路由与错误恢复
+### 七域路由与错误恢复
 
-装配六域懒加载路由，首页进入工作流。运行详情有独立地址，标题、面包屑和导航随当前路由变化。
+路由表由 `router.tsx` 聚合各域导出的 `routes.tsx`（React Router `RouteObject`），首页重定向到工作流。`/`、`/workflows`、`/roles`、`/runs`、`/artifacts`、`/sandboxes`、`/connections`、`/chat` 均为懒加载，详情页有独立地址。路由 `handle.title` 决定 `document.title` 与面包屑。
 
 #### 验收
 
-- 直接进入 `/workflows`、`/roles`、`/runs`、`/artifacts`、`/sandboxes`、`/connections` 显示对应业务页与标题。
+- 直接进入七个一级地址显示对应业务页，`document.title` 为 `${title} · ursi-flow`。
 - `/runs/:id` 展示指定运行并高亮运行导航，刷新保持深链，根地址进入工作流。
-- 一级页面导航通过 `aria-current` 标记当前页，详情页由高亮和面包屑标记所属域。未知页面显示 404 并可返回工作流。
-- 阻断模块资源加载后保留应用壳与失败目标，恢复网络并重试可重新打开目标；正常导航后清除错误。
+- 一级页面导航通过 `aria-current` 标记当前页，详情页由高亮和面包屑标记所属域。未知页面显示“页面未找到”并可返回工作流。
+- 业务域资源加载失败时保留应用壳与失败地址，恢复后可重新打开目标；正常导航后错误消失。
 - 独立浏览器验收检查路由行为，生产 history 回退与 `/api`、静态资源错误隔离由真实托管环境联合验收。
 
 ### 响应式应用壳、主题与键盘
 
-桌面提供侧边导航，小屏通过顶部按钮打开左侧导航抽屉。亮色为默认主题，主题偏好在挂载前读取并保存到独立 localStorage 键。
+桌面提供侧边导航，小屏通过顶部按钮打开 `sheet.tsx` 的左侧抽屉（标题“工作区导航”）。亮色为默认主题，主题偏好在挂载前读取并保存到独立 localStorage 键 `ursi-flow:theme`，`storage` 事件同步其他标签页。深色同时写 `data-theme="dark"` 与 `.dark`。
 
 #### 验收
 
-- 桌面与移动浏览器均可操作六域入口，导航成功后抽屉关闭，内容区保持窄屏可读。
+- 桌面与移动浏览器均可操作七域入口，导航成功后抽屉关闭，内容区保持窄屏可读。
 - 切换主题后背景、文本与控件同步变化，刷新后保留选择；存储访问受限时仍可在当前页面切换。
 - 首次 Tab 聚焦“跳到主要内容”，激活后焦点进入主内容区，导航与错误恢复按钮可通过键盘操作。
 - 抽屉和弹窗约束焦点，关闭后恢复焦点，Esc 只关闭顶层弹窗。相关交互通过组件与浏览器独立验收。
 
 ### 演示控制与全局反馈
 
-应用壳展示 shared 提供的确认和通知状态，通过模拟 API 加载设置、调整延迟与一次性故障并重置数据。
+应用壳展示 shared 反馈 store 的确认和通知状态，通过模拟 API 加载设置、调整延迟与一次性故障并重置数据。
 
 #### 验收
 
@@ -71,6 +74,6 @@ references:
 
 ## 交付与验收边界
 
-独立验收通过 Router 与组件测试、默认构建及桌面和移动 Playwright 覆盖装配、导航、主题、演示控制、键盘与加载失败恢复。业务操作及其状态规则由六域和 mocks 规格定义。
+独立验收通过 React Router 内存路由与 Testing Library 组件测试、默认构建及桌面和移动 Playwright 覆盖装配、导航、主题、演示控制、键盘与加载失败恢复。主题与反馈状态由 Zustand store 独立测试。业务操作及其状态规则由七域和 mocks 规格定义。
 
 真实服务接入需使用 live 模式联调同源 `/api` 的路由、DTO、认证与响应。生产静态托管及真实运行、资源和产物另按 [总体设计](../../DESIGN.md) 的联合边界验收。

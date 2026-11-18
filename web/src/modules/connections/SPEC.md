@@ -13,11 +13,15 @@ references:
 
 为模型服务维护者提供连接配置、凭据引用与模拟验证入口。通过共享 API 管理连接，供角色工作室选择。页面明确区分演示验证结果与真实执行链路中的模型认证。
 
+实现分层：`routes.tsx` 以 `lazy` 加载 `ConnectionsView.tsx`（`handle.nav = true` 注册一级导航），列表读取走 `useResource`，卡片、弹窗草稿、验证结果与写操作状态都是组件局部 `useState`，未保存保护来自共享 `useUnsavedChanges`。保存结果以叠加层作用在接口列表上，成功后不发第二次列表请求。界面使用 `.page-stack`、`.panel`、`.toolbar` 与共享 `Modal` / `Button` / `Input` / `ResourceState`。
+
 ## 关键功能与验收
 
 ### 连接列表与配置维护
 
 通过 `/connections` 提供连接卡片列表，展示名称、服务提供方、模型、基础地址与凭据引用，并通过弹窗创建或编辑连接。
+
+实现约定：每张卡片是 `article`，标题用 `h2`，删除按钮以 `aria-label="删除 <名称>"` 提供可访问名称，验证按钮名为 `模拟验证`、编辑按钮名为 `编辑`。弹窗标题为 `新建模型连接` / `编辑模型连接`，表单 `#connection-form` 用 `label` 包裹控件保持 `getByLabel` 语义。关闭弹窗（取消、Esc、遮罩）都先 `await canLeave()`。
 
 #### 验收
 
@@ -32,6 +36,8 @@ references:
 
 凭据输入仅接受引用标识。连接验证通过 POST `/connections/:id/test` 返回 `{ok, message, latency}`，结果明确标记为模拟连接验证。
 
+实现约定：验证中的连接记录在 `testing` 映射里并禁用重复提交，结果写入 `results[connectionId]` 并以 `role="status"` 呈现 `模拟连接验证 · 通过` / `模拟连接验证 · 未通过`；保存成功或删除后清除该连接的旧结果。
+
 #### 验收
 
 - 列表与弹窗没有密钥输入项，凭据字段提示仅填写引用标识。
@@ -43,6 +49,8 @@ references:
 
 删除需要确认，引用约束由 API 判断。
 
+实现约定：删除先经共享 `confirmAction`（`confirmLabel` 为 `删除连接`），请求失败把可读原因写入 `role="alert"` 横幅并同时发错误通知，卡片保留在列表中。
+
 #### 验收
 
 - 确认后通过 DELETE `/connections/:id` 删除，无引用连接成功后从列表移除。
@@ -51,7 +59,8 @@ references:
 
 ## 模块职责与验收边界
 
-- 本域页面、弹窗草稿与验证展示归本目录，复用 shared API、DTO、UI 和反馈能力。
+- 本域页面（`ConnectionsView.tsx`）、弹窗草稿与验证展示归本目录，复用 shared API、DTO、UI 和反馈能力，角色与连接数据只经共享 API 访问。
+- 组件测试使用 Vitest + Testing Library：`ConnectionsView.test.tsx` 用 `createMemoryRouter` + `RouterProvider` 覆盖草稿隔离、保存失败与未保存确认、模拟验证消息与耗时、新建弹窗字段名称、以及删除引用冲突保留记录。
 - 独立验收使用持久化 mock API，检查配置 CRUD、搜索空态、模拟验证、删除冲突、失败恢复及未保存保护。
 - mock 验证只证明配置操作和页面反馈，不证明运行时能力适配、真实凭据解析或模型认证。
 - 联合验收连接真实 connections、roles、runs、存储及凭据来源，验证引用事务、快照隔离、敏感信息隔离与真实执行认证。

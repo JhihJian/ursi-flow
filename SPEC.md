@@ -30,7 +30,7 @@ Flow 负责编排与审批，[ursi-sandbox](ursi-sandbox/DESIGN.md) 负责执行
 | ursi-sandbox | 独立 workspace：Gateway 管资源，Runtime 管执行，Client 提供公共调用库和 CLI |
 | server/crates/sandbox-observe | Flow 侧观测记录、脱敏、采集接口 |
 | server/crates/mcp-server | MCP 工具面：运维域、控制域、内部工具域 |
-| web | Vue3 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections 六域组织，app/shared 提供装配与基础能力 |
+| web | React 19 + TypeScript + Vite 前端，按 workflows、roles、runs、artifacts、sandboxes、connections、chat 七域组织，app/shared 提供装配、shadcn 基元与基础能力；Zustand 管理应用级状态 |
 | server bin | ursi-flow 组装入口 |
 
 server 装配 Agent Runtime、Channel 和 MCP 工具。沙箱不链接 Flow 的领域类型。资源管理遵循 [Gateway 契约](ursi-sandbox/gateway/CONTRACT.md)，真实 ACP 角色接入方法和限制见 [Flow 调用说明](server/REAL-RUNTIME-ACP.md)。

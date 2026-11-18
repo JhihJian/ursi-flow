@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ApiError, requestJson } from './client'
+import { ApiError, apiErrorFromResponse, apiErrorMessage, getApiTransport, requestJson, setApiTransport } from './client'
 
 describe('公共请求入口', () => {
   it('保持响应结构并向同源 API 传递取消信号', async () => {
@@ -58,5 +58,41 @@ describe('公共请求入口', () => {
     vi.stubGlobal('fetch', fetchMock)
     await expect(requestJson('https://example.org/roles')).rejects.toThrow(TypeError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('暴露当前注入的 transport 供响应流直接复用', () => {
+    const transport = vi.fn() as unknown as typeof fetch
+    setApiTransport(transport)
+    expect(getApiTransport()).toBe(transport)
+  })
+})
+
+describe('错误码文案映射', () => {
+  it('白名单错误码给出对应文案并保留状态码', () => {
+    expect(apiErrorFromResponse(503, 'SERVICE_UNAVAILABLE')).toMatchObject({
+      name: 'ApiError', status: 503, message: '服务暂时不可用，请重试。',
+    })
+    expect(apiErrorFromResponse(404, 'NOT_FOUND')).toMatchObject({ status: 404, message: '请求的记录不存在或已被删除。' })
+    expect(apiErrorFromResponse(409, 'REFERENCE_CONFLICT').message).toBe('此资源仍被其他配置引用，请先解除引用后再删除。')
+    expect(apiErrorFromResponse(422, 'INVALID_WORKFLOW').message).toBe('流程定义不合法，请检查节点、连线和角色引用。')
+  })
+
+  it('未知或缺失错误码使用通用文案', () => {
+    expect(apiErrorMessage()).toBe('请求失败，请稍后重试。')
+    expect(apiErrorMessage('')).toBe('请求失败，请稍后重试。')
+    expect(apiErrorMessage('SOMETHING_NEW')).toBe('请求失败，请稍后重试。')
+    expect(apiErrorMessage('__proto__')).toBe('请求失败，请稍后重试。')
+    expect(apiErrorFromResponse(500, 'SOMETHING_NEW')).toBeInstanceOf(ApiError)
+    expect(apiErrorFromResponse(500, 'SOMETHING_NEW').message).toBe('请求失败，请稍后重试。')
+  })
+
+  it('普通请求失败时沿用同一映射', async () => {
+    setApiTransport((...args) => globalThis.fetch(...args))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 })))
+    await expect(requestJson('/roles/missing')).rejects.toMatchObject({ status: 404, message: '请求的记录不存在或已被删除。' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: { code: 'UNKNOWN', message: '原始服务端文案' } }, { status: 400 })))
+    const error = await requestJson('/roles').catch((cause: unknown) => cause)
+    expect(error).toMatchObject({ status: 400, message: '请求失败，请稍后重试。' })
+    expect(String(error)).not.toContain('原始服务端文案')
   })
 })

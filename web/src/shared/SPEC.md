@@ -8,19 +8,28 @@ references:
 
 ## 功能意图
 
-为六个业务域提供共用 DTO、API 请求、通用 UI、请求生命周期、编辑保护及反馈。共享层保持独立，业务页面与交互状态归各域，模拟调度与持久化归 mocks。
+为七个业务域提供共用 DTO、API 请求、通用控件、请求生命周期、编辑保护及反馈。共享层保持独立，业务页面与交互状态归各域，模拟调度与持久化归 mocks。
 
-基础按钮、模态框、标签页、开关和图标复用并适配 Grasp，来源及许可证见 [第三方声明](../../THIRD_PARTY_NOTICES.md)。
+技术栈为 React 19 + TypeScript、Zustand 与 Tailwind 3。通用控件以 shadcn/ui（new-york 源码）为基础，vendored 在 `ui/`，依赖 `@radix-ui/*`、`class-variance-authority`、`clsx`、`tailwind-merge`；图标继续使用本地 `icons/` 目录。来源及许可证见 [第三方声明](../../THIRD_PARTY_NOTICES.md)。
+
+目录职责：
+
+- `api/`：DTO 与 `api.get/post/put/delete` 入口。
+- `http/client.ts`：同源请求、错误白名单与可注入 transport，另导出 `getApiTransport()` 供流式读取复用。
+- `hooks/use-resource.ts`、`hooks/use-unsaved-changes.ts`：资源加载与编辑保护。
+- `stores/feedback.ts`：Zustand `useFeedbackStore`（通知与确认）。
+- `lib/utils.ts`：`cn()` 类名合并。
+- `ui/`：基础控件。
 
 ## 关键功能与验收
 
 ### 共用 DTO 与 API 入口
 
-`api/types.ts` 定义角色、连接、流程、运行、事件、快照、产物和沙箱的共用传输结构。API 入口提供 GET、POST、PUT、DELETE，页面与模拟后端使用同一套 DTO。
+`api/types.ts` 定义角色、连接、流程、运行、事件、快照、产物、沙箱以及对话会话与消息的共用传输结构。API 入口提供 GET、POST、PUT、DELETE，页面与模拟后端使用同一套 DTO。
 
 #### 验收
 
-- 六域通过共享 DTO 与 API 编译检查，业务模块通过标识查询关联资源，共享层不导入 app 或业务域实现。
+- 七域通过共享 DTO 与 API 编译检查，业务模块通过标识查询关联资源，共享层不导入 app 或业务域实现。
 - POST 和 PUT 发送 JSON 内容，成功响应保留原结构，DELETE 接受 204，要求有正文的 API 调用收到空响应时报错。
 - 演示产物包含运行、节点与运行级轮次，运行响应含冻结配置及事件；真实 server 的 generation、节点 attempt、完整 Skill 文件包等协议另行联调。
 - 独立验收使用模拟 API 或请求替身检查方法、路径、内容与响应处理，真实 DTO 和认证通过 server transport 联合验收。
@@ -39,18 +48,19 @@ HTTP 层统一使用 `/api` 前缀和同源凭据策略，保留调用方请求�
 
 ### 通用控件与资源状态
 
-提供按钮、模态框、标签页、开关、图标、页面标题、状态标签及加载、空态和错误组件，供 app 与业务域组合。
+`ui/` 提供 `button`（含 primary/subtle/danger 别名、icon/loading/block）、`modal`、`sheet`、`tabs`（含兼容用法的 `TabBar`）、`switch`、`badge`（含 `StatusPill`）、`input`、`textarea`、`label`、`select`、`card`、`alert`、`table`、`skeleton`、`scroll-area`、`separator`、`tooltip`、`dropdown-menu`、`avatar`，以及 `icon`、`spinner`、`markdown-content`、`page-header`、`resource-state`、`shell-sidebar`、`status-pill`，供 app 与业务域组合。控件默认套用 `styles.css` 的组件类与语义 token，视觉与旧实现一致。
 
 #### 验收
 
 - 加载、错误及空结果可区分，错误可触发调用方重试，等待中的按钮展示加载并阻止重复操作。
-- 模态框打开后约束键盘焦点，支持 Esc 和关闭后焦点恢复；视觉层级按打开顺序排列，叠层操作作用于顶层弹窗，编辑弹窗中的放弃确认可直接点击。
+- 模态框打开后约束键盘焦点，支持 Esc 和关闭后焦点恢复；多层弹窗叠开时只有顶层响应 Esc 与遮罩关闭。
 - 标签页支持方向键、Home、End，开关具有可读状态，控件在亮暗主题和窄屏下可操作。
-- 通过组件测试与六域浏览器操作独立检查呈现和交互，真实服务状态映射由使用方联合验收。
+- 按钮、模态框与状态标签的文案、类名与无障碍名称与迁移前一致，浏览器验收的定位器无需改写。
+- 通过组件测试与七域浏览器操作独立检查呈现和交互，真实服务状态映射由使用方联合验收。
 
 ### 请求生命周期、编辑保护与反馈
 
-资源加载工具保留上次成功数据，用取消信号与请求版本隔离旧响应。编辑保护根据业务草稿状态确认离开，全局确认与通知由 app 展示。
+`hooks/use-resource.ts` 保留上次成功数据，用取消信号与请求版本隔离旧响应。`hooks/use-unsaved-changes.ts` 根据业务草稿状态确认离开。`stores/feedback.ts` 提供全局通知与确认，由 app 呈现。
 
 #### 验收
 
@@ -62,7 +72,7 @@ HTTP 层统一使用 `/api` 前缀和同源凭据策略，保留调用方请求�
 
 ### Markdown 净化展示
 
-文本由 marked 解析，再经 DOMPurify 净化后渲染，供产物等页面显示 Markdown 内容。
+文本由 marked 解析，再经 DOMPurify 净化后渲染为全局 `.markdown-content` 规则，供产物与对话消息等场景显示 Markdown 内容。
 
 #### 验收
 

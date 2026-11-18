@@ -1,9 +1,9 @@
-import type { Artifact, Connection, Role, Run, Sandbox, Workflow } from '@/shared/api/types'
+import type { Artifact, ChatSession, Connection, Role, Run, Sandbox, Workflow } from '@/shared/api/types'
 
 export interface DemoSettings { delay: number; failNext: boolean }
 export interface MockState {
   roles: Role[]; connections: Connection[]; workflows: Workflow[]
-  runs: Run[]; artifacts: Artifact[]; sandboxes: Sandbox[]
+  runs: Run[]; artifacts: Artifact[]; sandboxes: Sandbox[]; chatSessions: ChatSession[]
   settings: DemoSettings; sequence: number; clocks: Record<string, Record<string, number>>
 }
 export const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -11,6 +11,7 @@ export const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 /** 每次生成全新对象，运行快照与可编辑配置也彼此独立。 */
 export function createSeed(now: number, delay = 180): MockState {
   const at = new Date(now - 3_600_000).toISOString()
+  const chatAt = new Date(now - 3_500_000).toISOString()
   const connections: Connection[] = [
     { id: 'conn-openai', name: '团队研发模型', provider: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1', credentialRef: 'vault://team/openai', updatedAt: at },
     { id: 'conn-anthropic', name: '长文档分析模型', provider: 'Anthropic', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4', credentialRef: 'vault://team/anthropic', updatedAt: at },
@@ -46,5 +47,18 @@ export function createSeed(now: number, delay = 180): MockState {
   ]
   const artifacts: Artifact[] = artifactContents.map((content, i) => ({ id: `artifact-${i + 1}`, name: ['需求草案.md', '代码审查报告.md', '回归验证建议.md'][i]!, path: `/workspace/output/${['requirements.md', 'review.md', 'regression.md'][i]}`, contentType: 'text/markdown', content, runId: i === 0 ? 'run-1' : 'run-2', nodeId: ['discover', 'review', 'report'][i]!, attempt: 1, size: new TextEncoder().encode(content).length, createdAt: at }))
   const sandboxes: Sandbox[] = runs.map((run, i) => ({ id: run.sandboxId, name: `交付工作区 ${String(i + 1).padStart(2, '0')}`, runId: run.id, status: i === 1 ? 'released' : 'running', image: 'ursi/agent-workspace:demo', createdAt: at, cpu: '2 vCPU', memory: '4 GiB', workspace: '/workspace', logs: ['模拟工作区已准备。', '配置快照已加载。', i === 1 ? '运行完成，模拟资源已释放。' : '工作区待命，等待后续任务。'] }))
-  return { roles, connections, workflows, runs, artifacts, sandboxes, settings: { delay, failNext: false }, sequence: 100, clocks: { 'run-3': { collect: now } } }
+  const chatSessions: ChatSession[] = [{
+    id: 'chat-1', title: '了解当前演示数据', createdAt: at, updatedAt: chatAt,
+    messages: [
+      { id: 'chat-1-message-1', role: 'user', at, parts: [{ type: 'text', text: '现在有哪些工作流和运行？' }] },
+      {
+        id: 'chat-1-message-2', role: 'assistant', at: chatAt, parts: [
+          { type: 'reasoning', text: '先读取演示数据中的工作流与运行记录，再汇总当前状态。' },
+          { type: 'tool', name: '读取运行记录', status: 'succeeded', output: `共 ${runs.length} 条运行` },
+          { type: 'text', text: `当前有 ${workflows.length} 个工作流和 ${runs.length} 条运行记录。\n\n- 产品需求交付：等待审批\n- 代码审查：已完成\n- 文档整理：执行中\n\n> 以上内容由本地演示模板生成，未调用任何模型。` },
+        ],
+      },
+    ],
+  }]
+  return { roles, connections, workflows, runs, artifacts, sandboxes, chatSessions, settings: { delay, failNext: false }, sequence: 100, clocks: { 'run-3': { collect: now } } }
 }

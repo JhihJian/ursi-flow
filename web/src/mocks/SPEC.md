@@ -12,7 +12,7 @@ references:
 
 提供独立的本地模拟 API，支持页面演示和前端独立验收。本模块非真实后端，模型调用、脚本执行、工具操作和沙箱资源均为模拟。真实服务、SSE、凭据解析及执行链路由服务端联合验收。
 
-浏览器入口通过 shared 的 HTTP transport 注入模拟请求实现，默认使用 localStorage 保存演示配置、运行快照、进度、事件和产物。凭据字段仅保存演示用 credentialRef 引用。
+模拟层是纯 TypeScript 模块，不依赖 React 或 Zustand。前端为 React 19 应用，浏览器入口 `startMockApi()` 通过 shared 的 `setApiTransport()` 把模拟 transport 注入 `src/shared/http/client.ts`，React 组件、`useResource` hook 与 chat 的流式读取都使用同一实现。默认使用 localStorage 保存演示配置、运行快照、进度、事件、产物和对话会话；凭据字段仅保存演示用 credentialRef 引用。
 
 ## 关键功能与验收
 
@@ -55,12 +55,26 @@ references:
 
 浏览器默认使用 localStorage 的 ursi-flow-demo-v1 键保存完整演示状态。存储访问受限时浏览器入口可使用会话内存，存储内容无法恢复时使用新种子。状态变更在完整校验后一次提交，保存失败返回 503 并保留原状态。
 
+恢复校验把 `roles`、`connections`、`workflows`、`runs`、`artifacts`、`sandboxes`、`chatSessions` 都当作必需数组键，缺少任一项即视为旧版本或损坏状态并重新生成种子。
+
 #### 验收
 
 - 首次创建即保存种子，重新实例化保留标识、时间、配置、快照、进度和模拟时钟。
 - 成功修改提交一次，校验失败不修改数据、不消耗编号，存储写入失败回滚整个修改。
 - 错误开关和延迟设置可恢复，重置生成独立种子并恢复初始设置，历史修改不会污染种子。
 
+### 对话会话存储边界
+
+模拟状态中的 `chatSessions: ChatSession[]` 保存全部对话会话及其消息，种子包含一条示例会话（一条用户消息与一条包含文本、推理和工具调用的助手消息）。
+
+chat 端点由 chat 模块规格定义：会话列表、新建、详情、删除与流式消息接口的路径、请求体和 NDJSON 行格式以 chat 模块规格为准。本模块负责三件事：把 `/api/chat/**` 请求按 clone 后的状态交给 `chatRoute()`；把会话读写结果随整棵状态一次提交到 storage；让 failNext 一次性故障同样作用于 chat 普通请求，而演示控制接口不消费故障。
+
+#### 验收
+
+- 对话请求经 `chatRoute()` 分发，绕过业务资源的路径深度限制，未知接口返回结构化 404。
+- 会话修改与其余演示数据一起整树提交，校验或保存失败时不留下半成品会话。
+- 存储恢复后的会话标识、消息内容与时间保持不变。
+
 ## 交付与验收边界
 
-使用 Vitest 假时钟、内存存储和浏览器环境测试独立验证请求、顺序调度、审批返工、引用、快照、持久化与 transport 注入。验收命令为在 web 目录运行 `npm run test -- src/mocks` 和 `npm run typecheck`。模拟测试证明前端演示行为，真实服务状态、持久化事务、SSE 重放和执行结果由真实后端联合验收。
+使用 Vitest 假时钟、内存存储和浏览器环境测试独立验证请求、顺序调度、审批返工、引用、快照、持久化与 transport 注入。验收命令为在 web 目录运行 `npx vitest run src/mocks` 和 `npx tsc --noEmit`。模拟测试证明前端演示行为，真实服务状态、持久化事务、SSE 重放和执行结果由真实后端联合验收。
