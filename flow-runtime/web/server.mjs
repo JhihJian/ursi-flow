@@ -155,9 +155,12 @@ function route(method, path, body, context) {
         body.runId === undefined || body.runId === null
           ? randomUUID()
           : requireId(body.runId)
+      // cwd 由调用方决定：留空时 daemon 在配置的工作区根目录下按 Run ID 新建。
+      const cwd = body.cwd === undefined || body.cwd === null ? '' : body.cwd
+      if (typeof cwd !== 'string' || cwd.includes('\0')) invalid('工作目录无效')
       return {
         op: 'run.start',
-        args: { id: runId, flow: id, cwd: context.cwd, variables },
+        args: { id: runId, flow: id, variables, ...(cwd.trim() ? { cwd } : {}) },
       }
     }
     if (method === 'GET') return { op: 'flow.get', args: { id } }
@@ -324,7 +327,6 @@ export async function createConsole(env) {
       let request
       try {
         request = route(req.method, path, body, {
-          cwd,
           query: new URLSearchParams(search || ''),
         })
       } catch (e) {

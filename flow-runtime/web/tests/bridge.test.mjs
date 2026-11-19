@@ -150,10 +150,10 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   assert.deepEqual(daemon.calls[6].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
   assert.deepEqual(daemon.calls[13].args, { id: 'run-1' })
   assert.deepEqual(daemon.calls[14].args, { id: 'run-1', node: 'node-1' })
+  // 请求没带工作目录时不补默认值，交给 daemon 按工作区根目录新建。
   assert.deepEqual(daemon.calls[8].args, {
     id: 'run-1',
     flow: 'ordinary',
-    cwd: workdir,
     variables: { 任务: '检查' },
   })
   assert.deepEqual(daemon.calls[17].args, { maxConcurrent: 2 })
@@ -161,7 +161,7 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
 
 test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成', async (t) => {
   const daemon = await fakeDaemon(t)
-  const { base, workdir } = await liveConsole(t, daemon)
+  const { base } = await liveConsole(t, daemon)
   const post = (body) =>
     fetch(base + '/api/v1/flows/ordinary/runs', {
       method: 'POST',
@@ -176,8 +176,12 @@ test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成
   assert.equal((await post({ workspace: 'default', variables: {} })).status, 200)
   const args = daemon.calls[0].args
   assert.match(args.id, /^[0-9a-f-]{36}$/)
-  assert.equal(args.cwd, workdir)
+  assert.ok(!('cwd' in args), '未指定工作目录时由 daemon 决定')
   assert.deepEqual(args.variables, {})
+
+  // 指定目录时原样转给 daemon。
+  assert.equal((await post({ workspace: 'default', variables: {}, cwd: '/tmp' })).status, 200)
+  assert.equal(daemon.calls[1].args.cwd, '/tmp')
 })
 
 test('跨站写入与未知 Host 被拒绝，GET 保持可用', async (t) => {

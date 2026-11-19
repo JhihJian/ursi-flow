@@ -463,6 +463,7 @@ export function RunDetail({ source }: { source: Source }) {
                   ['工作目录', jobRow.cwd],
                   ['目录修订', jobRow.revision],
                   ['并发上限', String(jobRow.config.maxConcurrent)],
+                  ['工作区根目录', jobRow.config.workspace || '未配置（按启动参数指定）'],
                   ['模型', jobRow.config.provider.model || '未配置'],
                   ['服务地址', jobRow.config.provider.baseUrl || '未配置'],
                 ].map(([key, value]) => (

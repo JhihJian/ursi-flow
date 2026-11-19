@@ -4,5 +4,6 @@ test-results
 playwright-report
 .e2e-home
 .e2e-work
+.e2e-workspaces
 .e2e-daemon.pid
 .e2e-model.pid

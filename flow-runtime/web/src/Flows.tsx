@@ -438,9 +438,18 @@ export function FlowEditor({ source }: { source: Source }) {
     }
   }
   // 启动参数由对话框按 FLOW.md 的全局变量声明生成，这里只负责提交与跳转。
-  const start = async (parsedVariables: Record<string, unknown>, runId: string) => {
-    // 失败时对话框留在原地显示原因，成功后跳转详情页。
-    const created = await source.start(name, parsedVariables, runId || undefined)
+  const start = async (
+    parsedVariables: Record<string, unknown>,
+    runId: string,
+    cwd: string,
+  ) => {
+    // 失败时对话框留在原地显示原因，成功后跳转详情页。cwd 留空由 Runtime 在工作区下新建。
+    const created = await source.start(
+      name,
+      parsedVariables,
+      runId || undefined,
+      cwd || undefined,
+    )
     navigate(`/runs/${encodeURIComponent(created.id)}`)
   }
   const readOnly = source.mode === 'demo'
@@ -626,6 +635,7 @@ export function FlowEditor({ source }: { source: Source }) {
         onOpenChange={setStartOpen}
         flowId={name}
         markdown={flowText}
+        workspace={config.value?.workspace}
         onStart={start}
       />
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from "node:net";
 import { lstat, mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { Catalog, optional, readJson, save } from "./catalog.ts";
 import { Runs, publicConfig, type Config } from "./runs.ts";
@@ -24,13 +24,14 @@ const configFile = join(home, "config.json");
 function validConfig(c: unknown): c is Config {
 	if (
 		!isRecord(c) ||
-		!Object.keys(c).every((k) => ["executor", "provider", "maxConcurrent"].includes(k)) ||
+		!Object.keys(c).every((k) => ["executor", "provider", "maxConcurrent", "workspace"].includes(k)) ||
 		c.executor !== "local-pi" ||
 		!isRecord(c.provider) ||
 		typeof c.maxConcurrent !== "number" ||
 		!Number.isInteger(c.maxConcurrent) ||
 		c.maxConcurrent < 1 ||
-		c.maxConcurrent > 64
+		c.maxConcurrent > 64 ||
+		typeof c.workspace !== "string"
 	)
 		return false;
 	const p = c.provider as Record<string, unknown>;
@@ -54,14 +55,40 @@ function validConfig(c: unknown): c is Config {
 const PROVIDER_FIELDS = [
 	"baseUrl", "apiKey", "model", "api", "contextWindow", "maxTokens", "reasoning", "thinkingLevel",
 ];
+const defaultConfig = (): Config => ({
+	executor: "local-pi",
+	provider: { baseUrl: "", apiKey: "", model: "" },
+	maxConcurrent: 4,
+	workspace: "",
+});
+/** 早期配置没有 workspace 字段，读出来补成空串，运行时再提示去填。 */
 async function config(): Promise<Config> {
-	const c = await optional(readJson(configFile), {
-		executor: "local-pi",
-		provider: { baseUrl: "", apiKey: "", model: "" },
-		maxConcurrent: 4,
-	});
-	if (!validConfig(c)) throw Error("已保存的配置无效");
-	return c;
+	const saved = await optional(readJson(configFile), {});
+	const merged = {
+		...defaultConfig(),
+		...(isRecord(saved) ? saved : {}),
+		provider: {
+			...defaultConfig().provider,
+			...(isRecord(saved) && isRecord(saved.provider) ? saved.provider : {}),
+		},
+	};
+	if (!validConfig(merged)) throw Error("已保存的配置无效");
+	return merged;
+}
+/** 工作区根目录必须是绝对路径；改成新目录时先建出来，启动运行才有地方放工作目录。 */
+async function workspaceOf(value: unknown, current: string) {
+	if (value === undefined || value === null) return current;
+	if (typeof value !== "string") throw invalid("工作区根目录必须是字符串");
+	const workspace = value.trim();
+	if (!workspace) return "";
+	if (workspace.includes("\0") || !isAbsolute(workspace))
+		throw invalid("工作区根目录必须是绝对路径");
+	try {
+		await mkdir(workspace, { recursive: true, mode: 0o700 });
+	} catch {
+		throw invalid(`工作区根目录不可用：${workspace}`);
+	}
+	return workspace;
 }
 /** provider 没配全就不启动运行，错误里指出缺哪一项。 */
 function requireProvider(c: Config): void {
@@ -83,8 +110,10 @@ async function dispatch(request: unknown) {
 			return publicConfig(await config());
 		case "config.update": {
 			const current = await config();
+			const workspace = await workspaceOf(a.workspace, current.workspace);
 			const next = {
 				...current,
+				workspace,
 				...(typeof a.maxConcurrent === "number" ? { maxConcurrent: a.maxConcurrent } : {}),
 				...(isRecord(a.provider)
 					? {
@@ -117,7 +146,8 @@ async function dispatch(request: unknown) {
 			if (op === "run.startPinned" && (typeof a.revision !== "string" || !a.revision))
 				throw invalid("需要目录修订");
 			return runs.start(
-				a.id, a.flow, a.cwd,
+				a.id, a.flow,
+				typeof a.cwd === "string" && a.cwd ? a.cwd : undefined,
 				a.variables === undefined ? {} : a.variables,
 				async () => {
 					const c = await config();

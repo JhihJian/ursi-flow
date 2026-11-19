@@ -25,7 +25,8 @@ daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命�
     "model": "example-model",
     "api": "openai-completions"
   },
-  "maxConcurrent": 4
+  "maxConcurrent": 4,
+  "workspace": "/srv/flow-workspaces"
 }
 ```
 
@@ -33,6 +34,7 @@ daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命�
 - `baseUrl` 填服务根地址（OpenAI 兼容服务一般到 `/v1`），`api` 选协议：`openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`。
 - 可选 `contextWindow`、`maxTokens`、`reasoning`、`thinkingLevel`。
 - provider 缺字段时 `run.start` 直接返回 `invalid_request` 并列出缺项，控制台会禁用“启动运行”按钮并在页面提示缺什么。
+- `workspace` 是工作区根目录。`run.start` 不带 `cwd` 时，daemon 在 `<workspace>/<Run ID>` 新建目录作为这次运行的工作目录；两处都没有时返回 `invalid_request` 并提示去配置。显式 `cwd` 必须是已存在的绝对路径，仍优先于工作区。工作目录在启动时写进 Run 记录，同一 Run ID 重试要求 Flow、目录与变量一致，否则返回 `conflict`。
 - `config.json` 含明文密钥，权限保持 `0600`。
 - daemon 把每次 Agent 节点执行的会话切片写到 `~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`，与 `facts.json` 同目录。`run.trajectory` 按节点执行读取切片，超过 8 MiB 只返回大小；`run.flow` 按运行持有的目录修订读取包，Flow 之后被改动或删除不影响已完成的运行。`flow.summaries` 一次读完当前修订下每个包的名称、说明与规模，供控制台列表使用。
 

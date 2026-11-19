@@ -15,4 +15,5 @@ export default async function teardown() {
   }
   await rm(join(root, '.e2e-home'), { recursive: true, force: true })
   await rm(join(root, '.e2e-work'), { recursive: true, force: true })
+  await rm(join(root, '.e2e-workspaces'), { recursive: true, force: true })
 }

@@ -24,17 +24,25 @@ export function StartRunDialog({
   onOpenChange,
   flowId,
   markdown,
+  workspace,
   onStart,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   flowId: string
   markdown: string
-  onStart: (variables: Record<string, unknown>, runId: string) => Promise<void>
+  /** workspace 为空表示交给 Runtime 在工作区根目录下按 Run ID 新建。 */
+  workspace?: string
+  onStart: (
+    variables: Record<string, unknown>,
+    runId: string,
+    cwd: string,
+  ) => Promise<void>
 }) {
   const analysis = useMemo(() => analyzeParams(markdown), [markdown])
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [runId, setRunId] = useState('')
+  const [cwd, setCwd] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [raw, setRaw] = useState('{}')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -48,6 +56,7 @@ export function StartRunDialog({
     for (const param of analysis.params) next[param.name] = toText(param.default)
     setDraft(next)
     setRunId('')
+    setCwd('')
     setAdvanced(false)
     setRaw('{}')
     setErrors({})
@@ -144,7 +153,7 @@ export function StartRunDialog({
     }
     setBusy(true)
     try {
-      await onStart(variables, runId.trim())
+      await onStart(variables, runId.trim(), cwd.trim())
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error))
     } finally {
@@ -174,16 +183,33 @@ export function StartRunDialog({
           </Alert>
         )}
 
-        <div className="grid gap-1.5">
-          <Label htmlFor="start-run-id">Run ID（可选）</Label>
-          <Input
-            id="start-run-id"
-            className="font-mono"
-            value={runId}
-            onChange={(event) => setRunId(event.target.value)}
-            placeholder="自动生成"
-          />
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="start-run-id">Run ID（可选）</Label>
+            <Input
+              id="start-run-id"
+              className="font-mono"
+              value={runId}
+              onChange={(event) => setRunId(event.target.value)}
+              placeholder="自动生成"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="start-run-cwd">工作目录（可选）</Label>
+            <Input
+              id="start-run-cwd"
+              className="font-mono"
+              value={cwd}
+              onChange={(event) => setCwd(event.target.value)}
+              placeholder={workspace ? `${workspace}/<Run ID>` : '工作区根目录未配置'}
+            />
+          </div>
         </div>
+        <p className="-mt-1 text-xs text-muted-foreground">
+          {workspace
+            ? `留空则在 ${workspace} 下按 Run ID 新建目录作为本次运行的工作目录。`
+            : '留空需要先在运行配置里填写工作区根目录；已有的绝对路径也可以直接填在右边。'}
+        </p>
 
         {advanced ? (
           <div className="grid gap-1.5">

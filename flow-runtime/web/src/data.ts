@@ -32,11 +32,14 @@ export interface FlowConfig {
   executor: 'local-pi'
   provider: ProviderConfig
   maxConcurrent: number
+  /** 工作区根目录：启动运行没有指定工作目录时，在其下按 Run ID 新建。 */
+  workspace: string
 }
 /** PATCH 只提交变化的部分；apiKey 留空表示沿用已保存的密钥。 */
 export interface ConfigPatch {
   provider?: Partial<Omit<ProviderConfig, 'apiKeySet'>> & { apiKey?: string }
   maxConcurrent?: number
+  workspace?: string
 }
 export const PROVIDER_APIS = [
   'openai-completions',
@@ -59,6 +62,7 @@ export function normalizeRun(run: Run): Run {
         model: raw?.provider?.model ?? (typeof raw?.model === 'string' ? raw.model : ''),
       },
       maxConcurrent: raw?.maxConcurrent ?? 0,
+      workspace: raw?.workspace ?? '',
     },
   }
 }
@@ -184,7 +188,13 @@ export interface Source {
   validate(id: string, files: FlowFiles): Promise<{ id: string; valid: boolean }>
   update(id: string, files: FlowFiles, expectedRevision?: string): Promise<Revision>
   remove(id: string): Promise<Revision>
-  start(id: string, variables: Record<string, unknown>, runId?: string): Promise<Run>
+  /** cwd 留空时由 Runtime 在配置的工作区下按 Run ID 新建目录。 */
+  start(
+    id: string,
+    variables: Record<string, unknown>,
+    runId?: string,
+    cwd?: string,
+  ): Promise<Run>
   runs(signal?: AbortSignal): Promise<Run[]>
   run(id: string, signal?: AbortSignal): Promise<Run>
   history(id: string, signal?: AbortSignal): Promise<RunHistory>
@@ -261,8 +271,13 @@ function createClient(apiBase: string): Source {
     update: (id, files, expectedRevision) =>
       send('PUT', flowPath(id), { files, expectedRevision }),
     remove: (id) => send('DELETE', flowPath(id)),
-    start: (id, variables, runId) =>
-      send('POST', `${flowPath(id)}/runs`, { runId, workspace: 'default', variables }),
+    start: (id, variables, runId, cwd) =>
+      send('POST', `${flowPath(id)}/runs`, {
+        runId,
+        workspace: 'default',
+        variables,
+        ...(cwd ? { cwd } : {}),
+      }),
     runs: async (signal) => (await request<Run[]>('/runs', { signal })).map(normalizeRun),
     run: async (id, signal) => normalizeRun(await request<Run>(runPath(id), { signal })),
     history: async (id, signal) => {

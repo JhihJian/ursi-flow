@@ -119,6 +119,7 @@ const config: FlowConfig = {
     apiKeySet: true,
   },
   maxConcurrent: 4,
+  workspace: '/srv/flow-workspaces',
 }
 
 const runs: Run[] = [

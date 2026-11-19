@@ -20,7 +20,7 @@ npm start
 
 | 变量 | 用途 |
 | --- | --- |
-| `URSI_FLOW_WORKDIR` | `default` 工作区的目录，启动运行前解析为真实路径；缺失时进入演示模式 |
+| `URSI_FLOW_WORKDIR` | `default` 工作区的目录，用于判断是否连接 Runtime 并在页头显示；缺失时进入演示模式。运行实际落在哪个目录由 daemon 的工作区根目录或启动参数决定 |
 | `URSI_FLOW_HOME` | 可选，daemon 的私有目录，默认 `~/.ursi-flow`，读取其中的 `runtime.sock` |
 | `URSI_FLOW_WEB_HOSTS` | 可选，允许的额外域名（逗号分隔）；IP 与 `localhost` 始终允许 |
 | `HOST` / `PORT` | 可选，监听地址与端口，默认 `0.0.0.0:4181` |
@@ -50,6 +50,15 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 ```
 
 嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`（`?detail=1` 返回包摘要）、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
+
+## 运行的工作目录
+
+启动运行必须先确定工作目录。两种方式：
+
+- **工作区根目录**（推荐）：在「运行配置」里填一个绝对路径，daemon 会把它和 provider 一起保存。启动运行留空工作目录时，daemon 在 `<工作区根目录>/<Run ID>` 新建目录作为这次运行的工作目录，Flow 的脚本与 Agent 都在那里执行。
+- **启动时指定**：启动运行对话框里的「工作目录」填一个已存在的绝对路径，这次运行就用它。适合对着已有项目跑。
+
+两者都没有时 daemon 拒绝启动，并在对话框里说明去「运行配置」填工作区根目录。工作目录在启动时固定写入 Run 记录，重试同一 Run ID 时要求 Flow、目录与变量一致，否则返回冲突。
 
 ## 列表页
 

@@ -45,6 +45,7 @@ interface Draft {
   reasoning: boolean
   thinkingLevel: string
   maxConcurrent: string
+  workspace: string
 }
 
 const draftOf = (config: FlowConfig): Draft => ({
@@ -58,6 +59,7 @@ const draftOf = (config: FlowConfig): Draft => ({
   reasoning: config.provider.reasoning ?? false,
   thinkingLevel: config.provider.thinkingLevel ?? 'low',
   maxConcurrent: String(config.maxConcurrent),
+  workspace: config.workspace ?? '',
 })
 
 function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }) {
@@ -76,7 +78,8 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
     draft.maxTokens !== base.maxTokens ||
     draft.reasoning !== base.reasoning ||
     draft.thinkingLevel !== base.thinkingLevel ||
-    draft.maxConcurrent !== base.maxConcurrent
+    draft.maxConcurrent !== base.maxConcurrent ||
+    draft.workspace !== base.workspace
   const missing = providerMissing(saved)
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -101,6 +104,7 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
       const updated = await source.configure({
         provider,
         maxConcurrent: Number(draft.maxConcurrent),
+        workspace: draft.workspace.trim(),
       })
       setSaved(updated)
       setDraft(draftOf(updated))
@@ -130,7 +134,7 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
       )}
       <Card>
         <CardHeader>
-          <CardTitle>模型 provider</CardTitle>
+          <CardTitle>执行配置</CardTitle>
           <span className="text-xs text-muted-foreground">执行器 {saved.executor}</span>
         </CardHeader>
         <CardContent>
@@ -138,6 +142,7 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
             disabled={busy || source.mode === 'demo'}
             className="grid gap-4 disabled:opacity-70"
           >
+            <legend className="mb-1 text-xs font-medium text-muted-foreground">模型 provider</legend>
             <div className="grid gap-1.5">
               <Label htmlFor="provider-base-url">服务地址</Label>
               <Input
@@ -241,6 +246,9 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
                 </Select>
               </div>
             </div>
+            <legend className="mb-1 mt-2 border-t border-border pt-4 text-xs font-medium text-muted-foreground">
+              运行环境
+            </legend>
             <div className="grid gap-1.5">
               <Label htmlFor="config-limit">最大并发数</Label>
               <Input
@@ -253,6 +261,21 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
                 value={draft.maxConcurrent}
                 onChange={(event) => update('maxConcurrent', event.target.value)}
               />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="config-workspace">工作区根目录</Label>
+              <Input
+                id="config-workspace"
+                className="font-mono"
+                value={draft.workspace}
+                onChange={(event) => update('workspace', event.target.value)}
+                placeholder="/srv/flow-workspaces"
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                启动运行没有指定工作目录时，在这个目录下按 Run ID 新建同名目录作为本次运行的工作目录。
+                留空则必须为每次运行指定已有目录。
+              </p>
             </div>
             {error && (
               <Alert variant="error">

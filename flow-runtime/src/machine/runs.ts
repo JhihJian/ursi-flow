@@ -12,12 +12,15 @@ export interface Config {
 	executor: "local-pi";
 	provider: PiProviderConfig;
 	maxConcurrent: number;
+	/** 工作区根目录；启动运行没有指定工作目录时，在其下按 Run ID 新建目录。 */
+	workspace: string;
 }
 /** 记录与接口里的配置：密钥只保留“是否已配置”，不写入 job.json，也不回传给页面。 */
 export interface PublicConfig {
 	executor: "local-pi";
 	provider: Omit<PiProviderConfig, "apiKey"> & { apiKeySet: boolean };
 	maxConcurrent: number;
+	workspace: string;
 }
 export function publicConfig(config: Config): PublicConfig {
 	const { apiKey, ...provider } = config.provider;
@@ -25,6 +28,7 @@ export function publicConfig(config: Config): PublicConfig {
 		executor: config.executor,
 		provider: { ...provider, apiKeySet: Boolean(apiKey) },
 		maxConcurrent: config.maxConcurrent,
+		workspace: config.workspace,
 	};
 }
 /** 轨迹超过这个大小就不整体返回，避免桥接层的响应上限变成 502。 */
@@ -65,6 +69,50 @@ async function groupStopped(group: number) {
 		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
 	return false;
+}
+/** 校验并规范化调用方指定的工作目录。 */
+async function existingDirectory(cwd: string) {
+	if (cwd.includes("\0")) throw invalid("工作目录无效");
+	try {
+		const resolved = await realpath(cwd);
+		if (!(await stat(resolved)).isDirectory()) throw invalid("需要工作目录");
+		return resolved;
+	} catch (e) {
+		if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? ""))
+			throw invalid("工作目录不可用");
+		throw e;
+	}
+}
+/** 没有指定工作目录时，在工作区根目录下按 Run ID 新建；Run ID 已通过标识校验，可直接作目录名。 */
+async function allocateWorkdir(workspace: string, key: string) {
+	if (!workspace)
+		throw invalid(
+			"没有指定工作目录，且运行配置未设置工作区根目录。请在运行配置里填写工作区根目录，或为这次运行指定已有目录",
+		);
+	const dir = join(workspace, key);
+	try {
+		await mkdir(dir, { recursive: true });
+		return await realpath(dir);
+	} catch (e) {
+		if (["ENOENT", "EACCES", "EPERM", "ENOTDIR", "EROFS"].includes((e as NodeJS.ErrnoException).code ?? ""))
+			throw invalid(`工作区根目录不可用：${workspace}`);
+		throw e;
+	}
+}
+/** 同一个 Run ID 只有在 Flow、工作目录、变量与修订都一致时才能复用。 */
+function sameRequest(
+	previous: Job,
+	flow: string,
+	cwd: string,
+	variables: Record<string, unknown>,
+	expectedRevision?: string,
+) {
+	return (
+		(expectedRevision === undefined || previous.revision === expectedRevision) &&
+		previous.flow === flow &&
+		previous.cwd === cwd &&
+		isDeepStrictEqual(previous.variables, variables)
+	);
 }
 export class Runs {
 	readonly active = new Map<
@@ -130,7 +178,7 @@ export class Runs {
 	async start(
 		key: string,
 		flow: string,
-		cwd: string,
+		cwd: string | undefined,
 		variables: Record<string, unknown>,
 		readConfig: () => Promise<Config>,
 		expectedRevision?: string,
@@ -143,23 +191,19 @@ export class Runs {
 			if (e instanceof Error && e.constructor === Error) throw invalid(e.message);
 			throw e;
 		}
-		if (typeof cwd !== "string" || !cwd || cwd.includes("\0")) throw invalid("工作目录无效");
-		try {
-			cwd = await realpath(cwd);
-			if (!(await stat(cwd)).isDirectory()) throw invalid("需要工作目录");
-		} catch (e) {
-			if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? ""))
-				throw invalid("工作目录不可用");
-			throw e;
-		}
+		// 显式工作目录先校验；不指定时按配置的工作区在 <workspace>/<Run ID> 新建。
+		const explicit = typeof cwd === "string" && Boolean(cwd.trim());
+		if (!explicit && cwd !== undefined && cwd !== "")
+			throw invalid("工作目录无效");
 		const previous = await this.find(key);
+		let workdir = explicit ? await existingDirectory(cwd as string) : undefined;
+		// 复用 Run ID 的判断不需要读取配置，显式目录的重复请求在这里就能返回。
+		if (previous && workdir && sameRequest(previous, flow, workdir, variables, expectedRevision))
+			return previous;
+		const config = await readConfig();
+		if (!workdir) workdir = await allocateWorkdir(config.workspace, key);
 		if (previous) {
-			if (
-				(expectedRevision !== undefined && previous.revision !== expectedRevision) ||
-				previous.flow !== flow ||
-				previous.cwd !== cwd ||
-				!isDeepStrictEqual(previous.variables, variables)
-			)
+			if (!sameRequest(previous, flow, workdir, variables, expectedRevision))
 				throw new BusinessError("conflict", "Run ID 冲突");
 			return previous;
 		}
@@ -168,7 +212,6 @@ export class Runs {
 		const pinned = expectedRevision === undefined
 			? undefined
 			: await this.catalog.get(flow, expectedRevision);
-		const config = await readConfig();
 		if (this.active.size >= config.maxConcurrent)
 			throw new BusinessError("busy", "达到运行并发上限");
 		const { revision } = pinned ?? (await this.catalog.get(flow));
@@ -178,7 +221,7 @@ export class Runs {
 			id: key,
 			flow,
 			revision,
-			cwd,
+			cwd: workdir,
 			variables,
 			config: publicConfig(config),
 			status: "running",

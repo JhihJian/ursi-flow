@@ -467,6 +467,7 @@ test('运行配置读出时补齐 provider 形状，旧运行不因缺字段崩�
     executor: 'local-pi',
     provider: { baseUrl: '', model: '' },
     maxConcurrent: 0,
+    workspace: '',
   })
 
   const current = normalizeRun({

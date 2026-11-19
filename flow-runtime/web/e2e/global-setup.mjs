@@ -8,11 +8,15 @@ const run = promisify(execFile)
 const root = fileURLToPath(new URL('..', import.meta.url))
 export const home = join(root, '.e2e-home')
 export const workdir = join(root, '.e2e-work')
+/** 运行的工作区根目录：启动时不指定工作目录的运行会在这里按 Run ID 建目录。 */
+export const workspaces = join(root, '.e2e-workspaces')
 
 export default async function setup() {
   await rm(home, { recursive: true, force: true })
   await mkdir(home, { recursive: true, mode: 0o700 })
   await mkdir(workdir, { recursive: true })
+  await rm(workspaces, { recursive: true, force: true })
+  await mkdir(workspaces, { recursive: true })
   // Runtime 的 dist 不在版本库里，验收前先构建 daemon 及其 worker。
   await run('npm', ['run', 'build'], { cwd: join(root, '..') })
   // 命令节点也要求 provider 已配置；Agent 用例由本地 OpenAI 兼容 fixture 应答。
@@ -34,6 +38,7 @@ export default async function setup() {
         api: 'openai-completions',
       },
       maxConcurrent: 4,
+      workspace: workspaces,
     }),
   )
   const daemon = spawn(process.execPath, [join(root, '..', 'dist', 'machine', 'daemon.js')], {

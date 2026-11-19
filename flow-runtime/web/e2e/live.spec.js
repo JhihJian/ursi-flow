@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { workspaces } from './global-setup.mjs'
 
 const quick = `---
 name: 控制台验收
@@ -282,6 +283,46 @@ test('启动参数按 FLOW.md 全局变量生成表单，过程变量不进表�
   await expect(page).toHaveURL(/\/#\/runs\/e2e-params-advanced$/)
   const advanced = await api(page, '/runs/e2e-params-advanced')
   expect(advanced.body.variables).toEqual({ 任务: '高级任务' })
+})
+
+test('未指定工作目录时在工作区根目录下按 Run ID 新建', async ({ page }) => {
+  await seed(page, 'e2e-cwd', { 'FLOW.md': quick })
+  await openFlow(page, 'e2e-cwd')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  const dialog = page.getByRole('dialog')
+  // 工作目录留空即可，对话框说明会落在哪里。
+  await expect(dialog).toContainText(`${workspaces}`)
+  await expect(dialog.getByLabel('工作目录（可选）')).toHaveAttribute(
+    'placeholder',
+    `${workspaces}/<Run ID>`,
+  )
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-cwd-auto')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-cwd-auto$/)
+
+  const auto = await api(page, '/runs/e2e-cwd-auto')
+  expect(auto.body.cwd).toBe(`${workspaces}/e2e-cwd-auto`)
+  await expect
+    .poll(async () => (await api(page, '/runs/e2e-cwd-auto')).body.status)
+    .toBe('completed')
+
+  // 显式目录优先于工作区根目录。
+  await page.goto('/#/flows/e2e-cwd/edit')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-cwd-explicit')
+  await dialog.getByLabel('工作目录（可选）').fill(process.cwd())
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-cwd-explicit$/)
+  const explicit = await api(page, '/runs/e2e-cwd-explicit')
+  expect(explicit.body.cwd).toBe(process.cwd())
+
+  // 目录不存在时对话框留在原地报错。
+  await page.goto('/#/flows/e2e-cwd/edit')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-cwd-missing')
+  await dialog.getByLabel('工作目录（可选）').fill('/nonexistent-e2e-dir')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(dialog).toContainText('工作目录不可用')
 })
 
 test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }) => {
