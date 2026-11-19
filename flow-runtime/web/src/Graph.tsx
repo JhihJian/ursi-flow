@@ -1,19 +1,24 @@
 // 图形视图：FLOW.md 的节点卡片、结果边与检查器。参照工作台与 grasp 的画布样式。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BaseEdge,
   Controls,
   EdgeLabelRenderer,
   Handle,
+  MarkerType,
   MiniMap,
+  applyNodeChanges,
   Position,
   ReactFlow,
-  getBezierPath,
+  type Connection,
   type Edge,
+  type EdgeChange,
   type EdgeProps,
   type Node,
+  type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -30,9 +35,10 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react'
 import { ACTION_KINDS, type ActionKind, type FlowGraph, type GraphNode, incoming } from './flow/graph'
-import { layoutGraph } from './flow/layout'
+import { layoutGraph, nodeSize, pointAtDistance, roundedPath, type Point } from './flow/layout'
 import { fixedOutgoing } from './flow/edit'
 import { actionOf, type FlowSection } from './flow/doc'
 import {
@@ -81,7 +87,7 @@ const promptPreview = (body?: string) =>
     .join(' ')
     .slice(0, 90)
 
-function WorkNode({ data, selected }: NodeProps) {
+const WorkNode = memo(function WorkNode({ data, selected }: NodeProps) {
   const { node, results, actions, onSelect } = data as unknown as {
     node: GraphNode
     results: { id: string; result?: string; targetName: string }[]
@@ -126,9 +132,9 @@ function WorkNode({ data, selected }: NodeProps) {
       </div>
     </div>
   )
-}
+})
 
-function TerminalNode({ data, selected }: NodeProps) {
+const TerminalNode = memo(function TerminalNode({ data, selected }: NodeProps) {
   const { node, onSelect } = data as unknown as { node: GraphNode; onSelect: () => void }
   return (
     <div className={'cterminal' + (selected ? ' is-selected' : '')} onClick={onSelect}>
@@ -140,9 +146,9 @@ function TerminalNode({ data, selected }: NodeProps) {
       {node.kind === 'start' && <Handle type="source" position={Position.Right} id="out" className="cport" />}
     </div>
   )
-}
+})
 
-function ParallelNode({ data, selected }: NodeProps) {
+const ParallelNode = memo(function ParallelNode({ data, selected }: NodeProps) {
   const { node, onSelect } = data as unknown as { node: GraphNode; onSelect: () => void }
   return (
     <div className={'cparallel' + (selected ? ' is-selected' : '')} onClick={onSelect}>
@@ -152,19 +158,12 @@ function ParallelNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right} id="out" className="cport" />
     </div>
   )
-}
+})
 
-function ResultEdge(props: EdgeProps) {
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX: props.sourceX,
-    sourceY: props.sourceY,
-    targetX: props.targetX,
-    targetY: props.targetY,
-    sourcePosition: props.sourcePosition,
-    targetPosition: props.targetPosition,
-  })
-  const data = props.data as unknown as { result?: string; selected?: boolean }
+const ResultEdge = memo(function ResultEdge(props: EdgeProps) {
+  const data = props.data as unknown as { result?: string; selected?: boolean; points?: Point[] }
   const tone = data?.result ? toneOf(data.result) : 'default'
+  const { path, label } = edgeGeometry(props, data?.points ?? [])
   return (
     <>
       <BaseEdge
@@ -175,11 +174,12 @@ function ResultEdge(props: EdgeProps) {
           'cedge-path' + (data?.result ? ` tone-${tone}` : '') + (data?.selected ? ' is-selected' : '')
         }
       />
-      {data?.result && (
+      {/* 结果名已标在来源卡片的出口行上，画布只在选中时再显示一次，避免密集连线被标签遮挡。 */}
+      {data?.result && data?.selected && (
         <EdgeLabelRenderer>
           <div
             className={`cedge-label tone-${tone} nodrag nopan`}
-            style={{ transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)` }}
+            style={{ transform: `translate(0,-50%) translate(${label.x + 4}px,${label.y}px)` }}
           >
             {data.result}
           </div>
@@ -187,16 +187,103 @@ function ResultEdge(props: EdgeProps) {
       )}
     </>
   )
+})
+
+/** 连线走线：从出口经 dagre 折点到入口，回边的折点已由布局铺在图形下方。 */
+function edgeGeometry(props: EdgeProps, route: Point[]) {
+  // dagre 的首末折点可能落在卡片内部，去掉它们避免连线先往里折。
+  const middle = [...route]
+  while (middle.length && middle[0].x < props.sourceX - 1) middle.shift()
+  while (middle.length && middle[middle.length - 1].x > props.targetX + 1) middle.pop()
+  const points: Point[] = [
+    { x: props.sourceX, y: props.sourceY },
+    ...middle,
+    { x: props.targetX, y: props.targetY },
+  ]
+  // 去掉重复折点，圆角才会正常生成。
+  const clean = points.filter(
+    (point, index) => index === 0 || Math.hypot(point.x - points[index - 1].x, point.y - points[index - 1].y) > 1,
+  )
+  // 结果名贴近出口摆放，读起来像出口的标签，也不会压到其他卡片。
+  return { path: roundedPath(clean, 12), label: pointAtDistance(clean, 34) }
 }
 
 const nodeTypes = { work: WorkNode, start: TerminalNode, finish: TerminalNode, parallel: ParallelNode }
 const edgeTypes = { result: ResultEdge }
 
 export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart }: CanvasProps) {
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
+  // 节点位置由 React Flow 自己维护，拖拽时只更新被拖的节点，不回到上层重算布局。
+  const [nodes, setNodes] = useState<Node[]>([])
   const [selection, setSelection] = useState<Selection | null>(null)
   const [prompt, setPrompt] = useState<string | null>(null)
   const [showMinimap, setShowMinimap] = useState(true)
+  const canvas = useRef<ReactFlowInstance | null>(null)
+  const area = useRef<HTMLDivElement | null>(null)
+  // 用户拖过的位置记在引用里，结构变化重建节点时保留，不必触发渲染。
+  const moved = useRef<Record<string, { x: number; y: number }>>({})
+
+  const sectionOf = useCallback(
+    (node: GraphNode) => sections.find((section) => section.name === node.name),
+    [sections],
+  )
+  const selectNode = useCallback(
+    (ref: string) => () => setSelection({ kind: 'node', id: ref }),
+    [],
+  )
+
+  const layout = useMemo(() => layoutGraph(graph), [graph])
+  // 图比视口宽时不强行缩小到看不清：保持可读缩放，并把视图贴到流程起点一侧。
+  const fit = useCallback(() => {
+    const instance = canvas.current
+    const element = area.current
+    if (!instance || !element || !graph.nodes.length) return
+    const boxes = graph.nodes.map((node) => {
+      const point = layout.positions[node.ref] ?? { x: 0, y: 0 }
+      return { ...point, ...nodeSize(node, graph) }
+    })
+    const minX = Math.min(...boxes.map((box) => box.x))
+    const minY = Math.min(...boxes.map((box) => box.y))
+    const width = Math.max(...boxes.map((box) => box.x + box.width)) - minX
+    const height = Math.max(...boxes.map((box) => box.y + box.height)) - minY
+    const pad = 24
+    const zoom = Math.max(0.6, Math.min((element.clientWidth - pad * 2) / width, (element.clientHeight - pad * 2) / height, 1))
+    const x = width * zoom <= element.clientWidth - pad * 2 ? (element.clientWidth - width * zoom) / 2 - minX * zoom : pad - minX * zoom
+    const y = Math.max(pad, (element.clientHeight - height * zoom) / 2) - minY * zoom
+    instance.setViewport({ x, y, zoom }, { duration: 200 })
+  }, [graph, layout])
+  // 只在结构或选中状态变化时重建节点；data 引用稳定，节点组件用 memo 跳过无谓渲染。
+  useEffect(() => {
+    setNodes((current) => {
+      const previous = new Map(current.map((node) => [node.id, node]))
+      return graph.nodes.map((node) => {
+        const before = previous.get(node.ref)
+        const position =
+          moved.current[node.ref] ?? before?.position ?? layout.positions[node.ref] ?? { x: 0, y: 0 }
+        return {
+          id: node.ref,
+          type: node.kind,
+          position,
+          selected: selection?.kind === 'node' && selection.id === node.ref,
+          data: {
+            node,
+            results: graph.edges
+              .filter((edge) => edge.from === node.ref)
+              .map((edge) => ({
+                id: edge.id,
+                result: edge.result,
+                targetName: graph.nodes.find((item) => item.ref === edge.to)?.name ?? edge.to,
+              })),
+            actions: (() => {
+              const section = sectionOf(node)
+              return section ? actionOf(section) : null
+            })(),
+            onSelect: selectNode(node.ref),
+          },
+        }
+      })
+    })
+  }, [graph, layout, selection, sectionOf, selectNode])
+
   // 图变化后只清理指向已删除元素的选择，新增节点时保留刚建立的选中状态。
   useEffect(() => {
     setSelection((current) => {
@@ -210,48 +297,67 @@ export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart
   }, [graph])
   useEffect(() => setPrompt(null), [selection?.id])
 
-  const sectionOf = useCallback(
-    (node: GraphNode) => sections.find((section) => section.name === node.name),
-    [sections],
-  )
-  const layout = useMemo(() => ({ ...layoutGraph(graph), ...positions }), [graph, positions])
-  const nodes: Node[] = useMemo(
-    () =>
-      graph.nodes.map((node) => ({
-        id: node.ref,
-        type: node.kind,
-        position: layout[node.ref] ?? { x: 0, y: 0 },
-        selected: selection?.kind === 'node' && selection.id === node.ref,
-        data: {
-          node,
-          results: graph.edges
-            .filter((edge) => edge.from === node.ref)
-            .map((edge) => ({
-              id: edge.id,
-              result: edge.result,
-              targetName: graph.nodes.find((item) => item.ref === edge.to)?.name ?? edge.to,
-            })),
-          actions: (() => {
-            const section = sectionOf(node)
-            return section ? actionOf(section) : null
-          })(),
-          onSelect: () => setSelection({ kind: 'node', id: node.ref }),
-        },
-      })),
-    [graph, layout, selection, sectionOf],
-  )
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    for (const change of changes)
+      if (change.type === 'position' && change.position) moved.current[change.id] = change.position
+    setNodes((current) => applyNodeChanges(changes, current))
+  }, [])
+
   const edges: Edge[] = useMemo(
     () =>
-      graph.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.from,
-        target: edge.to,
-        sourceHandle: edge.result ?? 'out',
-        type: 'result',
-        data: { result: edge.result, selected: selection?.kind === 'edge' && selection.id === edge.id },
-      })),
-    [graph, selection],
+      graph.edges.map((edge) => {
+        const tone = edge.result ? toneOf(edge.result) : 'default'
+        return {
+          id: edge.id,
+          source: edge.from,
+          target: edge.to,
+          sourceHandle: edge.result ?? 'out',
+          type: 'result',
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 14,
+            height: 14,
+            color:
+              tone === 'ok'
+                ? 'rgb(22 128 61)'
+                : tone === 'err'
+                  ? 'rgb(220 38 38)'
+                  : 'rgb(148 148 160)',
+          },
+          data: {
+            result: edge.result,
+            selected: selection?.kind === 'edge' && selection.id === edge.id,
+            points: layout.routes[edge.id] ?? [],
+          },
+        }
+      }),
+    [graph, selection, layout],
   )
+
+  const autoLayout = useCallback(() => {
+    moved.current = {}
+    setNodes((current) =>
+      current.map((node) => ({ ...node, position: layout.positions[node.id] ?? node.position })),
+    )
+    fit()
+  }, [layout, fit])
+
+  const connectEdge = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return
+      onGraph(connect(graph, connection.source, connection.target, connection.sourceHandle))
+      setSelection(null)
+    },
+    [graph, onGraph],
+  )
+  // 结构变化后重新适配视图，避免新增节点落在可视区外。
+  const structure = useMemo(
+    () => graph.nodes.map((node) => node.ref).join('|') + '#' + graph.edges.map((edge) => edge.id).join('|'),
+    [graph],
+  )
+  useEffect(() => {
+    fit()
+  }, [structure, fit])
 
   const selectedNode =
     selection?.kind === 'node' ? graph.nodes.find((node) => node.ref === selection.id) : undefined
@@ -270,75 +376,56 @@ export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart
 
   return (
     <div className="canvas-shell">
-      <aside className="canvas-palette" aria-label="添加节点">
-        <div className="palette-title">
-          <Boxes size={14} />
-          添加节点
-        </div>
+      <div className="canvas-toolbar" role="toolbar" aria-label="添加节点">
+        <span className="toolbar-label">
+          <Boxes size={13} />
+          添加
+        </span>
         {ACTION_KINDS.map((kind) => {
           const Icon = kindIcon[kind]
           return (
-            <button key={kind} className="palette-item" onClick={() => add('work', kind)}>
+            <button key={kind} className="cchrome-btn" onClick={() => add('work', kind)} title={kind} aria-label={kind}>
               <Icon size={14} />
-              {kind}
             </button>
           )
         })}
-        <button className="palette-item" onClick={() => add('parallel')}>
+        <button className="cchrome-btn" onClick={() => add('parallel')} title="并行" aria-label="并行">
           <GitBranch size={14} />
-          并行
         </button>
-        <div className="palette-foot">
-          <button className="cchrome-btn" onClick={() => setPositions({})} title="自动布局">
-            <ListTree size={14} />
-          </button>
-          <button
-            className={'cchrome-btn' + (showMinimap ? ' is-on' : '')}
-            onClick={() => setShowMinimap(!showMinimap)}
-            title="缩略图"
-            aria-pressed={showMinimap}
-          >
-            <Layers size={14} />
-          </button>
-          <span className="palette-count">{graph.nodes.length} 节点</span>
-        </div>
-        {issues.length > 0 && (
-          <ul className="canvas-issues" aria-label="图结构问题">
-            {issues.slice(0, 6).map((issue) => (
-              <li key={issue}>{issue}</li>
-            ))}
-          </ul>
-        )}
-      </aside>
+        <span className="toolbar-divider" />
+        <button className="cchrome-btn" onClick={autoLayout} title="自动布局" aria-label="自动布局">
+          <ListTree size={14} />
+        </button>
+        <button
+          className={'cchrome-btn' + (showMinimap ? ' is-on' : '')}
+          onClick={() => setShowMinimap(!showMinimap)}
+          title="缩略图"
+          aria-label="缩略图"
+          aria-pressed={showMinimap}
+        >
+          <Layers size={14} />
+        </button>
+        <span className="palette-count">{graph.nodes.length} 节点</span>
+      </div>
 
-      <div className="canvas-area">
+      <div className="canvas-area" ref={area}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          fitView
+          elementsSelectable={false}
+          deleteKeyCode={null}
           minZoom={0.2}
           maxZoom={1.6}
           proOptions={{ hideAttribution: true }}
-          onNodesChange={(changes) => {
-            const moved = changes.flatMap((change) =>
-              change.type === 'position' && change.position
-                ? [{ id: change.id, position: change.position }]
-                : [],
-            )
-            if (!moved.length) return
-            setPositions((current) => {
-              const next = { ...current }
-              for (const change of moved) next[change.id] = change.position
-              return next
-            })
+          onInit={(instance) => {
+            canvas.current = instance
+            fit()
           }}
-          onConnect={(connection) => {
-            if (!connection.source || !connection.target) return
-            onGraph(connect(graph, connection.source, connection.target, connection.sourceHandle))
-            setSelection(null)
-          }}
+          onNodesChange={onNodesChange}
+          onConnect={connectEdge}
+          connectionLineStyle={{ stroke: 'rgb(var(--c-accent))', strokeWidth: 2 }}
           onNodeClick={(_, node) => setSelection({ kind: 'node', id: node.id })}
           onEdgeClick={(_, edge) => setSelection({ kind: 'edge', id: edge.id })}
           onPaneClick={() => setSelection(null)}
@@ -347,29 +434,42 @@ export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart
           <Controls showInteractive={false} />
           {showMinimap && <MiniMap pannable zoomable />}
         </ReactFlow>
-      </div>
-
-      <aside className="canvas-inspector" aria-label="检查器">
-        {selectedNode ? (
-          <NodeInspector
-            graph={graph}
-            node={selectedNode}
-            section={sectionOf(selectedNode)}
-            prompt={prompt}
-            setPrompt={setPrompt}
-            onGraph={onGraph}
-            onAction={onAction}
-            onStart={onStart}
-          />
-        ) : selectedEdge ? (
-          <EdgeInspector graph={graph} id={selectedEdge.id} onGraph={onGraph} />
-        ) : (
-          <div className="inspector-empty">
-            <p>选择节点或连线查看与修改。</p>
-            <p className="muted">从卡片右侧的圆点拖到目标节点即可建立结果边。</p>
-          </div>
+        {issues.length > 0 && (
+          <ul className="canvas-issues" aria-label="图结构问题">
+            {issues.slice(0, 4).map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
         )}
-      </aside>
+        {(selectedNode || selectedEdge) && (
+          <aside className="canvas-inspector" aria-label="检查器">
+            <button
+              className="cchrome-btn inspector-close"
+              aria-label="关闭检查器"
+              onClick={() => setSelection(null)}
+            >
+              <X size={14} />
+            </button>
+            {selectedNode ? (
+              <NodeInspector
+                graph={graph}
+                node={selectedNode}
+                section={sectionOf(selectedNode)}
+                prompt={prompt}
+                setPrompt={setPrompt}
+                onGraph={onGraph}
+                onAction={onAction}
+                onStart={onStart}
+              />
+            ) : (
+              <EdgeInspector graph={graph} id={selectedEdge!.id} onGraph={onGraph} />
+            )}
+          </aside>
+        )}
+      </div>
+      {!selectedNode && !selectedEdge && (
+        <p className="canvas-hint">点选节点或连线查看与修改，从卡片右侧圆点拖到目标节点可以建立结果边。</p>
+      )}
     </div>
   )
 }

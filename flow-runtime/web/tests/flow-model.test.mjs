@@ -97,6 +97,46 @@ test('编辑操作保持图与小节一致', async () => {
   assert.equal(deleted.edges.some((edge) => edge.from === 'a' || edge.to === 'a'), false)
 })
 
+test('布局避开卡片且把回边铺在图形下方', async () => {
+  const { parseFlow } = await flow('doc.ts')
+  const { layoutGraph, nodeSize, findBackEdges, roundedPath } = await flow('layout.ts')
+  const examples = await import('node:fs/promises').then((fs) => fs.readdir(join(root, '..', 'examples')))
+  for (const name of examples) {
+    const text = readFileSync(join(root, '..', 'examples', name, 'FLOW.md'), 'utf8')
+    const graph = parseFlow(text).graph
+    const { positions, routes, back } = layoutGraph(graph)
+    assert.equal(Object.keys(positions).length, graph.nodes.length, `${name} 每个节点都有坐标`)
+    const boxes = graph.nodes.map((node) => {
+      const point = positions[node.ref]
+      return { ref: node.ref, ...point, ...nodeSize(node, graph) }
+    })
+    assert.equal(back.size, findBackEdges(graph).size, `${name} 回边识别一致`)
+
+    for (const edge of graph.edges) {
+      const route = routes[edge.id]
+      assert.ok(route && route.length >= 2, `${name} ${edge.id} 有走线`)
+      // 走线中间折点不能落在任何卡片内部。
+      for (const point of route) {
+        const inside = boxes.find(
+          (box) =>
+            point.x > box.x + 1 &&
+            point.x < box.x + box.width - 1 &&
+            point.y > box.y + 1 &&
+            point.y < box.y + box.height - 1,
+        )
+        assert.equal(inside, undefined, `${name} ${edge.id} 的折点压到了 ${inside?.ref}`)
+      }
+      assert.match(roundedPath(route), /^M /)
+    }
+
+    // 回边统一走在所有卡片下方，不会横穿图形。
+    const bottom = Math.max(...boxes.map((box) => box.y + box.height))
+    for (const edge of graph.edges)
+      if (back.has(edge.id))
+        for (const point of routes[edge.id]) assert.ok(point.y > bottom, `${name} ${edge.id} 回边在下方`)
+  }
+})
+
 test('从图写回文本后小节正文不变', async () => {
   const { parseFlow, serializeFlow, splitSections, joinSections, syncSections, resultsOf } = await flow('doc.ts')
   const { renameNode } = await flow('edit.ts')

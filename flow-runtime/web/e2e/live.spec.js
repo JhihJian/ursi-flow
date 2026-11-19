@@ -75,6 +75,23 @@ async function openNewFlow(page) {
   await page.getByRole('link', { name: '创建 Flow', exact: true }).click()
   await expect(page.getByRole('heading', { name: '创建 Flow' })).toBeVisible()
 }
+// 点中连线本体：取路径上的实际点，避免点到外框中心外的空白。
+async function clickEdge(page, result) {
+  const point = await page.evaluate((text) => {
+    for (const edge of document.querySelectorAll('.react-flow__edge')) {
+      const label = edge.dataset.id?.split('|')[1]
+      if (label !== text) continue
+      const path = edge.querySelector('.cedge-path')
+      const at = path.getPointAtLength(path.getTotalLength() / 2)
+      const matrix = path.getScreenCTM()
+      return { x: matrix.a * at.x + matrix.c * at.y + matrix.e, y: matrix.b * at.x + matrix.d * at.y + matrix.f }
+    }
+    return null
+  }, result)
+  if (!point) throw Error(`找不到结果边 ${result}`)
+  await page.mouse.click(point.x, point.y)
+}
+
 async function fillFiles(page, id, source) {
   await page.getByLabel('Flow 标识').fill(id)
   await page.getByRole('tab', { name: '源码' }).click()
@@ -93,7 +110,10 @@ test('图形视图可按画布编辑节点与结果边，并跑通运行闭环',
   await page.getByRole('tab', { name: '图形' }).click()
   await expect(page.locator('.cnode')).toHaveCount(1)
   await expect(page.locator('.cterminal')).toHaveCount(2)
+  // 选中连线的结果说明只在选中时显示在走线上。
+  await clickEdge(page, '已执行')
   await expect(page.locator('.cedge-label').filter({ hasText: '已执行' })).toBeVisible()
+  await expect(page.locator('.canvas-inspector')).toContainText('已执行')
 
   // 选中节点后改名，文本与画布同步。
   await page.locator('.cnode').click()

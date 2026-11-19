@@ -335,25 +335,25 @@ export function FlowEditor({ source }: { source: Source }) {
         </p>
       )}
 
-      <div className="editor-body">
-        <aside className="file-rail">
-          <label className="block">
-            Flow 标识
-            <input
-              className="input mt-2"
-              value={name}
-              readOnly={editing}
-              onChange={(event) => {
-                setName(event.target.value)
-                setDirty(true)
-              }}
-              placeholder="release-check"
-            />
-          </label>
-          <h2 className="mt-4">
-            <FileCode2 />
+      <div className="editor-bar">
+        <label className="bar-field">
+          <span>Flow 标识</span>
+          <input
+            className="input"
+            value={name}
+            readOnly={editing}
+            onChange={(event) => {
+              setName(event.target.value)
+              setDirty(true)
+            }}
+            placeholder="release-check"
+          />
+        </label>
+        <div className="bar-files">
+          <span className="bar-label">
+            <FileCode2 size={13} />
             包文件
-          </h2>
+          </span>
           <ul className="files">
             {paths.map((path) => (
               <li key={path}>
@@ -390,55 +390,46 @@ export function FlowEditor({ source }: { source: Source }) {
                 }
               }}
             />
-            <button onClick={addFile} aria-label="新增文件">
+            <button onClick={addFile} aria-label="新增文件" title="新增文件">
               <FilePlus2 />
             </button>
           </div>
-          <p className="muted">只允许 FLOW.md、references/ 下的 Markdown 和 scripts/ 下的 ESM 脚本。</p>
+        </div>
+        {editing && (
+          <div className="bar-run">
+            <label className="bar-field">
+              <span>Run ID（可选）</span>
+              <input
+                className="input"
+                value={runId}
+                onChange={(event) => setRunId(event.target.value)}
+                placeholder="自动生成"
+              />
+            </label>
+            <label className="bar-field">
+              <span>启动变量（JSON）</span>
+              <textarea
+                className="code short"
+                aria-label="启动变量"
+                value={variables}
+                onChange={(event) => setVariables(event.target.value)}
+              />
+            </label>
+            <button
+              className="primary"
+              onClick={start}
+              disabled={readOnly || running || dirty || busy === 'save'}
+              title={dirty ? '请先保存包文件' : undefined}
+            >
+              <Play size={14} />
+              {running ? '启动中…' : '启动运行'}
+            </button>
+          </div>
+        )}
+      </div>
+      {readOnly && <p className="muted">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>}
 
-          {editing && (
-            <div className="run-panel">
-              <h2>
-                <Play size={14} />
-                启动运行
-              </h2>
-              <label>
-                Run ID（可选）
-                <input
-                  className="input"
-                  value={runId}
-                  onChange={(event) => setRunId(event.target.value)}
-                  placeholder="自动生成"
-                />
-              </label>
-              <label>
-                启动变量（JSON）
-                <textarea
-                  className="code short"
-                  aria-label="启动变量"
-                  value={variables}
-                  onChange={(event) => setVariables(event.target.value)}
-                />
-              </label>
-              <p className="muted">
-                工作区 default
-                {source.workspace ? `：${source.workspace.path}` : ''}
-              </p>
-              <button
-                className="primary"
-                onClick={start}
-                disabled={readOnly || running || dirty || busy === 'save'}
-                title={dirty ? '请先保存包文件' : undefined}
-              >
-                <Play />
-                {running ? '启动中…' : '启动运行'}
-              </button>
-            </div>
-          )}
-          {readOnly && <p className="muted">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>}
-        </aside>
-
-        <section className="editor-main">
+      <section className="editor-main">
           <div className="view-tabs" role="tablist" aria-label="编辑视图">
             <button
               role="tab"
@@ -545,8 +536,7 @@ export function FlowEditor({ source }: { source: Source }) {
                 onChange={(event) => writeFile(selected, event.target.value)}
               />
             ))}
-        </section>
-      </div>
+      </section>
     </main>
   )
 }

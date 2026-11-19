@@ -69,12 +69,14 @@
   .editor { @apply grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]; }
   .editor aside { @apply min-w-0; }
   .editor section { @apply mt-0 min-w-0; }
-  .files { @apply mt-2 space-y-0.5; }
-  .files li { @apply flex items-center gap-1; }
-  .file { @apply h-8 min-w-0 flex-1 justify-start border-0 bg-transparent px-2 font-mono text-xs text-txt2 hover:bg-elevated; }
-  .file.active { @apply bg-accent-dim text-accent-2; }
-  .add-file { @apply mt-2 flex items-start gap-1; }
-  .add-file .input { @apply mt-0 }
+  /* 包文件挤在顶栏里，横向排列，文件名过长时截断。 */
+  .files { @apply flex min-w-0 flex-wrap items-center gap-1; }
+  .files li { @apply flex min-w-0 items-center gap-0.5 }
+  .file { @apply h-7 min-w-0 max-w-[11rem] flex-none justify-start truncate rounded-md border-0 bg-transparent px-2 font-mono text-[11px] text-txt2 hover:bg-elevated sm:max-w-[13rem] }
+  .file.active { @apply bg-accent-dim text-accent-2 }
+  .add-file { @apply flex items-center gap-1 }
+  .add-file .input { @apply mt-0 h-7 w-40 min-w-0 flex-1 px-2 text-[11px] sm:w-44 sm:flex-none }
+  .add-file button { @apply size-7 }
   .start-run { @apply grid gap-4 rounded-xl border border-line bg-surface p-4 md:grid-cols-2; }
   .start-run > :last-child { @apply justify-self-start md:col-span-2; }
   .evidence { @apply divide-y divide-line rounded-xl border border-line bg-surface; }
@@ -93,12 +95,18 @@
 /* 编辑器骨架：左侧包文件，右侧视图 */
 @layer components {
   .editor-page { @apply max-w-[1800px] py-4 }
-  .editor-body { @apply mt-4 grid gap-4 xl:grid-cols-[16rem_minmax(0,1fr)] }
-  .file-rail { @apply min-w-0 rounded-xl border border-line bg-surface p-4 }
-  .file-rail h2 { @apply text-sm }
-  .file-name { @apply truncate font-mono text-xs }
-  .run-panel { @apply mt-6 space-y-3 border-t border-line pt-4 }
-  .editor-main { @apply min-w-0 }
+  /* 编辑区顶栏：标识、包文件与运行参数各占一行，宽度全部留给画布。 */
+  .editor-bar {
+    @apply mt-3 flex flex-wrap items-end gap-x-4 gap-y-2 rounded-xl border border-line bg-surface px-3 py-2.5;
+  }
+  .bar-field { @apply flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-txt3 sm:flex-none }
+  .bar-field .input { @apply mt-0 h-8 px-2 text-xs }
+  .bar-field .code.short { @apply mt-0 h-8 min-h-8 w-40 px-2 py-1 text-[11px] sm:w-52 }
+  .bar-label { @apply inline-flex items-center gap-1.5 text-[11px] text-txt3 }
+  .bar-files { @apply flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:flex-nowrap }
+  .bar-run { @apply flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto }
+  .bar-run .primary { @apply h-8 px-3 text-xs }
+  .editor-main { @apply mt-3 min-w-0 }
   .view-tabs { @apply mb-3 flex flex-wrap items-center gap-1 border-b border-line pb-2 }
   .view-tabs button { @apply h-8 gap-1.5 border-0 bg-transparent px-2.5 text-txt3 }
   .view-tabs button[aria-selected='true'] { @apply bg-accent-dim text-accent-2 }
@@ -112,15 +120,22 @@
 
 /* 画布：节点卡片、出口、连线与检查器 */
 @layer components {
-  .canvas-shell { @apply grid gap-3 lg:grid-cols-[12.5rem_minmax(0,1fr)] xl:grid-cols-[12.5rem_minmax(0,1fr)_18rem] }
-  .canvas-palette { @apply flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-surface p-2.5 }
-  .palette-title { @apply mb-1 flex items-center gap-2 px-1 text-xs font-medium text-txt3 }
-  .palette-item { @apply h-9 justify-start gap-2 border-0 bg-transparent px-2 text-xs text-txt2 hover:bg-elevated }
-  .palette-foot { @apply mt-2 flex items-center gap-1 border-t border-line pt-2 text-xs text-txt3 }
-  .palette-count { @apply ml-auto text-[11px] }
-  .canvas-issues { @apply mt-2 space-y-1 border-t border-line pt-2 text-[11px] leading-4 text-warn }
-  .canvas-area { @apply relative h-[34rem] overflow-hidden rounded-xl border border-line bg-base }
-  .canvas-inspector { @apply min-w-0 rounded-xl border border-line bg-surface p-3.5 }
+  /* 画布占满主列：工具条浮在上方，检查器浮在右侧，都不挤压绘图区。 */
+  .canvas-shell { @apply relative space-y-2 }
+  .canvas-toolbar { @apply flex flex-wrap items-center gap-1 }
+  .toolbar-label { @apply mr-1 inline-flex items-center gap-1.5 text-xs text-txt3 }
+  .toolbar-divider { @apply mx-1 h-5 w-px bg-line }
+  .palette-count { @apply ml-1 text-[11px] text-txt3 }
+  .canvas-hint { @apply text-xs text-txt3 }
+  .canvas-issues {
+    @apply absolute bottom-3 left-3 max-w-md space-y-1 rounded-lg border border-warn/30 bg-surface/95 px-3 py-2 text-[11px] leading-4 text-warn;
+  }
+  .canvas-area { @apply relative overflow-hidden rounded-xl border border-line bg-base; height: clamp(30rem, 68vh, 56rem) }
+  .canvas-inspector {
+    @apply absolute right-3 top-3 max-h-[calc(100%-1.5rem)] w-[17.5rem] overflow-y-auto rounded-xl border border-line bg-surface/95 p-3.5;
+    box-shadow: 0 8px 24px rgb(16 24 40 / 0.1);
+  }
+  .inspector-close { @apply absolute right-2 top-2 }
   .inspector { @apply space-y-3 }
   .inspector header h2 { @apply truncate text-sm }
   .inspector header code { @apply block font-mono text-[11px] text-txt3 }
@@ -134,7 +149,8 @@
   .cchrome-btn { @apply inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-txt3 hover:bg-elevated hover:text-txt disabled:opacity-40 }
   .cchrome-btn.is-on { @apply bg-accent-dim text-accent-2 }
 
-  .cnode { @apply relative w-[236px] rounded-[14px] border border-line bg-surface text-xs text-txt shadow-[var(--shadow-card)] transition; box-shadow: inset 3px 0 0 transparent, var(--shadow-card) }
+  /* 宽度与 src/flow/layout.ts 的 WORK_WIDTH 保持一致。 */
+  .cnode { @apply relative w-[212px] rounded-[14px] border border-line bg-surface text-xs text-txt shadow-[var(--shadow-card)] transition; box-shadow: inset 3px 0 0 transparent, var(--shadow-card) }
   .cnode:hover { @apply border-line-strong }
   .cnode.is-selected { @apply border-accent; box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.18), var(--shadow-card) }
   .cnode-head { @apply flex items-center gap-2.5 px-3.5 pb-2 pt-3 }
@@ -146,24 +162,25 @@
   .cnode-body { @apply px-3.5 pb-2.5 }
   .cnode-goal { @apply line-clamp-2 text-[12px] leading-[17px] text-txt2 }
   .cnode-outlets { @apply border-t border-line py-1 }
-  .cnode-outlet { @apply relative flex h-6 items-center justify-end gap-2 pl-3.5 pr-4 text-[11px] font-medium text-txt2 }
-  .cnode-outlet-label { @apply min-w-0 truncate }
-  .cnode-outlet-target { @apply shrink-0 text-[10px] font-normal text-txt3 }
+  .cnode-outlet { @apply relative flex h-6 items-center justify-end gap-2 pl-3 pr-4 text-[11px] font-medium text-txt2 }
+  .cnode-outlet-label { @apply min-w-0 shrink-0 truncate }
+  .cnode-outlet-target { @apply min-w-0 truncate text-[10px] font-normal text-txt3 }
   .cnode-outlet.tone-ok .cnode-outlet-label { @apply text-ok }
   .cnode-outlet.tone-err .cnode-outlet-label { @apply text-err }
   .cnode-outlet.is-empty .cnode-outlet-label { @apply text-txt3 }
-  .cterminal { @apply relative flex h-[44px] items-center gap-2 rounded-full border border-line bg-surface px-4 text-xs font-semibold text-txt shadow-[var(--shadow-card)] }
+  .cterminal { @apply relative flex h-[44px] min-w-[104px] items-center justify-center gap-2 rounded-full border border-line bg-surface px-4 text-xs font-semibold text-txt shadow-[var(--shadow-card)] }
   .cterminal.is-selected { @apply border-accent }
   .cterminal-icon { @apply text-accent-2 }
-  .cparallel { @apply relative flex h-[48px] items-center gap-2 rounded-xl border border-dashed border-line-strong bg-elevated px-4 text-xs font-semibold text-txt2 }
+  .cparallel { @apply relative flex h-[46px] min-w-[132px] items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-elevated px-4 text-xs font-semibold text-txt2 }
   .cparallel.is-selected { @apply border-accent text-accent-2 }
 
-  .cport { @apply !size-[18px] !border-0 !bg-transparent }
-  .cport::after { content:''; @apply block size-[10px] rounded-full border-2 border-line-strong bg-surface transition }
-  .cport:hover::after { @apply border-accent bg-accent }
-  .cport--in { @apply -left-2.5 }
-  .cnode-outlet .cport, .cparallel .cport, .cterminal .cport { @apply !right-[-10px] top-1/2 }
-  .cterminal .cport--in, .cparallel .cport--in { @apply !left-[-10px] }
+  /* 端口：18px 命中区里放 10px 圆点，居中对齐连线端点。 */
+  .cport { @apply !grid !size-[18px] !place-items-center !border-0 !bg-transparent !shadow-none }
+  .cport::after { content: ''; @apply block size-[10px] rounded-full border-2 border-line-strong bg-surface transition }
+  .cport:hover::after, .cport.connectingfrom::after { @apply border-accent bg-accent }
+  .react-flow__handle.valid::after { @apply border-accent bg-accent }
+  .cnode-outlet .cport, .cparallel .cport, .cterminal .cport { @apply !right-[-9px] !top-1/2 }
+  .cport--in, .cterminal .cport--in, .cparallel .cport--in { @apply !left-[-9px] !right-auto }
 
   .cedge-path { fill: none; stroke: rgb(var(--c-line-strong)); stroke-width: 1.6 }
   .cedge-path.tone-ok { stroke: rgb(var(--c-ok) / 0.7) }
@@ -174,8 +191,14 @@
   .cedge-label.tone-err { @apply border-err/40 text-err }
 
   .react-flow__attribution { display: none }
-  .react-flow__controls button { @apply border-line bg-surface text-txt2 }
-  .react-flow__minimap { @apply rounded-lg border border-line bg-surface }
+  .react-flow__controls button { @apply size-7 border-line bg-surface text-txt2 }
+  .react-flow__controls button svg { @apply size-3.5 fill-current }
+  .react-flow__minimap { @apply overflow-hidden rounded-lg border border-line bg-surface }
+  .react-flow__minimap-mask { fill: rgb(var(--c-base) / 0.6) }
+  .react-flow__edge.selected .cedge-path { stroke: rgb(var(--c-accent)); stroke-width: 2.2 }
+  .react-flow__edge:hover .cedge-path { stroke-width: 2.2 }
+  .react-flow__node { @apply !cursor-default }
+  .react-flow__node:focus-visible { outline: none }
 }
 
 /* Markdown 视图 */

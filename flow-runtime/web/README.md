@@ -51,6 +51,10 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 
 嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
 
+## 图形视图
+
+编辑页默认打开图形视图：`FLOW.md` 的 Mermaid 图被画成节点卡片，右侧每行是一个结果出口。画布自左向右分层，连线来自 dagre 的路由折点，会绕开卡片；返工、重试这类回边不进分层，从图形下方绕回。节点位置与缩放只存在界面状态里，不写回 `FLOW.md`，点“自动布局”可以随时恢复分层位置。
+
 ## 测试
 
 ```sh
