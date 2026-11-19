@@ -4,6 +4,11 @@ for (const width of [390, 1280])
     await page.setViewportSize({ width, height: 820 })
     await page.goto('/sandboxes')
     await expect(page.getByText('演示数据')).toBeVisible()
+    await page.getByRole('button', { name: '创建沙箱' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByLabel('创建规格（SandboxSpec JSON）')).toBeVisible()
+    await page.getByRole('button', { name: '取消' }).click()
+    await expect(page.getByRole('dialog')).toBeHidden()
     await expect(page.locator('tbody tr')).toHaveCount(6)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

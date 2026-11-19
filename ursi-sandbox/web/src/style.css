@@ -35,6 +35,10 @@
   .field { @apply inline-flex min-h-9 min-w-0 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-txt3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15; }
   .field input,.field select { @apply min-w-0 bg-surface text-sm text-txt outline-none; }
   .field input { @apply w-40; }
+  .input, .textarea, .select { @apply block w-full min-w-0 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-txt outline-none transition-colors disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3; }
+  .input:focus, .textarea:focus, .select:focus { @apply border-accent ring-2 ring-accent/15; }
+  .textarea { min-height: 120px; resize: vertical; line-height: 1.7; }
+  .select { padding-right: 2rem; }
   .table-wrap { @apply overflow-hidden rounded-xl border border-line bg-surface; }
   table { @apply w-full border-collapse text-left text-sm; }
   th { @apply border-b border-line bg-elevated px-5 py-3 text-xs font-medium text-txt3; }

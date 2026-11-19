@@ -13,6 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from './shared/ui/dialog'
 import {
   Collapsible,
@@ -62,42 +63,74 @@ export function CreateSandbox({ source }: { source: Source }) {
     }
   }
   return (
-    <Collapsible open={open} onOpenChange={show} className="basis-full">
-      <CollapsibleTrigger asChild>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        show(next)
+        if (next) fail('')
+      }}
+    >
+      <DialogTrigger asChild>
         <Button variant="outline">
           <Plus />
           创建沙箱
         </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3 space-y-3 rounded-xl border border-line bg-surface p-4">
-        <Label htmlFor="sandbox-spec">创建规格（SandboxSpec JSON）</Label>
-        <Textarea
-          id="sandbox-spec"
-          rows={9}
-          value={text}
-          disabled={busy}
-          onChange={(e) => edit(e.target.value)}
-          className="font-mono"
-        />
-        {!source.manage && (
-          <p className="text-sm text-txt3">
-            {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
-            提交需要 Gateway 管理员身份。
-          </p>
-        )}
-        {error && (
-          <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>
-        )}
-        <Button
-          variant="primary"
-          disabled={!source.manage}
-          loading={busy}
-          onClick={submit}
+      </DialogTrigger>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <DialogTitle>创建沙箱</DialogTitle>
+          <DialogDescription>
+            填写 SandboxSpec JSON，提交后将进入沙箱详情页并开始创建。
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submit()
+          }}
         >
-          提交创建
-        </Button>
-      </CollapsibleContent>
-    </Collapsible>
+          <div className="space-y-2">
+            <Label htmlFor="sandbox-spec">创建规格（SandboxSpec JSON）</Label>
+            <Textarea
+              id="sandbox-spec"
+              rows={14}
+              value={text}
+              disabled={busy}
+              onChange={(e) => edit(e.target.value)}
+              className="min-h-64 w-full resize-y font-mono text-xs leading-5"
+            />
+          </div>
+          {!source.manage && (
+            <Alert className="border-warn/30 bg-warn/10 text-warn">
+              {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
+              提交需要 Gateway 管理员身份。
+            </Alert>
+          )}
+          {error && (
+            <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => show(false)}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!source.manage}
+              loading={busy}
+            >
+              提交创建
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 export function Actions({
