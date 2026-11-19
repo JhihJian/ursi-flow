@@ -8,7 +8,8 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { createItem, newRequestId, parameterSignature, readPackage, readPackages, type InputType, type WorkPackage } from './model'
+import { createItem, readPackage, readPackages, type InputType, type WorkPackage } from './model'
+import { createRequestIds } from './dispatch'
 
 function initialSelection(packages: WorkPackage[], params: URLSearchParams) {
   const id = params.get('package') || packages[0]?.id || ''
@@ -70,19 +71,21 @@ function inputValue(type: InputType, value: string | boolean | undefined): strin
 
 function PackageForm({ packageId, revision }: { packageId: string; revision: number }) {
   const result = useResource(signal => readPackage(packageId, revision, signal), null)
-  const [values, setValues] = useState<Record<string, string | boolean>>({})
+  const [draft, setDraft] = useState<Record<string, string | boolean> | null>(null)
   const [requestError, setRequestError] = useState('')
   const [createdId, setCreatedId] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const requestRef = useRef<{ signature: string; id: string } | null>(null)
+  const requestIds = useRef(createRequestIds())
   const pkg = result.data
   const declarations = useMemo(() => Object.entries(pkg?.inputs || {}), [pkg])
-  useEffect(() => {
-    if (pkg) setValues(Object.fromEntries(declarations.map(([name, type]) => [name, type === 'boolean' ? false : ''])))
-  }, [pkg, declarations])
+  const defaults = useMemo(
+    () => Object.fromEntries(declarations.map(([name, type]) => [name, type === 'boolean' ? false : ''])),
+    [declarations],
+  )
+  const values = draft ?? defaults
   if (!pkg || result.loading || result.error) return <ResourceState loading={result.loading} error={result.error} onRetry={result.reload} />
   const setValue = (name: string, value: string | boolean) => {
-    setValues(previous => ({ ...previous, [name]: value }))
+    setDraft(previous => ({ ...(previous ?? defaults), [name]: value }))
     setRequestError(''); setCreatedId('')
   }
   async function submit() {
@@ -92,13 +95,9 @@ function PackageForm({ packageId, revision }: { packageId: string; revision: num
       input = Object.fromEntries(declarations.map(([name, type]) => [name, parseValue(type, values[name] ?? '')]))
     } catch { setRequestError('输入材料必须是合法的 JSON。'); return }
     const payload = { package: packageId, revision, input }
-    const signature = parameterSignature(payload)
-    if (!requestRef.current || requestRef.current.signature !== signature) {
-      requestRef.current = { signature, id: newRequestId(packageId) }
-    }
     setSubmitting(true); setRequestError(''); setCreatedId('')
     try {
-      const item = await createItem({ ...payload, requestId: requestRef.current.id })
+      const item = await createItem({ ...payload, requestId: requestIds.current(payload) }, new AbortController().signal)
       setCreatedId(item.id)
     } catch (cause) {
       setRequestError(errorMessage(cause))

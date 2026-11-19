@@ -9,7 +9,7 @@
 - 已跟踪修改：`web/src/app/{AppShell,LoginGate,NotFoundView}.tsx`、`AppShell.test.tsx`、`router.tsx`、`router.test.tsx`、`SPEC.md`，`web/src/shared/SPEC.md`，`web/src/shared/http/{client.ts,client.test.ts}`，`web/vite.config.ts`。
 - 未跟踪文件：`web/src/app/{AppSidebar.tsx,navigation.ts}`、`web/src/modules/{definitions,sources,work-detail,work-list}/`、`web/plans/`。
 
-草稿的已知状态（基线提交时实测）：`npm run test` 12 个文件 73 用例通过；`npm run typecheck` 在 `work-list/StartWork.tsx` 报 3 条错误；`npm run lint` 在 `StartWork.tsx` 报 1 条 `react-hooks/set-state-in-effect`。这两项由 03 工作包在其模块内解决。
+基线提交时实测：`npm run lint`、`npm run typecheck`、`npm run test`（12 个文件 73 用例）和 `vite build` 均通过。草稿原有的三处编译错误和一条 `react-hooks/set-state-in-effect` 已在基线提交「修复派工页底稿的编译与状态初始化」中最小化修正（请求标识改用 `dispatch.ts`、布尔布尔默认值改为派生），派工页的真实点击、重试与防重行为仍归 03 工作包重做。
 
 ## 并行分工
 
