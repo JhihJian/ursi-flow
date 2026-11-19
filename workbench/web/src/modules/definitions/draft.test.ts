@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Executor, Package, Resource } from './catalog'
 import { initialDraft, publishBody } from './draft'
+import { readDraft, writeDraft } from './draft-store'
+import { normalizeConfigSchema } from './config'
 
 const resource = (id: string): Resource => ({ id, revision: 2, kind: 'skill', content: '核查' })
 const common = resource('common'), own = resource('own'), inherited = resource('inherited')
@@ -21,6 +23,24 @@ describe('版本草稿', () => {
     const d = initialDraft(pkg, [exec]); d.actions.push(d.actions[0]); expect(() => publishBody('packages', d)).toThrow('重复')
     d.actions.pop(); d.inputs!.push(d.inputs![0]); expect(() => publishBody('packages', d)).toThrow('重复')
   })
+  it('动态配置发布只发送配置值，不增加 kind、environment 或 flow 字段', () => {
+    const d = initialDraft({ id: 'pi', revision: 1, kind: 'agent', environment: 'local', configSchema: normalizeConfigSchema({ fields: [
+      { key: 'endpoint', type: 'url', required: true },
+      { key: 'token', type: 'secret', required: true },
+    ] }), config: { endpoint: 'https://example.test' } })
+    d.config.endpoint = 'https://example.test'
+    expect(wire(publishBody('executors', d, { token: 'private-token' }))).toEqual({ id: 'pi', kind: 'agent', environment: 'local', resources: [], config: { endpoint: 'https://example.test', token: 'private-token' } })
+    expect(JSON.stringify(publishBody('executors', d, { token: 'private-token' }))).not.toContain('flowId')
+  })
+
+  it('secret 不写入 sessionStorage，恢复草稿时也不会回显', () => {
+    sessionStorage.clear()
+    const d = initialDraft({ id: 'pi', revision: 1, kind: 'agent', configSchema: normalizeConfigSchema({ fields: [{ key: 'token', type: 'secret' }] }) })
+    writeDraft('config-secret-test', d)
+    expect(sessionStorage.getItem('config-secret-test')).not.toContain('private-token')
+    expect(readDraft('config-secret-test')?.config).toEqual({})
+  })
+
   it('MCP 只发命名引用，Flow 只发固定目录修订，不携带 Agent 设置', () => {
     const mcp = { id: 'tools', kind: 'mcp' as const, content: { serverRef: 'tools-auth', credentialRef: 'token-ref' } }
     expect(wire(publishBody('resources', initialDraft({ ...mcp, revision: 5 })))).toEqual(mcp)

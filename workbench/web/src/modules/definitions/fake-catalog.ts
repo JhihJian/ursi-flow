@@ -73,12 +73,18 @@ export function createFakeCatalog() {
     if (body.kind === 'flow') {
       if (body.environment !== undefined) throw new Error('Flow 执行器不接受执行环境')
       if (body.resources !== undefined && (body.resources as unknown[]).length) throw new Error('Flow 执行器不支持注入资源')
-      return { id, revision: 0, kind: 'flow', flowId: text(body.flowId, 'Flow ID'), flowRevision: text(body.flowRevision, 'Flow 目录修订') }
+      return { id, revision: 0, kind: 'flow', flowId: text(body.flowId, 'Flow ID'), flowRevision: text(body.flowRevision, 'Flow 目录修订'),
+        ...(body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? { config: body.config as Executor['config'] } : {}),
+        ...(body.configSchema && typeof body.configSchema === 'object' && !Array.isArray(body.configSchema) ? { configSchema: body.configSchema as Executor['configSchema'] } : {}),
+        ...(body.secretConfigured && typeof body.secretConfigured === 'object' && !Array.isArray(body.secretConfigured) ? { secretConfigured: body.secretConfigured as Executor['secretConfigured'] } : {}) }
     }
     if (body.kind !== 'agent') throw new Error('执行器类型无效')
     if (body.environment !== undefined && body.environment !== 'local' && body.environment !== 'sandbox') throw new Error('执行环境无效')
     return { id, revision: 0, kind: 'agent', environment: body.environment as 'local' | 'sandbox' | undefined,
-      resources: bindable(body.resources, '执行器资源') }
+      resources: bindable(body.resources, '执行器资源'),
+      ...(body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? { config: body.config as Executor['config'] } : {}),
+      ...(body.configSchema && typeof body.configSchema === 'object' && !Array.isArray(body.configSchema) ? { configSchema: body.configSchema as Executor['configSchema'] } : {}),
+      ...(body.secretConfigured && typeof body.secretConfigured === 'object' && !Array.isArray(body.secretConfigured) ? { secretConfigured: body.secretConfigured as Executor['secretConfigured'] } : {}) }
   }
   function pkg(id: string, body: Body): Package {
     const sop = text(body.sop, '办理说明')

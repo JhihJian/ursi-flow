@@ -6,9 +6,12 @@ import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { PageHeader } from '@/shared/ui/page-header'
 import { boundExecutors, environmentHints, environmentNames, list, publish, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Latest } from './catalog'
+import { listConfigPackageChoices, type ConfigPackageChoice } from '@/modules/patches/api'
 import { blankAction, initialDraft, publishBody, type ActionDraft, type Draft } from './draft'
 import { clearDraft, draftKey, readDraft, writeDraft } from './draft-store'
 import { Choice, Hint, PortsEditor, RefPicker, ResourceRefs, TextField } from './Fields'
+import { ConfigFields } from './ConfigFields'
+import type { SecretValues } from './config'
 
 type EditorProps = { k: Collection; id?: string; revision?: string }
 export function Editor({ k, id, revision }: EditorProps) {
@@ -20,21 +23,25 @@ export function Editor({ k, id, revision }: EditorProps) {
     ])
     const v = source?.version
     const bindings = v && 'actions' in v ? await boundExecutors(v, signal) : []
-    return { source, resources, executors, draft: initialDraft(v, bindings) }
+    const secretConfigured = v && 'configSchema' in v ? v.secretConfigured ?? {} : {}
+    return { source, resources, executors, draft: initialDraft(v, bindings), secretConfigured }
   }, null)
   if (result.loading || !result.data || result.error) return <ResourceState {...result} onRetry={result.reload} />
-  const { source, draft, resources, executors } = result.data
+  const { source, draft, resources, executors, secretConfigured } = result.data
   if (source && !source.latest.active) return <p role="status">对象已停用，不能发布新版，也不再接受新派工和新引用。 <Link to={revisionPath(k, source.version)}>返回版本详情</Link></p>
-  return <EditForm k={k} initial={draft} revision={source?.version.revision} storageKey={draftKey(k, id, revision)} resources={resources} executors={executors} />
+  return <EditForm k={k} initial={draft} initialSecretConfigured={secretConfigured} revision={source?.version.revision} storageKey={draftKey(k, id, revision)} resources={resources} executors={executors} />
 }
-function EditForm({ k, initial, revision, storageKey, resources, executors }: {
-  k: Collection; initial: Draft; revision?: number; storageKey: string; resources: Latest[]; executors: Latest[]
+function EditForm({ k, initial, initialSecretConfigured, revision, storageKey, resources, executors }: {
+  k: Collection; initial: Draft; initialSecretConfigured: Record<string, boolean>; revision?: number; storageKey: string; resources: Latest[]; executors: Latest[]
 }) {
   const navigate = useNavigate()
   const [restored, setRestored] = useState<Draft | null>(() => readDraft(storageKey))
   const [d, setDraft] = useState<Draft>(() => restored ?? initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [secrets, setSecrets] = useState<SecretValues>({})
+  const needsConfigPackages = k === 'executors' && initial.configSchema.fields.some((field) => field.type === 'configPackage')
+  const configPackages = useResource(signal => needsConfigPackages ? listConfigPackageChoices(signal) : Promise.resolve([] as ConfigPackageChoice[]), [] as ConfigPackageChoice[])
   const review = Boolean(revision && k === 'packages')
   const [reviewed, setReviewed] = useState(false)
   const mounted = useRef(false)
@@ -56,7 +63,7 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
     if (busy || (review && !reviewed)) return
     setBusy(true); setError('')
     let body: unknown
-    try { body = publishBody(k, d) } catch (err) { setError(errorMessage(err)); setBusy(false); return }
+    try { body = publishBody(k, d, secrets, initialSecretConfigured, configPackages.data.map((item) => item.id)) } catch (err) { setError(errorMessage(err)); setBusy(false); return }
     try {
       const v = await publish(k, body)
       published.current = true
@@ -102,6 +109,10 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
           <TextField label="Flow 目录修订" value={d.flowRevision} change={v => change('flowRevision', v)} required />
           <Hint>Flow 执行器只固定 Flow ID 与字符串目录修订。当前不支持注入资源，也不设置执行环境。</Hint>
         </>}
+        {d.configSchema.fields.length > 0 && <ConfigFields schema={d.configSchema} values={d.config} secrets={secrets} secretConfigured={initialSecretConfigured}
+          packageChoices={configPackages.data} packageLoading={needsConfigPackages && configPackages.loading} packageError={needsConfigPackages ? configPackages.error : ''} onReloadPackages={configPackages.reload}
+          onValueChange={(key, value) => setDraft(old => ({ ...old, config: { ...old.config, ...(value === undefined ? (() => { const next = { ...old.config }; delete next[key]; return next })() : { [key]: value }) } }))}
+          onSecretChange={(key, value) => setSecrets(old => ({ ...old, [key]: value }))} />}
       </>}
       {k === 'packages' && <>
         <TextField label={d.structuredGoal ? '目标（结构化 JSON）' : '目标'} value={d.goal ?? ''} change={v => change('goal', v)} multiline={d.structuredGoal} />

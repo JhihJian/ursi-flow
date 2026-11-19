@@ -11,7 +11,15 @@ export interface Patch {
   executionStatus?: 'not_started' | 'running' | 'succeeded' | 'failed'
 }
 
+/** 配置选择器的窄边界：目录标识只供编辑台使用，不进入执行器配置表单。 */
+export type ConfigPackageChoice = Pick<Patch, 'id' | 'name'>
+
 export const listPatches = (kind: PatchKind, signal?: AbortSignal) =>
   requestV2<Patch[]>(`/patches/${kind}`, { signal })
+
+export async function listConfigPackageChoices(signal?: AbortSignal): Promise<ConfigPackageChoice[]> {
+  const patches = await listPatches('config', signal)
+  return patches.map(({ id, name }) => ({ id, name }))
+}
 export const createPatch = (kind: PatchKind, name: string) =>
   requestV2<Patch>(`/patches/${kind}`, { method: 'POST', body: JSON.stringify({ name }) })

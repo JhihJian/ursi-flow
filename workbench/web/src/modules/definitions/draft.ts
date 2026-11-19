@@ -1,4 +1,5 @@
 import { pinned, sameRef, type Collection, type Definition, type Executor, type ExecutorKind, type Ports, type Ref, type ResourceKind } from './catalog'
+import { configValuesForPublish, normalizeConfigSchema, sanitizeConfigValues, validateConfig, type ConfigSchema, type ConfigValues, type SecretConfigured, type SecretValues } from './config'
 
 export type FieldRow = { name: string; type: string }
 export type ActionDraft = { name: string; executor: Ref; resources: Ref[]; inputs?: FieldRow[]; outputs?: FieldRow[] }
@@ -8,6 +9,7 @@ export type Draft = {
   id: string; resourceKind: ResourceKind; text: string; serverRef: string; credentialRef: string
   executorKind: ExecutorKind; environment: string; flowId: string; flowRevision: string
   resources: Ref[]; inputs?: FieldRow[]; outputs?: FieldRow[]
+  configSchema: ConfigSchema; config: ConfigValues
   sop: string; acceptance: string; goal?: string; structuredGoal: boolean; deliverables?: string; actions: ActionDraft[]
 }
 const rows = (p?: Ports) => p && Object.entries(p).map(([name, type]) => ({ name, type }))
@@ -19,6 +21,7 @@ export function initialDraft(v?: Definition, executors: Executor[] = []): Draft 
   const d: Draft = {
     id: v?.id ?? '', resourceKind: 'skill', text: '', serverRef: '', credentialRef: '',
     executorKind: 'agent', environment: 'local', flowId: '', flowRevision: '', resources: [],
+    configSchema: { fields: [] }, config: {},
     sop: '', acceptance: '', structuredGoal: false, actions: [blankAction()],
   }
   if (!v) return d
@@ -43,6 +46,8 @@ export function initialDraft(v?: Definition, executors: Executor[] = []): Draft 
   } else {
     d.executorKind = v.kind; d.environment = v.environment === 'sandbox' ? 'sandbox' : 'local'
     d.flowId = v.flowId ?? ''; d.flowRevision = v.flowRevision ?? ''
+    d.configSchema = normalizeConfigSchema(v.configSchema)
+    d.config = sanitizeConfigValues(d.configSchema, v.config)
   }
   return d
 }
@@ -55,13 +60,19 @@ function fixed(ref: Ref) {
   if (!ref.id || !Number.isSafeInteger(ref.revision) || ref.revision < 1) throw new Error('请选择固定的引用版本。')
   return pinned(ref)
 }
-export function publishBody(k: Collection, d: Draft) {
+export function publishBody(k: Collection, d: Draft, secrets: SecretValues = {}, secretConfigured: SecretConfigured = {}, packageIds: readonly string[] = []) {
   const id = d.id
   if (k === 'resources') return { id, kind: d.resourceKind, content: d.resourceKind === 'mcp'
     ? { serverRef: d.serverRef, credentialRef: d.credentialRef || undefined } : d.text }
-  if (k === 'executors') return d.executorKind === 'flow'
-    ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision }
-    : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed) }
+  if (k === 'executors') {
+    const errors = validateConfig(d.configSchema, d.config, secrets, secretConfigured, packageIds)
+    if (errors.length) throw new Error(errors[0])
+    const config = configValuesForPublish(d.configSchema, d.config, secrets, secretConfigured)
+    const base = d.executorKind === 'flow'
+      ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision }
+      : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed) }
+    return Object.keys(config).length ? { ...base, config } : base
+  }
   if (!id.trim()) throw new Error('请填写派工模板 ID。')
   const io = { inputs: fields(d.inputs), outputs: fields(d.outputs) }
   if (!d.sop.trim() || !d.acceptance.trim()) throw new Error('请填写办理说明和验收标准。')

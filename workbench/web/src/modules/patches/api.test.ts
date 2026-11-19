@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { setToken } from '@/shared/http/session'
-import { createPatch, listPatches } from './api'
+import { createPatch, listConfigPackageChoices, listPatches } from './api'
 
 beforeEach(() => setToken('patch-test'))
 afterEach(() => { setToken(''); vi.unstubAllGlobals() })
+
+it('配置选择器只接收配置包公开标识和名称，不暴露目录标识', async () => {
+  const fetch = vi.fn().mockResolvedValue(Response.json([{ id: 'c1', name: '审核配置', directoryId: '/srv/private/config' }]))
+  vi.stubGlobal('fetch', fetch)
+
+  const choices = await listConfigPackageChoices()
+  expect(choices).toEqual([{ id: 'c1', name: '审核配置' }])
+  expect(JSON.stringify(choices)).not.toContain('/srv/private/config')
+  expect(new URL(fetch.mock.calls[0]![0], 'http://localhost').pathname).toBe('/api/v2/patches/config')
+})
 
 it('列表与新建都走包记录接口，响应带目录标识', async () => {
   const fetch = vi.fn()
