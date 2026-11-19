@@ -5,7 +5,7 @@ export const PROMPT_PATH = 'AGENTS.md'
 export const MCP_PATH = 'mcp.json'
 export const SKILLS_ROOT = 'skills'
 
-export type ConfigTab = 'prompt' | 'skills' | 'mcp'
+export type ConfigTab = 'overview' | 'prompt' | 'skills' | 'mcp'
 
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
 

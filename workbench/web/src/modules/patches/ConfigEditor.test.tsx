@@ -35,11 +35,20 @@ function fixture() {
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('配置补丁编辑器', () => {
-  it('默认显示系统提示词，读取 AGENTS.md 后显式保存覆盖写入', async () => {
+  it('首个标签默认选中总览，展示未限根的目录编辑器', () => {
+    renderEditor(fixture())
+    const first = screen.getAllByRole('tab')[0]
+    expect(first).toHaveAccessibleName('总览')
+    expect(first).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('explorer')).not.toHaveAttribute('data-root')
+  })
+
+  it('打开系统提示词，读取 AGENTS.md 后显式保存覆盖写入', async () => {
     const user = userEvent.setup()
     const directory = fixture()
     renderEditor(directory)
 
+    await user.click(screen.getByRole('tab', { name: '系统提示词' }))
     const editor = await screen.findByLabelText('AGENTS.md 内容') as HTMLTextAreaElement
     expect(editor.value).toBe(prompt)
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
@@ -148,6 +157,7 @@ describe('配置补丁编辑器', () => {
     const directory = fixture()
     renderEditor(directory)
 
+    await user.click(screen.getByRole('tab', { name: '系统提示词' }))
     const editor = await screen.findByLabelText('AGENTS.md 内容')
     fireEvent.change(editor, { target: { value: '# 草稿' } })
     await user.click(screen.getByRole('tab', { name: 'MCP' }))

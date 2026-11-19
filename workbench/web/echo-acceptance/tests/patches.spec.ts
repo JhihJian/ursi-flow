@@ -113,7 +113,14 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   await expect(page.getByTestId('patch-studio')).toBeVisible()
   await expect(page.getByRole('tablist', { name: '配置补丁分区' })).toBeVisible()
 
-  // 服务端默认写入三个锚点，界面不提供移动和删除。
+  const overview = page.getByRole('tab', { name: '总览' })
+  await expect(page.getByRole('tablist').getByRole('tab').first()).toHaveAccessibleName('总览')
+  await expect(overview).toHaveAttribute('aria-selected', 'true')
+  for (const name of ['AGENTS.md', 'skills', 'mcp.json']) {
+    await expect(page.getByTestId('patch-explorer').getByRole('button', { name, exact: true })).toBeVisible()
+  }
+  await shot(page, testInfo, 'config-overview')
+  // 服务端默认写入三个锚点。
   const tree = await api.tree(directoryId)
   expect(tree.find(entry => entry.path === 'AGENTS.md' && entry.kind === 'file')).toBeTruthy()
   expect(tree.find(entry => entry.path === 'skills' && entry.kind === 'dir')).toBeTruthy()
@@ -121,6 +128,7 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   expect(JSON.parse(await api.text(directoryId, 'mcp.json'))).toEqual({ mcpServers: {} })
 
   // 系统提示词保存在 AGENTS.md，保存后服务端原文与重载后的编辑区一致。
+  await page.getByRole('tab', { name: '系统提示词' }).click()
   const promptEditor = page.getByLabel('AGENTS.md 内容')
   await expect(promptEditor).toBeVisible()
   await promptEditor.fill(prompt)
@@ -131,7 +139,14 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
 
   await page.reload()
   await expect(page.getByTestId('patch-studio')).toBeVisible()
-  await expect(page.getByLabel('AGENTS.md 内容')).toHaveValue(prompt)
+  await expect(overview).toHaveAttribute('aria-selected', 'true')
+  const reopenedPrompt = await reopenFile(page, 'AGENTS.md', 'AGENTS.md 内容')
+  await expect(reopenedPrompt).toHaveValue(prompt)
+  await reopenedPrompt.fill(`${prompt}总览修改`)
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expectText(api, directoryId, 'AGENTS.md', `${prompt}总览修改`)
+  await page.getByRole('tab', { name: '系统提示词' }).click()
+  await expect(page.getByLabel('AGENTS.md 内容')).toHaveValue(`${prompt}总览修改`)
   await shot(page, testInfo, 'config-prompt-reloaded')
 
   // 坏 JSON 只留在草稿里，保存入口不可用，已有 mcp.json 不变。
