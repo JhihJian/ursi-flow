@@ -45,6 +45,7 @@ import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Textarea } from './components/ui/textarea'
 import { FlowCanvas } from './Graph'
 import { Markdown, MarkdownEditor } from './Markdown'
+import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
 import type { FlowFiles, Source } from './data'
 import { parseFlow, serializeFlow, splitSections, joinSections, syncSections } from './flow/doc'
@@ -162,9 +163,7 @@ export function FlowEditor({ source }: { source: Source }) {
   const [notice, setNotice] = useState('')
   const [newPath, setNewPath] = useState('')
   const [confirm, setConfirm] = useState(false)
-  const [running, setRunning] = useState(false)
-  const [runId, setRunId] = useState('')
-  const [variables, setVariables] = useState('{}')
+  const [startOpen, setStartOpen] = useState(false)
   // 修订号是整个目录共用的，必须连同 Flow 标识一起比较，否则切换包时不会刷新。
   const loadedKey = useRef<string | null>(null)
 
@@ -305,25 +304,11 @@ export function FlowEditor({ source }: { source: Source }) {
       setBusy('')
     }
   }
-  const start = async () => {
-    setRunning(true)
-    setError('')
-    try {
-      let parsedVariables: Record<string, unknown>
-      try {
-        parsedVariables = JSON.parse(variables || '{}')
-      } catch {
-        throw new Error('启动变量必须是有效 JSON')
-      }
-      if (!parsedVariables || typeof parsedVariables !== 'object' || Array.isArray(parsedVariables))
-        throw new Error('启动变量必须是 JSON 对象')
-      const created = await source.start(name, parsedVariables, runId.trim() || undefined)
-      navigate(`/runs/${encodeURIComponent(created.id)}`)
-    } catch (cause) {
-      setError(message(cause))
-    } finally {
-      setRunning(false)
-    }
+  // 启动参数由对话框按 FLOW.md 的全局变量声明生成，这里只负责提交与跳转。
+  const start = async (parsedVariables: Record<string, unknown>, runId: string) => {
+    // 失败时对话框留在原地显示原因，成功后跳转详情页。
+    const created = await source.start(name, parsedVariables, runId || undefined)
+    navigate(`/runs/${encodeURIComponent(created.id)}`)
   }
   const readOnly = source.mode === 'demo'
   const isMarkdown = selected.endsWith('.md')
@@ -467,44 +452,29 @@ export function FlowEditor({ source }: { source: Source }) {
             </div>
           </div>
           {editing && (
-            <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
-              <div className="grid gap-1.5">
-                <Label htmlFor="run-id">Run ID（可选）</Label>
-                <Input
-                  id="run-id"
-                  className="h-8 w-36 px-2 text-xs"
-                  value={runId}
-                  onChange={(event) => setRunId(event.target.value)}
-                  placeholder="自动生成"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="run-variables">启动变量（JSON）</Label>
-                <Textarea
-                  id="run-variables"
-                  aria-label="启动变量"
-                  className="h-8 min-h-8 w-40 px-2 py-1 font-mono text-[11px] sm:w-52"
-                  value={variables}
-                  onChange={(event) => setVariables(event.target.value)}
-                />
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={start}
-                disabled={readOnly || running || dirty || busy === 'save'}
-                title={dirty ? '请先保存包文件' : undefined}
-              >
-                <Play />
-                {running ? '启动中…' : '启动运行'}
-              </Button>
-            </div>
+            <Button
+              variant="primary"
+              className="sm:ml-auto"
+              onClick={() => setStartOpen(true)}
+              disabled={readOnly || dirty || busy === 'save'}
+              title={dirty ? '请先保存包文件' : undefined}
+            >
+              <Play />
+              启动运行
+            </Button>
           )}
         </CardContent>
       </Card>
       {readOnly && (
         <p className="mt-2 text-xs text-muted-foreground">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>
       )}
+      <StartRunDialog
+        open={startOpen}
+        onOpenChange={setStartOpen}
+        flowId={name}
+        markdown={flowText}
+        onStart={start}
+      />
 
       <section className="mt-3 min-w-0">
         <Tabs value={view} onValueChange={(next) => setView(next as View)}>
@@ -553,9 +523,7 @@ export function FlowEditor({ source }: { source: Source }) {
                 issues={issues}
                 onGraph={applyGraph}
                 onAction={applyAction}
-                onStart={() => {
-                  void start()
-                }}
+                onStart={() => setStartOpen(true)}
               />
             </>
           )}

@@ -253,3 +253,142 @@ flowchart TD
   assert.equal(resultsOf(tail).join(), '已完成')
   assert.match(tail.body, /按任务执行。/)
 })
+
+test('启动参数只取声明的全局变量，过程变量不进入表单', async () => {
+  const { analyzeParams } = await flow('params.ts')
+  const analysis = analyzeParams(`---
+name: 代码修改与验证
+description: 适用于目标明确的任务。
+variables:
+  任务:
+    description: 本次代码修改目标
+  修改记录:
+    description: 最新修改与返工记录
+    default: 尚未修改
+  模型:
+    description: 执行用模型
+    default: default-model
+  阈值:
+    description: 重试阈值
+    default: 3
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> change[完成修改]
+  change -->|已修改| finish((结束))
+\`\`\`
+
+## 完成修改
+
+\`\`\`新建Agent
+完成以下修改：{var.任务}
+使用模型 {var.模型}，阈值 {var.阈值}。
+完成后在 variables.修改记录 中提交记录。
+\`\`\`
+
+### 已修改
+
+| 变量 | 含义 |
+| --- | --- |
+| 明细 | 过程汇总 |
+`)
+  assert.equal(analysis.flowName, '代码修改与验证')
+  assert.deepEqual(
+    analysis.params.map((param) => param.name),
+    ['任务', '模型', '阈值'],
+  )
+  assert.deepEqual(
+    analysis.params.map((param) => [param.name, param.hasDefault, param.kind]),
+    [
+      ['任务', false, 'text'],
+      ['模型', true, 'text'],
+      ['阈值', true, 'number'],
+    ],
+  )
+  assert.equal(analysis.params[0].referenced, true)
+  assert.deepEqual(
+    analysis.internal.map((item) => [item.name, item.initial]),
+    [['修改记录', '尚未修改']],
+  )
+  // 结果变量表里的名字只是下一跳输入，不会变成启动参数。
+  assert.ok(!analysis.params.some((param) => param.name === '明细'))
+})
+
+test('过程写入但没有默认值的全局变量仍要填写', async () => {
+  const { analyzeParams } = await flow('params.ts')
+  const analysis = analyzeParams(`---
+name: 示例
+description: 示例流程。
+variables:
+  结果:
+    description: 由节点写入的最终结果
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> a[执行]
+  a -->|已完成| finish((结束))
+\`\`\`
+
+## 执行
+
+\`\`\`新建Agent
+请在 variables.结果 中提交结论。
+\`\`\`
+
+### 已完成
+
+已提交。
+`)
+  assert.deepEqual(analysis.internal, [])
+  assert.deepEqual(
+    analysis.params.map((param) => [param.name, param.hasDefault]),
+    [['结果', false]],
+  )
+})
+
+test('元信息异常与取值转换', async () => {
+  const { analyzeParams, toText, toValue } = await flow('params.ts')
+  assert.equal(analyzeParams('没有元信息').error?.includes('缺少元信息'), true)
+  assert.equal(analyzeParams('---\nvariables: [1, 2\n---\n').error?.includes('YAML'), true)
+  const param = { name: '阈值', description: '', hasDefault: true, kind: 'number', referenced: true, default: 3 }
+  assert.deepEqual(toValue(param, '5'), { value: 5 })
+  assert.equal(toValue(param, 'abc').error, '必须是数字')
+  assert.deepEqual(toValue({ ...param, kind: 'json' }, '{"a":1}'), { value: { a: 1 } })
+  assert.equal(toText({ a: 1 }), '{\n  "a": 1\n}')
+  assert.equal(toText(undefined), '')
+})
+
+test('提示词里用「全局变量 `x`」写回的变量同样算过程变量', async () => {
+  const { analyzeParams } = await flow('params.ts')
+  const analysis = analyzeParams(`---
+name: 评审
+description: 评审与修复。
+variables:
+  任务:
+    description: 评审任务
+  评审记录:
+    description: 评审进度
+    default: 尚未评审
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> a[评审]
+  a -->|已完成| finish((结束))
+\`\`\`
+
+## 评审
+
+\`\`\`新建Agent
+评审 {var.任务}，参考 {var.评审记录}。
+\`\`\`
+
+### 已完成
+
+更新全局变量 \`评审记录\` 后再继续。
+`)
+  assert.deepEqual(analysis.params.map((param) => param.name), ['任务'])
+  assert.deepEqual(analysis.internal.map((item) => item.name), ['评审记录'])
+})

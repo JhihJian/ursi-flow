@@ -48,6 +48,38 @@ flowchart TD
 
 长时间运行的命令便于验证停止操作。
 `
+const withVars = `---
+name: 启动参数验收
+description: 验证控制台按 FLOW.md 生成启动参数表单。
+variables:
+  任务:
+    description: 本次检查目标
+  修改记录:
+    description: 过程中写入的记录
+    default: 尚未修改
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> check[执行检查]
+  check -->|已执行| finish((结束))
+\`\`\`
+
+## 执行检查
+
+\`\`\`执行自定义命令
+{
+  "command": "node",
+  "args": ["-e", "console.log('检查通过')"],
+  "stdin": "检查目标：{var.任务}"
+}
+\`\`\`
+
+### 已执行
+
+命令已执行，记录写入 variables.修改记录。
+`
+
 const withDocs = `---
 name: 文档视图验收
 description: 含引用文档与 Mermaid 图的流程。
@@ -207,9 +239,49 @@ test('图形视图可按画布编辑节点与结果边，并跑通运行闭环',
   expect(saved).toMatch(/## 新节点/)
   expect(saved).toMatch(/### 已执行\s+节点返回“已执行”时继续执行。/)
 
-  await page.getByLabel('Run ID（可选）').fill('e2e-graph-run')
   await page.getByRole('button', { name: '启动运行' }).click()
+  const startDialog = page.getByRole('dialog')
+  await startDialog.getByLabel('Run ID（可选）').fill('e2e-graph-run')
+  await startDialog.getByRole('button', { name: '启动运行' }).click()
   await expect(page).toHaveURL(/\/#\/runs\/e2e-graph-run$/)
+})
+
+test('启动参数按 FLOW.md 全局变量生成表单，过程变量不进表单', async ({ page }) => {
+  await seed(page, 'e2e-params', { 'FLOW.md': withVars })
+  await openFlow(page, 'e2e-params')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('1 项启动变量，1 项必填')
+  // 只有声明的全局变量进表单；过程中由节点写入的变量只作说明。
+  await expect(dialog.locator('#start-var-任务')).toBeVisible()
+  await expect(dialog).not.toContainText('提示词未引用')
+  await expect(dialog.locator('#start-var-修改记录')).toHaveCount(0)
+  await expect(dialog).toContainText('过程中由节点写入')
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-params-run')
+
+  // 必填项留空时不发起运行。
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(dialog).toContainText('请补齐标记为必填的变量')
+  await dialog.locator('#start-var-任务').fill('验收任务')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-params-run$/)
+  // 提交的变量只有必填项，过程变量连同默认值由 Runtime 自己管理。
+  const run = await api(page, '/runs/e2e-params-run')
+  expect(run.body.variables).toEqual({ 任务: '验收任务' })
+
+  // 高级入口接受原始 JSON，未声明的名字直接拒绝。
+  await page.goto('/#/flows/e2e-params/edit')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  await dialog.getByRole('button', { name: '高级：编辑 JSON' }).click()
+  await dialog.locator('#start-run-json').fill('{"任务":"高级任务","未知":1}')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(dialog).toContainText('未声明的启动变量：未知')
+  await dialog.locator('#start-run-json').fill('{"任务":"高级任务"}')
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-params-advanced')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-params-advanced$/)
+  const advanced = await api(page, '/runs/e2e-params-advanced')
+  expect(advanced.body.variables).toEqual({ 任务: '高级任务' })
 })
 
 test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }) => {
@@ -275,8 +347,10 @@ test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) 
 test('停止运行与运行配置', async ({ page }) => {
   await seed(page, 'e2e-slow', { 'FLOW.md': slow })
   await openFlow(page, 'e2e-slow')
-  await page.getByLabel('Run ID（可选）').fill('e2e-slow-run')
   await page.getByRole('button', { name: '启动运行' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-slow-run')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
   await expect(page).toHaveURL(/\/#\/runs\/e2e-slow-run$/)
   await expect(page.locator('[data-status="running"]')).toBeVisible()
   await page.getByRole('button', { name: '停止运行' }).click()
