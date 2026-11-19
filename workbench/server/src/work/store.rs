@@ -40,6 +40,10 @@ fn fits_reader(value: &Value, remaining: usize) -> bool {
 }
 
 impl Store {
+    pub(super) fn dir(&self) -> &Path {
+        &self.0.dir
+    }
+
     pub fn open(dir: PathBuf) -> io::Result<Self> {
         DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
         if fs::symlink_metadata(&dir)?.file_type().is_symlink()

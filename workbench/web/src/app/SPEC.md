@@ -4,6 +4,7 @@ depends-on:
   - ../shared/SPEC.md
   - ../modules/work-list/SPEC.md
   - ../modules/work-detail/SPEC.md
+  - ../modules/workspaces/SPEC.md
   - ../modules/sources/SPEC.md
   - ../modules/definitions/SPEC.md
   - ../modules/flows/SPEC.md
@@ -27,6 +28,7 @@ references:
 #### 验收
 
 - `/` 进入 `/items`；`/items/:id` 和 `/items/:id/deliveries/:version` 打开同一工作项详情。工作包、资源和执行器各有独立入口与版本深链。
+- 工作清单提供 `/workspaces` 入口；`/workspaces`、`/workspaces/new`、`/workspaces/:id` 和 `/workspaces/:id/result` 分别打开工作区列表、新建、准备和执行结果。
 - 业务页面只从各模块导出的路由或页面组件接入，应用装配不复制业务实现；业务模块可以用独立测试路由或固定响应单独验收。
 - 受保护页面在原地址登录，保留查询参数和片段。退出或收到当前令牌的 401 后隐藏业务数据并可重新登录。旧会话迟到的 401 不影响新登录。本地对话保留独立演示入口，无令牌也可使用。
 - 未知地址提供返回工作清单的链接且可点击。业务页面加载失败可以重新打开原地址。

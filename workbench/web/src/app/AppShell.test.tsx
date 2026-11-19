@@ -44,7 +44,7 @@ describe('应用壳', () => {
 
     await userEvent.click(within(mainNav).getByRole('link', { name: '运行记录' }))
     await waitFor(() => { expect(router.state.location.pathname).toBe('/runs') })
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('运行记录')
+    expect(await screen.findByRole('heading', { level: 1, name: '运行记录' })).toBeVisible()
     await waitFor(() => { expect(document.title).toBe('运行记录 · ursi-flow') })
     expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/runs')
     expect(within(screen.getByRole('navigation', { name: '面包屑' })).getByText('运行记录')).toHaveAttribute('aria-current', 'page')
