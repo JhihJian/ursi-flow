@@ -64,7 +64,11 @@ export function createConsole(env) {
       }
     }
     let file, type
-    if (path === '/' || /^\/sandboxes(?:\/[a-f0-9]{32})?\/?$/.test(path)) {
+    if (/^\/sandboxes(?:\/[a-f0-9]{32})?\/?$/.test(path)) {
+      res.setHeader('Location', '/#' + path)
+      return send(302, '{}')
+    }
+    if (path === '/' || path === '/index.html') {
       file = 'index.html'
       type = 'text/html; charset=utf-8'
     } else if (/^\/assets\/[\w.-]+\.(js|css)$/.test(path)) {

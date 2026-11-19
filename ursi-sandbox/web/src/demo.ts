@@ -1,5 +1,6 @@
 // 与 Gateway 相同的展示字段。演示模式不发起 Gateway 请求。
-const samples = [
+import type { Sandbox } from './data'
+const samples: [string, string, string, number, number][] = [
   ['release-review', 'running', 'ursi-runtime-pi:local', 2, 2048],
   ['hello-html', 'running', 'nginx:alpine', 1, 256],
   ['daily-close', 'stopped', 'python:3.12-slim', 1, 512],
@@ -7,7 +8,7 @@ const samples = [
   ['asset-preview', 'running', 'node:22-alpine', 1, 512],
   ['bundle-verify', 'error', 'ursi-runtime-pi:local', 2, 1024],
 ]
-export const rows = samples.map(
+export const rows: Sandbox[] = samples.map(
   ([name, status, image, cpus, memory_mb], i) => ({
     id: `b7d2a94${i}a2314786a2182ac21f53ae2${i}`,
     status,

@@ -17,21 +17,30 @@ import {
   Server,
   Terminal,
 } from 'lucide-react'
-import { loadSource } from './data.js'
+import { HashRouter, Link, Route, Routes, useParams } from 'react-router'
+import type { LucideIcon } from 'lucide-react'
+import { loadSource, type Source, type Sandbox } from './data'
+import { initAppearance } from './theme'
+import './tokens.css'
 import './style.css'
 
-const statuses = {
+const statuses: Record<string, string> = {
   running: '运行中',
   preparing: '准备中',
   stopped: '已停止',
   deleting: '删除中',
   error: '异常',
 }
-const nameOf = (r) => r.spec.labels.name || r.id
-const memory = (mb) => (mb % 1024 === 0 ? `${mb / 1024} GiB` : `${mb} MiB`)
-function useLoad(load, deps) {
+const nameOf = (r: Sandbox) => r.spec.labels.name || r.id
+const memory = (mb: number) =>
+  mb % 1024 === 0 ? `${mb / 1024} GiB` : `${mb} MiB`
+type State<T> = { value?: T; loading?: boolean; error?: string }
+function useLoad<T>(
+  load: (s: AbortSignal) => T | Promise<T>,
+  deps: React.DependencyList,
+) {
   const [seq, refresh] = React.useReducer((n) => n + 1, 0)
-  const [state, set] = useState({ loading: true })
+  const [state, set] = useState<State<T>>({ loading: true })
   useEffect(() => {
     const ctl = new AbortController()
     set({ loading: true })
@@ -49,7 +58,8 @@ function useLoad(load, deps) {
   }, [...deps, seq])
   return { ...state, refresh }
 }
-function AsyncState({ state }) {
+type RequestState = State<unknown> & { refresh: () => void }
+function AsyncState({ state }: { state: RequestState }) {
   return (
     <div role="status" className="empty">
       {state.error ? (
@@ -67,7 +77,7 @@ function AsyncState({ state }) {
     </div>
   )
 }
-function Badge({ status }) {
+function Badge({ status }: { status: string }) {
   return (
     <span className={'badge ' + status}>
       <i />
@@ -75,7 +85,7 @@ function Badge({ status }) {
     </span>
   )
 }
-function Refresh({ state }) {
+function Refresh({ state }: { state: RequestState }) {
   return (
     <button onClick={state.refresh} disabled={state.loading}>
       <RefreshCw />
@@ -83,16 +93,16 @@ function Refresh({ state }) {
     </button>
   )
 }
-function Header({ source }) {
+function Header({ source }: { source?: Source }) {
   return (
     <header>
       <div className="bar">
-        <a className="brand" href="/sandboxes">
+        <Link className="brand" to="/sandboxes">
           <span className="logo">
             <Boxes size={22} />
           </span>
           Ursi Sandbox
-        </a>
+        </Link>
         <span className="sep">/</span>
         <span className="crumb">资源控制台</span>
         {source && (
@@ -105,7 +115,7 @@ function Header({ source }) {
     </header>
   )
 }
-function List({ source }) {
+function List({ source }: { source: Source }) {
   const state = useLoad((s) => source.list(s), [source])
   const [q, search] = useState(''),
     [status, filter] = useState('')
@@ -118,7 +128,7 @@ function List({ source }) {
         s.toLowerCase().includes(term),
       ),
   )
-  const stats = [
+  const stats: [string, string, LucideIcon][] = [
     ['', '全部实例', Layers3],
     ['running', '运行中', Activity],
     ['stopped', '已停止', CircleStop],
@@ -128,7 +138,6 @@ function List({ source }) {
     <main>
       <div className="heading">
         <div>
-          <div className="kicker">RESOURCE INVENTORY</div>
           <h1>沙箱管理</h1>
         </div>
         <Refresh state={state} />
@@ -204,61 +213,63 @@ function List({ source }) {
             )}
           </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                {[
-                  '实例名称 / ID',
-                  '运行状态',
-                  '容器镜像',
-                  '资源配额',
-                  '端点',
-                  '',
-                ].map((c) => (
-                  <th key={c}>{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {result.map((r) => (
-                <tr key={r.id}>
-                  <td className="identity">
-                    <a href={'/sandboxes/' + r.id}>
-                      <span className="cube">
-                        <Box size={18} />
-                      </span>
-                      <span>
-                        <b>{nameOf(r)}</b>
-                        <small>{r.id.slice(0, 12)}</small>
-                      </span>
-                    </a>
-                  </td>
-                  <td className="state">
-                    <Badge status={r.status} />
-                  </td>
-                  <td className="image mono" data-label="镜像">
-                    {r.spec.image}
-                  </td>
-                  <td className="quota" data-label="资源">
-                    {r.spec.cpus} CPU · {memory(r.spec.memory_mb)}
-                  </td>
-                  <td className="count" data-label="端点">
-                    <Network size={14} />
-                    {r.endpoints.length}
-                  </td>
-                  <td className="action">
-                    <a
-                      href={'/sandboxes/' + r.id}
-                      aria-label={'查看 ' + nameOf(r)}
-                      title="查看详情"
-                    >
-                      <ChevronRight size={17} />
-                    </a>
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {[
+                    '实例名称 / ID',
+                    '运行状态',
+                    '容器镜像',
+                    '资源配额',
+                    '端点',
+                    '',
+                  ].map((c) => (
+                    <th key={c}>{c}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.map((r) => (
+                  <tr key={r.id}>
+                    <td className="identity">
+                      <Link to={'/sandboxes/' + r.id}>
+                        <span className="cube">
+                          <Box size={18} />
+                        </span>
+                        <span>
+                          <b>{nameOf(r)}</b>
+                          <small>{r.id.slice(0, 12)}</small>
+                        </span>
+                      </Link>
+                    </td>
+                    <td className="state">
+                      <Badge status={r.status} />
+                    </td>
+                    <td className="image mono" data-label="镜像">
+                      {r.spec.image}
+                    </td>
+                    <td className="quota" data-label="资源">
+                      {r.spec.cpus} CPU · {memory(r.spec.memory_mb)}
+                    </td>
+                    <td className="count" data-label="端点">
+                      <Network size={14} />
+                      {r.endpoints.length}
+                    </td>
+                    <td className="action">
+                      <Link
+                        to={'/sandboxes/' + r.id}
+                        aria-label={'查看 ' + nameOf(r)}
+                        title="查看详情"
+                      >
+                        <ChevronRight size={17} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {state.value && (
           <footer>
@@ -269,7 +280,7 @@ function List({ source }) {
     </main>
   )
 }
-function Logs({ source, id }) {
+function Logs({ source, id }: { source: Source; id: string }) {
   const state = useLoad((s) => source.logs(id, s), [source, id])
   return (
     <section>
@@ -288,22 +299,22 @@ function Logs({ source, id }) {
     </section>
   )
 }
-function Details({ source, id }) {
+function Details({ source }: { source: Source }) {
+  const id = useParams<'id'>().id!
   const state = useLoad((s) => source.detail(id, s), [source, id]),
     r = state.value
   return (
     <main>
-      <a className="back" href="/sandboxes">
+      <Link className="back" to="/sandboxes">
         <ArrowLeft size={16} />
         实例列表
-      </a>
+      </Link>
       {!r ? (
         <AsyncState state={state} />
       ) : (
         <>
           <div className="heading">
             <div>
-              <div className="kicker">INSTANCE DETAIL</div>
               <h1>{nameOf(r)}</h1>
               <small>{r.id}</small>
             </div>
@@ -364,19 +375,36 @@ function Details({ source, id }) {
   )
 }
 function App() {
-  const config = useLoad(loadSource, []),
-    id = location.pathname.split('/')[2]
+  const config = useLoad(loadSource, [])
   return (
     <>
       <Header source={config.value} />
       {!config.value ? (
         <AsyncState state={config} />
-      ) : id ? (
-        <Details source={config.value} id={id} />
       ) : (
-        <List source={config.value} />
+        <Routes>
+          <Route index element={<List source={config.value} />} />
+          <Route path="sandboxes" element={<List source={config.value} />} />
+          <Route
+            path="sandboxes/:id"
+            element={<Details source={config.value} />}
+          />
+          <Route
+            path="*"
+            element={
+              <main>
+                页面不存在 <Link to="/sandboxes">实例列表</Link>
+              </main>
+            }
+          />
+        </Routes>
       )}
     </>
   )
 }
-createRoot(document.getElementById('root')).render(<App />)
+initAppearance()
+createRoot(document.getElementById('root')!).render(
+  <HashRouter>
+    <App />
+  </HashRouter>,
+)
