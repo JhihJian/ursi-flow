@@ -8,4 +8,6 @@
 | `GET /patches/{kind}` | 本类包记录数组 |
 | `GET /patches/{kind}/{id}` | 一条包记录，其他类别或未知标识返回 404 |
 
+工作包的创建、列表与详情还返回 `source`（当前为 `manual`）、`createdAt`（服务端 Unix 秒）和 `executionStatus`（新建为 `not_started`）。是否已执行和结果状态由同一字段展示，配置包不附加这些字段。
+
 文件树和正文属于[虚拟目录资源](../directories/HTTP.md)。例如先从记录取得 `directoryId`，再请求 `GET /directories/{directoryId}/tree`。只需要存放文件时，也可直接 `POST /directories`（正文 `{}`），不必创建包。

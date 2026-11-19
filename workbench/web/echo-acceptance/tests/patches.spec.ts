@@ -57,6 +57,15 @@ test('工作包：新建空包、建目录与文件、保存后重读', async ({
   await expect(page.getByText('目录为空，可新建文件或导入目录。')).toBeVisible()
   expect(await api.tree(directoryId)).toEqual([])
   await shot(page, testInfo, 'work-empty')
+  await page.goto('/work-patches')
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name, exact: true }) })
+  await expect(row.getByText('手动创建')).toBeVisible()
+  await expect(row.locator('time')).toHaveAttribute('datetime', /T/)
+  await expect(row.getByText('未执行', { exact: true })).toBeVisible()
+  await expect(row.getByText('暂无结果')).toBeVisible()
+  await expect(row.getByRole('button', { name: '执行详情' })).toBeDisabled()
+  await shot(page, testInfo, 'work-list-metadata')
+  await row.getByRole('link', { name, exact: true }).click()
 
   // 先建目录，再用带 / 的文件名落到该目录内。
   await page.getByRole('button', { name: '新建文件夹', exact: true }).click()

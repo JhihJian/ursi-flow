@@ -7,6 +7,7 @@ import { Icon } from '@/shared/ui/icon'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { listPatches, type Patch, type PatchKind } from './api'
+import { WorkPatchRow } from './WorkPatchRow'
 import { PatchCreateDialog } from './PatchCreate'
 import { patchKindMeta, patchPath } from './PatchModel'
 
@@ -48,7 +49,7 @@ export function PatchList({ kind }: { kind: PatchKind }) {
       {!patches.error && patches.data.length > 0 ? (
         <div className="border-y border-line">
           <ul className="divide-y divide-line">
-            {patches.data.map((patch) => (
+            {patches.data.map((patch) => kind === 'work' ? <WorkPatchRow key={patch.id} patch={patch} /> : (
               <li key={patch.id}>
                 <Link
                   to={patchPath(kind, patch.id)}

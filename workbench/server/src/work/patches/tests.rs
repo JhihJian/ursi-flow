@@ -213,9 +213,19 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
     let listed = app.ok("GET", "/v2/patches/work", Value::Null).await;
     let work_id = listed[0]["id"].as_str().unwrap();
     assert_ne!(work_id, work);
+    let created = listed[0]["createdAt"].as_u64().unwrap();
+    assert!(
+        created > 0
+            && created
+                <= SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+    );
     assert_eq!(
         listed,
-        json!([{"id":work_id,"name":"结算异常排查","directoryId":work}])
+        json!([{"id":work_id,"name":"结算异常排查","directoryId":work,
+        "source":"manual","createdAt":created,"executionStatus":"not_started"}])
     );
     assert_eq!(
         app.ok("GET", &format!("/v2/patches/work/{work_id}"), Value::Null)
@@ -231,6 +241,7 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
     let configs = app.ok("GET", "/v2/patches/config", Value::Null).await;
     assert_eq!(configs[0]["directoryId"], config);
     assert_eq!(configs[0]["name"], "审核助手");
+    assert!(configs[0].get("executionStatus").is_none());
     // 另一类包的标识在交叉路径下不存在，磁盘也不共享。
     assert_eq!(
         app.call("GET", &format!("/v2/patches/config/{work_id}"), Value::Null)

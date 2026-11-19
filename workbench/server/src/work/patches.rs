@@ -12,6 +12,7 @@ use axum::{
 use config::Kind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -20,6 +21,16 @@ struct Patch {
     id: String,
     name: String,
     directory_id: String,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    work: Option<WorkMetadata>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkMetadata {
+    source: &'static str,
+    created_at: u64,
+    execution_status: &'static str,
 }
 
 pub(super) fn routes(store: Store) -> Router {
@@ -93,6 +104,18 @@ async fn create(
                     id: Uuid::new_v4().to_string(),
                     name,
                     directory_id: directory_id.to_owned(),
+                    work: if kind == Kind::Work {
+                        Some(WorkMetadata {
+                            source: "manual",
+                            created_at: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map_err(|_| Error::Internal("系统时间无效".into()))?
+                                .as_secs(),
+                            execution_status: "not_started",
+                        })
+                    } else {
+                        None
+                    },
                 };
                 let table = db
                     .as_object_mut()
