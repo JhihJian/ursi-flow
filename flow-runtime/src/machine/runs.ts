@@ -6,11 +6,26 @@ import { join } from "node:path";
 import { Catalog, id, optional, readJson, save } from "./catalog.ts";
 import { validateVariables } from "../core/contracts/variables.ts";
 import { BusinessError, invalid } from "./errors.ts";
+import type { PiProviderConfig } from "../executor-adapters/local-pi/sdk.ts";
 
 export interface Config {
 	executor: "local-pi";
-	model: string;
+	provider: PiProviderConfig;
 	maxConcurrent: number;
+}
+/** 记录与接口里的配置：密钥只保留“是否已配置”，不写入 job.json，也不回传给页面。 */
+export interface PublicConfig {
+	executor: "local-pi";
+	provider: Omit<PiProviderConfig, "apiKey"> & { apiKeySet: boolean };
+	maxConcurrent: number;
+}
+export function publicConfig(config: Config): PublicConfig {
+	const { apiKey, ...provider } = config.provider;
+	return {
+		executor: config.executor,
+		provider: { ...provider, apiKeySet: Boolean(apiKey) },
+		maxConcurrent: config.maxConcurrent,
+	};
 }
 interface Job {
 	id: string;
@@ -18,7 +33,7 @@ interface Job {
 	revision: string;
 	cwd: string;
 	variables: Record<string, unknown>;
-	config: Config;
+	config: PublicConfig;
 	status: string;
 	error?: string;
 }
@@ -148,7 +163,7 @@ export class Runs {
 			revision,
 			cwd,
 			variables,
-			config,
+			config: publicConfig(config),
 			status: "running",
 		};
 		const file = join(dir, "job.json");
@@ -194,8 +209,9 @@ export class Runs {
 				}
 			});
 		});
+		// provider 只经进程间消息交给 worker，避免密钥进入已落盘的 job.json。
 		child.send(
-			{ job, path: join(this.catalog.root(revision), flow), dir },
+			{ job, provider: config.provider, path: join(this.catalog.root(revision), flow), dir },
 			(err) => {
 				if (err) error = err.message;
 			},

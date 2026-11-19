@@ -108,7 +108,16 @@ const base = {
   cwd: '/srv/projects/ursi-flow',
   revision: 'c7b2178f-3d0e-4b5a-9c11-7a2f6d84e002',
 }
-const config: FlowConfig = { executor: 'local-pi', model: '', maxConcurrent: 4 }
+const config: FlowConfig = {
+  executor: 'local-pi',
+  provider: {
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    api: 'openai-completions',
+    apiKeySet: true,
+  },
+  maxConcurrent: 4,
+}
 
 const runs: Run[] = [
   {

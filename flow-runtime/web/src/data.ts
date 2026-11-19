@@ -7,10 +7,44 @@ export interface Revision {
 export interface FlowPackage extends Revision {
   files: FlowFiles
 }
+/** 模型接入配置：密钥只回传是否已配置，页面不保存明文。 */
+export interface ProviderConfig {
+  baseUrl: string
+  model: string
+  api?: string
+  contextWindow?: number
+  maxTokens?: number
+  reasoning?: boolean
+  thinkingLevel?: string
+  apiKeySet?: boolean
+}
 export interface FlowConfig {
   executor: 'local-pi'
-  model: string
+  provider: ProviderConfig
   maxConcurrent: number
+}
+/** PATCH 只提交变化的部分；apiKey 留空表示沿用已保存的密钥。 */
+export interface ConfigPatch {
+  provider?: Partial<Omit<ProviderConfig, 'apiKeySet'>> & { apiKey?: string }
+  maxConcurrent?: number
+}
+export const PROVIDER_APIS = [
+  'openai-completions',
+  'openai-responses',
+  'anthropic-messages',
+  'google-generative-ai',
+] as const
+export const THINKING_LEVELS = ['off', 'low', 'medium', 'high'] as const
+
+/** provider 缺项时返回缺的字段，页面据此提示去补配置。 */
+export function providerMissing(config?: FlowConfig | null): string[] {
+  const provider = config?.provider
+  if (!provider) return ['baseUrl', 'apiKey', 'model']
+  const missing: string[] = []
+  if (!provider.baseUrl?.trim()) missing.push('baseUrl')
+  if (!provider.apiKeySet) missing.push('apiKey')
+  if (!provider.model?.trim()) missing.push('model')
+  return missing
 }
 export interface Run extends Revision {
   flow: string
@@ -116,7 +150,7 @@ export interface Source {
   history(id: string, signal?: AbortSignal): Promise<RunHistory>
   stop(id: string): Promise<Run>
   config(signal?: AbortSignal): Promise<FlowConfig>
-  configure(patch: Partial<FlowConfig>): Promise<FlowConfig>
+  configure(patch: ConfigPatch): Promise<FlowConfig>
 }
 
 export class ApiError extends Error {

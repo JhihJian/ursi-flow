@@ -59,7 +59,7 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 
 ## 运行前提
 
-页面只负责提交运行，真正执行 Agent 节点的是 daemon 环境里的 `pi`。作为服务运行时需要两件事：`PATH` 能找到 `pi`（或用 `URSI_FLOW_PI` 指定路径），以及模型凭据通过环境文件提供。缺任何一个，运行都会在第一个 Agent 节点失败，详情页会显示 Pi 的原始原因。`~/.ursi-flow/config.json` 的 `model` 建议写明 `provider/model`，页面“运行配置”里可以修改。
+页面只负责提交运行，Agent 节点由 daemon 用 Pi SDK 在进程内执行，模型接入信息来自 daemon 的 `~/.ursi-flow/config.json`。首次使用先在“运行配置”页填模型服务地址、密钥和模型标识，保存后即可启动。provider 缺项时页面会禁用“启动运行”并说明缺什么，不依赖任何机器的 `PATH`、环境文件或固定模型。
 
 ## 启动参数
 

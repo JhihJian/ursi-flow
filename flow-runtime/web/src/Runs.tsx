@@ -262,7 +262,8 @@ export function RunDetail({ source }: { source: Source }) {
                 工作目录: jobRow.cwd,
                 修订: jobRow.revision,
                 并发上限: String(jobRow.config.maxConcurrent),
-                模型: jobRow.config.model || '执行器默认模型',
+                模型: jobRow.config.provider.model || '未配置',
+                服务地址: jobRow.config.provider.baseUrl || '未配置',
               }).map(([key, value]) => (
                 <div key={key} className="min-w-0">
                   <dt className="text-xs text-muted-foreground">{key}</dt>

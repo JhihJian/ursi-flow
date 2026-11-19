@@ -1,14 +1,15 @@
 import { join } from "node:path";
 import {
 	AgentRunModel,
-	HeadlessPi,
 	JsonFileRunStore,
+	PiSdkHarness,
 	createFlowCoordinator,
 	loadFlow,
 } from "../index.ts";
 import type { FlowVariables } from "../core/contracts/types.ts";
+import type { PiProviderConfig } from "../executor-adapters/local-pi/sdk.ts";
 
-// Workers own a dedicated POSIX process group, including Pi and command children.
+// Workers own a dedicated POSIX process group, including command children.
 process.on("disconnect", () => process.kill(-process.pid, "SIGKILL"));
 process.once(
 	"message",
@@ -16,6 +17,7 @@ process.once(
 		path,
 		dir,
 		job,
+		provider,
 	}: {
 		path: string;
 		dir: string;
@@ -23,12 +25,12 @@ process.once(
 			id: string;
 			cwd: string;
 			variables: FlowVariables;
-			config: { model: string };
 		};
+		provider: PiProviderConfig;
 	}) => {
 		try {
 			const pkg = await loadFlow(path),
-				harness = new HeadlessPi({ model: job.config.model });
+				harness = new PiSdkHarness(provider);
 			const runner = createFlowCoordinator({
 				...pkg,
 				store: new JsonFileRunStore(join(dir, "facts.json")),

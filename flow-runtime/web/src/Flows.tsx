@@ -47,7 +47,7 @@ import { FlowCanvas } from './Graph'
 import { Markdown, MarkdownEditor } from './Markdown'
 import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
-import type { FlowFiles, Source } from './data'
+import { providerMissing, type FlowFiles, type Source } from './data'
 import { parseFlow, serializeFlow, splitSections, joinSections, syncSections } from './flow/doc'
 import { graphIssues, type ActionKind, type FlowGraph } from './flow/graph'
 import { setActionKind } from './flow/edit'
@@ -164,6 +164,9 @@ export function FlowEditor({ source }: { source: Source }) {
   const [newPath, setNewPath] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [startOpen, setStartOpen] = useState(false)
+  // provider 没配全时不让启动，避免用户提交后才看到失败。
+  const config = useLoad(async (signal) => source.config(signal), [source])
+  const missingProvider = providerMissing(config.value)
   // 修订号是整个目录共用的，必须连同 Flow 标识一起比较，否则切换包时不会刷新。
   const loadedKey = useRef<string | null>(null)
 
@@ -456,8 +459,14 @@ export function FlowEditor({ source }: { source: Source }) {
               variant="primary"
               className="sm:ml-auto"
               onClick={() => setStartOpen(true)}
-              disabled={readOnly || dirty || busy === 'save'}
-              title={dirty ? '请先保存包文件' : undefined}
+              disabled={readOnly || dirty || busy === 'save' || missingProvider.length > 0}
+              title={
+                dirty
+                  ? '请先保存包文件'
+                  : missingProvider.length
+                    ? `模型 provider 未配置：缺 ${missingProvider.join('、')}`
+                    : undefined
+              }
             >
               <Play />
               启动运行
@@ -467,6 +476,20 @@ export function FlowEditor({ source }: { source: Source }) {
       </Card>
       {readOnly && (
         <p className="mt-2 text-xs text-muted-foreground">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>
+      )}
+      {!readOnly && missingProvider.length > 0 && (
+        <Alert variant="warning" className="mt-3">
+          <CircleAlert />
+          <AlertDescription>
+            模型 provider 还没配全（缺 {missingProvider.join('、')}），Agent 节点无法执行。
+            <Link
+              className={cn(buttonVariants({ variant: 'link', size: 'sm' }), 'ml-1 h-auto p-0')}
+              to="/flow-config"
+            >
+              去运行配置
+            </Link>
+          </AlertDescription>
+        </Alert>
       )}
       <StartRunDialog
         open={startOpen}

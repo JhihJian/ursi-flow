@@ -357,8 +357,24 @@ test('停止运行与运行配置', async ({ page }) => {
   await page.getByRole('button', { name: '确认停止' }).click()
   await expect(page.locator('[data-status="stopped"]')).toBeVisible({ timeout: 15000 })
 
+  // 运行配置覆盖模型 provider 与并发；密钥不回显，留空表示沿用。
   await page.getByLabel('主导航').getByRole('link', { name: '运行配置' }).click()
+  await expect(page.getByLabel('密钥')).toHaveAttribute('placeholder', '已配置，留空则不修改')
+  await expect(page.getByLabel('服务地址')).toHaveValue('http://127.0.0.1:1/v1')
+  await page.getByLabel('服务地址').fill('https://api.example.com/v1')
+  await page.getByLabel('模型标识').fill('example-model')
+  await page.getByLabel('密钥').fill('sk-new')
   await page.getByLabel('最大并发数').fill('2')
   await page.getByRole('button', { name: '保存配置' }).click()
   await expect(page.getByRole('status').filter({ hasText: '配置已保存' })).toBeVisible()
+  await expect(page.getByLabel('密钥')).toHaveAttribute('placeholder', '已配置，留空则不修改')
+  await expect(page.getByLabel('密钥')).toHaveValue('')
+  const saved = await api(page, '/flow-config')
+  expect(saved.body.provider).toMatchObject({
+    baseUrl: 'https://api.example.com/v1',
+    model: 'example-model',
+    apiKeySet: true,
+  })
+  expect(saved.body.provider.apiKey).toBeUndefined()
+  expect(saved.body.maxConcurrent).toBe(2)
 })

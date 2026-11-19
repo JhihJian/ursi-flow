@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, readFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:http';
@@ -8,46 +8,94 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
 
-test('Pi CLI 新建和复用会话，由真实工具提交两个结果', { skip: !process.env.TEST_REAL_PI }, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'ursi-pi-'));
-  t.after(() => rm(dir, {recursive: true, force:true}));
-  let turns = 0;
+// 本地 OpenAI 兼容服务：第一次返回「已分析」，第二次返回「已完成」，不访问真实模型。
+async function openaiFixture(t) {
   const requests = [];
-  const server = createServer(async (req,res) => {
-    const chunks = []; for await (const part of req) chunks.push(part);
-    const body = JSON.parse(Buffer.concat(chunks));
-    requests.push(body);
-    const first = ++turns === 1;
-    const args = first ? {outcome:'已分析',variables:{分析结论:'本地验收'}} : {outcome:'已完成'};
-    const delta = {role:'assistant', tool_calls:[{index:0,id:`call_${turns}`,type:'function',function:{name:'submit_flow_outcome',arguments:JSON.stringify(args)}}]};
-    res.writeHead(200, {'content-type':'text/event-stream'});
-    for(const [d, stop] of [[delta,null],[{},'tool_calls']]) res.write('data: '+JSON.stringify({id:`completion_${turns}`,object:'chat.completion.chunk',created:1,model:'fixture',choices:[{index:0,delta:d,finish_reason:stop}]})+'\n\n');
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const part of req) chunks.push(part);
+    requests.push(JSON.parse(Buffer.concat(chunks)));
+    const turn = requests.length;
+    const args =
+      turn === 1
+        ? { outcome: '已分析', variables: { 分析结论: '本地验收' } }
+        : { outcome: '已完成' };
+    const delta = {
+      role: 'assistant',
+      tool_calls: [
+        {
+          index: 0,
+          id: `call_${turn}`,
+          type: 'function',
+          function: { name: 'submit_flow_outcome', arguments: JSON.stringify(args) },
+        },
+      ],
+    };
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    for (const [chunk, stop] of [[delta, null], [{}, 'tool_calls']])
+      res.write(
+        'data: ' +
+          JSON.stringify({
+            id: `completion_${turn}`,
+            object: 'chat.completion.chunk',
+            created: 1,
+            model: 'fixture',
+            choices: [{ index: 0, delta: chunk, finish_reason: stop }],
+          }) +
+          '\n\n',
+      );
     res.end('data: [DONE]\n\n');
   });
-  await new Promise(done => server.listen(0,'0.0.0.0',done));
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
   t.after(() => server.close());
-  const agentDir = join(dir,'agent'); await mkdir(agentDir);
-  await writeFile(join(agentDir,'models.json'), JSON.stringify({providers:{fixture:{baseUrl:`http://127.0.0.1:${server.address().port}/v1`,api:'openai-completions',apiKey:'fixture',models:[{id:'fixture',name:'Fixture',contextWindow:32000,maxTokens:1024}]}}}));
-  const history = join(dir,'history.json');
-  const result = await exec(process.execPath, [resolve('dist/cli.js'),'run',resolve('examples/ordinary'),'--cwd',dir,'--history',history,'--model','fixture/fixture'],{env:{PATH:process.env.PATH, HOME:dir, PI_CODING_AGENT_DIR:agentDir, PI_OFFLINE:'1'},timeout:50000}).catch(err => {throw new Error(err.stdout+' '+err.stderr);});
-  assert.equal(JSON.parse(result.stdout).status,'completed');
-  assert.equal(turns,2);
-  assert.deepEqual(requests[0].tools.map(x=>x.function.name),['submit_flow_outcome']);
-  assert.ok(requests[1].messages.some(x=>x.role==='tool'));
-  const log=JSON.parse(await readFile(history,'utf8'));
-  assert.deepEqual(log.nodeRuns.map(n=>n.outcome.result),['已分析','已完成']);
+  return { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, requests };
+}
+
+test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
+  const { baseUrl, requests } = await openaiFixture(t);
+  const dir = await mkdtemp(join(tmpdir(), 'ursi-sdk-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const history = join(dir, 'history.json');
+  const result = await exec(
+    process.execPath,
+    [
+      resolve('dist/cli.js'),
+      'run',
+      resolve('examples/ordinary'),
+      '--cwd',
+      dir,
+      '--history',
+      history,
+      '--base-url',
+      baseUrl,
+      '--api-key',
+      'fixture',
+      '--model',
+      'fixture',
+    ],
+    { env: { PATH: process.env.PATH, HOME: dir }, timeout: 60000 },
+  ).catch((error) => {
+    throw new Error(`${error.stdout} ${error.stderr}`);
+  });
+  assert.equal(JSON.parse(result.stdout).status, 'completed');
+  assert.equal(requests.length, 2);
+  // 节点既能读写工作区，也必须带上结果工具，且结果集合来自当前节点声明。
+  const names = requests[0].tools.map((tool) => tool.function.name);
+  for (const tool of ['read', 'bash', 'edit', 'write', 'submit_flow_outcome'])
+    assert.ok(names.includes(tool), `缺少工具 ${tool}: ${names.join(',')}`);
+  const outcome = requests[0].tools.find((tool) => tool.function.name === 'submit_flow_outcome');
+  assert.ok(outcome.function.parameters.properties.outcome, JSON.stringify(outcome.function.parameters));
+  assert.ok(requests[1].messages.some((message) => message.role === 'tool'));
 });
 
-test('找不到 Pi 可执行文件时给出可操作的错误', async () => {
-  const { HeadlessPi } = await import(resolve('dist/executor-adapters/local-pi/headless.js'));
-  const harness = new HeadlessPi({ executable: '/nonexistent/pi-binary' });
-  const agent = await harness.open({ cwd: process.cwd(), runtimeTools: { definitions: [{ name: 'submit_flow_outcome' }], invoke: async () => ({}) } });
-  await assert.rejects(
-    harness.run(agent, { executionId: 'x', prompt: 'hi' }),
-    (error) => {
-      assert.match(error.message, /找不到 Pi 可执行文件/);
-      assert.match(error.message, /URSI_FLOW_PI/);
-      return true;
-    },
+test('provider 配置不完整时给出可操作的错误', async () => {
+  const { PiSdkHarness } = await import(resolve('dist/executor-adapters/local-pi/sdk.js'));
+  assert.throws(
+    () => new PiSdkHarness({ baseUrl: '', apiKey: 'k', model: 'm' }),
+    /provider\.baseUrl 必须是非空字符串/,
+  );
+  assert.throws(
+    () => new PiSdkHarness({ baseUrl: 'https://x', apiKey: 'k', model: 'm', api: 'nope' }),
+    /provider\.api 只能是/,
   );
 });
