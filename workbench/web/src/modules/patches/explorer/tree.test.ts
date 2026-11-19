@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { ancestorsOf, buildTree, missingAncestors, treePaths, visibleRows } from './tree'
-import type { Entry } from '../api'
+import type { Entry } from '@/modules/directories/api'
 
 const entries: Entry[] = [
   { path: 'AGENTS.md', kind: 'file' },

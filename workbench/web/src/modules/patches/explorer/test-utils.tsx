@@ -6,7 +6,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useFeedbackStore } from '@/shared/stores/feedback'
 
 import { Explorer, type ExplorerProps } from '../Explorer'
-import type { Directory, Entry } from '../api'
+import type { Directory, Entry } from '@/modules/directories/api'
 
 export interface DirectoryCall {
   method: 'tree' | 'read' | 'write' | 'mkdir' | 'move' | 'remove'

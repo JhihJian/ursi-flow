@@ -5,7 +5,8 @@ import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
-import { directory, listPatches, type Patch, type PatchKind } from './api'
+import { directoryClient } from '@/modules/directories/api'
+import { listPatches, type Patch, type PatchKind } from './api'
 import { ConfigEditor } from './ConfigEditor'
 import { Explorer } from './Explorer'
 import { PatchCreateDialog } from './PatchCreate'
@@ -24,10 +25,14 @@ export function PatchStudio({ kind }: { kind: PatchKind }) {
   const navigate = useNavigate()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  // 刚创建的记录可能还没出现在列表里，先用创建响应解析，避免新建后立刻报找不到。
+  const [createdPatch, setCreatedPatch] = useState<Patch | null>(null)
   const patches = useResource((signal) => listPatches(kind, signal), [] as Patch[])
-  // 目录对象是编辑器的数据源，引用只随 kind/id 变化，普通渲染不能让它重新加载整棵树。
-  const dir = useMemo(() => directory(kind, id), [kind, id])
-  const name = patches.data.find((patch) => patch.id === id)?.name ?? id
+  const patch = patches.data.find((item) => item.id === id) ?? (createdPatch?.id === id ? createdPatch : null)
+  const directoryId = patch?.directoryId ?? ''
+  // 目录对象是编辑器的数据源，引用只随目录标识变化，普通渲染不能让它重新加载整棵树。
+  const dir = useMemo(() => (directoryId ? directoryClient(directoryId) : null), [directoryId])
+  const name = patch?.name ?? id
 
   function select(nextId: string) {
     setSheetOpen(false)
@@ -39,9 +44,11 @@ export function PatchStudio({ kind }: { kind: PatchKind }) {
     setCreating(true)
   }
 
-  function created(patch: Patch) {
+  function created(next: Patch) {
     setCreating(false)
-    navigate(patchPath(kind, patch.id))
+    setCreatedPatch(next)
+    navigate(patchPath(kind, next.id))
+    patches.reload()
   }
 
   const switchList = (
@@ -102,9 +109,23 @@ export function PatchStudio({ kind }: { kind: PatchKind }) {
         </div>
       ) : null}
       <div className="patch-studio__body">
-        {kind === 'work'
-          ? <Explorer key={`work/${id}`} directory={dir} />
-          : <ConfigEditor key={`config/${id}`} directory={dir} />}
+        {dir
+          ? kind === 'work'
+            ? <Explorer key={`work/${directoryId}`} directory={dir} />
+            : <ConfigEditor key={`config/${directoryId}`} directory={dir} />
+          : patches.loading
+            ? <p role="status" className="px-4 py-6 text-sm text-txt3">正在读取包记录…</p>
+            : patches.error
+              ? null
+              : (
+                <div role="alert" className="flex flex-wrap items-center gap-2 px-4 py-6 text-sm text-err">
+                  <span className="min-w-0 flex-1 break-words">没有找到这个{meta.title}，它可能已被删除。</span>
+                  <Button size="sm" variant="ghost" icon="refresh" onClick={patches.reload}>重试</Button>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to={patchListPath(kind)}>返回全部{meta.title}</Link>
+                  </Button>
+                </div>
+              )}
       </div>
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" title="切换包" className="max-h-[70dvh] lg:hidden">

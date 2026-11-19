@@ -5,7 +5,7 @@ import { confirmAction } from '@/shared/stores/feedback'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { ResourceState } from '@/shared/ui/resource-state'
-import type { Directory, Entry } from '../api'
+import type { Directory, Entry } from '@/modules/directories/api'
 import { Explorer } from '../Explorer'
 import { SKILLS_ROOT, skillEntryPath, skillNameError, skillNames, skillPath, skillTemplate } from './model'
 

@@ -1,4 +1,4 @@
-import type { Directory, Entry } from '../api'
+import type { Directory, Entry } from '@/modules/directories/api'
 
 export interface MemoryWrite {
   path: string

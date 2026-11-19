@@ -52,9 +52,10 @@ test('工作包：新建空包、建目录与文件、保存后重读', async ({
   await shot(page, testInfo, 'work-list')
 
   const id = await createPatch(page, 'work', name)
+  const { directoryId } = await api.patch('work', id)
   await expect(page.getByTestId('patch-explorer')).toBeVisible()
   await expect(page.getByText('目录为空，可新建文件或导入目录。')).toBeVisible()
-  expect(await api.tree('work', id)).toEqual([])
+  expect(await api.tree(directoryId)).toEqual([])
   await shot(page, testInfo, 'work-empty')
 
   // 先建目录，再用带 / 的文件名落到该目录内。
@@ -64,14 +65,14 @@ test('工作包：新建空包、建目录与文件、保存后重读', async ({
   await folderInput.fill(WORK_FOLDER)
   await folderInput.press('Enter')
   await expect(page.getByRole('button', { name: WORK_FOLDER, exact: true })).toBeVisible()
-  await expectEntry(api, 'work', id, { path: WORK_FOLDER, kind: 'dir' })
+  await expectEntry(api, directoryId, { path: WORK_FOLDER, kind: 'dir' })
 
   await page.getByRole('button', { name: '新建文件', exact: true }).click()
   const fileInput = page.getByLabel('新文件名称')
   await expect(fileInput).toBeVisible()
   await fileInput.fill(WORK_FILE)
   await fileInput.press('Enter')
-  await expectEntry(api, 'work', id, { path: WORK_FILE, kind: 'file' })
+  await expectEntry(api, directoryId, { path: WORK_FILE, kind: 'file' })
 
   const editor = page.getByLabel(`${WORK_FILE} 内容`)
   await expect(editor).toBeVisible()
@@ -80,7 +81,7 @@ test('工作包：新建空包、建目录与文件、保存后重读', async ({
   await expect(save).toBeEnabled()
   await save.click()
   await expect(page.locator('.toast-region').getByText('已保存。', { exact: true })).toBeVisible()
-  await expectText(api, 'work', id, WORK_FILE, content)
+  await expectText(api, directoryId, WORK_FILE, content)
   await shot(page, testInfo, 'work-editor-saved')
 
   // 重载后从真实服务端重读，桌面自动打开 Markdown，窄屏从列表进入。
@@ -108,22 +109,23 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   await shot(page, testInfo, 'config-list')
 
   const id = await createPatch(page, 'config', name)
+  const { directoryId } = await api.patch('config', id)
   await expect(page.getByTestId('patch-studio')).toBeVisible()
   await expect(page.getByRole('tablist', { name: '配置补丁分区' })).toBeVisible()
 
   // 服务端默认写入三个锚点，界面不提供移动和删除。
-  const tree = await api.tree('config', id)
+  const tree = await api.tree(directoryId)
   expect(tree.find(entry => entry.path === 'AGENTS.md' && entry.kind === 'file')).toBeTruthy()
   expect(tree.find(entry => entry.path === 'skills' && entry.kind === 'dir')).toBeTruthy()
   expect(tree.find(entry => entry.path === 'mcp.json' && entry.kind === 'file')).toBeTruthy()
-  expect(JSON.parse(await api.text('config', id, 'mcp.json'))).toEqual({ mcpServers: {} })
+  expect(JSON.parse(await api.text(directoryId, 'mcp.json'))).toEqual({ mcpServers: {} })
 
   // 系统提示词保存在 AGENTS.md，保存后服务端原文与重载后的编辑区一致。
   const promptEditor = page.getByLabel('AGENTS.md 内容')
   await expect(promptEditor).toBeVisible()
   await promptEditor.fill(prompt)
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expectText(api, 'config', id, 'AGENTS.md', prompt)
+  await expectText(api, directoryId, 'AGENTS.md', prompt)
   await expect(page.getByRole('status').filter({ hasText: '已保存' }).first()).toBeVisible()
   await shot(page, testInfo, 'config-prompt')
 
@@ -136,12 +138,12 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   await page.getByRole('tab', { name: 'MCP' }).click()
   const mcpEditor = page.getByLabel('mcp.json 内容')
   await expect(mcpEditor).toBeVisible()
-  const originalMcp = await api.text('config', id, 'mcp.json')
+  const originalMcp = await api.text(directoryId, 'mcp.json')
   expect(JSON.parse(await mcpEditor.inputValue())).toEqual({ mcpServers: {} })
   await mcpEditor.fill('{"mcpServers": ')
   await expect(page.getByRole('alert')).toContainText('JSON 无法解析')
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
-  expect(await api.text('config', id, 'mcp.json')).toBe(originalMcp)
+  expect(await api.text(directoryId, 'mcp.json')).toBe(originalMcp)
   await shot(page, testInfo, 'config-mcp-invalid')
 
   await mcpEditor.fill(MCP_SERVERS)
@@ -149,8 +151,8 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   const saveMcp = page.getByRole('button', { name: '保存', exact: true })
   await expect(saveMcp).toBeEnabled()
   await saveMcp.click()
-  await expectText(api, 'config', id, 'mcp.json', MCP_SERVERS)
-  expect(JSON.parse(await api.text('config', id, 'mcp.json'))).toEqual(JSON.parse(MCP_SERVERS))
+  await expectText(api, directoryId, 'mcp.json', MCP_SERVERS)
+  expect(JSON.parse(await api.text(directoryId, 'mcp.json'))).toEqual(JSON.parse(MCP_SERVERS))
 
   await page.reload()
   await expect(page.getByTestId('patch-studio')).toBeVisible()
@@ -162,9 +164,9 @@ test('配置包：默认锚点、编辑提示词、MCP 拒绝坏 JSON、创建 S
   await page.getByLabel('新建 Skill 名称').fill(skill)
   await page.getByTestId('skill-create').click()
   await expect(page.getByTestId(`skill-item-${skill}`)).toBeVisible()
-  await expectEntry(api, 'config', id, { path: `skills/${skill}`, kind: 'dir' })
-  await expectEntry(api, 'config', id, { path: `skills/${skill}/SKILL.md`, kind: 'file' })
-  const skillText = await api.text('config', id, `skills/${skill}/SKILL.md`)
+  await expectEntry(api, directoryId, { path: `skills/${skill}`, kind: 'dir' })
+  await expectEntry(api, directoryId, { path: `skills/${skill}/SKILL.md`, kind: 'file' })
+  const skillText = await api.text(directoryId, `skills/${skill}/SKILL.md`)
   expect(skillText).toContain(`name: ${skill}`)
   const skillEditor = page.getByLabel(`skills/${skill}/SKILL.md 内容`)
   await expect(skillEditor).toBeVisible()

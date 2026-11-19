@@ -1,5 +1,6 @@
 //! 工作管理与持久化。后端不会直接改变工作项的验收状态。
 mod catalog;
+mod directories;
 mod echo;
 mod execute;
 mod items;
@@ -52,7 +53,8 @@ pub(crate) fn routes(
         .merge(items::routes(store.clone()))
         .merge(workspace_sop::routes(store.clone()))
         .merge(preparation::routes(store.clone()))
-        .merge(patches::routes(store.clone())?)
+        .merge(directories::routes(store.clone())?)
+        .merge(patches::routes(store.clone()))
         .merge(echo::routes(store.clone()))
         .merge(external)
         .merge(execute::routes(store, workspace, flow)))

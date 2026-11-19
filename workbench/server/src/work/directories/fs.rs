@@ -1,7 +1,8 @@
-//! 包私有根内的目录服务。所有路径都是包根相对路径，由 API 传入的字符串拼装。
+//! 目录根内的文件操作。所有路径都是目录根相对路径，由 API 传入的字符串拼装。
 //!
 //! 每一级都用 `symlink_metadata` 校验，任意一级为符号链接即拒绝；文件写入走同目录
-//! 临时文件加 `rename`，并同步目录项，读取方不会看到半截内容。本模块不判断包的类别。
+//! 临时文件加 `rename`，并同步目录项，读取方不会看到半截内容。本模块不判断目录的
+//! 业务含义，路径约束由调用方在取得写锁前完成。
 use serde::Serialize;
 use std::{
     fs::{self, DirBuilder, File, OpenOptions},
@@ -11,18 +12,18 @@ use std::{
 };
 use uuid::Uuid;
 
-/// 包根目录在 Server 私有目录中的位置，两类包分属其下的 `work` 和 `config`。
-pub(super) const PACKAGES: &str = "patches";
+/// 目录根在 Server 私有目录中的位置，每个目录是其下以标识命名的子树。
+pub(in crate::work) const ROOT: &str = "directories";
 
 /// 单个文件正文上限。路由按此限制请求体，本模块再校验一次。
-pub(super) const FILE_LIMIT: u64 = 8 * 1024 * 1024;
+pub(in crate::work) const FILE_LIMIT: u64 = 8 * 1024 * 1024;
 const PATH_MAX: usize = 1024;
 const SEGMENT_MAX: usize = 255;
 const DEPTH_MAX: usize = 32;
 const ENTRY_MAX: usize = 20_000;
 
 #[derive(Debug)]
-pub(super) enum Fault {
+pub(in crate::work) enum Fault {
     Invalid(String),
     NotFound(String),
     Conflict(String),
@@ -30,43 +31,43 @@ pub(super) enum Fault {
 }
 
 fn invalid_path() -> Fault {
-    Fault::Invalid("包内路径无效：只接受包根相对路径的名称段".into())
+    Fault::Invalid("目录内路径无效：只接受目录根相对路径的名称段".into())
 }
 
 fn missing() -> Fault {
-    Fault::NotFound("包内路径不存在".into())
+    Fault::NotFound("目录内路径不存在".into())
 }
 
 fn internal(e: io::Error) -> Fault {
-    Fault::Internal(format!("包文件操作失败：{e}"))
+    Fault::Internal(format!("目录文件操作失败：{e}"))
 }
 
 #[derive(Serialize)]
-pub(super) struct Entry {
+pub(in crate::work) struct Entry {
     pub path: String,
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
 }
 
-/// 服务启动时准备包根目录。已存在的目录也要通过私有目录校验。
-pub(super) fn prepare(dir: &Path) -> io::Result<()> {
-    let base = dir.join(PACKAGES);
+/// 服务启动时准备目录根。已存在的目录也要通过私有目录校验。
+pub(in crate::work) fn prepare(dir: &Path) -> io::Result<()> {
+    let base = dir.join(ROOT);
     DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(&base)?;
-    private(&base)?;
-    for kind in ["work", "config"] {
-        let path = base.join(kind);
-        match DirBuilder::new().mode(0o700).create(&path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e),
-        }
-        private(&path)?;
-    }
-    Ok(())
+    private(&base)
+}
+
+/// 校验并返回目录根。调用方只在其下拼装服务端生成的标识。
+pub(in crate::work) fn root(dir: &Path) -> Result<PathBuf, Fault> {
+    verify(&dir.join(ROOT))
+}
+
+/// 新建一个空目录子树，权限为服务账户私有。
+pub(in crate::work) fn create(path: &Path) -> io::Result<()> {
+    DirBuilder::new().mode(0o700).create(path)
 }
 
 /// 私有目录：不是符号链接、是目录、组和其他账户无权限。
@@ -75,20 +76,20 @@ fn private(path: &Path) -> io::Result<()> {
     if meta.file_type().is_symlink() || !meta.is_dir() || meta.permissions().mode() & 0o077 != 0 {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "包目录必须为服务账户私有且不是符号链接",
+            "目录必须为服务账户私有且不是符号链接",
         ));
     }
     Ok(())
 }
 
-/// 每次操作前确认包根仍是私有目录，避免被换成分支链接。
-pub(super) fn verify(root: &Path) -> Result<PathBuf, Fault> {
-    private(root).map_err(|e| Fault::Internal(format!("包根不可用：{e}")))?;
+/// 每次操作前确认目录根仍是私有目录，避免被换成分支链接。
+pub(in crate::work) fn verify(root: &Path) -> Result<PathBuf, Fault> {
+    private(root).map_err(|e| Fault::Internal(format!("目录根不可用：{e}")))?;
     Ok(root.to_owned())
 }
 
-/// 把包根相对路径拆成名称段。空路径只在需要表示包根时接受。
-pub(super) fn segments(path: &str, allow_root: bool) -> Result<Vec<String>, Fault> {
+/// 把目录根相对路径拆成名称段。空路径只在需要表示目录根时接受。
+pub(in crate::work) fn segments(path: &str, allow_root: bool) -> Result<Vec<String>, Fault> {
     if path.is_empty() {
         return if allow_root {
             Ok(Vec::new())
@@ -122,7 +123,7 @@ fn walk(root: &Path, parts: &[String]) -> Result<PathBuf, Fault> {
         current.push(part);
         let meta = fs::symlink_metadata(&current).map_err(|_| missing())?;
         if meta.file_type().is_symlink() {
-            return Err(Fault::Internal("包内路径含有符号链接".into()));
+            return Err(Fault::Internal("目录内路径含有符号链接".into()));
         }
         if !meta.is_dir() {
             return Err(missing());
@@ -150,7 +151,7 @@ fn sync(dir: &Path) -> Result<(), Fault> {
 fn status(path: &Path) -> Result<Option<bool>, Fault> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            Err(Fault::Internal("包内路径含有符号链接".into()))
+            Err(Fault::Internal("目录内路径含有符号链接".into()))
         }
         Ok(meta) if meta.is_dir() => Ok(Some(false)),
         Ok(_) => Ok(Some(true)),
@@ -159,8 +160,8 @@ fn status(path: &Path) -> Result<Option<bool>, Fault> {
     }
 }
 
-/// 全树扁平清单，路径为包根相对路径。符号链接和隐藏的中间文件不对外暴露。
-pub(super) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
+/// 全树扁平清单，路径为目录根相对路径。符号链接和隐藏的中间文件不对外暴露。
+pub(in crate::work) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
     let root = verify(root)?;
     let mut entries = Vec::new();
     let mut pending = vec![(String::new(), root)];
@@ -197,7 +198,7 @@ pub(super) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
                 });
             }
             if entries.len() > ENTRY_MAX {
-                return Err(Fault::Invalid("包内条目过多，无法列出".into()));
+                return Err(Fault::Invalid("目录内条目过多，无法列出".into()));
             }
         }
     }
@@ -205,7 +206,7 @@ pub(super) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
     Ok(entries)
 }
 
-pub(super) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
+pub(in crate::work) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
     if parts.is_empty() {
         return Err(invalid_path());
     }
@@ -222,7 +223,7 @@ pub(super) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
 }
 
 /// 写入文件。默认只新建，`replace` 为真时才覆盖已存在的文件。
-pub(super) fn write(
+pub(in crate::work) fn write(
     root: &Path,
     parts: &[String],
     bytes: &[u8],
@@ -268,7 +269,7 @@ fn atomic(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), Fault> {
     publish
 }
 
-pub(super) fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault> {
+pub(in crate::work) fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, parts, |dir, name| {
         let path = dir.join(name);
@@ -280,7 +281,7 @@ pub(super) fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault> {
     })
 }
 
-pub(super) fn remove(root: &Path, parts: &[String]) -> Result<(), Fault> {
+pub(in crate::work) fn remove(root: &Path, parts: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, parts, |dir, name| {
         let path = dir.join(name);
@@ -293,8 +294,8 @@ pub(super) fn remove(root: &Path, parts: &[String]) -> Result<(), Fault> {
     })
 }
 
-/// 移动或重命名包内条目，不覆盖目标。
-pub(super) fn relocate(root: &Path, from: &[String], to: &[String]) -> Result<(), Fault> {
+/// 移动或重命名目录内条目，不覆盖目标。
+pub(in crate::work) fn relocate(root: &Path, from: &[String], to: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, from, |from_dir, from_name| {
         let source = from_dir.join(from_name);

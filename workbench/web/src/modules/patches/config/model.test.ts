@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Entry } from '../api'
+import type { Entry } from '@/modules/directories/api'
 import { mcpError, skillEntryPath, skillNameError, skillNames, skillPath, skillTemplate } from './model'
 
 const entry = (path: string, kind: Entry['kind']): Entry => ({ path, kind })

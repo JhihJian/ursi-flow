@@ -22,7 +22,7 @@ npm run dev
 
 ## 目录编辑台
 
-从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。两种包使用独立目录，见[模块分工与交互对照](PATCH-STUDIO.md)。
+从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。包记录只保存名称、标识和 `directoryId`。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](PATCH-STUDIO.md)。
 
 ## 手工上传与 Echo 回执
 

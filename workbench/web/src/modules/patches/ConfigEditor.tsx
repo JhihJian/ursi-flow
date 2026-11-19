@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useResource } from '@/shared/hooks/use-resource'
 import { useUnsavedChanges } from '@/shared/hooks/use-unsaved-changes'
-import type { Directory, Entry } from './api'
+import type { Directory, Entry } from '@/modules/directories/api'
 import { ConfigTabs } from './config/ConfigTabs'
 import { Mcp } from './config/Mcp'
 import { skillNames, type ConfigTab } from './config/model'

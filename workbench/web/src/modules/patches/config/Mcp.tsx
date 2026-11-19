@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import type { Directory } from '../api'
+import type { Directory } from '@/modules/directories/api'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { MCP_PATH, mcpError } from './model'
 import { FileError } from './FileError'

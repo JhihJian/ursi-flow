@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Directory } from '../api'
+import type { Directory } from '@/modules/directories/api'
 import { cn } from '@/shared/lib/utils'
 import { MarkdownContent } from '@/shared/ui/markdown-content'
 import { ResourceState } from '@/shared/ui/resource-state'

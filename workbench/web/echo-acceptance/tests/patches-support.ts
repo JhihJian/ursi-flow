@@ -7,10 +7,10 @@ import { readRuntime, type Runtime } from '../fixtures/runtime'
 
 export type PatchKind = 'work' | 'config'
 export interface PatchEntry { path: string; kind: 'file' | 'dir'; size?: number }
-export interface PatchRef { id: string; name: string }
+export interface PatchRef { id: string; name: string; directoryId: string }
 
 /**
- * 包目录的服务端事实：只读树与原文，供浏览器断言之外的落盘核对。
+ * 虚拟目录的服务端事实：只读树与原文，供浏览器断言之外的落盘核对。
  * 主路径仍由浏览器完成，这里不替页面写入。
  */
 export class PatchApi {
@@ -38,21 +38,28 @@ export class PatchApi {
     return response.json() as Promise<PatchRef[]>
   }
 
-  async tree(kind: PatchKind, id: string): Promise<PatchEntry[]> {
-    const response = await this.request(`/api/v2/patches/${kind}/${encodeURIComponent(id)}/tree`)
-    if (!response.ok) throw new Error(`读取${kind}包树返回 HTTP ${response.status}：${await response.text()}`)
+  /** 包记录只用来拿到目录标识，内容读写一律走虚拟目录接口。 */
+  async patch(kind: PatchKind, id: string): Promise<PatchRef> {
+    const found = (await this.list(kind)).find(item => item.id === id)
+    if (!found) throw new Error(`${kind}包 ${id} 不在列表中`)
+    return found
+  }
+
+  async tree(directoryId: string): Promise<PatchEntry[]> {
+    const response = await this.request(`/api/v2/directories/${encodeURIComponent(directoryId)}/tree`)
+    if (!response.ok) throw new Error(`读取目录树返回 HTTP ${response.status}：${await response.text()}`)
     return response.json() as Promise<PatchEntry[]>
   }
 
-  async read(kind: PatchKind, id: string, file: string): Promise<Buffer> {
+  async read(directoryId: string, file: string): Promise<Buffer> {
     const query = new URLSearchParams({ path: file })
-    const response = await this.request(`/api/v2/patches/${kind}/${encodeURIComponent(id)}/file?${query}`)
+    const response = await this.request(`/api/v2/directories/${encodeURIComponent(directoryId)}/file?${query}`)
     if (!response.ok) throw new Error(`读取 ${file} 返回 HTTP ${response.status}：${await response.text()}`)
     return Buffer.from(await response.arrayBuffer())
   }
 
-  async text(kind: PatchKind, id: string, file: string): Promise<string> {
-    return (await this.read(kind, id, file)).toString('utf8')
+  async text(directoryId: string, file: string): Promise<string> {
+    return (await this.read(directoryId, file)).toString('utf8')
   }
 }
 
@@ -72,13 +79,13 @@ export function patchIdFromUrl(url: string, kind: PatchKind): string {
 }
 
 /** 等页面发起的目录写入在服务端可见，避免用界面缓存判定成功。 */
-export async function expectEntry(api: PatchApi, kind: PatchKind, id: string, entry: PatchEntry) {
-  await expect.poll(async () => (await api.tree(kind, id)).some(item => item.path === entry.path && item.kind === entry.kind), {
+export async function expectEntry(api: PatchApi, directoryId: string, entry: PatchEntry) {
+  await expect.poll(async () => (await api.tree(directoryId)).some(item => item.path === entry.path && item.kind === entry.kind), {
     timeout: 15_000,
   }).toBe(true)
 }
 
 /** 等浏览器保存后的原文在服务端可读。 */
-export async function expectText(api: PatchApi, kind: PatchKind, id: string, file: string, expected: string) {
-  await expect.poll(async () => api.text(kind, id, file), { timeout: 15_000 }).toBe(expected)
+export async function expectText(api: PatchApi, directoryId: string, file: string, expected: string) {
+  await expect.poll(async () => api.text(directoryId, file), { timeout: 15_000 }).toBe(expected)
 }

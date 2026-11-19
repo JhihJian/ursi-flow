@@ -1,38 +1,24 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { setToken } from '@/shared/http/session'
-import { directory } from './api'
+import { createPatch, listPatches } from './api'
 
 beforeEach(() => setToken('patch-test'))
 afterEach(() => { setToken(''); vi.unstubAllGlobals() })
 
-it('路径是包内相对路径参数，文件内容不做文本转换', async () => {
-  const fetch = vi.fn(async (_url: string, init: RequestInit) => init.method === 'PUT'
-    ? new Response(null, { status: 204 })
-    : new Response(new Uint8Array([255, 0]), { headers: { 'Content-Type': 'application/octet-stream' } }))
+it('列表与新建都走包记录接口，响应带目录标识', async () => {
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(Response.json([{ id: 'w1', name: '交付整理', directoryId: 'd1' }]))
+    .mockResolvedValueOnce(Response.json({ id: 'w2', name: '回归排查', directoryId: 'd2' }))
   vi.stubGlobal('fetch', fetch)
-  const dir = directory('work', 'pack')
-  const path = '项目/#&!= x.bin'
-  const bytes = await dir.read(path)
-  const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as ArrayBuffer)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsArrayBuffer(bytes)
-  })
-  expect(new Uint8Array(buffer)).toEqual(new Uint8Array([255, 0]))
-  await dir.write(path, bytes, true)
-  const [url, init] = fetch.mock.calls[1]!
-  const result = new URL(url, 'http://localhost')
-  expect(result.pathname).toBe('/api/v2/patches/work/pack/file')
-  expect(result.searchParams.get('path')).toBe(path)
-  expect(result.searchParams.get('replace')).toBe('true')
-  expect(init.body).toBe(bytes)
-})
 
-it('空文件可读，非文件响应不能进入编辑器', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response('', { headers: { 'Content-Type': 'application/octet-stream' } }))
-    .mockResolvedValueOnce(new Response('<html>代理页面</html>', { headers: { 'Content-Type': 'text/html' } })))
-  const dir = directory('config', 'one')
-  expect((await dir.read('AGENTS.md')).size).toBe(0)
-  await expect(dir.read('mcp.json')).rejects.toThrow('未返回文件')
+  expect(await listPatches('work')).toEqual([{ id: 'w1', name: '交付整理', directoryId: 'd1' }])
+  expect(await createPatch('work', '回归排查')).toEqual({ id: 'w2', name: '回归排查', directoryId: 'd2' })
+
+  const [listUrl, listInit] = fetch.mock.calls[0]!
+  expect(new URL(listUrl, 'http://localhost').pathname).toBe('/api/v2/patches/work')
+  expect(listInit.method ?? 'GET').toBe('GET')
+  const [createUrl, createInit] = fetch.mock.calls[1]!
+  expect(new URL(createUrl, 'http://localhost').pathname).toBe('/api/v2/patches/work')
+  expect(createInit.method).toBe('POST')
+  expect(JSON.parse(String(createInit.body))).toEqual({ name: '回归排查' })
 })

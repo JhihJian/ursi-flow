@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import type { Directory } from './api'
+import type { Directory } from '@/modules/directories/api'
 import { ConfigEditor } from './ConfigEditor'
 import { memoryDirectory } from './config/test-utils'
 

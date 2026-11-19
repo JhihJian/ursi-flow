@@ -1,4 +1,6 @@
+use super::directories::fs as dir;
 use super::*;
+use dir::Fault;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -26,8 +28,8 @@ impl Temp {
         self.0.join(name)
     }
     /// 包私有根，与 requests 使用的布局一致。
-    fn package(&self, kind: &str, id: &str) -> PathBuf {
-        self.path("work").join(dir::PACKAGES).join(kind).join(id)
+    fn package(&self, id: &str) -> PathBuf {
+        self.path("work").join("directories").join(id)
     }
 }
 impl Drop for Temp {
@@ -61,7 +63,9 @@ impl Http {
     fn new() -> Self {
         let dir = Temp::new();
         let store = Store::open(dir.path("work")).unwrap();
-        let app = routes(store).unwrap();
+        let app = directories::routes(store.clone())
+            .unwrap()
+            .merge(routes(store));
         let listener = UnixListener::bind(dir.path("http.sock")).unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { dir, task }
@@ -114,28 +118,25 @@ impl Http {
         let patch = self
             .ok("POST", &format!("/v2/patches/{kind}"), json!({"name":name}))
             .await;
-        patch["id"].as_str().unwrap().to_owned()
+        assert_ne!(patch["id"], patch["directoryId"]);
+        patch["directoryId"].as_str().unwrap().to_owned()
     }
 
-    fn base(kind: &str, id: &str) -> String {
-        format!("/v2/patches/{kind}/{id}")
+    fn base(id: &str) -> String {
+        format!("/v2/directories/{id}")
     }
 
-    async fn tree(&self, kind: &str, id: &str) -> Vec<Value> {
-        self.ok(
-            "GET",
-            &format!("{}/tree", Self::base(kind, id)),
-            Value::Null,
-        )
-        .await
-        .as_array()
-        .unwrap()
-        .clone()
+    async fn tree(&self, id: &str) -> Vec<Value> {
+        self.ok("GET", &format!("{}/tree", Self::base(id)), Value::Null)
+            .await
+            .as_array()
+            .unwrap()
+            .clone()
     }
 
-    async fn paths(&self, kind: &str, id: &str) -> Vec<String> {
+    async fn paths(&self, id: &str) -> Vec<String> {
         let mut paths: Vec<String> = self
-            .tree(kind, id)
+            .tree(id)
             .await
             .iter()
             .map(|entry| entry["path"].as_str().unwrap().to_owned())
@@ -144,50 +145,50 @@ impl Http {
         paths
     }
 
-    fn file_url(kind: &str, id: &str, path: &str, replace: bool) -> String {
+    fn file_url(id: &str, path: &str, replace: bool) -> String {
         format!(
             "{}/file?path={}{}",
-            Self::base(kind, id),
+            Self::base(id),
             encode(path),
             if replace { "&replace=true" } else { "" }
         )
     }
 
-    async fn put(&self, kind: &str, id: &str, path: &str, bytes: &[u8], replace: bool) -> u16 {
-        self.request("PUT", &Self::file_url(kind, id, path, replace), bytes)
+    async fn put(&self, id: &str, path: &str, bytes: &[u8], replace: bool) -> u16 {
+        self.request("PUT", &Self::file_url(id, path, replace), bytes)
             .await
             .0
     }
 
-    async fn get(&self, kind: &str, id: &str, path: &str) -> (u16, Vec<u8>) {
-        self.request("GET", &Self::file_url(kind, id, path, false), b"")
+    async fn get(&self, id: &str, path: &str) -> (u16, Vec<u8>) {
+        self.request("GET", &Self::file_url(id, path, false), b"")
             .await
     }
 
-    async fn mkdir(&self, kind: &str, id: &str, path: &str) -> u16 {
+    async fn mkdir(&self, id: &str, path: &str) -> u16 {
         self.call(
             "POST",
-            &format!("{}/dir", Self::base(kind, id)),
+            &format!("{}/dir", Self::base(id)),
             json!({"path":path}),
         )
         .await
         .0
     }
 
-    async fn relocate(&self, kind: &str, id: &str, from: &str, to: &str) -> u16 {
+    async fn relocate(&self, id: &str, from: &str, to: &str) -> u16 {
         self.call(
             "POST",
-            &format!("{}/move", Self::base(kind, id)),
+            &format!("{}/move", Self::base(id)),
             json!({"from":from,"to":to}),
         )
         .await
         .0
     }
 
-    async fn remove(&self, kind: &str, id: &str, path: &str) -> u16 {
+    async fn remove(&self, id: &str, path: &str) -> u16 {
         self.call(
             "DELETE",
-            &format!("{}/entry?path={}", Self::base(kind, id), encode(path)),
+            &format!("{}/entry?path={}", Self::base(id), encode(path)),
             Value::Null,
         )
         .await
@@ -210,20 +211,31 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
     let config = app.create("config", "审核助手").await;
     assert_ne!(work, config);
     let listed = app.ok("GET", "/v2/patches/work", Value::Null).await;
-    assert_eq!(listed, json!([{"id":work,"name":"结算异常排查"}]));
+    let work_id = listed[0]["id"].as_str().unwrap();
+    assert_ne!(work_id, work);
     assert_eq!(
-        app.ok("GET", "/v2/patches/config", Value::Null).await,
-        json!([{"id":config,"name":"审核助手"}])
+        listed,
+        json!([{"id":work_id,"name":"结算异常排查","directoryId":work}])
     );
+    assert_eq!(
+        app.ok("GET", &format!("/v2/patches/work/{work_id}"), Value::Null)
+            .await,
+        listed[0]
+    );
+    assert_eq!(
+        app.call("GET", &format!("/v2/directories/{work_id}"), Value::Null)
+            .await
+            .0,
+        404
+    );
+    let configs = app.ok("GET", "/v2/patches/config", Value::Null).await;
+    assert_eq!(configs[0]["directoryId"], config);
+    assert_eq!(configs[0]["name"], "审核助手");
     // 另一类包的标识在交叉路径下不存在，磁盘也不共享。
     assert_eq!(
-        app.call(
-            "GET",
-            &format!("/v2/patches/config/{work}/tree"),
-            Value::Null
-        )
-        .await
-        .0,
+        app.call("GET", &format!("/v2/patches/config/{work_id}"), Value::Null)
+            .await
+            .0,
         404
     );
     assert_eq!(
@@ -278,85 +290,54 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
 async fn seeds_config_anchors_and_guards_them() {
     let app = Http::new();
     let work = app.create("work", "空包").await;
-    assert_eq!(app.paths("work", &work).await, Vec::<String>::new());
+    assert_eq!(app.paths(&work).await, Vec::<String>::new());
 
     let id = app.create("config", "配置包").await;
     assert_eq!(
-        app.tree("config", &id).await,
+        app.tree(&id).await,
         vec![
             json!({"path":"AGENTS.md","kind":"file","size":0}),
             json!({"path":"mcp.json","kind":"file","size":17}),
             json!({"path":"skills","kind":"dir"}),
         ]
     );
-    assert_eq!(
-        app.get("config", &id, "mcp.json").await.1,
-        br#"{"mcpServers":{}}"#
-    );
-    assert_eq!(app.get("config", &id, "AGENTS.md").await.1, b"");
+    assert_eq!(app.get(&id, "mcp.json").await.1, br#"{"mcpServers":{}}"#);
+    assert_eq!(app.get(&id, "AGENTS.md").await.1, b"");
     // 系统提示词可写，覆盖需要显式确认。
-    assert_eq!(
-        app.put("config", &id, "AGENTS.md", b"# hola", false).await,
-        409
-    );
-    assert_eq!(
-        app.put("config", &id, "AGENTS.md", b"# hola", true).await,
-        204
-    );
-    assert_eq!(app.get("config", &id, "AGENTS.md").await.1, b"# hola");
+    assert_eq!(app.put(&id, "AGENTS.md", b"# hola", false).await, 409);
+    assert_eq!(app.put(&id, "AGENTS.md", b"# hola", true).await, 204);
+    assert_eq!(app.get(&id, "AGENTS.md").await.1, b"# hola");
 
     // 坏 JSON 不覆盖已有文件，也不改变内容。
-    assert_eq!(
-        app.put("config", &id, "mcp.json", b"not json", true).await,
-        400
-    );
-    assert_eq!(app.put("config", &id, "mcp.json", b"[1]", true).await, 400);
-    assert_eq!(
-        app.get("config", &id, "mcp.json").await.1,
-        br#"{"mcpServers":{}}"#
-    );
+    assert_eq!(app.put(&id, "mcp.json", b"not json", true).await, 400);
+    assert_eq!(app.put(&id, "mcp.json", b"[1]", true).await, 400);
+    assert_eq!(app.get(&id, "mcp.json").await.1, br#"{"mcpServers":{}}"#);
     let body = br#"{"mcpServers":{"tools":{"command":"x"}}}"#;
-    assert_eq!(app.put("config", &id, "mcp.json", body, true).await, 204);
-    assert_eq!(app.get("config", &id, "mcp.json").await.1, body);
+    assert_eq!(app.put(&id, "mcp.json", body, true).await, 204);
+    assert_eq!(app.get(&id, "mcp.json").await.1, body);
     // skills/ 下可以自由建文件。
-    assert_eq!(app.mkdir("config", &id, "skills/review").await, 204);
+    assert_eq!(app.mkdir(&id, "skills/review").await, 204);
     assert_eq!(
-        app.put("config", &id, "skills/review/SKILL.md", b"# r", false)
-            .await,
+        app.put(&id, "skills/review/SKILL.md", b"# r", false).await,
         204
     );
 
     for anchor in ["AGENTS.md", "skills", "mcp.json"] {
-        assert_eq!(
-            app.relocate("config", &id, anchor, "moved").await,
-            409,
-            "{anchor}"
-        );
-        assert_eq!(app.remove("config", &id, anchor).await, 409, "{anchor}");
+        assert_eq!(app.relocate(&id, anchor, "moved").await, 409, "{anchor}");
+        assert_eq!(app.remove(&id, anchor).await, 409, "{anchor}");
     }
     // 也不能把其他文件移动或改名成锚点。
     assert_eq!(
-        app.relocate("config", &id, "AGENTS.md", "skills/AGENTS.md")
-            .await,
+        app.relocate(&id, "AGENTS.md", "skills/AGENTS.md").await,
         409
     );
-    assert_eq!(
-        app.relocate("config", &id, "skills/review", "prompt").await,
-        204
-    );
-    assert_eq!(
-        app.relocate("config", &id, "prompt/SKILL.md", "mcp.json")
-            .await,
-        409
-    );
+    assert_eq!(app.relocate(&id, "skills/review", "prompt").await, 204);
+    assert_eq!(app.relocate(&id, "prompt/SKILL.md", "mcp.json").await, 409);
     // 工作包没有任何锚点限制。
-    assert_eq!(app.put("work", &work, "AGENTS.md", b"x", false).await, 204);
-    assert_eq!(app.mkdir("work", &work, "skills").await, 204);
-    assert_eq!(
-        app.relocate("work", &work, "AGENTS.md", "prompt.md").await,
-        204
-    );
-    assert_eq!(app.remove("work", &work, "skills").await, 204);
+    assert_eq!(app.put(&work, "AGENTS.md", b"x", false).await, 204);
+    assert_eq!(app.mkdir(&work, "skills").await, 204);
+    assert_eq!(app.relocate(&work, "AGENTS.md", "prompt.md").await, 204);
+    assert_eq!(app.remove(&work, "skills").await, 204);
 }
 
 /// 文件按原始字节读写，默认只新建，覆盖必须显式确认。
@@ -366,32 +347,29 @@ async fn round_trips_bytes_and_requires_explicit_replace() {
     let id = app.create("work", "材料").await;
     let path = "材料/#&!= x.bin";
     let first = [0xffu8, 0x00, 0x01, b'\n'];
-    assert_eq!(app.mkdir("work", &id, "材料").await, 204);
-    assert_eq!(app.put("work", &id, path, &first, false).await, 204);
-    assert_eq!(app.get("work", &id, path).await, (200, first.to_vec()));
+    assert_eq!(app.mkdir(&id, "材料").await, 204);
+    assert_eq!(app.put(&id, path, &first, false).await, 204);
+    assert_eq!(app.get(&id, path).await, (200, first.to_vec()));
     assert_eq!(
-        app.tree("work", &id).await,
+        app.tree(&id).await,
         vec![
             json!({"path":"材料","kind":"dir"}),
             json!({"path":path,"kind":"file","size":4}),
         ]
     );
     let second = b"second";
-    assert_eq!(app.put("work", &id, path, second, false).await, 409);
-    assert_eq!(app.get("work", &id, path).await.1, first.to_vec());
-    assert_eq!(app.put("work", &id, path, second, true).await, 204);
-    assert_eq!(app.get("work", &id, path).await.1, second.to_vec());
+    assert_eq!(app.put(&id, path, second, false).await, 409);
+    assert_eq!(app.get(&id, path).await.1, first.to_vec());
+    assert_eq!(app.put(&id, path, second, true).await, 204);
+    assert_eq!(app.get(&id, path).await.1, second.to_vec());
     // 空文件也是合法内容。
-    assert_eq!(app.put("work", &id, "empty", b"", false).await, 204);
-    assert_eq!(app.get("work", &id, "empty").await, (200, Vec::new()));
+    assert_eq!(app.put(&id, "empty", b"", false).await, 204);
+    assert_eq!(app.get(&id, "empty").await, (200, Vec::new()));
     // 父目录不存在时不隐式创建，也不当目录写。
-    assert_eq!(
-        app.put("work", &id, "missing/a.txt", b"x", false).await,
-        404
-    );
-    assert_eq!(app.put("work", &id, "材料", b"x", true).await, 409);
-    assert_eq!(app.get("work", &id, "材料").await.0, 404);
-    assert_eq!(app.get("work", &id, "nope").await.0, 404);
+    assert_eq!(app.put(&id, "missing/a.txt", b"x", false).await, 404);
+    assert_eq!(app.put(&id, "材料", b"x", true).await, 409);
+    assert_eq!(app.get(&id, "材料").await.0, 404);
+    assert_eq!(app.get(&id, "nope").await.0, 404);
 }
 
 /// 相对路径只接受名称段，任何一级符号链接都拒绝，包外文件不可达。
@@ -412,10 +390,10 @@ async fn rejects_unsafe_paths_and_symlinks() {
         "a/./b",
         "a/",
     ] {
-        assert_eq!(app.put("work", &id, bad, b"x", true).await, 400, "{bad}");
-        assert_eq!(app.mkdir("work", &id, bad).await, 400, "{bad}");
-        assert_eq!(app.remove("work", &id, bad).await, 400, "{bad}");
-        assert_eq!(app.get("work", &id, bad).await.0, 400, "{bad}");
+        assert_eq!(app.put(&id, bad, b"x", true).await, 400, "{bad}");
+        assert_eq!(app.mkdir(&id, bad).await, 400, "{bad}");
+        assert_eq!(app.remove(&id, bad).await, 400, "{bad}");
+        assert_eq!(app.get(&id, bad).await.0, 400, "{bad}");
     }
     assert!(!app.dir.path("escape").exists());
     // 超过层级上限的路径同样拒绝。
@@ -423,31 +401,27 @@ async fn rejects_unsafe_paths_and_symlinks() {
         .map(|i| format!("d{i}"))
         .collect::<Vec<_>>()
         .join("/");
-    assert_eq!(app.put("work", &id, &deep, b"x", true).await, 400);
+    assert_eq!(app.put(&id, &deep, b"x", true).await, 400);
 
-    let root = app.dir.package("work", &id);
+    let root = app.dir.package(&id);
     symlink(&outside, root.join("link")).unwrap();
     symlink(outside.join("secret"), root.join("alias")).unwrap();
-    assert_eq!(app.paths("work", &id).await, Vec::<String>::new());
-    assert_eq!(app.get("work", &id, "link/secret").await.0, 500);
-    assert_eq!(app.put("work", &id, "link/planted", b"x", false).await, 500);
+    assert_eq!(app.paths(&id).await, Vec::<String>::new());
+    assert_eq!(app.get(&id, "link/secret").await.0, 500);
+    assert_eq!(app.put(&id, "link/planted", b"x", false).await, 500);
     assert!(!outside.join("planted").exists());
-    assert_eq!(app.get("work", &id, "alias").await.0, 404);
-    assert_eq!(app.put("work", &id, "alias", b"x", true).await, 500);
+    assert_eq!(app.get(&id, "alias").await.0, 404);
+    assert_eq!(app.put(&id, "alias", b"x", true).await, 500);
     assert_eq!(fs::read(outside.join("secret")).unwrap(), b"private");
     // 包根被换成符号链接时整个包不可用。
     let other = app.create("work", "被替换").await;
-    let other_root = app.dir.package("work", &other);
+    let other_root = app.dir.package(&other);
     fs::remove_dir_all(&other_root).unwrap();
     symlink(&outside, &other_root).unwrap();
     assert_eq!(
-        app.call(
-            "GET",
-            &format!("/v2/patches/work/{other}/tree"),
-            Value::Null
-        )
-        .await
-        .0,
+        app.call("GET", &format!("/v2/directories/{other}/tree"), Value::Null)
+            .await
+            .0,
         500
     );
 }
@@ -457,29 +431,29 @@ async fn rejects_unsafe_paths_and_symlinks() {
 async fn creates_moves_and_removes_entries() {
     let app = Http::new();
     let id = app.create("work", "整理").await;
-    assert_eq!(app.mkdir("work", &id, "a").await, 204);
-    assert_eq!(app.mkdir("work", &id, "a").await, 409);
-    assert_eq!(app.mkdir("work", &id, "a/b").await, 204);
-    assert_eq!(app.put("work", &id, "a/b/f.txt", b"body", false).await, 204);
-    assert_eq!(app.relocate("work", &id, "a", "c").await, 204);
-    assert_eq!(app.paths("work", &id).await, vec!["c", "c/b", "c/b/f.txt"]);
-    assert_eq!(app.relocate("work", &id, "c", "c/b/inside").await, 400);
-    assert_eq!(app.relocate("work", &id, "c", "d/e").await, 404);
-    assert_eq!(app.relocate("work", &id, "missing", "x").await, 404);
-    assert_eq!(app.mkdir("work", &id, "d").await, 204);
-    assert_eq!(app.put("work", &id, "d/exists", b"x", false).await, 204);
-    assert_eq!(app.relocate("work", &id, "c", "d/exists").await, 409);
-    assert_eq!(app.relocate("work", &id, "c", "d/exists/deep").await, 404);
+    assert_eq!(app.mkdir(&id, "a").await, 204);
+    assert_eq!(app.mkdir(&id, "a").await, 409);
+    assert_eq!(app.mkdir(&id, "a/b").await, 204);
+    assert_eq!(app.put(&id, "a/b/f.txt", b"body", false).await, 204);
+    assert_eq!(app.relocate(&id, "a", "c").await, 204);
+    assert_eq!(app.paths(&id).await, vec!["c", "c/b", "c/b/f.txt"]);
+    assert_eq!(app.relocate(&id, "c", "c/b/inside").await, 400);
+    assert_eq!(app.relocate(&id, "c", "d/e").await, 404);
+    assert_eq!(app.relocate(&id, "missing", "x").await, 404);
+    assert_eq!(app.mkdir(&id, "d").await, 204);
+    assert_eq!(app.put(&id, "d/exists", b"x", false).await, 204);
+    assert_eq!(app.relocate(&id, "c", "d/exists").await, 409);
+    assert_eq!(app.relocate(&id, "c", "d/exists/deep").await, 404);
     // 非空目录可以删除，删掉的文件不再出现。
-    assert_eq!(app.mkdir("work", &id, "c/b/extra").await, 204);
-    assert_eq!(app.remove("work", &id, "c").await, 204);
-    assert_eq!(app.paths("work", &id).await, vec!["d", "d/exists"]);
-    assert_eq!(app.remove("work", &id, "c").await, 404);
-    assert_eq!(app.remove("work", &id, "d/exists").await, 204);
-    assert_eq!(app.paths("work", &id).await, vec!["d"]);
+    assert_eq!(app.mkdir(&id, "c/b/extra").await, 204);
+    assert_eq!(app.remove(&id, "c").await, 204);
+    assert_eq!(app.paths(&id).await, vec!["d", "d/exists"]);
+    assert_eq!(app.remove(&id, "c").await, 404);
+    assert_eq!(app.remove(&id, "d/exists").await, 204);
+    assert_eq!(app.paths(&id).await, vec!["d"]);
     // 跨包隔离：另一份包看不到这些文件。
     let other = app.create("work", "另一份").await;
-    assert_eq!(app.paths("work", &other).await, Vec::<String>::new());
+    assert_eq!(app.paths(&other).await, Vec::<String>::new());
 }
 
 /// 同时写入同一路径时串行执行，结果不会交错，也不留下临时文件。
@@ -488,22 +462,22 @@ async fn serializes_concurrent_writes_to_one_path() {
     let app = Http::new();
     let id = app.create("work", "并发").await;
     let (one, two) = tokio::join!(
-        app.put("work", &id, ".gitignore", b"a", false),
-        app.put("work", &id, ".gitignore", b"b", false)
+        app.put(&id, ".gitignore", b"a", false),
+        app.put(&id, ".gitignore", b"b", false)
     );
     assert!(matches!((one, two), (204, 409) | (409, 204)));
-    assert_eq!(app.paths("work", &id).await, vec![".gitignore"]);
-    assert_eq!(app.remove("work", &id, ".gitignore").await, 204);
+    assert_eq!(app.paths(&id).await, vec![".gitignore"]);
+    assert_eq!(app.remove(&id, ".gitignore").await, 204);
     let left = vec![b'a'; 1024 * 1024];
     let right = vec![b'b'; 1024 * 1024];
     let (a, b) = tokio::join!(
-        app.put("work", &id, "shared.bin", &left, true),
-        app.put("work", &id, "shared.bin", &right, true)
+        app.put(&id, "shared.bin", &left, true),
+        app.put(&id, "shared.bin", &right, true)
     );
     assert_eq!((a, b), (204, 204));
-    let body = app.get("work", &id, "shared.bin").await.1;
+    let body = app.get(&id, "shared.bin").await.1;
     assert!(body == left || body == right);
-    let root = app.dir.package("work", &id);
+    let root = app.dir.package(&id);
     let leftovers: Vec<String> = fs::read_dir(&root)
         .unwrap()
         .map(|item| item.unwrap().file_name().into_string().unwrap())
@@ -511,9 +485,10 @@ async fn serializes_concurrent_writes_to_one_path() {
         .collect();
     assert_eq!(leftovers, Vec::<String>::new());
     // 失败写入同样不留下临时文件。
-    assert_eq!(app.put("config", &id, "mcp.json", b"{", true).await, 400);
-    assert_eq!(app.put("work", &id, "shared.bin", b"x", false).await, 409);
-    assert_eq!(app.paths("work", &id).await, vec!["shared.bin"]);
+    let config = app.create("config", "配置").await;
+    assert_eq!(app.put(&config, "mcp.json", b"{", true).await, 400);
+    assert_eq!(app.put(&id, "shared.bin", b"x", false).await, 409);
+    assert_eq!(app.paths(&id).await, vec!["shared.bin"]);
 }
 
 /// 大小上限在写入前判断，超限请求不会创建文件。
@@ -523,7 +498,7 @@ fn enforces_limits_before_touching_disk() {
     let root = temp.path("pack");
     fs::create_dir(&root).unwrap();
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
-    dir::prepare(&temp.path("work")).unwrap();
+
     let big = vec![0u8; dir::FILE_LIMIT as usize + 1];
     assert!(matches!(
         dir::write(&root, &[("big".to_owned())], &big, false),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorMessage } from '@/shared/api'
-import type { Directory } from '../api'
+import type { Directory } from '@/modules/directories/api'
 
 export interface TextFileState {
   /** 编辑器里的当前内容，未保存时与原文不同。 */

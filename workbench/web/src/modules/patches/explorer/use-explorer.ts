@@ -7,7 +7,7 @@ import {
   basename, decodeBlob, formatBytes, isMarkdownPath, isSameOrInside, isWithin, joinPath, languageOf, normalizePath, parentPath,
 } from './paths'
 import { ancestorsOf, buildTree, missingAncestors, treePaths, visibleRows, type TreeRow } from './tree'
-import type { Directory, Entry } from '../api'
+import type { Directory, Entry } from '@/modules/directories/api'
 
 export type ExplorerStep = 'list' | 'edit'
 export type MarkdownViewMode = 'edit' | 'split' | 'preview'

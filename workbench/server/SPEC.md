@@ -23,7 +23,8 @@ Server 通过 `/api/v2` 管理工作包、资源和执行器，按包版本发�
 | 派工模板定义 | 模板、模板版本（协议 `packages`） | [catalog](src/work/catalog/SPEC.md) | SOP、验收标准和具名动作随包版本发布。每个动作绑定一个执行器版本。 |
 | 工作项办理与验收 | 工作项、交付版本 | [items](src/work/items/SPEC.md) | 一张单保存当次输入和包版本快照，可多次交付。文件和验收意见归属具体交付版本。 |
 | 执行跟踪 | 执行尝试 | [execute](src/work/execute/SPEC.md) | 每次尝试属于一张单的一个动作。模块记录执行结果，按运行 ID 或会话 ID 查询后端证据。 |
-| 文件目录管理 | Work Patch、Config Patch、目录和文件 | [patches](src/work/patches/SPEC.md) | 每包有独立根。配置目录通过约定文件维护提示词、Skills 和 MCP。 |
+| 虚拟目录资源 | 目录标识、文件树和正文 | [directories](src/work/directories/SPEC.md) | 凭目录 ID 独立操作私有根中的文件。 |
+| 工作包与配置包 | 元信息和目录引用 | [patches](src/work/patches/SPEC.md) | 两张包表各持有目录资源 ID。配置包创建时建立提示词、Skills 和 MCP 的约定文件。 |
 | Echo 工作区与 SOP | 工作包类型、SOP 修订、材料、Echo 回执 | [工作包与 SOP](src/work/workspace_sop/SPEC.md) | 每包有独立材料目录。SOP 单独发布，执行尝试固定所用的修订。Echo 产物不代表业务验收。 |
 | 外部来源接入 | 来源、来源条目 | [sources](src/work/sources/SPEC.md) | 按来源条目和固定动作派工。来源提供材料，工作项保留派工时的输入。 |
 | Flow 运行后端 | Flow 包、Flow 运行、节点运行 | [Flow Runtime](../../flow-runtime/SPEC.md) | Runtime 持有目录修订、运行状态和节点历史。[flow](src/flow/SPEC.md) 提供 v1 用例，`execute` 按运行 ID 跟踪 v2 尝试。 |

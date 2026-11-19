@@ -1,5 +1,5 @@
 import { isWithin, normalizePath } from './paths'
-import type { Entry } from '../api'
+import type { Entry } from '@/modules/directories/api'
 
 export interface TreeNode {
   name: string

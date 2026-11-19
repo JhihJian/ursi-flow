@@ -1,4 +1,4 @@
-import type { Entry } from '../api'
+import type { Entry } from '@/modules/directories/api'
 
 /** 配置补丁的三个锚点：创建补丁时由服务端写入，界面不提供移动和删除。 */
 export const PROMPT_PATH = 'AGENTS.md'
