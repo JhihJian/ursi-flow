@@ -1,6 +1,7 @@
 //! 执行工作包中已解析的动作。调用示例见 execute/API.md。
 mod agent;
 mod plan;
+mod registry;
 #[cfg(test)]
 mod tests;
 
@@ -18,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
+use tokio::sync::{oneshot, watch};
 use ursi_flow_client::FlowClient;
 use uuid::Uuid;
 
@@ -34,9 +35,8 @@ struct Runtime {
     workspace: PathBuf,
     /// 目录资源私有根的宿主路径，只用于从对外文本中剔除。
     artifacts: Option<PathBuf>,
-    bin: Option<PathBuf>,
     agents: Mutex<HashMap<String, watch::Sender<bool>>>,
-    processes: Arc<Semaphore>,
+    registry: Arc<registry::Registry>,
     ready: bool,
 }
 
@@ -55,9 +55,8 @@ fn router(store: Store, workspace: PathBuf, bin: Option<PathBuf>) -> Router {
         store,
         workspace,
         artifacts,
-        bin,
         agents: Mutex::default(),
-        processes: Arc::new(Semaphore::new(4)),
+        registry: Arc::new(registry::Registry::local(bin)),
         ready,
     };
     Router::new()
@@ -133,6 +132,21 @@ fn migrate(attempt: &mut Value) -> Result<(), Error> {
     }
     if !attempt["platformLog"].is_array() {
         attempt["platformLog"] = json!([]);
+    }
+    if attempt.get("executorIntegration").is_none() {
+        let executor = &attempt["executor"];
+        let is_previous_local_agent = executor.is_object()
+            && !["kind", "environment", "flowId", "flowRevision"]
+                .iter()
+                .any(|field| executor.get(*field).is_some())
+            && executor["id"].is_string()
+            && executor["revision"]
+                .as_u64()
+                .is_some_and(|revision| revision > 0);
+        if is_previous_local_agent {
+            attempt["executorIntegration"] =
+                json!({"id":registry::LOCAL_AGENT_ID,"revision":registry::LOCAL_AGENT_REVISION});
+        }
     }
     Ok(())
 }
@@ -394,7 +408,7 @@ fn owned_by(attempt: &Value, item: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn current_agent(attempt: &Value) -> Result<(), Error> {
+fn current_integration(registry: &registry::Registry, attempt: &Value) -> Result<(), Error> {
     let executor = attempt
         .get("executor")
         .and_then(Value::as_object)
@@ -421,7 +435,33 @@ fn current_agent(attempt: &Value) -> Result<(), Error> {
             .and_then(Value::as_u64)
             .is_none_or(|revision| revision == 0)
     {
-        return Err(Error::Unavailable("尝试缺少固定 Agent 执行器版本".into()));
+        return Err(Error::Unavailable("尝试缺少固定逻辑执行器版本".into()));
+    }
+    let integration = attempt
+        .get("executorIntegration")
+        .and_then(Value::as_object)
+        .ok_or_else(|| Error::Unavailable("尝试缺少冻结的执行器集成".into()))?;
+    if integration
+        .keys()
+        .any(|field| !matches!(field.as_str(), "id" | "revision"))
+        || integration
+            .get("id")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        || integration
+            .get("revision")
+            .and_then(Value::as_u64)
+            .is_none_or(|revision| revision == 0)
+    {
+        return Err(Error::Unavailable("尝试的执行器集成引用无效".into()));
+    }
+    if !registry.contains(
+        integration["id"].as_str().unwrap(),
+        integration["revision"].as_u64().unwrap(),
+    ) {
+        return Err(Error::Unavailable(
+            "原执行器集成版本未注册，不会改派".into(),
+        ));
     }
     Ok(())
 }
@@ -495,19 +535,6 @@ impl Runtime {
             Ok(a.clone())
         })
     }
-    fn binary(&self) -> Result<&std::path::Path, Error> {
-        self.bin
-            .as_deref()
-            .filter(|p| p.is_absolute() && p.is_file())
-            .ok_or_else(|| {
-                Error::Unavailable("需要管理员配置 URSI_AGENT_BIN 可执行文件的绝对路径".into())
-            })
-    }
-}
-fn slot(s: &Arc<Semaphore>) -> Result<OwnedSemaphorePermit, Error> {
-    s.clone()
-        .try_acquire_owned()
-        .map_err(|_| Error::Unavailable("执行后端繁忙".into()))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -516,7 +543,7 @@ struct Request {
 }
 
 enum Dispatch {
-    Agent(PathBuf, String, OwnedSemaphorePermit),
+    Agent(registry::Lease, String),
 }
 
 async fn start(
@@ -537,11 +564,17 @@ async fn start(
             let key = key.clone();
             tokio::task::spawn_blocking(move || {
                 // 配置包快照必须在 artifact 分配事务之外建立，避免在 Store 更新闭包中嵌套 Store 锁。
-                let config_package = rt.store.read(|db| {
+                let (config_package, lease) = rt.store.read(|db| {
                     let item = db["items"]
                         .get(&key.0)
                         .ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
-                    plan::config_package(item, &action)
+                    let (plan, _) = plan::resolve(item, &action)?;
+                    let package = plan::config_package(item, &action)?;
+                    let lease = rt
+                        .registry
+                        .select(plan.requirements())
+                        .map_err(registry::selection_error)?;
+                    Ok((package, lease))
                 })?;
                 let config_snapshot = config_package
                     .as_deref()
@@ -554,7 +587,14 @@ async fn start(
                     directories::Rules::default(),
                     |_| Ok(()),
                     |db, directory| {
-                        reserve(&rt, db, directory, &key, &action, config_snapshot.as_ref())
+                        reserve(
+                            lease,
+                            db,
+                            directory,
+                            &key,
+                            &action,
+                            config_snapshot.as_ref(),
+                        )
                     },
                 )
             })
@@ -577,7 +617,7 @@ async fn start(
         };
         let response = attempt.clone();
         match dispatch {
-            Dispatch::Agent(bin, prompt, permit) => {
+            Dispatch::Agent(lease, prompt) => {
                 let directory = match attempt["artifactDirectory"]["id"].as_str() {
                     Some(id) => id.to_owned(),
                     None => {
@@ -593,7 +633,6 @@ async fn start(
                 let worker_rt = rt.clone();
                 let worker_key = key.clone();
                 tokio::spawn(async move {
-                    let _permit = permit;
                     let outcome = match directories::path(&worker_rt.store, &directory) {
                         Ok(artifact) => {
                             let config = config_directory
@@ -602,16 +641,15 @@ async fn start(
                                 .transpose();
                             match config {
                                 Ok(config) => {
-                                    agent::run(
-                                        &bin,
-                                        &worker_rt.workspace,
-                                        &artifact,
-                                        prompt,
-                                        config.as_deref(),
-                                        &mut rx,
-                                        agent::DEADLINE,
-                                    )
-                                    .await
+                                    lease
+                                        .run(
+                                            &worker_rt.workspace,
+                                            &artifact,
+                                            prompt,
+                                            config.as_deref(),
+                                            &mut rx,
+                                        )
+                                        .await
                                 }
                                 Err(_) => Outcome::new("failed", "配置包快照不可用"),
                             }
@@ -635,7 +673,7 @@ async fn start(
 
 /// 在同一笔存储更新中校验工作项状态、冻结输入与制品引用并追加尝试。
 fn reserve(
-    rt: &Runtime,
+    lease: registry::Lease,
     db: &mut Value,
     directory: &str,
     key: &Key,
@@ -648,12 +686,9 @@ fn reserve(
     let (plan, binding) = plan::resolve(item, action)?;
     let config_package = freeze_config(item, &binding, &key.1, config_snapshot)?;
     let instruction = plan.instruction();
+    let integration = json!({"id": lease.id, "revision": lease.revision});
     let (status, workspace, dispatch) = match plan {
-        plan::Plan::Agent(prompt) => (
-            "running",
-            "default",
-            Dispatch::Agent(rt.binary()?.into(), prompt, slot(&rt.processes)?),
-        ),
+        plan::Plan::Text(prompt, _) => ("running", "default", Dispatch::Agent(lease, prompt)),
     };
     let mut attempt = json!({
         "id": key.1,
@@ -661,6 +696,7 @@ fn reserve(
         "action": action,
         "status": status,
         "executor": binding["executor"],
+        "executorIntegration": integration,
         "resources": binding["resources"],
         "workspace": workspace_ref(workspace),
         "workInstruction": {"text": instruction, "encoding": "utf-8"},
@@ -715,7 +751,7 @@ async fn verify(
 ) -> Reply {
     let before = rt.load(&key)?;
     owned_by(&before, &key.0)?;
-    current_agent(&before)?;
+    current_integration(&rt.registry, &before)?;
     if before["status"] != "unverified" {
         return Err(Error::Conflict("仅可人工核实待核实的尝试".into()));
     }
@@ -756,7 +792,7 @@ async fn verify(
 async fn inspect(rt: Arc<Runtime>, key: Key, stop: bool) -> Reply {
     let attempt = rt.load(&key)?;
     owned_by(&attempt, &key.0)?;
-    current_agent(&attempt)?;
+    current_integration(&rt.registry, &attempt)?;
     if terminal(&attempt) {
         return Ok(Json(attempt));
     }

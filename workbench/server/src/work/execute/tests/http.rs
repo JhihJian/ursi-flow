@@ -115,6 +115,10 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
         a["workspace"],
         json!({"id":"default","access":"read-write","purpose":"work-input"})
     );
+    assert_eq!(
+        a["executorIntegration"],
+        json!({"id":"local-agent","revision":1})
+    );
     assert_eq!(a["artifactDirectory"]["state"], "writable");
     assert!(a["artifactDirectory"]["id"].is_string());
     assert_eq!(a["workInstruction"]["encoding"], "utf-8");
@@ -283,6 +287,53 @@ async fn attempt_route_persists_a_new_config_snapshot_for_each_retry() {
         first["configPackage"]["capability"]["id"],
         second["configPackage"]["capability"]["id"]
     );
+}
+
+#[tokio::test]
+async fn unavailable_integration_does_not_allocate_config_or_artifacts() {
+    let temp = Temp::new();
+    let store = Store::open(temp.0.join("db")).unwrap();
+    let api = Api::new(&temp, store.clone(), temp.0.join("not-installed"));
+    let patch = api.post("patches/config", json!({"name":"配置"})).await;
+    store
+        .update(|db| {
+            let mut i = item();
+            i["packageSnapshot"]["actions"]["analyze"]["configPackage"] = json!({"id":patch["id"]});
+            db["items"]["i"] = i;
+            Ok(())
+        })
+        .unwrap();
+    let before = store.read(|db| Ok(db.clone())).unwrap();
+    api.request("items/i/attempts", Some(json!({"action":"analyze"})), 503)
+        .await;
+    assert_eq!(store.read(|db| Ok(db.clone())).unwrap(), before);
+}
+
+#[tokio::test]
+async fn unregistered_revision_is_not_replaced_on_recovery_or_control() {
+    let temp = Temp::new();
+    let store = Store::open(temp.0.join("db")).unwrap();
+    let frozen = json!({"id":"local-agent","revision":99});
+    store.update(|db| {
+        db["items"]["i"] = item();
+        db["items"]["i"]["attempts"] = json!([{"id":"old","status":"running","executor":{"id":"assistant","revision":3},"executorIntegration":frozen}]);
+        Ok(())
+    }).unwrap();
+    let api = Api::new(&temp, store, temp.script("touch replay"));
+    let path = "items/i/attempts/old";
+    api.request(path, None, 503).await;
+    api.request(&format!("{path}/cancel"), Some(json!({})), 503)
+        .await;
+    api.request(
+        &format!("{path}/verify"),
+        Some(json!({"status":"failed","reason":"已核实","evidence":"日志"})),
+        503,
+    )
+    .await;
+    let history = api.request("items/i/attempts", None, 200).await;
+    assert_eq!(history[0]["executorIntegration"], frozen);
+    assert_eq!(history[0]["status"], "unverified");
+    assert!(!temp.0.join("replay").exists());
 }
 
 #[tokio::test]

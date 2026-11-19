@@ -49,7 +49,7 @@ fn item() -> Value {
 #[test]
 fn resolve_only_the_frozen_action_and_supported_capabilities() {
     let mut i = item();
-    let (plan::Plan::Agent(prompt), _) = plan::resolve(&i, "analyze").unwrap();
+    let (plan::Plan::Text(prompt, _), _) = plan::resolve(&i, "analyze").unwrap();
     for s in ["A-17", "对照原始材料", "报告须有标题", "检查最后一行"] {
         assert!(prompt.contains(s));
     }

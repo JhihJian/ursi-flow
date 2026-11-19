@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 // Catalog freezes a projected executor and the merged, expanded resources here.
-// The only execution adapter currently exposed by this contract is Agent.
+// The plan describes platform capabilities; the internal registry chooses an adapter.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Binding {
@@ -32,15 +32,26 @@ struct Resource {
     content: Value,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct Requirements {
+    pub(super) config_package: bool,
+}
+
 pub(super) enum Plan {
-    Agent(String),
+    Text(String, Requirements),
 }
 
 impl Plan {
     /// 本次尝试冻结后传给执行器的工作指令正文。
     pub(super) fn instruction(&self) -> String {
         match self {
-            Self::Agent(text) => text.clone(),
+            Self::Text(text, _) => text.clone(),
+        }
+    }
+
+    pub(super) fn requirements(&self) -> Requirements {
+        match self {
+            Self::Text(_, requirements) => *requirements,
         }
     }
 }
@@ -122,5 +133,13 @@ pub(super) fn resolve(item: &Value, action: &str) -> Result<(Plan, Value), Error
     if prompt.len() > 256 * 1024 {
         return Err(Error::Invalid("Agent 输入超过 256 KiB".into()));
     }
-    Ok((Plan::Agent(prompt), binding.clone()))
+    Ok((
+        Plan::Text(
+            prompt,
+            Requirements {
+                config_package: binding.get("configPackage").is_some(),
+            },
+        ),
+        binding.clone(),
+    ))
 }

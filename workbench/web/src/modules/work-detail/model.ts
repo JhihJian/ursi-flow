@@ -32,6 +32,7 @@ export interface Attempt {
   action: string
   status: 'starting' | 'running' | 'unverified' | 'failed' | 'cancelled' | 'succeeded'
   executor: Executor
+  executorIntegration?: { id: string; revision: number }
   workspace: WorkspaceRef
   workInstruction: WorkInstruction | null
   artifactDirectory: ArtifactDirectory | null

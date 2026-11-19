@@ -23,11 +23,11 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 
 配置包交给执行器时使用尝试专属的冻结目录能力引用：`{"id":"<snapshot-directory>","access":"read-only","purpose":"executor-config"}`。该引用与 `snapshotRef` 均按尝试生成，重试不会复用。公开的尝试响应只携带能力引用，不携带 `cwd` 或任何宿主绝对路径。当前本地 Agent 适配器在受信进程边界内把冻结目录映射到 `URSI_CONFIG_DIR`，这是适配器私有实现细节，执行器定义和工作指令均不携带宿主路径。
 
-本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。平台通过 `URSI_ARTIFACT_DIR` 提供制品目录能力，并在存在配置包时通过适配器私有的 `URSI_CONFIG_DIR` 提供只读配置目录；这些变量与工作目录一样不随尝试返回。当前内置 Pi 调用关闭工具和扩展，因此实际写入需要后续执行器能力或受控包装程序；本切片负责目录登记、配置包快照、清单和终态冻结。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
+本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。平台通过 `URSI_ARTIFACT_DIR` 提供制品目录能力，并在存在配置包时通过适配器私有的 `URSI_CONFIG_DIR` 提供只读配置目录；这些变量与工作目录一样不随尝试返回。当前内置 Pi 调用关闭工具和扩展，因此实际写入需要后续执行器能力或受控包装程序；本切片负责目录登记、配置包快照、清单和终态冻结。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，本地 Agent 集成默认最多 4 个并发 lease。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
 
 ### 尝试对象与制品目录
 
-尝试除了 `id`、`itemId`、`action`、`status`、`executor`、`resources`、`backendRunId` 和旧 `output` 外，还包含：
+尝试除了 `id`、`itemId`、`action`、`status`、`executor`、`executorIntegration`、`resources`、`backendRunId` 和旧 `output` 外，还包含：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -35,6 +35,7 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 | `workInstruction` | 启动时冻结的 `{text, encoding}`。Flow 的 `text` 是工作项输入 JSON。 |
 | `artifactDirectory` | 本次尝试独占的 `{id, state}`，`state` 为 `writable` 或 `frozen`。 |
 | `platformLog` | 平台记录日志数组，每条含 `sequence`、`occurredAt`（Unix 秒）、`source`、`event`、`message`、`attemptStatus`。 |
+| `executorIntegration` | 平台选中的内部集成不透明引用 `{id, revision}`。它不包含实现路径、命令、工作目录、环境变量或凭据；尝试创建后不重新选择。 |
 | `executorLog` | 执行器记录日志，当前为 `{source, kind:"text", entries:[{sequence, occurredAt, stream, text}]}`，未产生时为 `null`。 |
 | `executorLogPage` | 执行器自建静态日志页入口，当前恒为 `null`，平台不生成地址。 |
 | `configPackage` | 尝试创建时冻结的配置 `{version,values,secrets,sourceRef,snapshotRef,capability}`。secret 仅保留状态，能力引用不是宿主路径。 |
@@ -42,9 +43,9 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 
 制品文件清单读 `GET /api/v2/directories/{artifactDirectory.id}/tree`，返回 `{path,kind,size?}` 数组。尝试进入终态（含 `unverified`）时平台冻结目录：此后对该目录的 `PUT`、`/dir`、`/move` 和 `DELETE` 均返回 409，`GET` 与 `tree` 不变。重试创建新的尝试并获得新目录，旧目录保持可读。
 
-旧数据迁移：旧的 `workspace` 字符串（别名或宿主路径）在服务启动时改为上述引用，宿主路径同时从 `output` 中剔除；缺失的 `workInstruction`、`artifactDirectory`、`executorLog`、`executorLogPage`、`configPackage` 补为 `null`，`platformLog` 补为空数组。重启前的未结束尝试仍转为 `unverified`，但恢复提示只写 `recoveryNotice` 和平台日志，不再覆盖 `output`。
+旧数据迁移：旧的 `workspace` 字符串（别名或宿主路径）在服务启动时改为上述引用，宿主路径同时从 `output` 中剔除；此前由当前本地 Agent 创建且没有旧后端字段的尝试补为 `executorIntegration: {id:"local-agent",revision:1}`；旧 Flow/Sandbox 字段不会补造集成。缺失的 `workInstruction`、`artifactDirectory`、`executorLog`、`executorLogPage`、`configPackage` 补为 `null`，`platformLog` 补为空数组。重启前的未结束尝试仍转为 `unverified`，但恢复提示只写 `recoveryNotice` 和平台日志，不再覆盖 `output`。
 
-当前执行入口只接受目录发布的通用执行器投影，并统一通过本地 Agent 适配器执行。带旧 `kind`、`environment`、`flowId` 或 `flowRevision` 的历史快照不会启动；查询、取消和人工核实返回 503，不会重放旧后端。沙箱和 Flow 的迁移说明保留在 [预配 ACP 沙箱](SANDBOX.md) 及历史设计文档中，当前不属于可用执行后端。
+当前执行入口只接受目录发布的通用执行器投影，并通过内部集成注册表选择本地 Agent 适配器。只有新尝试参与选择。没有匹配且就绪的集成或容量已满时返回 503，不创建配置快照、制品目录或尝试。已登记尝试的集成引用保持不变；如果该修订后来没有注册，历史列表仍可读取，单次查询、取消和核实返回 503。带旧 `kind`、`environment`、`flowId` 或 `flowRevision` 的历史快照不会启动；查询、取消和人工核实返回 503，不会重放旧后端。沙箱和 Flow 的迁移说明保留在 [预配 ACP 沙箱](SANDBOX.md) 及历史设计文档中，当前不属于可用执行后端。
 
 `starting` 表示等待 daemon 受理。`running` 表示本地执行已交给 Agent 任务，或 daemon 报告运行中。`succeeded`、`failed`、`cancelled` 是确认的尝试结果。`unverified` 表示缺少完成证据，可能已有副作用。重启恢复只标记未结束尝试，重新查询 Flow 可取得 daemon 的后续证据。收到错误或断线时先查列表和详情；显式重新提交会创建独立的新尝试和新制品目录。
 
