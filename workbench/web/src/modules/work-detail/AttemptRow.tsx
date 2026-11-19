@@ -28,7 +28,7 @@ function Artifacts({ directory, visible }: { directory: ArtifactDirectory; visib
     }
     void load()
     return () => controller.abort()
-  }, [directory.id, visible, retry])
+  }, [directory.id, directory.state, visible, retry])
   return <>
     <p>{directory.state === 'frozen' ? '已冻结（只读）' : '执行中可写'}</p>
     {error && <p role="alert" className="text-err">读取制品目录失败：{error}
@@ -77,10 +77,19 @@ export function AttemptRow({ base, attempt, open, toggle, busy, visible, write, 
   const sandbox = executor.environment === 'sandbox'
   const environment = executor.kind === 'flow' ? 'Flow' : sandbox ? '沙箱' : '本地 Agent'
   const verify = () => write(async () => update(await post<Attempt>(`${path}/verify`, { status, evidence, reason })))
+  const logPage = (() => {
+    if (!attempt.executorLogPage) return null
+    try {
+      const url = new URL(attempt.executorLogPage, window.location.href)
+      return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null
+    } catch {
+      return null
+    }
+  })()
   return <article className="min-w-0 border-b border-line py-3">
     <button className="grid w-full gap-1 text-left sm:grid-cols-[2fr_2fr_1fr_1fr]" aria-expanded={open} onClick={toggle}>
       <strong>{attempt.action}</strong><span>{executor.id} v{executor.revision}</span>
-      <span>{environment} · {attempt.workspace.id}</span><span>{attemptStatus[attempt.status]}</span>
+      <span>{environment} · {attempt.workspace?.id ?? '未记录'}</span><span>{attemptStatus[attempt.status]}</span>
       <small className="break-all text-txt3 sm:col-span-4">{attempt.id}</small>
     </button>
     {error && <p role="alert" className="text-err">查询执行记录失败：{error} <Button onClick={() => setRetry(n => n + 1)}>重新查询</Button></p>}
@@ -93,15 +102,15 @@ export function AttemptRow({ base, attempt, open, toggle, busy, visible, write, 
       </section>
       <section aria-label="执行器记录日志">
         <h3 className="font-medium">执行器记录日志</h3>
-        {attempt.executorLogPage && <p><a className="text-accent-2 underline" href={attempt.executorLogPage}>执行器日志页面</a></p>}
+        {logPage && <p><a className="text-accent-2 underline" href={logPage} rel="noreferrer">执行器日志页面</a></p>}
         <p>{attempt.executorLog ? `已记录 ${attempt.executorLog.entries.length} 条，日志查看器待实现` : '暂无执行器记录'}</p>
       </section>
       <section aria-label="制品目录">
         <h3 className="font-medium">制品目录</h3>
         {attempt.artifactDirectory ? <Artifacts directory={attempt.artifactDirectory} visible={visible && open} /> : <p>无制品目录</p>}
       </section>
-      {attempt.recoveryNotice && <p role="note" className="text-warn">{attempt.recoveryNotice}</p>}
       <h3 className="font-medium">本次输出</h3><pre className="whitespace-pre-wrap break-words">{attempt.output ?? '暂无输出'}</pre>
+      {attempt.recoveryNotice && <p role="note" className="text-warn">{attempt.recoveryNotice}</p>}
       {attempt.interruptedStatus && <p>中断前状态：{attempt.interruptedStatus}</p>}
       {attempt.verification && <div className="space-y-1"><h3 className="font-medium">核实记录</h3>
         <p>核实结论：{attemptStatus[attempt.status]}</p><p>证据：{attempt.verification.evidence}</p><p>原因：{attempt.verification.reason}</p>

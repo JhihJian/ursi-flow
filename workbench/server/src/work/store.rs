@@ -54,6 +54,9 @@ impl Store {
                 "工作数据目录必须为服务账户私有目录",
             ));
         }
+        // Subprocesses receive paths derived from the store. Keep them absolute so
+        // they cannot be reinterpreted relative to an executor's workspace.
+        let dir = fs::canonicalize(dir)?;
         let lock = OpenOptions::new()
             .write(true)
             .create(true)

@@ -333,7 +333,7 @@ it('执行详情依次展示平台日志、执行器日志与制品目录，且�
       { sequence: 2, occurredAt: 2, source: 'platform', event: 'attempt_closed', message: '执行结束：成功', attemptStatus: 'succeeded' },
     ],
     executorLog: { source: 'agent', kind: 'text', entries: [{ sequence: 1, occurredAt: 2, stream: 'stdout', text: '报告已生成' }] },
-    executorLogPage: null,
+    executorLogPage: 'javascript:alert(1)',
   }
   const bare: Attempt = { ...attempt, id: 'a2', action: '核查', status: 'succeeded', artifactDirectory: null }
   const fetch = mount(p => {
@@ -362,6 +362,6 @@ it('执行详情依次展示平台日志、执行器日志与制品目录，且�
   expect(screen.getByText('暂无平台记录')).toBeVisible()
   expect(screen.getByText('暂无执行器记录')).toBeVisible()
   // 没有制品目录时不会去读取目录清单。
-  expect(fetch.mock.calls.some(([p]) => p.includes('/directories/'))).toBe(true)
+  expect(fetch.mock.calls.some(([p]) => p.endsWith('/directories/art-2/tree'))).toBe(false)
   expect(screen.queryByRole('link', { name: /日志/ })).toBeNull()
 })

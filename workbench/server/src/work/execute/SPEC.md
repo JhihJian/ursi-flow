@@ -35,11 +35,11 @@ references:
 #### 验收
 
 - 启动时在同一次存储更新中校验工作项状态、绑定动作、冻结 `workInstruction`、分配 `artifactDirectory` 并追加尝试。尝试记录 `id`、动作、状态、执行器、资源、`workspace`、`workInstruction`、`artifactDirectory`、`platformLog`、`executorLog`、`executorLogPage` 和旧 `output` 字段。
-- 制品目录登记在虚拟目录模块中，执行器通过 `URSI_ARTIFACT_DIR` 写入。平台只把目录标识和清单对外公布，不公布宿主路径；清单经 `/v2/directories/{id}/tree` 读取。
+- 制品目录登记在虚拟目录模块中，平台通过 `URSI_ARTIFACT_DIR` 向执行器提供写入能力。当前内置 Pi 调用使用 `--no-tools` 等隔离参数，实际制品写入能力尚待后续执行器切片；平台只把目录标识和清单对外公布，不公布宿主路径；清单经 `/v2/directories/{id}/tree` 读取。
 - 每次尝试独占新的制品目录，重试不覆盖历史制品。尝试结束（成功、失败、取消、待核实）后目录与其记录一起冻结，此后写入、建目录、移动和删除返回 409，读取和清单仍可用。
 - 平台记录日志按序追加尝试创建、尝试结束、制品目录冻结、人工核实和重启恢复等事件，每条含序号、时间、事件类型、摘要和当时状态。执行器记录日志暂只承接 Agent 标准输出，按来源和顺序保存；恢复、核实和查询都不会覆盖它或旧 `output`。
 - 服务重启把未结束的尝试转为 `unverified` 时，恢复提示写入 `recoveryNotice` 和新平台日志事件，不覆盖执行器留下的 `output`；已中断尝试的制品目录同时冻结。
-- `executorLogPage` 是执行器自建静态日志页的预留入口，当前恒为 `null`，平台不生成任何跳转地址。
+- Flow 和沙箱当前只登记并冻结独立制品目录，尚未收集后端产物；`executorLogPage` 是执行器自建静态日志页的预留入口，当前恒为 `null`，平台不生成任何跳转地址。
 
 ### 显式绑定的独占沙箱
 

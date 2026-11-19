@@ -23,6 +23,16 @@ fn snapshot(store: &Store) -> Value {
 }
 
 #[test]
+fn open_resolves_relative_store_directory() {
+    let relative = PathBuf::from(format!(".work-store-relative-{}", Uuid::new_v4()));
+    let absolute = std::env::current_dir().unwrap().join(&relative);
+    let store = Store::open(relative).unwrap();
+    assert_eq!(store.dir(), absolute);
+    drop(store);
+    fs::remove_dir_all(absolute).unwrap();
+}
+
+#[test]
 fn transaction_error_rolls_back_all_changes() {
     let dir = Dir::new();
     let store = dir.open();

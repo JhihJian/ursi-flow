@@ -20,7 +20,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use ursi_flow_client::FlowClient;
 use uuid::Uuid;
 
@@ -132,6 +132,9 @@ fn migrate(attempt: &mut Value) -> Result<(), Error> {
             text
         };
         attempt["workspace"] = workspace_ref(&id);
+    }
+    if !attempt["workspace"]["id"].is_string() {
+        attempt["workspace"] = workspace_ref("default");
     }
     for (field, value) in [
         ("workInstruction", Value::Null),
@@ -341,80 +344,128 @@ async fn start(
     rt.check()?;
     let key = (item, Uuid::new_v4().to_string());
     let action = req.action;
-    // 制品目录的磁盘创建与尝试追加同属一次登记：登记失败时不会留下孤立目录。
-    let (attempt, dispatch) = {
-        let rt = rt.clone();
-        let key = key.clone();
-        tokio::task::spawn_blocking(move || {
-            directories::allocate(
-                &rt.store,
-                directories::Rules::default(),
-                |_| Ok(()),
-                |db, directory| reserve(&rt, db, directory, &key, &action),
-            )
-        })
-        .await
-        .map_err(|_| Error::Internal("执行启动任务中断".into()))??
-    };
-    // No await between the durable append and dispatch. Dropping the HTTP future does not replay or abort the backend call.
-    match dispatch {
-        dispatch @ (Dispatch::Agent(..) | Dispatch::Sandbox(..)) => {
-            let directory = attempt["artifactDirectory"]["id"]
-                .as_str()
-                .unwrap_or_default()
-                .to_owned();
-            let (tx, mut rx) = watch::channel(false);
-            rt.agents.lock().unwrap().insert(key.1.clone(), tx);
-            tokio::spawn(async move {
-                let outcome = match dispatch {
-                    Dispatch::Agent(bin, prompt, _permit) => {
-                        match directories::path(&rt.store, &directory) {
-                            Ok(artifact) => {
-                                agent::run(
-                                    &bin,
-                                    &rt.workspace,
-                                    &artifact,
-                                    prompt,
-                                    &mut rx,
-                                    agent::DEADLINE,
-                                )
-                                .await
-                            }
-                            Err(_) => Outcome::new("failed", "制品目录不可用"),
-                        }
-                    }
-                    Dispatch::Sandbox(prompt) => {
-                        sandbox::run(&rt, &key, rt.sandbox.as_ref().unwrap(), prompt, &mut rx).await
-                    }
-                    Dispatch::Flow(..) => unreachable!(),
-                };
-                if rt.record(&key, outcome).is_err() {
-                    eprintln!("无法保存 Agent 尝试 {} 的结果", key.1);
-                }
-                rt.agents.lock().unwrap().remove(&key.1);
-            });
-            Ok(Json(attempt))
-        }
-        Dispatch::Flow(client, call, permit) => tokio::spawn(async move {
-            match flow::call(client, key.1.clone(), call, permit).await {
-                Ok(job) => rt.record(&key, flow::evidence(&attempt, &job)).map(Json),
-                Err(e) => {
-                    let status = if flow::rejected(&e) {
-                        "failed"
-                    } else {
-                        "unverified"
-                    };
-                    rt.record(
-                        &key,
-                        Outcome::new(status, format!("Flow 启动: {}", e.kind())),
-                    )?;
-                    Err(flow::error(&e))
-                }
+    let (reply, receive) = oneshot::channel::<Result<Value, Error>>();
+    // Keep registration and dispatch in a detached task. If the HTTP caller
+    // disconnects while the blocking store operation is running, the attempt
+    // still gets a backend and cannot become an unowned running record.
+    tokio::spawn(async move {
+        let allocation = {
+            let rt = rt.clone();
+            let key = key.clone();
+            tokio::task::spawn_blocking(move || {
+                directories::allocate(
+                    &rt.store,
+                    directories::Rules::default(),
+                    |_| Ok(()),
+                    |db, directory| reserve(&rt, db, directory, &key, &action),
+                )
+            })
+            .await
+            .map_err(|_| Error::Internal("执行启动任务中断".into()))
+        };
+        let allocation = match allocation {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
             }
-        })
+        };
+        let (attempt, dispatch) = match allocation {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
+        let response = attempt.clone();
+        match dispatch {
+            Dispatch::Agent(bin, prompt, permit) => {
+                let directory = match attempt["artifactDirectory"]["id"].as_str() {
+                    Some(id) => id.to_owned(),
+                    None => {
+                        let _ = reply.send(Err(Error::Internal("尝试缺少制品目录引用".into())));
+                        return;
+                    }
+                };
+                let (cancel, mut rx) = watch::channel(false);
+                rt.agents.lock().unwrap().insert(key.1.clone(), cancel);
+                let worker_rt = rt.clone();
+                let worker_key = key.clone();
+                tokio::spawn(async move {
+                    let _permit = permit;
+                    let outcome = match directories::path(&worker_rt.store, &directory) {
+                        Ok(artifact) => {
+                            agent::run(
+                                &bin,
+                                &worker_rt.workspace,
+                                &artifact,
+                                prompt,
+                                &mut rx,
+                                agent::DEADLINE,
+                            )
+                            .await
+                        }
+                        Err(_) => Outcome::new("failed", "制品目录不可用"),
+                    };
+                    if worker_rt.record(&worker_key, outcome).is_err() {
+                        eprintln!("无法保存 Agent 尝试 {} 的结果", worker_key.1);
+                    }
+                    worker_rt.agents.lock().unwrap().remove(&worker_key.1);
+                });
+            }
+            Dispatch::Sandbox(prompt) => {
+                let (cancel, mut rx) = watch::channel(false);
+                rt.agents.lock().unwrap().insert(key.1.clone(), cancel);
+                let worker_rt = rt.clone();
+                let worker_key = key.clone();
+                tokio::spawn(async move {
+                    let outcome = sandbox::run(
+                        &worker_rt,
+                        &worker_key,
+                        worker_rt.sandbox.as_ref().unwrap(),
+                        prompt,
+                        &mut rx,
+                    )
+                    .await;
+                    if worker_rt.record(&worker_key, outcome).is_err() {
+                        eprintln!("无法保存沙箱尝试 {} 的结果", worker_key.1);
+                    }
+                    worker_rt.agents.lock().unwrap().remove(&worker_key.1);
+                });
+            }
+            Dispatch::Flow(client, call, permit) => {
+                let flow_attempt = response.clone();
+                let result = flow::call(client, key.1.clone(), call, permit).await;
+                match result {
+                    Ok(job) => {
+                        let _ = reply.send(rt.record(&key, flow::evidence(&flow_attempt, &job)));
+                    }
+                    Err(e) => {
+                        let status = if flow::rejected(&e) {
+                            "failed"
+                        } else {
+                            "unverified"
+                        };
+                        let recorded = rt.record(
+                            &key,
+                            Outcome::new(status, format!("Flow 启动: {}", e.kind())),
+                        );
+                        let result = match recorded {
+                            Ok(_) => Err(flow::error(&e)),
+                            Err(error) => Err(error),
+                        };
+                        let _ = reply.send(result);
+                    }
+                }
+                return;
+            }
+        }
+        let _ = reply.send(Ok(response));
+    });
+    let attempt = receive
         .await
-        .map_err(|_| Error::Internal("Flow 启动任务异常".into()))?,
-    }
+        .map_err(|_| Error::Internal("执行启动任务中断".into()))??;
+    Ok(Json(attempt))
 }
 
 /// 在同一笔存储更新中校验工作项状态、冻结输入与制品引用并追加尝试。
