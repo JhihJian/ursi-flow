@@ -18,7 +18,6 @@ export default defineConfig({
         PORT: '14483',
         URSI_FLOW_HOME: new URL('./.e2e-home', import.meta.url).pathname,
         URSI_FLOW_WORKDIR: new URL('./.e2e-work', import.meta.url).pathname,
-        URSI_FLOW_WEB_TOKEN: 'e2e-console-token',
         URSI_FLOW_WEB_TLS_CERT: '',
       },
       url: 'http://127.0.0.1:14483/console-config.json',

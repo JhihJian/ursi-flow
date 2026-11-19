@@ -89,3 +89,129 @@
     .heading { @apply items-start; }
   }
 }
+
+/* 编辑器骨架：左侧包文件，右侧视图 */
+@layer components {
+  .editor-page { @apply max-w-[1800px] py-4 }
+  .editor-body { @apply mt-4 grid gap-4 xl:grid-cols-[16rem_minmax(0,1fr)] }
+  .file-rail { @apply min-w-0 rounded-xl border border-line bg-surface p-4 }
+  .file-rail h2 { @apply text-sm }
+  .file-name { @apply truncate font-mono text-xs }
+  .run-panel { @apply mt-6 space-y-3 border-t border-line pt-4 }
+  .editor-main { @apply min-w-0 }
+  .view-tabs { @apply mb-3 flex flex-wrap items-center gap-1 border-b border-line pb-2 }
+  .view-tabs button { @apply h-8 gap-1.5 border-0 bg-transparent px-2.5 text-txt3 }
+  .view-tabs button[aria-selected='true'] { @apply bg-accent-dim text-accent-2 }
+  .view-tabs-note { @apply ml-auto truncate font-mono text-xs text-txt3 }
+  .view-tabs-issues { @apply rounded-full bg-warn/10 px-2 py-0.5 text-xs text-warn }
+  .issues-bar { @apply mb-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn }
+  .source-wrap { @apply space-y-2 }
+  .source-bar { @apply flex flex-wrap items-center justify-between gap-2 text-xs }
+  .button.danger { @apply text-err hover:border-err/40 hover:bg-err/10 }
+}
+
+/* 画布：节点卡片、出口、连线与检查器 */
+@layer components {
+  .canvas-shell { @apply grid gap-3 lg:grid-cols-[12.5rem_minmax(0,1fr)] xl:grid-cols-[12.5rem_minmax(0,1fr)_18rem] }
+  .canvas-palette { @apply flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-surface p-2.5 }
+  .palette-title { @apply mb-1 flex items-center gap-2 px-1 text-xs font-medium text-txt3 }
+  .palette-item { @apply h-9 justify-start gap-2 border-0 bg-transparent px-2 text-xs text-txt2 hover:bg-elevated }
+  .palette-foot { @apply mt-2 flex items-center gap-1 border-t border-line pt-2 text-xs text-txt3 }
+  .palette-count { @apply ml-auto text-[11px] }
+  .canvas-issues { @apply mt-2 space-y-1 border-t border-line pt-2 text-[11px] leading-4 text-warn }
+  .canvas-area { @apply relative h-[34rem] overflow-hidden rounded-xl border border-line bg-base }
+  .canvas-inspector { @apply min-w-0 rounded-xl border border-line bg-surface p-3.5 }
+  .inspector { @apply space-y-3 }
+  .inspector header h2 { @apply truncate text-sm }
+  .inspector header code { @apply block font-mono text-[11px] text-txt3 }
+  .inspector-block { @apply space-y-2 border-t border-line pt-3 }
+  .inspector-block-head { @apply flex items-center justify-between text-xs text-txt3 }
+  .inspector-preview { @apply mt-0 max-h-32 text-[11px] }
+  .inspector-edges { @apply space-y-1.5 }
+  .inspector-edges li { @apply flex items-center gap-1 }
+  .inspector-edges .input { @apply mt-0 h-8 px-2 text-xs }
+  .inspector-empty { @apply space-y-2 py-6 text-center text-xs text-txt3 }
+  .cchrome-btn { @apply inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-txt3 hover:bg-elevated hover:text-txt disabled:opacity-40 }
+  .cchrome-btn.is-on { @apply bg-accent-dim text-accent-2 }
+
+  .cnode { @apply relative w-[236px] rounded-[14px] border border-line bg-surface text-xs text-txt shadow-[var(--shadow-card)] transition; box-shadow: inset 3px 0 0 transparent, var(--shadow-card) }
+  .cnode:hover { @apply border-line-strong }
+  .cnode.is-selected { @apply border-accent; box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.18), var(--shadow-card) }
+  .cnode-head { @apply flex items-center gap-2.5 px-3.5 pb-2 pt-3 }
+  .cnode-icon { @apply grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-accent-dim text-accent-2 }
+  .cnode[data-node-type='执行自定义命令'] .cnode-icon { @apply bg-info/10 text-info }
+  .cnode[data-node-type='执行Flow'] .cnode-icon { @apply bg-warn/10 text-warn }
+  .cnode-title { @apply block truncate text-[13px] font-semibold leading-[18px] text-txt }
+  .cnode-sub { @apply block text-[11px] leading-[15px] text-txt3 }
+  .cnode-body { @apply px-3.5 pb-2.5 }
+  .cnode-goal { @apply line-clamp-2 text-[12px] leading-[17px] text-txt2 }
+  .cnode-outlets { @apply border-t border-line py-1 }
+  .cnode-outlet { @apply relative flex h-6 items-center justify-end gap-2 pl-3.5 pr-4 text-[11px] font-medium text-txt2 }
+  .cnode-outlet-label { @apply min-w-0 truncate }
+  .cnode-outlet-target { @apply shrink-0 text-[10px] font-normal text-txt3 }
+  .cnode-outlet.tone-ok .cnode-outlet-label { @apply text-ok }
+  .cnode-outlet.tone-err .cnode-outlet-label { @apply text-err }
+  .cnode-outlet.is-empty .cnode-outlet-label { @apply text-txt3 }
+  .cterminal { @apply relative flex h-[44px] items-center gap-2 rounded-full border border-line bg-surface px-4 text-xs font-semibold text-txt shadow-[var(--shadow-card)] }
+  .cterminal.is-selected { @apply border-accent }
+  .cterminal-icon { @apply text-accent-2 }
+  .cparallel { @apply relative flex h-[48px] items-center gap-2 rounded-xl border border-dashed border-line-strong bg-elevated px-4 text-xs font-semibold text-txt2 }
+  .cparallel.is-selected { @apply border-accent text-accent-2 }
+
+  .cport { @apply !size-[18px] !border-0 !bg-transparent }
+  .cport::after { content:''; @apply block size-[10px] rounded-full border-2 border-line-strong bg-surface transition }
+  .cport:hover::after { @apply border-accent bg-accent }
+  .cport--in { @apply -left-2.5 }
+  .cnode-outlet .cport, .cparallel .cport, .cterminal .cport { @apply !right-[-10px] top-1/2 }
+  .cterminal .cport--in, .cparallel .cport--in { @apply !left-[-10px] }
+
+  .cedge-path { fill: none; stroke: rgb(var(--c-line-strong)); stroke-width: 1.6 }
+  .cedge-path.tone-ok { stroke: rgb(var(--c-ok) / 0.7) }
+  .cedge-path.tone-err { stroke: rgb(var(--c-err) / 0.7) }
+  .cedge-path.is-selected { stroke: rgb(var(--c-accent)); stroke-width: 2.2 }
+  .cedge-label { @apply absolute max-w-[11rem] truncate rounded-full border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-txt2 shadow-[var(--shadow-card)] }
+  .cedge-label.tone-ok { @apply border-ok/40 text-ok }
+  .cedge-label.tone-err { @apply border-err/40 text-err }
+
+  .react-flow__attribution { display: none }
+  .react-flow__controls button { @apply border-line bg-surface text-txt2 }
+  .react-flow__minimap { @apply rounded-lg border border-line bg-surface }
+}
+
+/* Markdown 视图 */
+@layer components {
+  .md-editor { @apply rounded-xl border border-line bg-surface }
+  .md-editor-bar { @apply flex items-center justify-between border-b border-line px-2 py-1.5 }
+  .md-editor-bar [role='tablist'] { @apply flex gap-1 }
+  .md-editor-bar button { @apply h-7 gap-1 border-0 bg-transparent px-2 text-xs text-txt3 }
+  .md-editor-bar button[aria-selected='true'] { @apply bg-accent-dim text-accent-2 }
+  .md-editor-body { @apply grid min-h-[30rem] gap-0 md:grid-cols-2 }
+  .md-editor.mode-edit .md-editor-body, .md-editor.mode-preview .md-editor-body { @apply md:grid-cols-1 }
+  .md-source { @apply m-0 h-full min-h-[30rem] rounded-none border-0 border-r border-line font-mono text-xs }
+  .md-preview { @apply min-w-0 overflow-auto p-4 }
+  .md { @apply text-sm leading-relaxed text-txt2 }
+  .md h1 { @apply mb-2 mt-4 text-lg font-semibold text-txt }
+  .md h2 { @apply mb-2 mt-4 text-base font-semibold text-txt }
+  .md h3 { @apply mb-2 mt-3 text-sm font-semibold text-txt }
+  .md p { @apply my-2 }
+  .md ul { @apply my-2 list-disc pl-5 }
+  .md ol { @apply my-2 list-decimal pl-5 }
+  .md code { @apply rounded bg-base px-1.5 py-0.5 font-mono text-[12px] text-accent-2 }
+  .md pre { @apply my-3 overflow-x-auto rounded-md border border-line bg-base p-3 }
+  .md pre code { @apply mt-0 bg-transparent p-0 text-txt2 }
+  .md table { @apply my-3 w-full border-collapse text-xs }
+  .md th, .md td { @apply border border-line px-2 py-1 text-left }
+  .md a { @apply text-accent-2 underline }
+  .md blockquote { @apply my-2 border-l-2 border-line-strong pl-3 text-txt3 }
+  .mermaid-figure { @apply my-3 flex justify-center overflow-x-auto rounded-md border border-line bg-surface p-3 }
+  .mermaid-figure svg { @apply h-auto max-w-full }
+  .mermaid-figure.is-error { @apply text-xs text-err }
+}
+
+/* FLOW.md 元信息：键值块，不参与正文标题层级 */
+@layer components {
+  .md-meta { @apply mb-4 rounded-lg border border-line bg-base px-3 py-2 text-xs }
+  .md-meta > div { @apply flex gap-3 border-b border-line/60 py-1 last:border-0 }
+  .md-meta dt { @apply w-20 shrink-0 font-mono text-txt3 }
+  .md-meta dd { @apply min-w-0 flex-1 break-words text-txt2 }
+}

@@ -1,18 +1,11 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react'
+import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CircleAlert, History, RefreshCw, Server, Settings2, Workflow } from 'lucide-react'
 import { HashRouter, NavLink, Route, Routes } from 'react-router'
 import { Flows, FlowEditor } from './Flows'
 import { RunDetail, Runs } from './Runs'
 import { Config } from './Config'
-import {
-  ApiError,
-  loadSource,
-  readToken,
-  setToken,
-  subscribeSession,
-  type Source,
-} from './data'
+import { ApiError, loadSource, type Source } from './data'
 import { initAppearance } from './theme'
 import './tokens.css'
 import './style.css'
@@ -129,57 +122,7 @@ function Header({ source }: { source?: Source }) {
     </header>
   )
 }
-function TokenForm({ invalid }: { invalid: boolean }) {
-  const [value, set] = useState('')
-  return (
-    <main>
-      <form
-        className="panel max-w-md space-y-4 p-6"
-        onSubmit={(event) => {
-          event.preventDefault()
-          setToken(value)
-        }}
-      >
-        <h1>连接 Runtime</h1>
-        <p className="muted">
-          请输入控制台访问令牌。令牌只保存在此标签页的会话中。
-        </p>
-        {invalid && (
-          <p role="alert" className="warning">
-            令牌无效或已过期，请重新输入。
-          </p>
-        )}
-        <label className="block">
-          访问令牌
-          <input
-            className="input mt-2"
-            type="password"
-            autoComplete="off"
-            value={value}
-            onChange={(event) => set(event.target.value)}
-            required
-          />
-        </label>
-        <button type="submit" disabled={!value.trim()}>
-          连接
-        </button>
-      </form>
-    </main>
-  )
-}
-function Gate({ source }: { source: Source }) {
-  const token = useSyncExternalStore(subscribeSession, readToken)
-  const [invalid, setInvalid] = useState(false)
-  useEffect(() => {
-    // 收到 401 时数据层会清空令牌，这里记录需要提醒重新输入。
-    const onSession = () => setInvalid(!readToken())
-    window.addEventListener('ursi-flow:session', onSession)
-    return () => window.removeEventListener('ursi-flow:session', onSession)
-  }, [])
-  useEffect(() => {
-    if (token) setInvalid(false)
-  }, [token])
-  if (source.auth && !token) return <TokenForm invalid={invalid} />
+function Pages({ source }: { source: Source }) {
   return (
     <Routes>
       <Route index element={<Flows source={source} />} />
@@ -209,7 +152,7 @@ function App() {
     <>
       <Header source={config.value} />
       {config.value ? (
-        <Gate source={config.value} />
+        <Pages source={config.value} />
       ) : (
         <main>
           <AsyncState state={config} />

@@ -98,13 +98,11 @@ export interface RunHistory {
 }
 export interface ConsoleConfig {
   mode: 'demo' | 'live'
-  auth?: boolean
   apiBase?: string
   workspace?: { name: string; path: string }
 }
 export interface Source {
   mode: 'demo' | 'live'
-  auth: boolean
   workspace?: { name: string; path: string }
   flows(signal?: AbortSignal): Promise<string[]>
   flow(id: string, signal?: AbortSignal): Promise<FlowPackage>
@@ -119,29 +117,6 @@ export interface Source {
   stop(id: string): Promise<Run>
   config(signal?: AbortSignal): Promise<FlowConfig>
   configure(patch: Partial<FlowConfig>): Promise<FlowConfig>
-}
-
-const tokenKey = 'ursi-flow:bearer'
-const sessionKey = 'ursi-flow:session'
-export const readToken = () => {
-  try {
-    return sessionStorage.getItem(tokenKey) || ''
-  } catch {
-    return ''
-  }
-}
-export const setToken = (value: string) => {
-  try {
-    if (value.trim()) sessionStorage.setItem(tokenKey, value.trim())
-    else sessionStorage.removeItem(tokenKey)
-  } catch {
-    /* 存储受限时仍允许本次输入生效。 */
-  }
-  window.dispatchEvent(new Event(sessionKey))
-}
-export const subscribeSession = (notify: () => void) => {
-  window.addEventListener(sessionKey, notify)
-  return () => window.removeEventListener(sessionKey, notify)
 }
 
 export class ApiError extends Error {
@@ -165,9 +140,7 @@ const fallback: Record<number, string> = {
 
 function createClient(apiBase: string): Source {
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-    const token = readToken()
     const headers = new Headers(init?.headers)
-    if (token) headers.set('Authorization', `Bearer ${token}`)
     let body: string | undefined
     if (init?.body != null) {
       headers.set('Content-Type', 'application/json')
@@ -182,7 +155,6 @@ function createClient(apiBase: string): Source {
       redirect: 'error',
     })
     if (!response.ok) {
-      if (response.status === 401 && readToken() === token) setToken('')
       const result = await response.json().catch(() => null)
       const detail = result?.error?.message
       throw new ApiError(
@@ -204,7 +176,6 @@ function createClient(apiBase: string): Source {
   const runPath = (id: string) => `/runs/${encodeURIComponent(id)}`
   return {
     mode: 'live',
-    auth: true,
     flows: (signal) => request('/flows', { signal }),
     flow: (id, signal) => request(flowPath(id), { signal }),
     create: (id, files) => send('POST', '/flows', { id, files }),
@@ -230,7 +201,6 @@ export async function loadSource(signal?: AbortSignal): Promise<Source> {
   if (config.mode === 'demo') return (await import('./demo')).demoSource
   if (config.mode !== 'live') throw new Error('控制台配置无效')
   const source = createClient(config.apiBase || '/api/v1')
-  source.auth = config.auth !== false
   source.workspace = config.workspace
   return source
 }

@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-const token = 'e2e-console-token'
 const quick = `---
 name: 控制台验收
 description: 控制台端到端验收使用的命令节点流程。
@@ -49,18 +48,36 @@ flowchart TD
 
 长时间运行的命令便于验证停止操作。
 `
+const withDocs = `---
+name: 文档视图验收
+description: 含引用文档与 Mermaid 图的流程。
+---
 
-async function login(page) {
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> sum[汇总结果]
+  sum -->|已完成| finish((结束))
+\`\`\`
+
+## 汇总结果
+
+\`\`\`新建Agent
+根据 [检查清单](references/checklist.md) 汇总结果：{var.任务}
+\`\`\`
+
+### 已完成
+
+已按清单汇总。
+`
+
+async function openNewFlow(page) {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '连接 Runtime' })).toBeVisible()
-  await page.getByLabel('访问令牌').fill(token)
-  await page.getByRole('button', { name: '连接' }).click()
-  await expect(page.getByRole('heading', { name: 'Flow 包' })).toBeVisible()
-}
-
-async function createFlow(page, id, source) {
   await page.getByRole('link', { name: '创建 Flow', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '创建 Flow' })).toBeVisible()
+}
+async function fillFiles(page, id, source) {
   await page.getByLabel('Flow 标识').fill(id)
+  await page.getByRole('tab', { name: '源码' }).click()
   await page.getByLabel('FLOW.md 内容').fill(source)
   await page.getByRole('button', { name: '校验' }).click()
   await expect(page.getByRole('status').filter({ hasText: '校验通过' })).toBeVisible()
@@ -68,27 +85,103 @@ async function createFlow(page, id, source) {
   await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
 }
 
-test('未认证时要求令牌，认证后完成建包、校验、运行、停止与配置闭环', async ({
-  page,
-}) => {
-  await login(page)
-  await createFlow(page, 'e2e-check', quick)
+test('图形视图可按画布编辑节点与结果边，并跑通运行闭环', async ({ page }) => {
+  await openNewFlow(page)
+  await fillFiles(page, 'e2e-graph', quick)
 
-  await page.getByLabel('Run ID（可选）').fill('e2e-run-1')
-  await page.getByRole('button', { name: '启动运行' }).click()
-  await expect(page).toHaveURL(/\/#\/runs\/e2e-run-1$/)
-  await expect(page.locator('.heading .badge.completed')).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: '执行证据' }).click()
-  await expect(page.locator('pre').filter({ hasText: '检查通过' }).first()).toBeVisible()
-  await expect(page.locator('table').filter({ hasText: '结束' })).toBeVisible()
+  // 图形视图把 FLOW.md 画成节点卡片和结果边。
+  await page.getByRole('tab', { name: '图形' }).click()
+  await expect(page.locator('.cnode')).toHaveCount(1)
+  await expect(page.locator('.cterminal')).toHaveCount(2)
+  await expect(page.locator('.cedge-label').filter({ hasText: '已执行' })).toBeVisible()
 
-  await page.getByLabel('主导航').getByRole('link', { name: '运行记录' }).click()
-  await expect(page.locator('tbody tr')).toHaveCount(1)
-  await page.getByLabel('主导航').getByRole('link', { name: 'Flow 包' }).click()
-  await createFlow(page, 'e2e-slow', slow)
-  await page.getByLabel('Run ID（可选）').fill('e2e-run-2')
+  // 选中节点后改名，文本与画布同步。
+  await page.locator('.cnode').click()
+  await page.getByLabel('节点名称').fill('执行验收检查')
+  await expect(page.locator('.cnode-title')).toHaveText('执行验收检查')
+  await expect(page.getByRole('status').filter({ hasText: '校验' })).toHaveCount(0)
+
+  // 新增节点只是孤立节点，画布提示后接到开始与结束，结构恢复可用。
+  await page.getByRole('button', { name: '新建Agent', exact: true }).click()
+  await expect(page.locator('.cnode')).toHaveCount(2)
+  await expect(page.locator('.canvas-issues')).toContainText('新节点')
+  // 命令节点只有一条已执行出边，把它改连到新节点，再由新节点连到结束。
+  await page.getByRole('button', { name: '结果', exact: true }).click()
+  await page.locator('.cnode', { hasText: '执行验收检查' }).click()
+  await page.getByLabel('目标节点').selectOption({ label: '新节点' })
+  await expect(page.locator('.canvas-issues')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
+
+  // 源码视图同步反映改名结果，新增结果小节带有占位说明。
+  await page.getByRole('tab', { name: '源码' }).click()
+  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/check\[执行验收检查\]/)
+  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/check -->\|已执行\| step1\[新节点\]/)
+  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/## 新节点/)
+  // 新结果小节自带占位说明，符合规范要求。
+  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/### 已执行\n\n节点返回“已执行”时继续执行。/)
+
+  await page.getByLabel('Run ID（可选）').fill('e2e-graph-run')
   await page.getByRole('button', { name: '启动运行' }).click()
-  await expect(page).toHaveURL(/\/#\/runs\/e2e-run-2$/)
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-graph-run$/)
+})
+
+test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }) => {
+  await openNewFlow(page)
+  // FLOW.md 引用了 references/checklist.md，先建好引用文件再校验。
+  await page.getByLabel('新增文件路径').fill('references/version.md')
+  await page.getByRole('button', { name: '新增文件' }).click()
+  await page.getByLabel('Markdown 源码').fill('# 版本规范\n\n版本号必须与 FLOW.md 声明一致。\n')
+  await page.getByLabel('新增文件路径').fill('references/checklist.md')
+  await page.getByRole('button', { name: '新增文件' }).click()
+  await page.getByLabel('Markdown 源码').fill(
+    '# 检查清单\n\n- 版本号一致\n- 说明完整\n\n规则见 [版本规范](version.md)。\n',
+  )
+  await expect(page.locator('.md h1')).toHaveText('检查清单')
+  await expect(page.locator('.md li')).toHaveCount(2)
+
+  await page.getByRole('button', { name: 'FLOW.md' }).click()
+  await fillFiles(page, 'e2e-doc', withDocs)
+
+  // Mermaid 代码块被画成图，而不是继续显示源码。
+  await page.getByRole('tab', { name: '文档' }).click()
+  await expect(page.locator('.mermaid-figure svg')).toHaveCount(1)
+  await expect(page.locator('code.language-mermaid')).toHaveCount(0)
+  await expect(page.locator('.md h2').first()).toHaveText('汇总结果')
+
+  // 包内相对链接直接打开对应文件。
+  await page.getByRole('button', { name: 'references/checklist.md' }).click()
+  await page.locator('.md a', { hasText: '版本规范' }).click()
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue(/版本号必须与/)
+  await expect(page.locator('.md h1')).toHaveText('版本规范')
+})
+
+test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
+  await openNewFlow(page)
+  await fillFiles(page, 'e2e-conflict', quick)
+  const created = await page.evaluate(async (files) => {
+    const response = await fetch('/api/v1/flows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'e2e-other', files }),
+    })
+    return response.status
+  }, { 'FLOW.md': quick })
+  expect(created).toBe(200)
+  await page.getByRole('tab', { name: '源码' }).click()
+  await page.getByLabel('FLOW.md 内容').fill(quick + '\n<!-- 追加说明 -->\n')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByRole('alert').first()).toContainText('冲突')
+  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/追加说明/)
+})
+
+test('停止运行与运行配置', async ({ page }) => {
+  await openNewFlow(page)
+  await fillFiles(page, 'e2e-slow', slow)
+  await page.getByLabel('Run ID（可选）').fill('e2e-slow-run')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-slow-run$/)
   await expect(page.locator('.heading .badge.running')).toBeVisible()
   await page.getByRole('button', { name: '停止运行' }).click()
   await page.getByRole('button', { name: '确认停止' }).click()
@@ -98,29 +191,4 @@ test('未认证时要求令牌，认证后完成建包、校验、运行、停�
   await page.getByLabel('最大并发数').fill('2')
   await page.getByRole('button', { name: '保存配置' }).click()
   await expect(page.getByRole('status').filter({ hasText: '配置已保存' })).toBeVisible()
-})
-
-test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
-  await login(page)
-  await createFlow(page, 'e2e-conflict', quick)
-  // 另一个包的发布会让整个目录修订前进，手上的编辑页随即过期。
-  const created = await page.evaluate(
-    async ({ token, files }) => {
-      const response = await fetch('/api/v1/flows', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + token,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: 'e2e-other', files }),
-      })
-      return response.status
-    },
-    { token, files: { 'FLOW.md': quick } },
-  )
-  expect(created).toBe(200)
-  await page.getByLabel('FLOW.md 内容').fill(quick + '\n<!-- 追加说明 -->\n')
-  await page.getByRole('button', { name: '保存' }).click()
-  await expect(page.getByRole('alert').first()).toContainText('冲突')
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/追加说明/)
 })

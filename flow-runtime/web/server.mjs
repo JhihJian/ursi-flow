@@ -5,9 +5,10 @@ import https from 'node:https'
 import net from 'node:net'
 import { readFileSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { isIP } from 'node:net'
 import { pathToFileURL } from 'node:url'
 
 const dist = new URL('./dist/', import.meta.url)
@@ -15,7 +16,6 @@ const REQUEST_LIMIT = 2 * 1024 * 1024
 const RESPONSE_LIMIT = 16 * 1024 * 1024
 const TIMEOUT_MS = 35000
 const MAX_CONCURRENT = 8
-const hash = (s) => createHash('sha256').update(s).digest()
 
 class BridgeError extends Error {
   constructor(code, message, status) {
@@ -197,12 +197,10 @@ function safeDecode(value) {
 }
 
 export async function createConsole(env) {
-  const token = env.URSI_FLOW_WEB_TOKEN
-  const live = typeof token === 'string' && token !== ''
-  if (live && token.length < 16) throw Error('实时模式的访问令牌至少 16 个字符')
+  // 页面不做访问令牌验证。工作目录缺失时进入演示模式。
+  const live = Boolean(env.URSI_FLOW_WORKDIR)
   let cwd
   if (live) {
-    if (!env.URSI_FLOW_WORKDIR) throw Error('实时模式需要 URSI_FLOW_WORKDIR 工作目录')
     try {
       cwd = await realpath(env.URSI_FLOW_WORKDIR)
       if (!(await stat(cwd)).isDirectory()) throw Error()
@@ -214,12 +212,14 @@ export async function createConsole(env) {
     env.URSI_FLOW_HOME || join(homedir(), '.ursi-flow'),
     'runtime.sock',
   )
-  // 直接比较完整认证头，避免自行解析出令牌再来回比较。
-  const expected = live ? hash('Bearer ' + token) : null
+  const extraHosts = (env.URSI_FLOW_WEB_HOSTS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
   let active = 0
   const config = live
-    ? { mode: 'live', auth: true, apiBase: '/api/v1', workspace: { name: 'default', path: cwd } }
-    : { mode: 'demo', auth: false }
+    ? { mode: 'live', apiBase: '/api/v1', workspace: { name: 'default', path: cwd } }
+    : { mode: 'demo' }
   const serve =
     env.URSI_FLOW_WEB_TLS_CERT || env.URSI_FLOW_WEB_TLS_KEY
       ? https.createServer.bind(https, {
@@ -234,8 +234,9 @@ export async function createConsole(env) {
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
+        // 画布与图表用行内样式定位节点，脚本仍然只允许同源资源。
         'Content-Security-Policy':
-          "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+          "default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
       })
       res.end(body)
     }
@@ -251,20 +252,34 @@ export async function createConsole(env) {
         }),
       )
     }
+    // 只接受 IP 字面量、localhost 或显式登记的域名，避免域名重绑定读取本机数据。
+    const hostname = (req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+    const hostAllowed =
+      hostname === 'localhost' || hostname === '::1' || isIP(hostname) !== 0 || extraHosts.includes(hostname)
+    if (!hostAllowed)
+      return send(
+        403,
+        JSON.stringify({ error: { code: 'host_not_allowed', message: '不接受该 Host' } }),
+      )
+    // 写操作只接受同源页面发起，浏览器里的其他站点不能借本机端口触发写入。
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const site = req.headers['sec-fetch-site']
+      const origin = req.headers.origin
+      const sameOrigin =
+        (!site || site === 'same-origin' || site === 'none') &&
+        (!origin || origin.replace(/^https?:\/\//, '') === req.headers.host)
+      if (!sameOrigin)
+        return send(
+          403,
+          JSON.stringify({ error: { code: 'cross_origin', message: '只接受同源写入' } }),
+        )
+    }
     const path = (req.url || '/').split('?')[0]
     if (path === '/console-config.json' && req.method === 'GET')
       return send(200, JSON.stringify(config))
     if (path.startsWith('/api/')) {
       if (!live)
         return send(404, JSON.stringify({ error: { code: 'not_found', message: '演示模式没有 Runtime 接口' } }))
-      const supplied = hash(req.headers.authorization || '')
-      if (!expected || !timingSafeEqual(supplied, expected)) {
-        res.setHeader('WWW-Authenticate', 'Bearer realm="Ursi Flow", charset="UTF-8"')
-        return send(
-          401,
-          JSON.stringify({ error: { code: 'unauthorized', message: '需要访问令牌' } }),
-        )
-      }
       const write = req.method !== 'GET' && req.method !== 'HEAD'
       let body = {}
       const text = write ? await readBody(req).catch((e) => e) : ''
@@ -348,12 +363,7 @@ async function readBody(req) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT || 4181)
   const console_ = await createConsole(process.env)
-  // 默认只在本机提供带令牌的服务；显式 HOST 或配置 TLS 时才对外监听。
-  const host =
-    process.env.HOST ||
-    (process.env.URSI_FLOW_WEB_TOKEN && !process.env.URSI_FLOW_WEB_TLS_CERT
-      ? '127.0.0.1'
-      : '0.0.0.0')
+  const host = process.env.HOST || '0.0.0.0'
   console_.listen(port, host, () =>
     console.log(
       `Ursi Flow 控制台: ${process.env.URSI_FLOW_WEB_TLS_CERT ? 'https' : 'http'}://${host}:${port}/#/flows`,

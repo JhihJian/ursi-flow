@@ -1,8 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { FileCode2, FilePlus2, Play, RotateCcw, Save, ShieldCheck, Trash2, Workflow } from 'lucide-react'
+import {
+  FileCode2,
+  FilePlus2,
+  GitBranch,
+  Network,
+  Play,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Trash2,
+  Workflow,
+} from 'lucide-react'
 import { AsyncState, Refresh, message, useLoad } from './main'
+import { FlowCanvas } from './Graph'
+import { Markdown, MarkdownEditor } from './Markdown'
 import type { FlowFiles, Source } from './data'
+import { parseFlow, serializeFlow, splitSections, joinSections, syncSections, setAction, setResults } from './flow/doc'
+import { ACTION_KINDS, graphIssues, serializeGraph, type ActionKind, type FlowGraph } from './flow/graph'
 
 const idPattern = /^[A-Za-z0-9][\w-]{0,95}$/
 const filePattern = /^(FLOW\.md|(references|scripts)\/(?:[^/\\]+\/)*[^/\\]+)$/
@@ -69,9 +84,9 @@ export function Flows({ source }: { source: Source }) {
                 </span>
                 <span className="identity">
                   <b>{id}</b>
-                  <small>编辑包文件并发起运行</small>
+                  <small>图形、文档与源码编辑</small>
                 </span>
-                <span className="muted">编辑</span>
+                <span className="muted">打开</span>
               </Link>
             </li>
           ))}
@@ -81,6 +96,8 @@ export function Flows({ source }: { source: Source }) {
     </main>
   )
 }
+
+type View = 'graph' | 'doc' | 'source'
 
 export function FlowEditor({ source }: { source: Source }) {
   const id = useParams<'id'>().id
@@ -94,6 +111,7 @@ export function FlowEditor({ source }: { source: Source }) {
   const [files, setFiles] = useState<FlowFiles>(() => (editing ? {} : blankFiles()))
   const [revision, setRevision] = useState('')
   const [selected, setSelected] = useState('FLOW.md')
+  const [view, setView] = useState<View>('graph')
   const [dirty, setDirty] = useState(!editing)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -103,18 +121,35 @@ export function FlowEditor({ source }: { source: Source }) {
   const [running, setRunning] = useState(false)
   const [runId, setRunId] = useState('')
   const [variables, setVariables] = useState('{}')
-  const loadedId = useRef<string | null>(null)
+  const loadedRevision = useRef<string | null>(null)
 
   useEffect(() => {
     const pkg = loaded.value
-    if (!pkg || loadedId.current === pkg.revision) return
-    loadedId.current = pkg.revision
+    if (!pkg || loadedRevision.current === pkg.revision) return
+    loadedRevision.current = pkg.revision
     setName(pkg.id)
     setFiles(pkg.files)
     setRevision(pkg.revision)
     setDirty(false)
     setSelected(pkg.files['FLOW.md'] !== undefined ? 'FLOW.md' : Object.keys(pkg.files)[0])
   }, [loaded.value])
+
+  const flowText = files['FLOW.md'] ?? ''
+  const parsed = useMemo(() => {
+    try {
+      return { doc: parseFlow(flowText), error: '' }
+    } catch (cause) {
+      return { doc: null, error: cause instanceof Error ? cause.message : 'FLOW.md 无法解析' }
+    }
+  }, [flowText])
+  const parsedSections = useMemo(
+    () => (parsed.doc ? splitSections(parsed.doc.post).sections : []),
+    [parsed.doc],
+  )
+  const issues = useMemo(
+    () => (parsed.doc ? graphIssues(parsed.doc.graph) : []),
+    [parsed.doc],
+  )
 
   if (editing && !loaded.value) {
     return (
@@ -127,11 +162,50 @@ export function FlowEditor({ source }: { source: Source }) {
     )
   }
 
-  const write = (path: string, text: string) => {
+  const writeFile = (path: string, text: string) => {
     setFiles((current) => ({ ...current, [path]: text }))
     setDirty(true)
     setNotice('')
   }
+  /** 用新图结构重写 FLOW.md，节点小节正文保持不变。 */
+  const applyGraph = (next: FlowGraph) => {
+    if (!parsed.doc) return
+    const { prologue, sections } = splitSections(parsed.doc.post)
+    const synced = syncSections(sections, parsed.doc.graph, next)
+    writeFile(
+      'FLOW.md',
+      serializeFlow({ ...parsed.doc, graph: next, post: joinSections(prologue, synced) }),
+    )
+  }
+  /** 改单个节点的动作类型或正文。 */
+  const applyAction = (ref: string, change: { kind?: ActionKind; body?: string }) => {
+    if (!parsed.doc) return
+    const node = parsed.doc.graph.nodes.find((item) => item.ref === ref)
+    if (!node) return
+    const { prologue, sections } = splitSections(parsed.doc.post)
+    const next = sections.map((section) => {
+      if (section.name !== node.name) return section
+      if (change.kind) {
+        const kind = change.kind
+        const withAction = setAction(section, kind)
+        return setResults(
+          withAction,
+          parsed.doc!.graph.edges
+            .filter((edge) => edge.from === ref && edge.result)
+            .map((edge) => edge.result as string),
+        )
+      }
+      const action = section.body.match(/```(新建Agent|复用Agent|执行自定义命令|执行Flow)[ \t]*\n([\s\S]*?)```/)
+      if (!action || change.body === undefined) return section
+      const body = section.body.replace(
+        action[0],
+        '```' + action[1] + '\n' + change.body.replace(/\s+$/, '') + '\n```',
+      )
+      return { ...section, body }
+    })
+    writeFile('FLOW.md', serializeFlow({ ...parsed.doc, post: joinSections(prologue, next) }))
+  }
+
   const removeFile = (path: string) => {
     if (path === 'FLOW.md') return
     setFiles((current) => {
@@ -150,8 +224,9 @@ export function FlowEditor({ source }: { source: Source }) {
     for (let i = path.indexOf('/'); i !== -1; i = path.indexOf('/', i + 1))
       if (files[path.slice(0, i)] !== undefined) return setError('文件与目录重名')
     setError('')
-    write(path, path.endsWith('.md') ? `# ${path.split('/').pop()?.replace(/\.md$/, '')}\n` : '')
+    writeFile(path, path.endsWith('.md') ? `# ${path.split('/').pop()?.replace(/\.md$/, '')}\n` : '')
     setSelected(path)
+    setView(path.endsWith('.md') ? 'doc' : 'source')
     setNewPath('')
   }
   const run = async (action: 'validate' | 'save' | 'delete') => {
@@ -162,7 +237,7 @@ export function FlowEditor({ source }: { source: Source }) {
       if (action === 'validate') {
         if (!idPattern.test(name)) throw new Error('Flow 标识只能包含字母、数字、下划线和连字符')
         const result = await source.validate(name, files)
-        setNotice(`校验通过：${result.id}`)
+        setNotice(`校验通过：${result.id}${issues.length ? `（图结构仍有 ${issues.length} 处提示）` : ''}`)
       } else if (action === 'save') {
         if (!editing && !idPattern.test(name))
           throw new Error('Flow 标识只能包含字母、数字、下划线和连字符')
@@ -177,8 +252,8 @@ export function FlowEditor({ source }: { source: Source }) {
         await source.remove(name)
         navigate('/flows', { replace: true })
       }
-    } catch (e) {
-      setError(message(e))
+    } catch (cause) {
+      setError(message(cause))
     } finally {
       setBusy('')
     }
@@ -187,28 +262,29 @@ export function FlowEditor({ source }: { source: Source }) {
     setRunning(true)
     setError('')
     try {
-      let parsed: Record<string, unknown>
+      let parsedVariables: Record<string, unknown>
       try {
-        parsed = JSON.parse(variables || '{}')
+        parsedVariables = JSON.parse(variables || '{}')
       } catch {
         throw new Error('启动变量必须是有效 JSON')
       }
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      if (!parsedVariables || typeof parsedVariables !== 'object' || Array.isArray(parsedVariables))
         throw new Error('启动变量必须是 JSON 对象')
-      const run = await source.start(name, parsed, runId.trim() || undefined)
-      navigate(`/runs/${encodeURIComponent(run.id)}`)
-    } catch (e) {
-      setError(message(e))
+      const created = await source.start(name, parsedVariables, runId.trim() || undefined)
+      navigate(`/runs/${encodeURIComponent(created.id)}`)
+    } catch (cause) {
+      setError(message(cause))
     } finally {
       setRunning(false)
     }
   }
   const readOnly = source.mode === 'demo'
+  const isMarkdown = selected.endsWith('.md')
   const paths = Object.keys(files).sort((a, b) =>
     a === 'FLOW.md' ? -1 : b === 'FLOW.md' ? 1 : a.localeCompare(b),
   )
   return (
-    <main>
+    <main className="editor-page">
       <Link className="back" to="/flows">
         返回 Flow 包
       </Link>
@@ -216,9 +292,7 @@ export function FlowEditor({ source }: { source: Source }) {
         <div>
           <h1>{editing ? name : '创建 Flow'}</h1>
           <small>
-            {editing
-              ? `当前修订 ${revision ? revision.slice(0, 8) : '未知'}`
-              : '即时校验包文件，创建后进入编辑'}
+            {editing ? `当前修订 ${revision ? revision.slice(0, 8) : '未知'}` : '即时校验包文件，创建后进入编辑'}
             {dirty && ' · 有未保存修改'}
           </small>
         </div>
@@ -227,11 +301,7 @@ export function FlowEditor({ source }: { source: Source }) {
           校验
         </button>
         {editing && (
-          <button
-            onClick={loaded.refresh}
-            disabled={Boolean(busy) || loaded.loading}
-            title="丢弃未保存修改，读取已发布修订"
-          >
+          <button onClick={loaded.refresh} disabled={Boolean(busy) || loaded.loading} title="丢弃未保存修改，读取已发布修订">
             <RotateCcw />
             重新载入
           </button>
@@ -264,8 +334,9 @@ export function FlowEditor({ source }: { source: Source }) {
           <button onClick={() => run('delete')}>确认删除</button>
         </p>
       )}
-      <div className="editor">
-        <aside>
+
+      <div className="editor-body">
+        <aside className="file-rail">
           <label className="block">
             Flow 标识
             <input
@@ -288,17 +359,17 @@ export function FlowEditor({ source }: { source: Source }) {
               <li key={path}>
                 <button
                   aria-pressed={selected === path}
-                  onClick={() => setSelected(path)}
+                  onClick={() => {
+                    setSelected(path)
+                    if (path !== 'FLOW.md' && view === 'graph') setView(path.endsWith('.md') ? 'doc' : 'source')
+                    if (path === 'FLOW.md' && view === 'source' && parsed.doc) setView('graph')
+                  }}
                   className={selected === path ? 'file active' : 'file'}
                 >
-                  {path}
+                  <span className="file-name">{path}</span>
                 </button>
                 {path !== 'FLOW.md' && selected === path && (
-                  <button
-                    className="icon"
-                    aria-label={`删除 ${path}`}
-                    onClick={() => removeFile(path)}
-                  >
+                  <button className="icon" aria-label={`删除 ${path}`} onClick={() => removeFile(path)}>
                     <Trash2 size={14} />
                   </button>
                 )}
@@ -323,79 +394,159 @@ export function FlowEditor({ source }: { source: Source }) {
               <FilePlus2 />
             </button>
           </div>
-          <p className="muted">
-            只允许 FLOW.md、references/ 下的 Markdown 和 scripts/ 下的 ESM 脚本。
-          </p>
+          <p className="muted">只允许 FLOW.md、references/ 下的 Markdown 和 scripts/ 下的 ESM 脚本。</p>
+
+          {editing && (
+            <div className="run-panel">
+              <h2>
+                <Play size={14} />
+                启动运行
+              </h2>
+              <label>
+                Run ID（可选）
+                <input
+                  className="input"
+                  value={runId}
+                  onChange={(event) => setRunId(event.target.value)}
+                  placeholder="自动生成"
+                />
+              </label>
+              <label>
+                启动变量（JSON）
+                <textarea
+                  className="code short"
+                  aria-label="启动变量"
+                  value={variables}
+                  onChange={(event) => setVariables(event.target.value)}
+                />
+              </label>
+              <p className="muted">
+                工作区 default
+                {source.workspace ? `：${source.workspace.path}` : ''}
+              </p>
+              <button
+                className="primary"
+                onClick={start}
+                disabled={readOnly || running || dirty || busy === 'save'}
+                title={dirty ? '请先保存包文件' : undefined}
+              >
+                <Play />
+                {running ? '启动中…' : '启动运行'}
+              </button>
+            </div>
+          )}
+          {readOnly && <p className="muted">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>}
         </aside>
-        <section>
-          <div className="tools">
-            <h2>{selected}</h2>
-            <small>{files[selected]?.split('\n').length || 0} 行</small>
+
+        <section className="editor-main">
+          <div className="view-tabs" role="tablist" aria-label="编辑视图">
+            <button
+              role="tab"
+              aria-selected={view === 'graph'}
+              disabled={!parsed.doc}
+              onClick={() => setView('graph')}
+            >
+              <Network size={14} />
+              图形
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === 'doc'}
+              disabled={!isMarkdown}
+              onClick={() => setView('doc')}
+            >
+              文档
+            </button>
+            <button role="tab" aria-selected={view === 'source'} onClick={() => setView('source')}>
+              源码
+            </button>
+            <span className="view-tabs-note">{selected}</span>
+            {issues.length > 0 && <span className="view-tabs-issues">{issues.length} 处结构提示</span>}
           </div>
-          <textarea
-            aria-label={`${selected} 内容`}
-            className="code"
-            spellCheck={false}
+
+          {view === 'graph' && parsed.doc && (
+            <>
+              {issues.length > 0 && (
+                <ul className="issues-bar" role="status">
+                  {issues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              )}
+              <FlowCanvas
+                graph={parsed.doc.graph}
+                sections={parsedSections}
+                issues={issues}
+                onGraph={applyGraph}
+                onAction={applyAction}
+                onStart={() => {
+                  void start()
+                }}
+              />
+            </>
+          )}
+          {view === 'graph' && !parsed.doc && (
+            <p role="alert" className="warning">
+              {parsed.error}，请切到源码视图修复。
+            </p>
+          )}
+          {view === 'doc' && (isMarkdown ? <MarkdownEditor
             value={files[selected] ?? ''}
-            onChange={(event) => write(selected, event.target.value)}
-          />
+            path={selected}
+            onChange={(next) => writeFile(selected, next)}
+            onOpenFile={(path) => {
+              if (files[path] !== undefined) {
+                setSelected(path)
+                setView(path.endsWith('.md') ? 'doc' : 'source')
+              } else setError(`包内没有 ${path}`)
+            }}
+          /> : <p className="muted">只有 Markdown 文件提供文档视图。</p>)}
+          {view === 'source' &&
+            (selected === 'FLOW.md' ? (
+              <div className="source-wrap">
+                <div className="source-bar">
+                  <span className="muted">直接编辑 FLOW.md；图形与文档视图共用这段文本。</span>
+                  <button
+                    className="cchrome-btn"
+                    onClick={() => {
+                      if (!parsed.doc) return
+                      const { prologue, sections } = splitSections(parsed.doc.post)
+                      const synced = syncSections(sections, parsed.doc.graph, parsed.doc.graph)
+                      writeFile(
+                        'FLOW.md',
+                        serializeFlow({ ...parsed.doc, post: joinSections(prologue, synced) }),
+                      )
+                      setNotice('已按图结构整理节点小节')
+                    }}
+                    disabled={!parsed.doc}
+                  >
+                    <GitBranch size={13} />
+                    按图整理小节
+                  </button>
+                </div>
+                <textarea
+                  className="code"
+                  aria-label="FLOW.md 内容"
+                  spellCheck={false}
+                  value={flowText}
+                  onChange={(event) => writeFile('FLOW.md', event.target.value)}
+                />
+                <details>
+                  <summary>图语句预览</summary>
+                  <pre>{parsed.doc ? serializeGraph(parsed.doc.graph) : parsed.error}</pre>
+                </details>
+              </div>
+            ) : (
+              <textarea
+                className="code"
+                aria-label={`${selected} 内容`}
+                spellCheck={false}
+                value={files[selected] ?? ''}
+                onChange={(event) => writeFile(selected, event.target.value)}
+              />
+            ))}
         </section>
       </div>
-      {editing && (
-        <section>
-          <div className="tools">
-            <h2>
-              <Play />
-              启动运行
-            </h2>
-            <small>保存后的修订对新运行生效</small>
-          </div>
-          <div className="start-run">
-            <label>
-              Run ID（可选）
-              <input
-                className="input mt-2"
-                value={runId}
-                onChange={(event) => setRunId(event.target.value)}
-                placeholder="自动生成"
-              />
-            </label>
-            <label>
-              启动变量（JSON）
-              <textarea
-                className="code short"
-                aria-label="启动变量"
-                value={variables}
-                onChange={(event) => setVariables(event.target.value)}
-              />
-            </label>
-            <label>
-              工作区
-              <input
-                className="input mt-2"
-                value="default"
-                readOnly
-                title={source.workspace?.path}
-              />
-            </label>
-            <button
-              className="primary"
-              onClick={start}
-              disabled={readOnly || running || dirty || busy === 'save'}
-              title={dirty ? '请先保存包文件' : undefined}
-            >
-              <Play />
-              {running ? '启动中…' : '启动运行'}
-            </button>
-          </div>
-          {source.workspace && (
-            <p className="muted">运行目录：{source.workspace.path}</p>
-          )}
-        </section>
-      )}
-      {readOnly && (
-        <p className="muted">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>
-      )}
     </main>
   )
 }

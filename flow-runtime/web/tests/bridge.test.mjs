@@ -1,13 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import http from 'node:http'
 import net from 'node:net'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createConsole } from '../server.mjs'
-
-const token = 'test-only-console-token'
-const auth = { Authorization: `Bearer ${token}` }
 
 async function listen(t, server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -50,49 +48,35 @@ async function liveConsole(t, daemon, extra = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'flow-work-'))
   const workdir = await realpath(dir)
   t.after(() => rm(dir, { recursive: true, force: true }))
-  const server = await createConsole({
-    URSI_FLOW_HOME: daemon.home,
-    URSI_FLOW_WEB_TOKEN: token,
-    URSI_FLOW_WORKDIR: workdir,
-    ...extra,
-  })
+  const server = await createConsole({ URSI_FLOW_HOME: daemon.home, URSI_FLOW_WORKDIR: workdir, ...extra })
   const base = await listen(t, server)
   return { base, workdir }
 }
 
-test('演示模式只提供静态配置，没有 Runtime 接口', async (t) => {
+// 写请求需要同源标记，模拟浏览器自动携带的请求头。
+const writeHeaders = { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' }
+
+test('没有工作目录时是演示模式，不提供 Runtime 接口', async (t) => {
   const base = await listen(t, await createConsole({}))
-  assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), {
-    mode: 'demo',
-    auth: false,
-  })
+  assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), { mode: 'demo' })
   assert.equal((await fetch(base + '/api/v1/flows')).status, 404)
 })
 
-test('实时模式缺少令牌或工作目录时拒绝启动', async () => {
-  await assert.rejects(() => createConsole({ URSI_FLOW_WEB_TOKEN: token }))
-  await assert.rejects(() =>
-    createConsole({ URSI_FLOW_WEB_TOKEN: 'short', URSI_FLOW_WORKDIR: '/tmp' }),
-  )
-})
-
-test('实时配置暴露工作区，认证头缺失或错误时返回 401', async (t) => {
+test('配置工作目录后进入实时模式，不需要访问令牌', async (t) => {
   const daemon = await fakeDaemon(t)
   const { base, workdir } = await liveConsole(t, daemon)
   assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), {
     mode: 'live',
-    auth: true,
     apiBase: '/api/v1',
     workspace: { name: 'default', path: workdir },
   })
-  const missing = await fetch(base + '/api/v1/flows')
-  assert.equal(missing.status, 401)
-  assert.match(missing.headers.get('www-authenticate') || '', /^Bearer/)
-  assert.equal(
-    (await fetch(base + '/api/v1/flows', { headers: { Authorization: 'Bearer nope' } })).status,
-    401,
-  )
-  assert.equal(daemon.calls.length, 0)
+  const list = await fetch(base + '/api/v1/flows')
+  assert.equal(list.status, 200)
+  assert.deepEqual(await list.json(), { op: 'flow.list' })
+})
+
+test('工作目录无效时拒绝启动', async () => {
+  await assert.rejects(() => createConsole({ URSI_FLOW_WORKDIR: '/nonexistent-workdir' }))
 })
 
 test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
@@ -101,7 +85,7 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   const call = async (method, path, body) => {
     const response = await fetch(base + path, {
       method,
-      headers: body === undefined ? auth : { ...auth, 'Content-Type': 'application/json' },
+      headers: body === undefined ? {} : writeHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     assert.equal(response.status, 200, path)
@@ -149,18 +133,11 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
       'config.update',
     ],
   )
-  assert.ok(
-    daemon.calls.every((request) => request.v === 1),
-    '请求必须携带协议版本',
-  )
+  assert.ok(daemon.calls.every((request) => request.v === 1), '请求必须携带协议版本')
   assert.deepEqual(daemon.calls[1].args, { id: 'ordinary', files })
   assert.deepEqual(daemon.calls[3].args, { id: 'validate' })
   assert.deepEqual(daemon.calls[4].args, { id: 'ordinary', files, expectedRevision: 'rev-1' })
-  assert.deepEqual(
-    daemon.calls[5].args,
-    { id: 'ordinary', files },
-    '未提供修订时不能补默认值',
-  )
+  assert.deepEqual(daemon.calls[5].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
   assert.deepEqual(daemon.calls[7].args, {
     id: 'run-1',
     flow: 'ordinary',
@@ -176,11 +153,10 @@ test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成
   const post = (body) =>
     fetch(base + '/api/v1/flows/ordinary/runs', {
       method: 'POST',
-      headers: { ...auth, 'Content-Type': 'application/json' },
+      headers: writeHeaders,
       body: JSON.stringify(body),
     })
-  const rejected = await post({ workspace: '/tmp', variables: {} })
-  assert.equal(rejected.status, 400)
+  assert.equal((await post({ workspace: '/tmp', variables: {} })).status, 400)
   assert.equal(daemon.calls.length, 0)
   assert.equal((await post({ workspace: 'default', variables: [] })).status, 400)
   assert.equal(daemon.calls.length, 0)
@@ -192,11 +168,60 @@ test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成
   assert.deepEqual(args.variables, {})
 })
 
+test('跨站写入与未知 Host 被拒绝，GET 保持可用', async (t) => {
+  const daemon = await fakeDaemon(t)
+  const { base } = await liveConsole(t, daemon)
+  const crossSite = await fetch(base + '/api/v1/flows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'cross-site' },
+    body: JSON.stringify({ id: 'x', files: { 'FLOW.md': '# x' } }),
+  })
+  assert.equal(crossSite.status, 403)
+  assert.equal((await crossSite.json()).error.code, 'cross_origin')
+
+  const crossOrigin = await fetch(base + '/api/v1/flows', {
+    method: 'DELETE',
+    headers: { Origin: 'https://evil.example' },
+  })
+  assert.equal(crossOrigin.status, 403)
+
+  // fetch 会强制使用 URL 的 Host，这里直接用 http.request 检查域名重绑定。
+  const raw = (address, host) =>
+    new Promise((resolve, reject) => {
+      const request = http.request(
+        { host: '127.0.0.1', port: new URL(address).port, path: '/api/v1/flows', headers: { host } },
+        (response) => {
+          const chunks = []
+          response.on('data', (chunk) => chunks.push(chunk))
+          response.on('end', () =>
+            resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }),
+          )
+        },
+      )
+      request.on('error', reject)
+      request.end()
+    })
+  const foreignHost = await raw(base, 'evil.example')
+  assert.equal(foreignHost.status, 403)
+  assert.equal(JSON.parse(foreignHost.body).error.code, 'host_not_allowed')
+  assert.equal(daemon.calls.length, 0)
+
+  const registered = await listen(
+    t,
+    await createConsole({
+      URSI_FLOW_HOME: daemon.home,
+      URSI_FLOW_WORKDIR: daemon.home,
+      URSI_FLOW_WEB_HOSTS: 'flow.internal',
+    }),
+  )
+  assert.equal((await raw(registered, 'flow.internal')).status, 200)
+})
+
 test('daemon 错误码按 workbench 映射，业务文案透传', async (t) => {
   const daemon = await fakeDaemon(t)
   const { base } = await liveConsole(t, daemon)
   const read = async () => {
-    const response = await fetch(base + '/api/v1/flows', { headers: auth })
+    const response = await fetch(base + '/api/v1/flows')
     return { status: response.status, body: await response.json() }
   }
   const cases = [
@@ -222,19 +247,17 @@ test('Runtime 未启动时返回 503，写请求超限时不连接 daemon', asyn
   const daemon = await fakeDaemon(t)
   const { base } = await liveConsole(t, daemon)
   await rm(daemon.socketPath)
-  const missing = await fetch(base + '/api/v1/runs', { headers: auth })
+  const missing = await fetch(base + '/api/v1/runs')
   assert.equal(missing.status, 503)
   assert.equal((await missing.json()).error.code, 'runtime_unavailable')
 
-  const server = await createConsole({
-    URSI_FLOW_HOME: daemon.home,
-    URSI_FLOW_WEB_TOKEN: token,
-    URSI_FLOW_WORKDIR: daemon.home,
-  })
-  const other = await listen(t, server)
+  const other = await listen(
+    t,
+    await createConsole({ URSI_FLOW_HOME: daemon.home, URSI_FLOW_WORKDIR: daemon.home }),
+  )
   const large = await fetch(other + '/api/v1/flows', {
     method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
+    headers: writeHeaders,
     body: JSON.stringify({ id: 'big', files: { 'FLOW.md': 'x'.repeat(3 * 1024 * 1024) } }),
   })
   assert.equal(large.status, 413)
@@ -244,14 +267,10 @@ test('Runtime 未启动时返回 503，写请求超限时不连接 daemon', asyn
 test('静态路径只允许入口与构建资源，API 拼错不落到 HTML', async (t) => {
   const daemon = await fakeDaemon(t)
   const { base } = await liveConsole(t, daemon)
-  for (const path of [
-    '/assets/../../etc/passwd',
-    '/%2e%2e%2fpackage.json',
-    '/index.html/../../etc/passwd',
-  ]) {
+  for (const path of ['/assets/../../etc/passwd', '/%2e%2e%2fpackage.json', '/index.html/../../etc/passwd']) {
     assert.equal((await fetch(base + path)).status, 404, path)
   }
-  const unknown = await fetch(base + '/api/v1/unknown', { headers: auth })
+  const unknown = await fetch(base + '/api/v1/unknown')
   assert.equal(unknown.status, 404)
   assert.equal(unknown.headers.get('content-type'), 'application/json')
   assert.equal((await unknown.json()).error.code, 'not_found')
@@ -264,6 +283,10 @@ test('控制台配置带安全响应头且不缓存', async (t) => {
   const response = await fetch(base + '/console-config.json')
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
   assert.equal(response.headers.get('cache-control'), 'no-store')
-  assert.match(response.headers.get('content-security-policy') || '', /frame-ancestors 'none'/)
+  const csp = response.headers.get('content-security-policy') || ''
+  assert.match(csp, /frame-ancestors 'none'/)
+  // 画布与图表依赖行内样式定位，脚本仍只允许同源。
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/)
+  assert.doesNotMatch(csp, /script-src[^;]*unsafe-inline/)
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer')
 })

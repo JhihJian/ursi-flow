@@ -20,15 +20,16 @@ npm start
 
 | 变量 | 用途 |
 | --- | --- |
-| `URSI_FLOW_WEB_TOKEN` | 浏览器访问控制台时输入的令牌，至少 16 个字符；缺失时进入演示模式 |
-| `URSI_FLOW_WORKDIR` | `default` 工作区的目录，启动运行前解析为真实路径 |
+| `URSI_FLOW_WORKDIR` | `default` 工作区的目录，启动运行前解析为真实路径；缺失时进入演示模式 |
 | `URSI_FLOW_HOME` | 可选，daemon 的私有目录，默认 `~/.ursi-flow`，读取其中的 `runtime.sock` |
+| `URSI_FLOW_WEB_HOSTS` | 可选，允许的额外域名（逗号分隔）；IP 与 `localhost` 始终允许 |
+| `HOST` / `PORT` | 可选，监听地址与端口，默认 `0.0.0.0:4181` |
 
 ```sh
-URSI_FLOW_WEB_TOKEN='请替换为长令牌' URSI_FLOW_WORKDIR="$PWD" npm start
+URSI_FLOW_WORKDIR="$PWD" npm start
 ```
 
-`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。令牌只保存在标签页的 `sessionStorage`。配置令牌但未配置 TLS 时默认只监听 `127.0.0.1`。要对局域网提供服务，设置 `HOST=0.0.0.0`；此时令牌以明文传输，只应在可信网段使用。配置 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY` 后自动监听 `0.0.0.0` 并使用 HTTPS。daemon 故障返回 503 或 504，页面显示错误，不会退回演示数据。
+`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。页面不做访问令牌验证，因此服务默认只接受 IP 字面量、`localhost` 或 `URSI_FLOW_WEB_HOSTS` 登记的域名作为 Host，并只接受同源页面发起的写请求，避免其他站点借浏览器改写本机数据。需要 HTTPS 时配置 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY`。daemon 故障返回 503 或 504，页面显示错误，不会退回演示数据。
 
 运行中的 Run 使用同一份历史：控制台和 `ursi-flow run history` 查询到的节点、路由和命令输出一致。
 
@@ -45,10 +46,10 @@ URSI_FLOW_WEB_TOKEN='请替换为长令牌' URSI_FLOW_WORKDIR="$PWD" npm start
 实时模式由 `server.mjs` 动态返回，也可以由宿主站点提供：
 
 ```json
-{"mode":"live","auth":true,"apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
+{"mode":"live","apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
 ```
 
-嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，令牌使用与工作台相同的 `ursi-flow:bearer` 会话键。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
+嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
 
 ## 测试
 

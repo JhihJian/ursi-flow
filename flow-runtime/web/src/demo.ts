@@ -333,7 +333,6 @@ const readOnly = () =>
 
 export const demoSource: Source = {
   mode: 'demo',
-  auth: false,
   workspace: { name: 'default', path: base.cwd },
   flows: async () => Object.keys(packages),
   flow: async (id) => {
