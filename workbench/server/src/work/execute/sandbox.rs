@@ -1,5 +1,5 @@
 //! One preprovisioned ACP endpoint dedicated to one work item. No Gateway or shell commands.
-use super::{Error, Key, Outcome, Runtime, attempt_mut, terminal};
+use super::{Error, Key, Outcome, Runtime, attempt_mut};
 use axum::http::Uri;
 use serde_json::Value;
 use std::{
@@ -68,21 +68,8 @@ impl Config {
         }
         Ok(())
     }
-    pub(super) fn reserve(&self, db: &Value, item: &str) -> Result<(), Error> {
-        self.authorize(item)?;
-        // Store serializes this check with the append and retains the reservation after restart.
-        for (owner, i) in db["items"].as_object().ok_or_else(unavailable)? {
-            for a in i["attempts"].as_array().ok_or_else(unavailable)? {
-                if a["executor"]["environment"] == "sandbox"
-                    && (!terminal(a) || (a["workspace"]["id"] == self.alias && owner != item))
-                {
-                    return Err(Error::Conflict(
-                        "沙箱被其他尝试占用或已绑定其他工作项".into(),
-                    ));
-                }
-            }
-        }
-        Ok(())
+    pub(super) fn reserve(&self, _db: &Value, _item: &str) -> Result<(), Error> {
+        Err(Error::Unavailable("沙箱执行器尚未迁移，当前不可用".into()))
     }
 }
 

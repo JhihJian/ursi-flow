@@ -1,7 +1,7 @@
 mod http;
 
 use super::*;
-use std::{fs, os::unix::fs::PermissionsExt, path::Path as FsPath, time::Duration};
+use std::{fs, path::Path as FsPath, time::Duration};
 
 struct Temp(PathBuf);
 impl Temp {
@@ -40,7 +40,7 @@ impl Drop for Temp {
 
 fn item() -> Value {
     json!({"status":"working","input":{"ticket":"A-17"},"attempts":[],"packageSnapshot":{"sop":"对照原始材料","actions":{
-        "analyze":{"executor":{"id":"assistant","revision":3,"kind":"agent"},"resources":[
+        "analyze":{"executor":{"id":"assistant","revision":3},"resources":[
             {"id":"summary","revision":1,"kind":"prompt","content":"报告须有标题"},
             {"id":"review","revision":2,"kind":"skill","content":"检查最后一行"}]},
         "verify":{"executor":{"id":"verify","revision":2,"kind":"flow","flowId":"verification","flowRevision":"f123"},"resources":[]}}}})
@@ -49,27 +49,14 @@ fn item() -> Value {
 #[test]
 fn resolve_only_the_frozen_action_and_supported_capabilities() {
     let mut i = item();
-    let (plan::Plan::Agent(prompt), _) = plan::resolve(&i, "analyze").unwrap() else {
-        panic!()
-    };
+    let (plan::Plan::Agent(prompt), _) = plan::resolve(&i, "analyze").unwrap();
     for s in ["A-17", "对照原始材料", "报告须有标题", "检查最后一行"] {
         assert!(prompt.contains(s));
     }
-    let (
-        plan::Plan::Flow {
-            id,
-            revision,
-            variables,
-        },
-        _,
-    ) = plan::resolve(&i, "verify").unwrap()
-    else {
-        panic!()
-    };
-    assert_eq!(
-        (id.as_str(), revision.as_str(), variables),
-        ("verification", "f123", i["input"].clone())
-    );
+    assert!(matches!(
+        plan::resolve(&i, "verify"),
+        Err(Error::Unavailable(_))
+    ));
     assert!(plan::resolve(&i, "missing").is_err());
     i["packageSnapshot"]["actions"]["analyze"]["resources"][0]["kind"] = "mcp".into();
     assert!(plan::resolve(&i, "analyze").is_err());
@@ -203,23 +190,12 @@ fn recovery_keeps_executor_output_and_records_a_platform_notice() {
 }
 
 #[test]
-fn stop_needs_daemon_evidence_for_this_exact_run() {
-    let a = json!({"id":"a","executor":{"flowId":"f","flowRevision":"rev"}});
-    let mut job = json!({"id":"a","flow":"f","revision":"rev"});
-    for (reported, expected) in [
-        ("running", "running"),
-        ("completed", "succeeded"),
-        ("failed", "failed"),
-        ("stopped", "cancelled"),
-        ("unknown", "unverified"),
-        ("unrecognized", "unverified"),
-    ] {
-        job["status"] = reported.into();
-        assert_eq!(flow::evidence(&a, &job).status, expected);
-    }
-    job["status"] = "completed".into();
-    job["revision"] = "other".into();
-    assert_eq!(flow::evidence(&a, &job).status, "unverified");
+fn legacy_backend_snapshots_are_unavailable() {
+    let i = item();
+    assert!(matches!(
+        plan::resolve(&i, "verify"),
+        Err(Error::Unavailable(_))
+    ));
 }
 
 #[tokio::test]

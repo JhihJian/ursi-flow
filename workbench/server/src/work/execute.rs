@@ -1,8 +1,6 @@
 //! 执行工作包中已解析的动作。调用示例见 execute/API.md。
 mod agent;
-mod flow;
 mod plan;
-mod sandbox;
 #[cfg(test)]
 mod tests;
 
@@ -37,43 +35,29 @@ struct Runtime {
     /// 目录资源私有根的宿主路径，只用于从对外文本中剔除。
     artifacts: Option<PathBuf>,
     bin: Option<PathBuf>,
-    flow: Option<FlowClient>,
-    sandbox: Option<sandbox::Config>,
     agents: Mutex<HashMap<String, watch::Sender<bool>>>,
     processes: Arc<Semaphore>,
-    calls: Arc<Semaphore>,
     ready: bool,
 }
 
-pub fn routes(store: Store, workspace: PathBuf, flow: Option<FlowClient>) -> Router {
+pub fn routes(store: Store, workspace: PathBuf, _flow: Option<FlowClient>) -> Router {
     router(
         store,
         workspace,
-        flow,
         std::env::var_os("URSI_AGENT_BIN").map(PathBuf::from),
-        sandbox::Config::from_env(),
     )
 }
 
-fn router(
-    store: Store,
-    workspace: PathBuf,
-    flow: Option<FlowClient>,
-    bin: Option<PathBuf>,
-    sandbox: Option<sandbox::Config>,
-) -> Router {
+fn router(store: Store, workspace: PathBuf, bin: Option<PathBuf>) -> Router {
     let ready = store.update(recover).is_ok();
     let artifacts = directories::fs::root(store.dir()).ok();
     let rt = Runtime {
         store,
         workspace,
         artifacts,
-        flow,
         bin,
-        sandbox,
         agents: Mutex::default(),
         processes: Arc::new(Semaphore::new(4)),
-        calls: Arc::new(Semaphore::new(8)),
         ready,
     };
     Router::new()
@@ -384,6 +368,47 @@ fn terminal(attempt: &Value) -> bool {
     )
 }
 
+fn owned_by(attempt: &Value, item: &str) -> Result<(), Error> {
+    if let Some(owner) = attempt.get("itemId").and_then(Value::as_str) {
+        if owner != item {
+            return Err(Error::Conflict("执行尝试不属于此工作项".into()));
+        }
+    }
+    Ok(())
+}
+
+fn current_agent(attempt: &Value) -> Result<(), Error> {
+    let executor = attempt
+        .get("executor")
+        .and_then(Value::as_object)
+        .ok_or_else(|| Error::Unavailable("尝试缺少当前 Agent 执行器绑定".into()))?;
+    if ["kind", "environment", "flowId", "flowRevision"]
+        .iter()
+        .any(|field| executor.contains_key(*field))
+    {
+        return Err(Error::Unavailable(
+            "该尝试使用尚未迁移的执行后端，当前不可用".into(),
+        ));
+    }
+    if executor
+        .keys()
+        .any(|field| !matches!(field.as_str(), "id" | "revision" | "configSchema"))
+    {
+        return Err(Error::Unavailable(
+            "尝试使用了未知执行器契约，当前不可用".into(),
+        ));
+    }
+    if executor.get("id").and_then(Value::as_str).is_none()
+        || executor
+            .get("revision")
+            .and_then(Value::as_u64)
+            .is_none_or(|revision| revision == 0)
+    {
+        return Err(Error::Unavailable("尝试缺少固定 Agent 执行器版本".into()));
+    }
+    Ok(())
+}
+
 impl Runtime {
     fn check(&self) -> Result<(), Error> {
         self.ready
@@ -453,11 +478,6 @@ impl Runtime {
             Ok(a.clone())
         })
     }
-    fn sdk(&self) -> Result<FlowClient, Error> {
-        self.flow
-            .clone()
-            .ok_or_else(|| Error::Unavailable("Flow 后端未启用".into()))
-    }
     fn binary(&self) -> Result<&std::path::Path, Error> {
         self.bin
             .as_deref()
@@ -480,8 +500,6 @@ struct Request {
 
 enum Dispatch {
     Agent(PathBuf, String, OwnedSemaphorePermit),
-    Sandbox(String),
-    Flow(FlowClient, flow::Call, OwnedSemaphorePermit),
 }
 
 async fn start(
@@ -561,52 +579,6 @@ async fn start(
                     worker_rt.agents.lock().unwrap().remove(&worker_key.1);
                 });
             }
-            Dispatch::Sandbox(prompt) => {
-                let (cancel, mut rx) = watch::channel(false);
-                rt.agents.lock().unwrap().insert(key.1.clone(), cancel);
-                let worker_rt = rt.clone();
-                let worker_key = key.clone();
-                tokio::spawn(async move {
-                    let outcome = sandbox::run(
-                        &worker_rt,
-                        &worker_key,
-                        worker_rt.sandbox.as_ref().unwrap(),
-                        prompt,
-                        &mut rx,
-                    )
-                    .await;
-                    if worker_rt.record(&worker_key, outcome).is_err() {
-                        eprintln!("无法保存沙箱尝试 {} 的结果", worker_key.1);
-                    }
-                    worker_rt.agents.lock().unwrap().remove(&worker_key.1);
-                });
-            }
-            Dispatch::Flow(client, call, permit) => {
-                let flow_attempt = response.clone();
-                let result = flow::call(client, key.1.clone(), call, permit).await;
-                match result {
-                    Ok(job) => {
-                        let _ = reply.send(rt.record(&key, flow::evidence(&flow_attempt, &job)));
-                    }
-                    Err(e) => {
-                        let status = if flow::rejected(&e) {
-                            "failed"
-                        } else {
-                            "unverified"
-                        };
-                        let recorded = rt.record(
-                            &key,
-                            Outcome::new(status, format!("Flow 启动: {}", e.kind())),
-                        );
-                        let result = match recorded {
-                            Ok(_) => Err(flow::error(&e)),
-                            Err(error) => Err(error),
-                        };
-                        let _ = reply.send(result);
-                    }
-                }
-                return;
-            }
         }
         let _ = reply.send(Ok(response));
     });
@@ -636,34 +608,7 @@ fn reserve(
             "default",
             Dispatch::Agent(rt.binary()?.into(), prompt, slot(&rt.processes)?),
         ),
-        plan::Plan::Sandbox(prompt) => {
-            let cfg = rt
-                .sandbox
-                .as_ref()
-                .ok_or_else(|| Error::Unavailable("沙箱未配置".into()))?;
-            cfg.reserve(db, &key.0)?;
-            ("starting", cfg.alias.as_str(), Dispatch::Sandbox(prompt))
-        }
-        plan::Plan::Flow {
-            id,
-            revision,
-            variables,
-        } => (
-            "starting",
-            "default",
-            Dispatch::Flow(
-                rt.sdk()?,
-                flow::Call::Start {
-                    flow: id,
-                    revision,
-                    variables,
-                    cwd: rt.workspace.clone(),
-                },
-                slot(&rt.calls)?,
-            ),
-        ),
     };
-    let sandbox = matches!(dispatch, Dispatch::Sandbox(_));
     let mut attempt = json!({
         "id": key.1,
         "itemId": key.0,
@@ -681,9 +626,6 @@ fn reserve(
         "backendRunId": key.1,
         "output": null,
     });
-    if sandbox {
-        attempt["backendRunId"] = Value::Null;
-    }
     push_log(
         &mut attempt,
         "attempt_created",
@@ -726,6 +668,8 @@ async fn verify(
     Json(req): Json<Verification>,
 ) -> Reply {
     let before = rt.load(&key)?;
+    owned_by(&before, &key.0)?;
+    current_agent(&before)?;
     if before["status"] != "unverified" {
         return Err(Error::Conflict("仅可人工核实待核实的尝试".into()));
     }
@@ -735,43 +679,6 @@ async fn verify(
                 "核实证据和原因各需 1 至 4096 字节的非空文本".into(),
             ));
         }
-    }
-    let mut daemon_evidence = None;
-    match before["executor"]["kind"].as_str() {
-        Some("flow") => {
-            let run = flow::bound_run(&before)?;
-            let result = flow::call(rt.sdk()?, run, flow::Call::Get, slot(&rt.calls)?).await;
-            match flow::lookup(&before, result) {
-                flow::Observation::Interrupted(code) => daemon_evidence = Some(code),
-                flow::Observation::Reported(outcome) => {
-                    rt.record(&key, outcome)?;
-                    return Err(Error::Conflict(
-                        "已按 daemon 状态刷新，请查看尝试详情".into(),
-                    ));
-                }
-                flow::Observation::Inconclusive(reason) => {
-                    return Err(Error::Conflict(reason.into()));
-                }
-            }
-        }
-        Some("agent") if before["executor"]["environment"] == "sandbox" => {
-            let cfg = rt
-                .sandbox
-                .as_ref()
-                .filter(|c| before["workspace"]["id"] == c.alias)
-                .ok_or_else(|| Error::Conflict("不能核对原沙箱".into()))?;
-            cfg.authorize(&key.0)?;
-            if let Some(session) = before["backendRunId"].as_str() {
-                let _permit = slot(&rt.calls)?;
-                if !cfg.closed(session).await {
-                    return Err(Error::Conflict("请管理员先核实并关闭原会话".into()));
-                }
-            } else if before["interruptedStatus"] != "starting" {
-                return Err(Error::Conflict("缺少原会话证据".into()));
-            }
-        }
-        Some("agent") => (),
-        _ => return Err(Error::Conflict("无法核实未知执行器".into())),
     }
     rt.store.update(|db| {
         let directory = {
@@ -787,55 +694,25 @@ async fn verify(
         let a = attempt_mut(db, &key.0, &key.1)?;
         a["verification"] = json!({"previousStatus":a["status"], "status":req.status,
             "evidence":rt.redact(req.evidence.trim()), "reason":rt.redact(req.reason.trim())});
-        if let Some(code) = daemon_evidence {
-            a["verification"]["daemonEvidence"] = json!({"op":"run.get", "runId":a["backendRunId"],
-                "flowId":a["executor"]["flowId"], "flowRevision":a["executor"]["flowRevision"], "result":code});
-        }
         a["status"] = json!(req.status);
         if a["artifactDirectory"]["id"].is_string() {
             a["artifactDirectory"]["state"] = "frozen".into();
         }
-        push_log(a, "attempt_verified", "已记录人工核实结论，原制品目录保持冻结");
+        push_log(
+            a,
+            "attempt_verified",
+            "已记录人工核实结论，原制品目录保持冻结",
+        );
         Ok(Json(a.clone()))
     })
 }
 
 async fn inspect(rt: Arc<Runtime>, key: Key, stop: bool) -> Reply {
     let attempt = rt.load(&key)?;
+    owned_by(&attempt, &key.0)?;
+    current_agent(&attempt)?;
     if terminal(&attempt) {
         return Ok(Json(attempt));
-    }
-    if attempt["executor"]["kind"] == "flow" {
-        if attempt["status"] == "starting" {
-            return if stop {
-                Err(Error::Conflict("Flow 正在受理，请稍后取消".into()))
-            } else {
-                Ok(Json(attempt))
-            };
-        }
-        let op = if stop {
-            flow::Call::Stop
-        } else {
-            flow::Call::Get
-        };
-        let run = flow::bound_run(&attempt)?;
-        let client = rt.sdk()?;
-        let permit = slot(&rt.calls)?;
-        // Even a disconnected stop request must record what the daemon actually returned.
-        return tokio::spawn(async move {
-            let result = flow::call(client, run, op, permit).await;
-            let outcome = if stop {
-                match result {
-                    Ok(job) => flow::evidence(&attempt, &job),
-                    Err(_) => Outcome::new("unverified", "未获得 daemon 的运行证据；请稍后查询"),
-                }
-            } else {
-                flow::lookup(&attempt, result).outcome()
-            };
-            rt.record(&key, outcome).map(Json)
-        })
-        .await
-        .map_err(|_| Error::Internal("Flow 查询任务异常".into()))?;
     }
     if stop {
         let tx = rt.agents.lock().unwrap().get(&key.1).cloned();

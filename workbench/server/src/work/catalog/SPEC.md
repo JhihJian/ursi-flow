@@ -30,8 +30,8 @@ references:
 
 - 资源 `prompt`、`skill` 接受非空文本；`mcp` 只接受形如 `{"serverRef":"tools","credentialRef":"tools-auth"}` 的命名引用，`credentialRef` 可省略。连接参数和凭据由管理员管理。当前执行后端均不支持注入 MCP，绑定时拒绝发布。
 - 执行器是通用能力定义，只允许 `id`、`resources` 和可选的 `configSchema`。定义不接受 `kind`、`environment`、`flowId`、`flowRevision`、程序、路径、命令或环境变量字段。
-- `configSchema` 是字段名到受限字段定义的对象。字段类型仅支持 `string`、`url`、`secret`、`enum`、`integer`、`number`、`boolean`。字段定义只允许 `type`、类型对应的 `default`、`enum` 的 `values` 以及数值类型的 `minimum`、`maximum`。它不是任意 JSON Schema，不支持对象、数组、组合、表达式或执行配置。
-- `url` 默认值必须是无空白的绝对 URL；`enum` 必须有非空且不重复的字符串 `values`；`integer` 和 `number` 可声明有限的 `minimum`、`maximum`，且默认值必须在边界内。未声明 `default` 的字段没有默认值。
+- `configSchema` 支持字段数组或 `{fields:[...]}`。每个字段包含 `key`、`label`、`type`，可选 `description`、`required`、`default`、`options`、`min`、`max`。字段类型支持 `string`、`url`、`secret`、`enum`、`integer`、`number`、`boolean`、`configPackage`。它不是任意 JSON Schema，不支持对象、数组、组合、表达式或执行配置。
+- `url` 默认值必须是无空白的绝对 URL；`enum` 必须有非空且不重复的字符串 `options`；`integer` 和 `number` 可声明有限的 `min`、`max`，且默认值必须在边界内；`configPackage` 默认值必须是不含路径的配置包标识。未声明 `default` 的字段没有默认值。
 - `secret` 只能使用 `"***"`、`{"redacted":true}` 或命名的内部引用 `{"ref":"secret://..."}` 表示。明文密钥、路径、命令和环境变量均拒绝，secret 值不进入普通响应。
 
 ### 引用校验与历史冻结

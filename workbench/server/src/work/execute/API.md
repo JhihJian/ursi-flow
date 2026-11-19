@@ -44,9 +44,7 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 
 旧数据迁移：旧的 `workspace` 字符串（别名或宿主路径）在服务启动时改为上述引用，宿主路径同时从 `output` 中剔除；缺失的 `workInstruction`、`artifactDirectory`、`executorLog`、`executorLogPage`、`configPackage` 补为 `null`，`platformLog` 补为空数组。重启前的未结束尝试仍转为 `unverified`，但恢复提示只写 `recoveryNotice` 和平台日志，不再覆盖 `output`。
 
-显式指定 `environment:"sandbox"` 的 Agent 使用独占的 ACP 沙箱。`starting` 时 `backendRunId` 为空，登记会话后它是真实 sessionId，`workspace` 是环境别名。配置、收尾和可选真实会话验收见 [预配 ACP 沙箱](SANDBOX.md)。
-
-Flow 仅支持固定 `flowId`、`flowRevision` 且 `resources` 为空的绑定。当前 Flow 只登记并冻结独立制品目录，尚未收集后端产物。工作项 `input` 对象原样作为 Flow 变量。尝试 ID 就是 daemon run ID；详情与历史可经同一 daemon 的 CLI 查询。相同尝试只调用一次 `start_pinned`，并发 SDK 调用最多 8 个。Flow 修订冲突返回 409，记录失败尝试，不回退到无修订启动。
+当前执行入口只接受目录发布的通用执行器投影，并统一通过本地 Agent 适配器执行。带旧 `kind`、`environment`、`flowId` 或 `flowRevision` 的历史快照不会启动；查询、取消和人工核实返回 503，不会重放旧后端。沙箱和 Flow 的迁移说明保留在 [预配 ACP 沙箱](SANDBOX.md) 及历史设计文档中，当前不属于可用执行后端。
 
 `starting` 表示等待 daemon 受理。`running` 表示本地执行已交给 Agent 任务，或 daemon 报告运行中。`succeeded`、`failed`、`cancelled` 是确认的尝试结果。`unverified` 表示缺少完成证据，可能已有副作用。重启恢复只标记未结束尝试，重新查询 Flow 可取得 daemon 的后续证据。收到错误或断线时先查列表和详情；显式重新提交会创建独立的新尝试和新制品目录。
 

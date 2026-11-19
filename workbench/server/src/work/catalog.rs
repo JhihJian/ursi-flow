@@ -202,7 +202,7 @@ pub fn resolve(db: &Value, package: &str, revision: u64, for_new: bool) -> Resul
 #[test]
 fn invalid_deliverables_preserve_the_previous_package_revision() {
     let mut db = json!({});
-    publish(&mut db, "executors", json!({"id":"pi","kind":"agent"})).unwrap();
+    publish(&mut db, "executors", json!({"id":"pi"})).unwrap();
     let mut pkg = json!({"id":"p","sop":"work","acceptance":"review",
         "deliverables":["核查 报告.txt"],"actions":{"a":{"executor":{"id":"pi","revision":1}}}});
     publish(&mut db, "packages", pkg.clone()).unwrap();

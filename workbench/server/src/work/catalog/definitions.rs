@@ -142,7 +142,7 @@ fn secret_reference(s: &str) -> bool {
             .any(|c| c.is_whitespace() || c.is_control())
 }
 
-fn validate_default(ty: &str, value: &Value, schema: &Map<String, Value>) -> Result<(), Error> {
+fn validate_default(ty: &str, value: &Value, field: &Map<String, Value>) -> Result<(), Error> {
     let valid = match ty {
         "string" => value.is_string(),
         "url" => value.as_str().is_some_and(is_url),
@@ -158,146 +158,198 @@ fn validate_default(ty: &str, value: &Value, schema: &Map<String, Value>) -> Res
                     .as_object()
                     .is_some_and(|v| v.len() == 1 && v.get("redacted") == Some(&Value::Bool(true)))
         }
-        "enum" => schema["values"]
-            .as_array()
-            .is_some_and(|values| values.iter().any(|candidate| candidate == value)),
+        "enum" => field["options"].as_array().is_some_and(|options| {
+            options
+                .iter()
+                .any(|option| option.get("value") == Some(value))
+        }),
+        "configPackage" => value.as_str().is_some_and(|id| name(id).is_ok()),
         "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
         "number" => value.as_f64().is_some_and(f64::is_finite),
         "boolean" => value.is_boolean(),
         _ => false,
     };
-    if valid {
-        Ok(())
-    } else {
-        Err(Error::Invalid(format!("{ty} 的 default 类型无效")))
-    }
+    valid
+        .then_some(())
+        .ok_or_else(|| Error::Invalid(format!("{ty} 的 default 类型无效")))
 }
 
 fn validate_config_schema(v: &Value) -> Result<Value, Error> {
-    let schema = v
-        .as_object()
-        .ok_or_else(|| Error::Invalid("configSchema 必须是字段定义对象".into()))?;
-    let mut normalized = Map::new();
-    for (field, definition) in schema {
-        name(field)?;
-        let definition = definition
+    let wrapped = v.is_object();
+    if wrapped {
+        fields(v, &["fields"])?;
+    }
+    let fields_list = v
+        .as_array()
+        .or_else(|| v.get("fields").and_then(Value::as_array))
+        .ok_or_else(|| Error::Invalid("configSchema 必须是字段定义数组".into()))?;
+    let mut seen = BTreeMap::new();
+    let mut normalized = Vec::with_capacity(fields_list.len());
+    for (index, raw) in fields_list.iter().enumerate() {
+        let field = raw
             .as_object()
-            .ok_or_else(|| Error::Invalid(format!("configSchema.{field} 必须是对象")))?;
+            .ok_or_else(|| Error::Invalid(format!("configSchema[{index}] 必须是对象")))?;
         fields(
-            &Value::Object(definition.clone()),
-            &["type", "default", "values", "minimum", "maximum"],
+            &Value::Object(field.clone()),
+            &[
+                "key",
+                "label",
+                "description",
+                "type",
+                "required",
+                "default",
+                "options",
+                "min",
+                "max",
+            ],
         )?;
-        let ty = definition
+        let key = field
+            .get("key")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Invalid(format!("configSchema[{index}].key 无效")))?;
+        name(key)?;
+        if seen.insert(key, ()).is_some() {
+            return Err(Error::Invalid(format!("configSchema.{key} 不能重复")));
+        }
+        let label = field
+            .get("label")
+            .and_then(Value::as_str)
+            .filter(|label| !label.trim().is_empty())
+            .ok_or_else(|| Error::Invalid(format!("configSchema.{key}.label 必须是非空字符串")))?;
+        let ty = field
             .get("type")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Invalid(format!("configSchema.{field}.type 无效")))?;
+            .ok_or_else(|| Error::Invalid(format!("configSchema.{key}.type 无效")))?;
         if !matches!(
             ty,
-            "string" | "url" | "secret" | "enum" | "integer" | "number" | "boolean"
+            "string"
+                | "url"
+                | "secret"
+                | "enum"
+                | "integer"
+                | "number"
+                | "boolean"
+                | "configPackage"
         ) {
-            return Err(Error::Invalid(format!(
-                "configSchema.{field}.type 不受支持"
-            )));
+            return Err(Error::Invalid(format!("configSchema.{key}.type 不受支持")));
         }
-
-        let has_bounds = definition.contains_key("minimum") || definition.contains_key("maximum");
-        if ty != "integer" && ty != "number" && has_bounds {
-            return Err(Error::Invalid(format!("{ty} 不支持数值边界")));
-        }
-        let (minimum, maximum) = match ty {
-            "integer" => {
-                let minimum = definition
-                    .get("minimum")
-                    .map(|v| integer(v, "minimum"))
-                    .transpose()?;
-                let maximum = definition
-                    .get("maximum")
-                    .map(|v| integer(v, "maximum"))
-                    .transpose()?;
-                if let (Some(minimum), Some(maximum)) = (minimum, maximum) {
-                    if minimum > maximum {
-                        return Err(Error::Invalid(format!("configSchema.{field} 数值边界无效")));
-                    }
-                }
-                (None, None)
-            }
-            "number" => {
-                let minimum = definition
-                    .get("minimum")
-                    .map(|v| number(v, "minimum"))
-                    .transpose()?;
-                let maximum = definition
-                    .get("maximum")
-                    .map(|v| number(v, "maximum"))
-                    .transpose()?;
-                if let (Some(minimum), Some(maximum)) = (minimum, maximum) {
-                    if minimum > maximum {
-                        return Err(Error::Invalid(format!("configSchema.{field} 数值边界无效")));
-                    }
-                }
-                (minimum, maximum)
-            }
-            _ => (None, None),
-        };
-
-        if ty == "enum" {
-            let values = definition
-                .get("values")
-                .and_then(Value::as_array)
-                .filter(|values| !values.is_empty())
-                .ok_or_else(|| {
-                    Error::Invalid(format!("configSchema.{field}.values 必须是非空数组"))
-                })?;
-            let mut seen = BTreeMap::new();
-            for value in values {
-                let value = value
-                    .as_str()
-                    .filter(|value| !value.trim().is_empty())
-                    .ok_or_else(|| {
-                        Error::Invalid(format!("configSchema.{field}.values 必须是字符串"))
-                    })?;
-                if seen.insert(value, ()).is_some() {
-                    return Err(Error::Invalid(format!(
-                        "configSchema.{field}.values 不能重复"
-                    )));
-                }
-            }
-        } else if definition.contains_key("values") {
-            return Err(Error::Invalid(format!("{ty} 不支持 values")));
-        }
-
-        if let Some(default) = definition.get("default") {
-            validate_default(ty, default, definition)?;
-            let out_of_bounds = match ty {
-                "integer" => {
-                    let value = integer(default, "default")?;
-                    let minimum = definition
-                        .get("minimum")
-                        .map(|v| integer(v, "minimum"))
-                        .transpose()?;
-                    let maximum = definition
-                        .get("maximum")
-                        .map(|v| integer(v, "maximum"))
-                        .transpose()?;
-                    minimum.is_some_and(|bound| value < bound)
-                        || maximum.is_some_and(|bound| value > bound)
-                }
-                "number" => {
-                    let value = number(default, "default")?;
-                    minimum.is_some_and(|bound| value < bound)
-                        || maximum.is_some_and(|bound| value > bound)
-                }
-                _ => false,
-            };
-            if out_of_bounds {
+        if let Some(description) = field.get("description") {
+            if !description.is_string() {
                 return Err(Error::Invalid(format!(
-                    "configSchema.{field}.default 超出数值边界"
+                    "configSchema.{key}.description 必须是字符串"
                 )));
             }
         }
-        normalized.insert(field.clone(), Value::Object(definition.clone()));
+        if let Some(required) = field.get("required") {
+            if !required.is_boolean() {
+                return Err(Error::Invalid(format!(
+                    "configSchema.{key}.required 必须是布尔值"
+                )));
+            }
+        }
+        match ty {
+            "integer" => {
+                let min = field.get("min").map(|v| integer(v, "min")).transpose()?;
+                let max = field.get("max").map(|v| integer(v, "max")).transpose()?;
+                if let (Some(min), Some(max)) = (min, max) {
+                    if min > max {
+                        return Err(Error::Invalid(format!("configSchema.{key} 数值边界无效")));
+                    }
+                }
+            }
+            "number" => {
+                let min = field.get("min").map(|v| number(v, "min")).transpose()?;
+                let max = field.get("max").map(|v| number(v, "max")).transpose()?;
+                if let (Some(min), Some(max)) = (min, max) {
+                    if min > max {
+                        return Err(Error::Invalid(format!("configSchema.{key} 数值边界无效")));
+                    }
+                }
+            }
+            _ if field.contains_key("min") || field.contains_key("max") => {
+                return Err(Error::Invalid(format!("{ty} 不支持数值边界")));
+            }
+            _ => {}
+        }
+        match ty {
+            "enum" => {
+                let options = field
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .filter(|v| !v.is_empty())
+                    .ok_or_else(|| {
+                        Error::Invalid(format!("configSchema.{key}.options 必须是非空数组"))
+                    })?;
+                let mut option_keys = BTreeMap::new();
+                for option in options {
+                    let option = option.as_object().ok_or_else(|| {
+                        Error::Invalid(format!("configSchema.{key}.options 必须是对象数组"))
+                    })?;
+                    fields(&Value::Object(option.clone()), &["value", "label"])?;
+                    let value = option
+                        .get("value")
+                        .and_then(Value::as_str)
+                        .filter(|v| !v.trim().is_empty())
+                        .ok_or_else(|| {
+                            Error::Invalid(format!("configSchema.{key}.options.value 无效"))
+                        })?;
+                    if option
+                        .get("label")
+                        .and_then(Value::as_str)
+                        .is_none_or(|v| v.trim().is_empty())
+                    {
+                        return Err(Error::Invalid(format!(
+                            "configSchema.{key}.options.label 无效"
+                        )));
+                    }
+                    if option_keys.insert(value, ()).is_some() {
+                        return Err(Error::Invalid(format!(
+                            "configSchema.{key}.options 不能重复"
+                        )));
+                    }
+                }
+            }
+            "configPackage" => {
+                if field.contains_key("options") {
+                    return Err(Error::Invalid("configPackage 不接受 options".into()));
+                }
+            }
+            _ if field.contains_key("options") => {
+                return Err(Error::Invalid(format!("{ty} 不支持 options")));
+            }
+            _ => {}
+        }
+        if let Some(default) = field.get("default") {
+            validate_default(ty, default, field)?;
+            let outside = match ty {
+                "integer" => {
+                    let value = integer(default, "default")?;
+                    let min = field.get("min").map(|v| integer(v, "min")).transpose()?;
+                    let max = field.get("max").map(|v| integer(v, "max")).transpose()?;
+                    min.is_some_and(|bound| value < bound) || max.is_some_and(|bound| value > bound)
+                }
+                "number" => {
+                    let value = number(default, "default")?;
+                    let min = field.get("min").map(|v| number(v, "min")).transpose()?;
+                    let max = field.get("max").map(|v| number(v, "max")).transpose()?;
+                    min.is_some_and(|bound| value < bound) || max.is_some_and(|bound| value > bound)
+                }
+                _ => false,
+            };
+            if outside {
+                return Err(Error::Invalid(format!(
+                    "configSchema.{key}.default 超出数值边界"
+                )));
+            }
+        }
+        let _ = label;
+        normalized.push(Value::Object(field.clone()));
     }
-    Ok(Value::Object(normalized))
+    if wrapped {
+        Ok(json!({"fields": normalized}))
+    } else {
+        Ok(Value::Array(normalized))
+    }
 }
 
 fn executor(db: &Value, b: &Value) -> Result<Value, Error> {

@@ -109,12 +109,7 @@ impl Http {
         serde_json::from_str(&text).unwrap()
     }
     async fn publish(&self) {
-        self.ok(
-            "POST",
-            "/v2/executors",
-            json!({"id":"flow","kind":"flow","flowId":"example","flowRevision":"abc"}),
-        )
-        .await;
+        self.ok("POST", "/v2/executors", json!({"id":"flow"})).await;
         let binding = json!({"executor":{"id":"flow","revision":1}});
         let package = json!({"id":"triage","sop":"read","acceptance":"review","actions":{"inspect":binding,"other":binding}});
         self.ok("POST", "/v2/packages", package.clone()).await;

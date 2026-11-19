@@ -1,8 +1,3 @@
-#[path = "flow_http.rs"]
-mod flow_http;
-#[path = "sandbox_http.rs"]
-mod sandbox_http;
-
 use super::*;
 use crate::work::{catalog, directories, items};
 use tokio::{
@@ -17,13 +12,11 @@ struct Api {
 }
 impl Api {
     fn new(temp: &Temp, store: Store, bin: PathBuf) -> Self {
-        Self::configured(temp, store, bin, None)
-    }
-    fn configured(temp: &Temp, store: Store, bin: PathBuf, cfg: Option<sandbox::Config>) -> Self {
         let app = catalog::routes(store.clone())
             .merge(items::routes(store.clone()))
             .merge(directories::routes(store.clone()).unwrap())
-            .merge(router(store, temp.0.clone(), None, Some(bin), cfg));
+            .merge(router(store, temp.0.clone(), Some(bin)));
+
         Self::serve(temp, app)
     }
     fn serve(temp: &Temp, app: Router) -> Self {
@@ -91,11 +84,8 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
             .await;
         refs.push(json!({"id":id,"revision":r["revision"]}));
     }
-    api.post(
-        "executors",
-        json!({"id":"pi","kind":"agent","resources":[refs[2]]}),
-    )
-    .await;
+    api.post("executors", json!({"id":"pi","resources":[refs[2]]}))
+        .await;
     api.post(
         "packages",
         json!({"id":"case","sop":"核查","acceptance":"有报告","resources":[refs[0]],
@@ -174,45 +164,6 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
             .to_string()
             .contains(temp.0.to_str().unwrap())
     );
-
-    api.post(
-        "executors",
-        json!({"id":"checker","kind":"flow","flowId":"check","flowRevision":"revA"}),
-    )
-    .await;
-    api.post(
-        "packages",
-        json!({"id":"flowcase","sop":"核查","acceptance":"有报告","inputs":ports,"outputs":outputs,
-        "actions":{"check":{"executor":{"id":"checker","revision":1}}}}),
-    )
-    .await;
-    let i = api
-        .post(
-            "items",
-            json!({"package":"flowcase","revision":1,"requestId":"case2","input":input}),
-        )
-        .await;
-    let i = api
-        .post(
-            &format!("items/{}/start", i["id"].as_str().unwrap()),
-            json!({"assignee":"经办人"}),
-        )
-        .await;
-    let (
-        plan::Plan::Flow {
-            id,
-            revision,
-            variables,
-        },
-        _,
-    ) = plan::resolve(&i, "check").unwrap()
-    else {
-        panic!()
-    };
-    assert_eq!(
-        (id.as_str(), revision.as_str(), variables),
-        ("check", "revA", input)
-    );
 }
 
 #[tokio::test]
@@ -277,8 +228,8 @@ async fn recovered_local_attempt_needs_one_evidenced_decision_before_delivery() 
     store.update(|db| {
         db["items"]["i"] = item();
         db["items"]["i"]["deliveries"] = json!([]);
-        db["items"]["i"]["attempts"] = json!([{"id":"a","executor":{"kind":"agent"},"status":"running","workspace":temp.0}]);
-        db["items"]["other"] = json!({"attempts":[{"id":"a","executor":{"kind":"flow"},"status":"unverified"}]});
+        db["items"]["i"]["attempts"] = json!([{"id":"a","itemId":"i","executor":{"id":"assistant","revision":3},"status":"running","workspace":temp.0}]);
+        db["items"]["other"] = json!({"attempts":[{"id":"a","itemId":"other","executor":{"id":"verify","revision":2,"kind":"flow"},"status":"unverified"}]});
         Ok(())
     }).unwrap();
     let bin = temp.script("touch replay");
@@ -298,7 +249,7 @@ async fn recovered_local_attempt_needs_one_evidenced_decision_before_delivery() 
         invalid[field] = value.into();
         api.request(verify, Some(invalid), status).await;
     }
-    api.request("items/other/attempts/a/verify", Some(proof.clone()), 409)
+    api.request("items/other/attempts/a/verify", Some(proof.clone()), 503)
         .await;
     api.request("items/i/attempts/other/verify", Some(proof.clone()), 404)
         .await;
@@ -354,11 +305,8 @@ async fn agent_artifacts_are_registered_frozen_and_never_expose_host_paths() {
     );
     let api = Api::new(&temp, store.clone(), bin);
     let ports = json!({"ticket":"string"});
-    api.post(
-        "executors",
-        json!({"id":"pi","kind":"agent","resources":[]}),
-    )
-    .await;
+    api.post("executors", json!({"id":"pi","resources":[]}))
+        .await;
     api.post(
         "packages",
         json!({"id":"case","sop":"核查","acceptance":"有报告","inputs":ports,
