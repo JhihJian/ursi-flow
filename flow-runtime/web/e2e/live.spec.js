@@ -75,6 +75,37 @@ async function openNewFlow(page) {
   await page.getByRole('link', { name: '创建 Flow', exact: true }).click()
   await expect(page.getByRole('heading', { name: '创建 Flow' })).toBeVisible()
 }
+
+// 直接调用同源接口播种包内容：源码视图已移除，包内容用接口准备最直观。
+async function api(page, path, method = 'GET', body) {
+  return page.evaluate(
+    async ({ path, method, body }) => {
+      const response = await fetch('/api/v1' + path, {
+        method,
+        headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      return { status: response.status, body: await response.json().catch(() => null) }
+    },
+    { path, method, body },
+  )
+}
+async function seed(page, id, files) {
+  await page.goto('/')
+  const result = await api(page, '/flows', 'POST', { id, files })
+  expect(result.status, JSON.stringify(result.body)).toBe(200)
+  return result.body
+}
+async function openFlow(page, id) {
+  await page.goto('/#/flows/' + id + '/edit')
+  await expect(page.getByRole('heading', { name: id, exact: true })).toBeVisible()
+  await expect(page.locator('.cnode').first()).toBeVisible()
+}
+async function storedFlow(page, id) {
+  const result = await api(page, '/flows/' + id)
+  expect(result.status).toBe(200)
+  return result.body
+}
 // 点中连线本体：取路径上的实际点，避免点到外框中心外的空白。
 async function clickEdge(page, result) {
   const point = await page.evaluate((text) => {
@@ -92,22 +123,56 @@ async function clickEdge(page, result) {
   await page.mouse.click(point.x, point.y)
 }
 
-async function fillFiles(page, id, source) {
-  await page.getByLabel('Flow 标识').fill(id)
-  await page.getByRole('tab', { name: '源码' }).click()
-  await page.getByLabel('FLOW.md 内容').fill(source)
+test('从空包开始用图形与脚本编辑，保存后可以运行', async ({ page }) => {
+  await openNewFlow(page)
+  await page.getByLabel('Flow 标识').fill('e2e-create')
+
+  // 模板只有一个工作节点，改名后改动作、再加脚本文件。
+  await page.locator('.cnode').click()
+  await page.getByLabel('节点名称').fill('跑脚本')
+  await page.getByLabel('动作').selectOption({ label: '执行自定义命令' })
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  await page.getByLabel('节点内容').fill(
+    '{\n  "command": "node",\n  "args": ["scripts/hello.mjs"]\n}',
+  )
+  await page.getByRole('button', { name: '收起' }).click()
+
+  // scripts 下的文件用脚本视图编辑，不提供图形与文档。
+  await page.getByLabel('新增文件路径').fill('scripts/hello.mjs')
+  await page.getByRole('button', { name: '新增文件' }).click()
+  await expect(page.getByLabel('scripts/hello.mjs 内容')).toBeVisible()
+  await expect(page.getByRole('tab', { name: '图形' })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '文档' })).toHaveCount(0)
+  await page.getByLabel('scripts/hello.mjs 内容').fill("console.log('hello from script')\n")
+
   await page.getByRole('button', { name: '校验' }).click()
   await expect(page.getByRole('status').filter({ hasText: '校验通过' })).toBeVisible()
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
-}
+
+  const created = await storedFlow(page, 'e2e-create')
+  expect(created.files['scripts/hello.mjs']).toContain('hello from script')
+  expect(created.files['FLOW.md']).toMatch(/## 跑脚本/)
+
+  // 直接切换包也要刷新内容（修订号是整个目录共用的，只看修订会误判成同一份）。
+  await seed(page, 'e2e-switch', { 'FLOW.md': quick })
+  await page.goto('/#/flows/e2e-switch/edit')
+  await expect(page.getByRole('heading', { name: 'e2e-switch', exact: true })).toBeVisible()
+  await expect(page.locator('.cnode')).toHaveCount(1)
+
+  // 回到 FLOW.md 只看得到图形与文档两个视图。
+  await page.getByRole('button', { name: 'FLOW.md' }).click()
+  await expect(page.getByRole('tab', { name: '图形' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '文档' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '源码' })).toHaveCount(0)
+})
 
 test('图形视图可按画布编辑节点与结果边，并跑通运行闭环', async ({ page }) => {
-  await openNewFlow(page)
-  await fillFiles(page, 'e2e-graph', quick)
+  await seed(page, 'e2e-graph', { 'FLOW.md': quick })
+  await openFlow(page, 'e2e-graph')
 
-  // 图形视图把 FLOW.md 画成节点卡片和结果边。
-  await page.getByRole('tab', { name: '图形' }).click()
+  // 打开 FLOW.md 默认就是图形视图。
+  await expect(page.getByRole('tab', { name: '图形' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.cnode')).toHaveCount(1)
   await expect(page.locator('.cterminal')).toHaveCount(2)
   // 选中连线的结果说明只在选中时显示在走线上。
@@ -134,13 +199,13 @@ test('图形视图可按画布编辑节点与结果边，并跑通运行闭环',
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
 
-  // 源码视图同步反映改名结果，新增结果小节带有占位说明。
-  await page.getByRole('tab', { name: '源码' }).click()
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/check\[执行验收检查\]/)
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/check -->\|已执行\| step1\[新节点\]/)
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/## 新节点/)
-  // 新结果小节自带占位说明，符合规范要求。
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/### 已执行\n\n节点返回“已执行”时继续执行。/)
+  // 保存后的 FLOW.md 反映改名与新增节点，新结果小节自带占位说明。
+  const saved = (await storedFlow(page, 'e2e-graph')).files['FLOW.md']
+  expect(saved).toMatch(/check\[执行验收检查\]/)
+  expect(saved).toMatch(/check -->\|已执行\| step1\[新节点\]/)
+  expect(saved).toMatch(/step1 -->\|已执行\| finish/)
+  expect(saved).toMatch(/## 新节点/)
+  expect(saved).toMatch(/### 已执行\s+节点返回“已执行”时继续执行。/)
 
   await page.getByLabel('Run ID（可选）').fill('e2e-graph-run')
   await page.getByRole('button', { name: '启动运行' }).click()
@@ -148,23 +213,20 @@ test('图形视图可按画布编辑节点与结果边，并跑通运行闭环',
 })
 
 test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }) => {
-  await openNewFlow(page)
-  // FLOW.md 引用了 references/checklist.md，先建好引用文件再校验。
-  await page.getByLabel('新增文件路径').fill('references/version.md')
-  await page.getByRole('button', { name: '新增文件' }).click()
-  await page.getByLabel('Markdown 源码').fill('# 版本规范\n\n版本号必须与 FLOW.md 声明一致。\n')
-  await page.getByLabel('新增文件路径').fill('references/checklist.md')
-  await page.getByRole('button', { name: '新增文件' }).click()
-  await page.getByLabel('Markdown 源码').fill(
-    '# 检查清单\n\n- 版本号一致\n- 说明完整\n\n规则见 [版本规范](version.md)。\n',
-  )
+  await seed(page, 'e2e-doc', {
+    'FLOW.md': withDocs,
+    'references/version.md': '# 版本规范\n\n版本号必须与 FLOW.md 声明一致。\n',
+    'references/checklist.md':
+      '# 检查清单\n\n- 版本号一致\n- 说明完整\n\n规则见 [版本规范](version.md)。\n',
+  })
+  await openFlow(page, 'e2e-doc')
+
+  // 引用文档默认打开文档视图。
+  await page.getByRole('button', { name: 'references/checklist.md' }).click()
   await expect(page.locator('.md h1')).toHaveText('检查清单')
   await expect(page.locator('.md li')).toHaveCount(2)
 
   await page.getByRole('button', { name: 'FLOW.md' }).click()
-  await fillFiles(page, 'e2e-doc', withDocs)
-
-  // Mermaid 代码块被画成图，而不是继续显示源码。
   await page.getByRole('tab', { name: '文档' }).click()
   await expect(page.locator('.mermaid-figure svg')).toHaveCount(1)
   await expect(page.locator('code.language-mermaid')).toHaveCount(0)
@@ -192,27 +254,27 @@ test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }
 })
 
 test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
-  await openNewFlow(page)
-  await fillFiles(page, 'e2e-conflict', quick)
-  const created = await page.evaluate(async (files) => {
-    const response = await fetch('/api/v1/flows', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 'e2e-other', files }),
-    })
-    return response.status
-  }, { 'FLOW.md': quick })
-  expect(created).toBe(200)
-  await page.getByRole('tab', { name: '源码' }).click()
-  await page.getByLabel('FLOW.md 内容').fill(quick + '\n<!-- 追加说明 -->\n')
+  await seed(page, 'e2e-conflict', { 'FLOW.md': quick })
+  await openFlow(page, 'e2e-conflict')
+  // 画布改名产生草稿，随后别处又提交了一次修订。
+  await page.locator('.cnode').click()
+  await page.getByLabel('节点名称').fill('本地草稿')
+  const current = await storedFlow(page, 'e2e-conflict')
+  const elsewhere = await api(page, '/flows/e2e-conflict', 'PUT', {
+    files: { 'FLOW.md': current.files['FLOW.md'] + '\n<!-- 别处的改动 -->\n' },
+    expectedRevision: current.revision,
+  })
+  expect(elsewhere.status).toBe(200)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByRole('alert').first()).toContainText('冲突')
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/追加说明/)
+  // 草稿仍在画布上，重新载入前不会丢失。
+  await expect(page.locator('.cnode-title')).toHaveText('本地草稿')
+  await expect(page.getByRole('button', { name: '保存' })).toBeEnabled()
 })
 
 test('停止运行与运行配置', async ({ page }) => {
-  await openNewFlow(page)
-  await fillFiles(page, 'e2e-slow', slow)
+  await seed(page, 'e2e-slow', { 'FLOW.md': slow })
+  await openFlow(page, 'e2e-slow')
   await page.getByLabel('Run ID（可选）').fill('e2e-slow-run')
   await page.getByRole('button', { name: '启动运行' }).click()
   await expect(page).toHaveURL(/\/#\/runs\/e2e-slow-run$/)

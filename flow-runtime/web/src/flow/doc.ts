@@ -133,10 +133,22 @@ const defaultBody: Record<ActionKind, string> = {
 }`,
 }
 
+/** 动作类型分三族，族内切换可以沿用正文，跨族切换要换成对应的默认内容。 */
+const family = (kind: ActionKind) => (kind === '执行自定义命令' ? 'command' : kind === '执行Flow' ? 'flow' : 'agent')
+
 export function setAction(section: FlowSection, kind: ActionKind): FlowSection {
   const action = section.body.match(ACTION_FENCE)
   // 动作类型未变时保留原文，避免无意义的空白规范化进入 diff。
   if (action && action[1] === kind) return section
+  if (action && family(action[1] as ActionKind) !== family(kind)) {
+    // Agent 提示词换成命令 JSON（或反过来）只会得到非法内容，直接换成默认骨架。
+    const before = section.body.slice(0, action.index)
+    const after = section.body.slice((action.index ?? 0) + action[0].length)
+    return {
+      ...section,
+      body: `${before}${fence}${kind}\n${defaultBody[kind]}\n${fence}${after}`.trimEnd(),
+    }
+  }
   if (action) {
     const before = section.body.slice(0, action.index)
     const after = section.body.slice((action.index ?? 0) + action[0].length)

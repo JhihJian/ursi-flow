@@ -14,12 +14,13 @@ test('纯静态子目录：主题、列表、深链刷新与只读演示', async
   await page.getByRole('link', { name: /release-check/ }).click()
   await expect(page).toHaveURL(/\/dist\/#\/flows\/release-check\/edit$/)
   await page.reload()
-  // 演示包默认打开图形视图。
+  // 演示包默认打开图形视图，FLOW.md 只有图形与文档两个视图。
   await expect(page.locator('.cnode')).toHaveCount(2)
-  await page.getByRole('tab', { name: '源码' }).click()
-  await expect(page.getByLabel('FLOW.md 内容')).toHaveValue(/发布检查/)
+  await expect(page.getByRole('tab', { name: '源码' })).toHaveCount(0)
+  await page.getByRole('tab', { name: '文档' }).click()
+  await expect(page.locator('.md-meta')).toContainText('发布检查')
   await page.getByRole('button', { name: 'references/checklist.md' }).click()
-  await expect(page.getByLabel('references/checklist.md 内容')).toContainText('发布检查清单')
+  await expect(page.getByLabel('Markdown 源码')).toContainText('发布检查清单')
   await page.getByRole('link', { name: '运行记录' }).click()
   await page.getByRole('link', { name: 'verify-003', exact: true }).click()
   await expect(page.locator('.badge.failed').first()).toBeVisible()

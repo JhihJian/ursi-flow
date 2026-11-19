@@ -53,6 +53,43 @@ export function setKind(graph: FlowGraph, ref: string, kind: ActionKind): FlowGr
   return next
 }
 
+/**
+ * 改动作类型时同时修正出边，否则会留下规范不允许的组合：
+ * 命令节点只能有一条“已执行”出边，执行Flow 用无结果直连边或 已完成/已失败 两条边。
+ */
+export function setActionKind(graph: FlowGraph, ref: string, kind: ActionKind): FlowGraph {
+  const next = setKind(graph, ref, kind)
+  const outs = next.edges.filter((edge) => edge.from === ref)
+  if (!outs.length) return next
+  const others = next.edges.filter((edge) => edge.from !== ref)
+  if (kind === '执行自定义命令') {
+    // 命令节点只保留一条出边，目标取原来的第一条。
+    return replaceEdges(next, [
+      ...others,
+      { id: edgeId(ref, '已执行', outs[0].to), from: ref, to: outs[0].to, result: '已执行' },
+    ])
+  }
+  if (kind === '执行Flow') {
+    const pair = outs.filter((edge) => edge.result === '已完成' || edge.result === '已失败')
+    if (pair.length === 2) return next
+    return replaceEdges(next, [
+      ...others,
+      { id: edgeId(ref, undefined, outs[0].to), from: ref, to: outs[0].to },
+    ])
+  }
+  // Agent 节点的每条出边都必须有结果名，缺失时补一个默认名字。
+  const filled: GraphEdge[] = []
+  for (const edge of outs) {
+    if (edge.result) {
+      filled.push(edge)
+      continue
+    }
+    const result = uniqueResult({ ...next, edges: [...others, ...filled] }, ref, '已完成')
+    filled.push({ ...edge, result, id: edgeId(ref, result, edge.to) })
+  }
+  return replaceEdges(next, [...others, ...filled])
+}
+
 export function removeNode(graph: FlowGraph, ref: string): FlowGraph {
   const next = copy(graph)
   next.nodes = next.nodes.filter((node) => node.ref !== ref)

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import {
   FileCode2,
   FilePlus2,
-  GitBranch,
+  FileText,
   Network,
   Play,
   RotateCcw,
@@ -16,8 +16,9 @@ import { AsyncState, Refresh, message, useLoad } from './main'
 import { FlowCanvas } from './Graph'
 import { Markdown, MarkdownEditor } from './Markdown'
 import type { FlowFiles, Source } from './data'
-import { parseFlow, serializeFlow, splitSections, joinSections, syncSections, setAction, setResults } from './flow/doc'
-import { ACTION_KINDS, graphIssues, serializeGraph, type ActionKind, type FlowGraph } from './flow/graph'
+import { parseFlow, serializeFlow, splitSections, joinSections, syncSections } from './flow/doc'
+import { graphIssues, type ActionKind, type FlowGraph } from './flow/graph'
+import { setActionKind } from './flow/edit'
 
 const idPattern = /^[A-Za-z0-9][\w-]{0,95}$/
 const filePattern = /^(FLOW\.md|(references|scripts)\/(?:[^/\\]+\/)*[^/\\]+)$/
@@ -84,7 +85,7 @@ export function Flows({ source }: { source: Source }) {
                 </span>
                 <span className="identity">
                   <b>{id}</b>
-                  <small>图形、文档与源码编辑</small>
+                  <small>用图形或文档编辑包内容</small>
                 </span>
                 <span className="muted">打开</span>
               </Link>
@@ -97,7 +98,8 @@ export function Flows({ source }: { source: Source }) {
   )
 }
 
-type View = 'graph' | 'doc' | 'source'
+// 图形与文档是两种编辑方式；scripts 下的脚本只能按代码编辑。
+type View = 'graph' | 'doc' | 'code'
 
 export function FlowEditor({ source }: { source: Source }) {
   const id = useParams<'id'>().id
@@ -121,12 +123,14 @@ export function FlowEditor({ source }: { source: Source }) {
   const [running, setRunning] = useState(false)
   const [runId, setRunId] = useState('')
   const [variables, setVariables] = useState('{}')
-  const loadedRevision = useRef<string | null>(null)
+  // 修订号是整个目录共用的，必须连同 Flow 标识一起比较，否则切换包时不会刷新。
+  const loadedKey = useRef<string | null>(null)
 
   useEffect(() => {
     const pkg = loaded.value
-    if (!pkg || loadedRevision.current === pkg.revision) return
-    loadedRevision.current = pkg.revision
+    const key = pkg ? `${pkg.id}:${pkg.revision}` : ''
+    if (!pkg || loadedKey.current === key) return
+    loadedKey.current = key
     setName(pkg.id)
     setFiles(pkg.files)
     setRevision(pkg.revision)
@@ -150,6 +154,12 @@ export function FlowEditor({ source }: { source: Source }) {
     () => (parsed.doc ? graphIssues(parsed.doc.graph) : []),
     [parsed.doc],
   )
+
+  /** 选中文件后切到能编辑它的视图：FLOW.md 用图形，Markdown 用文档，脚本用代码。 */
+  const openFile = (path: string) => {
+    setSelected(path)
+    setView(path === 'FLOW.md' ? (parsed.doc ? 'graph' : 'doc') : path.endsWith('.md') ? 'doc' : 'code')
+  }
 
   if (editing && !loaded.value) {
     return (
@@ -182,19 +192,14 @@ export function FlowEditor({ source }: { source: Source }) {
     if (!parsed.doc) return
     const node = parsed.doc.graph.nodes.find((item) => item.ref === ref)
     if (!node) return
+    if (change.kind) {
+      // 类型变化会牵动出边规则，交给图重写统一处理，小节随图同步。
+      applyGraph(setActionKind(parsed.doc.graph, ref, change.kind))
+      return
+    }
     const { prologue, sections } = splitSections(parsed.doc.post)
     const next = sections.map((section) => {
       if (section.name !== node.name) return section
-      if (change.kind) {
-        const kind = change.kind
-        const withAction = setAction(section, kind)
-        return setResults(
-          withAction,
-          parsed.doc!.graph.edges
-            .filter((edge) => edge.from === ref && edge.result)
-            .map((edge) => edge.result as string),
-        )
-      }
       const action = section.body.match(/```(新建Agent|复用Agent|执行自定义命令|执行Flow)[ \t]*\n([\s\S]*?)```/)
       if (!action || change.body === undefined) return section
       const body = section.body.replace(
@@ -226,7 +231,7 @@ export function FlowEditor({ source }: { source: Source }) {
     setError('')
     writeFile(path, path.endsWith('.md') ? `# ${path.split('/').pop()?.replace(/\.md$/, '')}\n` : '')
     setSelected(path)
-    setView(path.endsWith('.md') ? 'doc' : 'source')
+    setView(path.endsWith('.md') ? 'doc' : 'code')
     setNewPath('')
   }
   const run = async (action: 'validate' | 'save' | 'delete') => {
@@ -359,11 +364,7 @@ export function FlowEditor({ source }: { source: Source }) {
               <li key={path}>
                 <button
                   aria-pressed={selected === path}
-                  onClick={() => {
-                    setSelected(path)
-                    if (path !== 'FLOW.md' && view === 'graph') setView(path.endsWith('.md') ? 'doc' : 'source')
-                    if (path === 'FLOW.md' && view === 'source' && parsed.doc) setView('graph')
-                  }}
+                  onClick={() => openFile(path)}
                   className={selected === path ? 'file active' : 'file'}
                 >
                   <span className="file-name">{path}</span>
@@ -431,26 +432,29 @@ export function FlowEditor({ source }: { source: Source }) {
 
       <section className="editor-main">
           <div className="view-tabs" role="tablist" aria-label="编辑视图">
-            <button
-              role="tab"
-              aria-selected={view === 'graph'}
-              disabled={!parsed.doc}
-              onClick={() => setView('graph')}
-            >
-              <Network size={14} />
-              图形
-            </button>
-            <button
-              role="tab"
-              aria-selected={view === 'doc'}
-              disabled={!isMarkdown}
-              onClick={() => setView('doc')}
-            >
-              文档
-            </button>
-            <button role="tab" aria-selected={view === 'source'} onClick={() => setView('source')}>
-              源码
-            </button>
+            {selected === 'FLOW.md' && (
+              <button
+                role="tab"
+                aria-selected={view === 'graph'}
+                disabled={!parsed.doc}
+                onClick={() => setView('graph')}
+              >
+                <Network size={14} />
+                图形
+              </button>
+            )}
+            {isMarkdown && (
+              <button role="tab" aria-selected={view === 'doc'} onClick={() => setView('doc')}>
+                <FileText size={14} />
+                文档
+              </button>
+            )}
+            {!isMarkdown && (
+              <button role="tab" aria-selected={view === 'code'} onClick={() => setView('code')}>
+                <FileCode2 size={14} />
+                脚本
+              </button>
+            )}
             <span className="view-tabs-note">{selected}</span>
             {issues.length > 0 && <span className="view-tabs-issues">{issues.length} 处结构提示</span>}
           </div>
@@ -478,64 +482,32 @@ export function FlowEditor({ source }: { source: Source }) {
           )}
           {view === 'graph' && !parsed.doc && (
             <p role="alert" className="warning">
-              {parsed.error}，请切到源码视图修复。
+              {parsed.error}。切到文档视图即可直接修改 FLOW.md 原文。
             </p>
           )}
-          {view === 'doc' && (isMarkdown ? <MarkdownEditor
-            value={files[selected] ?? ''}
-            path={selected}
-            onChange={(next) => writeFile(selected, next)}
-            onOpenFile={(path) => {
-              if (files[path] !== undefined) {
-                setSelected(path)
-                setView(path.endsWith('.md') ? 'doc' : 'source')
-              } else setError(`包内没有 ${path}`)
-            }}
-          /> : <p className="muted">只有 Markdown 文件提供文档视图。</p>)}
-          {view === 'source' &&
-            (selected === 'FLOW.md' ? (
-              <div className="source-wrap">
-                <div className="source-bar">
-                  <span className="muted">直接编辑 FLOW.md；图形与文档视图共用这段文本。</span>
-                  <button
-                    className="cchrome-btn"
-                    onClick={() => {
-                      if (!parsed.doc) return
-                      const { prologue, sections } = splitSections(parsed.doc.post)
-                      const synced = syncSections(sections, parsed.doc.graph, parsed.doc.graph)
-                      writeFile(
-                        'FLOW.md',
-                        serializeFlow({ ...parsed.doc, post: joinSections(prologue, synced) }),
-                      )
-                      setNotice('已按图结构整理节点小节')
-                    }}
-                    disabled={!parsed.doc}
-                  >
-                    <GitBranch size={13} />
-                    按图整理小节
-                  </button>
-                </div>
-                <textarea
-                  className="code"
-                  aria-label="FLOW.md 内容"
-                  spellCheck={false}
-                  value={flowText}
-                  onChange={(event) => writeFile('FLOW.md', event.target.value)}
-                />
-                <details>
-                  <summary>图语句预览</summary>
-                  <pre>{parsed.doc ? serializeGraph(parsed.doc.graph) : parsed.error}</pre>
-                </details>
-              </div>
-            ) : (
-              <textarea
-                className="code"
-                aria-label={`${selected} 内容`}
-                spellCheck={false}
+          {view === 'doc' &&
+            (isMarkdown ? (
+              <MarkdownEditor
                 value={files[selected] ?? ''}
-                onChange={(event) => writeFile(selected, event.target.value)}
+                path={selected}
+                onChange={(next) => writeFile(selected, next)}
+                onOpenFile={(path) => {
+                  if (files[path] !== undefined) openFile(path)
+                  else setError(`包内没有 ${path}`)
+                }}
               />
+            ) : (
+              <p className="muted">只有 Markdown 文件提供文档视图。</p>
             ))}
+          {view === 'code' && !isMarkdown && (
+            <textarea
+              className="code"
+              aria-label={`${selected} 内容`}
+              spellCheck={false}
+              value={files[selected] ?? ''}
+              onChange={(event) => writeFile(selected, event.target.value)}
+            />
+          )}
       </section>
     </main>
   )

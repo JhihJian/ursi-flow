@@ -114,8 +114,6 @@
   .view-tabs-note { @apply ml-auto truncate font-mono text-xs text-txt3 }
   .view-tabs-issues { @apply rounded-full bg-warn/10 px-2 py-0.5 text-xs text-warn }
   .issues-bar { @apply mb-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn }
-  .source-wrap { @apply space-y-2 }
-  .source-bar { @apply flex flex-wrap items-center justify-between gap-2 text-xs }
   .button.danger { @apply text-err hover:border-err/40 hover:bg-err/10 }
 }
 

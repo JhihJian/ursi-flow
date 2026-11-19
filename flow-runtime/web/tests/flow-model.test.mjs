@@ -137,6 +137,84 @@ test('布局避开卡片且把回边铺在图形下方', async () => {
   }
 })
 
+test('改动作类型时出边按规范收敛', async () => {
+  const { parseGraph } = await flow('graph.ts')
+  const { setActionKind } = await flow('edit.ts')
+  const { parseFlow, serializeFlow, splitSections, joinSections, syncSections } = await flow('doc.ts')
+
+  // Agent 节点改成命令节点：只留一条“已执行”出边。
+  const agent = parseGraph(`flowchart TD
+  start((开始)) --> a[执行任务]
+  a -->|已完成| finish((结束))
+  a -->|已失败| b[补救]
+  b -->|已完成| finish`)
+  const command = setActionKind(agent, 'a', '执行自定义命令')
+  assert.deepEqual(
+    command.edges.filter((edge) => edge.from === 'a').map((edge) => edge.result),
+    ['已执行'],
+  )
+
+  // 改成执行Flow：多条普通结果边收敛为一条无结果直连边。
+  const single = parseGraph(`flowchart TD
+  start((开始)) --> a[执行任务]
+  a -->|已完成| finish((结束))`)
+  const flowed = setActionKind(single, 'a', '执行Flow')
+  assert.deepEqual(
+    flowed.edges.filter((edge) => edge.from === 'a').map((edge) => edge.result),
+    [undefined],
+  )
+  // 恰好是 已完成/已失败 两条边时，执行Flow 允许保留，不被改写成直连。
+  const pair = setActionKind(agent, 'a', '执行Flow')
+  assert.deepEqual(
+    pair.edges.filter((edge) => edge.from === 'a').map((edge) => edge.result),
+    ['已完成', '已失败'],
+  )
+
+  // Agent 节点不能有无结果出边，切换时补默认结果名。
+  const bare = parseGraph(`flowchart TD
+  start((开始)) --> a[执行任务]
+  a --> finish((结束))`)
+  assert.deepEqual(
+    setActionKind(bare, 'a', '新建Agent')
+      .edges.filter((edge) => edge.from === 'a')
+      .map((edge) => edge.result),
+    ['已完成'],
+  )
+
+  // 跨族切换换成默认骨架，族内切换保留正文。
+  const doc = parseFlow(`---
+name: 示例
+description: 示例流程。
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> a[执行任务]
+  a -->|已完成| finish((结束))
+\`\`\`
+
+## 执行任务
+
+\`\`\`新建Agent
+给 Agent 的提示词。
+\`\`\`
+
+### 已完成
+
+已完成。
+`)
+  const next = setActionKind(doc.graph, 'a', '执行自定义命令')
+  const { prologue, sections } = splitSections(doc.post)
+  const text = serializeFlow({
+    ...doc,
+    graph: next,
+    post: joinSections(prologue, syncSections(sections, doc.graph, next)),
+  })
+  assert.match(text, /\`\`\`执行自定义命令\n\{/)
+  assert.doesNotMatch(text, /给 Agent 的提示词/)
+  assert.match(text, /### 已执行\s+节点返回“已执行”时继续执行。/)
+})
+
 test('从图写回文本后小节正文不变', async () => {
   const { parseFlow, serializeFlow, splitSections, joinSections, syncSections, resultsOf } = await flow('doc.ts')
   const { renameNode } = await flow('edit.ts')
