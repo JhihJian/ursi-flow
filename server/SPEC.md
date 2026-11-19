@@ -14,15 +14,19 @@ references:
 
 Server 通过 `/api/v2` 管理工作包、资源和执行器，按包版本发起工作项，跟踪每次执行、交付和验收。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。扩展目标与当前边界见 [Server v2 设计](DESIGN-v2.md)。
 
-| 模块 | 职责 |
-| --- | --- |
-| [app](src/app/SPEC.md) | 读取部署配置、启动和回收 daemon、装配 HTTP 服务。 |
-| [flow](src/flow/SPEC.md) | 解析工作区别名，用有界的阻塞任务调用 `FlowClient`。 |
-| [transport](src/transport/SPEC.md) | 两版 API 的统一 Bearer 鉴权、路由组合和 v1 错误映射。 |
-| [定义目录](src/work/catalog/SPEC.md) | 按版本发布、查询和停用资源、执行器与工作包。 |
-| [工作项](src/work/items/SPEC.md) | 保存派工快照、办理状态、各版交付文本与验收记录。 |
-| [执行尝试](src/work/execute/SPEC.md) | 运行受信本地 Pi、固定修订的 Flow 或绑定预配沙箱的 ACP Agent。 |
-| [文件来源](src/work/sources/SPEC.md) | 从管理员提供的 JSON 导出读取材料，按预设动作派工。 |
+### 领域与实体归属
+
+| 领域 | 核心实体 | 归属模块 | 实体关系与职责 |
+| --- | --- | --- | --- |
+| 资源定义 | 资源、资源版本 | [catalog](src/work/catalog/SPEC.md) | Skill、提示词和 MCP 配置引用是资源类型。工作包和执行器按版本引用资源。 |
+| 执行器定义 | 执行器、执行器版本 | [catalog](src/work/catalog/SPEC.md) | Agent 和 Agent Flow 是执行器类型。多个工作包可共用一个执行器版本。 |
+| 工作包定义 | 工作包、工作包版本 | [catalog](src/work/catalog/SPEC.md) | SOP、验收标准和具名动作随包版本发布。每个动作绑定一个执行器版本。 |
+| 工作项办理与验收 | 工作项、交付版本 | [items](src/work/items/SPEC.md) | 一张单保存当次输入和包版本快照，可多次交付。文件和验收意见归属具体交付版本。 |
+| 执行跟踪 | 执行尝试 | [execute](src/work/execute/SPEC.md) | 每次尝试属于一张单的一个动作。模块记录执行结果，按运行 ID 或会话 ID 查询后端证据。 |
+| 外部来源接入 | 来源、来源条目 | [sources](src/work/sources/SPEC.md) | 按来源条目和固定动作派工。来源提供材料，工作项保留派工时的输入。 |
+| Flow 运行后端 | Flow 包、Flow 运行、节点运行 | [Flow Runtime](../flow-runtime/SPEC.md) | Runtime 持有目录修订、运行状态和节点历史。[flow](src/flow/SPEC.md) 提供 v1 用例，`execute` 按运行 ID 跟踪 v2 尝试。 |
+
+[app](src/app/SPEC.md) 负责服务装配及 daemon 启停，[transport](src/transport/SPEC.md) 负责两版 API 的路由、Bearer 鉴权和 v1 错误映射。
 
 ## 关键功能与验收
 
