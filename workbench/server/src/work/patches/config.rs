@@ -2,7 +2,14 @@ use super::{
     Error,
     directories::{Rules, fs},
 };
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ConfigPackageRef {
+    pub(super) id: String,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
@@ -35,6 +42,10 @@ impl Kind {
             },
         }
     }
+    pub(super) fn is_config(self) -> bool {
+        self == Self::Config
+    }
+
     pub(super) fn seed(self, root: &Path) -> Result<(), Error> {
         if self == Self::Config {
             fs::write(root, &["AGENTS.md".into()], b"", false)?;

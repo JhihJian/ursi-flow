@@ -19,8 +19,12 @@ use fs::Fault;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
-    fs as host_fs, io,
+    cell::RefCell,
+    fs as host_fs,
+    io::{self, Write},
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::{Path as FsPath, PathBuf},
+    rc::Rc,
 };
 use uuid::Uuid;
 
@@ -40,7 +44,7 @@ impl From<Fault> for Error {
 }
 
 /// 目录的路径约束：固定位置不能移动或删除，指定文件必须是 JSON 对象。
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Rules {
     #[serde(default)]
@@ -199,6 +203,12 @@ fn base(store: &Store) -> Result<PathBuf, Error> {
     Ok(fs::root(store.dir())?)
 }
 
+fn valid_id(id: &str) -> Result<(), Error> {
+    fs::segments(id, false)
+        .map(|_| ())
+        .map_err(|_| Error::NotFound("目录不存在".into()))
+}
+
 fn prepare(store: &Store) -> Result<PathBuf, Error> {
     fs::prepare(store.dir()).map_err(|e| Error::Internal(format!("目录根不可用：{e}")))?;
     base(store)
@@ -207,12 +217,23 @@ fn prepare(store: &Store) -> Result<PathBuf, Error> {
 /// 已登记目录及其私有根。记录先于磁盘操作存在。
 fn located(store: &Store, id: &str) -> Result<(Record, PathBuf), Error> {
     let record = store.read(|db| find(db, id))?;
-    Ok((record, base(store)?.join(id)))
+    Ok((record, path(store, id)?))
 }
 
 /// 目录根在磁盘上的位置，只用服务端生成的标识拼装。调用方不会把它返回给浏览器。
 pub(super) fn path(store: &Store, id: &str) -> Result<PathBuf, Error> {
+    valid_id(id)?;
+    store.read(|db| find(db, id).map(|_| ()))?;
     Ok(base(store)?.join(id))
+}
+
+/// 校验上层资源引用的目录仍是已登记且满足预期约束的目录。
+pub(super) fn validate_rules(store: &Store, id: &str, expected: Rules) -> Result<(), Error> {
+    let record = store.read(|db| find(db, id))?;
+    if record.rules != expected.normalized()? {
+        return Err(Error::Conflict("目录约束与配置包不匹配".into()));
+    }
+    Ok(())
 }
 
 /// 冻结目录记录：只改元信息，不触碰磁盘内容。可与尝试记录在同一笔更新中完成。
@@ -252,6 +273,283 @@ pub(super) fn allocate<T>(
         let _ = host_fs::remove_dir_all(&root);
     }
     result
+}
+
+/// 已冻结的目录快照。只返回服务端目录标识和内容摘要，不返回宿主路径。
+#[derive(Clone, Debug)]
+pub(super) struct Snapshot {
+    pub(super) directory_id: String,
+    pub(super) content_digest: String,
+}
+
+/// 从已登记目录复制一棵独立文件树，并在登记目录记录的同一笔更新中冻结目标。
+///
+/// `register` 用于把快照引用写入上层业务记录。源目录只在存储读锁内读取，目标目录
+/// 不会复用源目录，因此后续执行器拿到的目录能力不会改写配置包源内容。
+pub(super) fn snapshot<T>(
+    store: &Store,
+    source_id: &str,
+    rules: Rules,
+    register: impl FnOnce(&mut Value, Snapshot) -> Result<T, Error>,
+) -> Result<T, Error> {
+    let (_, source_root) = located(store, source_id)?;
+    let digest = Rc::new(RefCell::new(None));
+    let seed_digest = Rc::clone(&digest);
+    let result = allocate(
+        store,
+        rules,
+        |target| {
+            let value = store.read(|_| copy_tree(&source_root, target))?;
+            *seed_digest.borrow_mut() = Some(value);
+            Ok(())
+        },
+        move |db, directory_id| {
+            let content_digest = digest
+                .borrow_mut()
+                .take()
+                .ok_or_else(|| Error::Internal("目录快照摘要缺失".into()))?;
+            let snapshot = Snapshot {
+                directory_id: directory_id.to_owned(),
+                content_digest,
+            };
+            freeze(db, directory_id)?;
+            register(db, snapshot)
+        },
+    );
+    result
+}
+
+const SNAPSHOT_ENTRY_MAX: usize = 20_000;
+
+fn copy_tree(source: &FsPath, target: &FsPath) -> Result<String, Error> {
+    fs::verify(source)?;
+    let mut digest = Sha256::new();
+    let mut count = 0;
+    copy_directory(source, target, "", &mut digest, &mut count)?;
+    make_read_only(target)?;
+    sync_host_directory(target)?;
+    Ok(digest.finish())
+}
+
+fn copy_directory(
+    source: &FsPath,
+    target: &FsPath,
+    prefix: &str,
+    digest: &mut Sha256,
+    count: &mut usize,
+) -> Result<(), Error> {
+    let mut entries = host_fs::read_dir(source)
+        .map_err(|_| Error::Internal("目录快照读取失败".into()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Error::Internal("目录快照读取失败".into()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| Error::Internal("目录快照包含无效名称".into()))?;
+        if name.starts_with(".workbench-tmp-") {
+            continue;
+        }
+        *count += 1;
+        if *count > SNAPSHOT_ENTRY_MAX {
+            return Err(Error::Invalid("目录内条目过多，无法建立快照".into()));
+        }
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        let source_path = entry.path();
+        let target_path = target.join(&name);
+        let metadata = host_fs::symlink_metadata(&source_path)
+            .map_err(|_| Error::Internal("目录快照读取失败".into()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(Error::Internal("目录快照不能包含符号链接".into()));
+        }
+        if metadata.is_dir() {
+            digest.update(b"D");
+            digest.update(relative.as_bytes());
+            host_fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&target_path)
+                .map_err(|_| Error::Internal("目录快照创建失败".into()))?;
+            copy_directory(&source_path, &target_path, &relative, digest, count)?;
+            sync_host_directory(&target_path)?;
+        } else if metadata.is_file() {
+            if metadata.len() > fs::FILE_LIMIT {
+                return Err(Error::Invalid("目录内文件超过大小上限".into()));
+            }
+            let bytes = host_fs::read(&source_path)
+                .map_err(|_| Error::Internal("目录快照读取失败".into()))?;
+            digest.update(b"F");
+            digest.update(relative.as_bytes());
+            digest.update(&(bytes.len() as u64).to_be_bytes());
+            digest.update(&bytes);
+            let mut file = host_fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&target_path)
+                .map_err(|_| Error::Internal("目录快照创建失败".into()))?;
+            file.write_all(&bytes)
+                .and_then(|_| file.sync_all())
+                .map_err(|_| Error::Internal("目录快照写入失败".into()))?;
+        } else {
+            return Err(Error::Internal("目录快照包含不支持的文件类型".into()));
+        }
+    }
+    Ok(())
+}
+
+fn make_read_only(path: &FsPath) -> Result<(), Error> {
+    let metadata = host_fs::symlink_metadata(path)
+        .map_err(|_| Error::Internal("目录快照权限设置失败".into()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(Error::Internal("目录快照不能包含符号链接".into()));
+    }
+    if metadata.is_dir() {
+        for entry in
+            host_fs::read_dir(path).map_err(|_| Error::Internal("目录快照权限设置失败".into()))?
+        {
+            let entry = entry.map_err(|_| Error::Internal("目录快照权限设置失败".into()))?;
+            make_read_only(&entry.path())?;
+        }
+        host_fs::set_permissions(path, host_fs::Permissions::from_mode(0o500))
+            .map_err(|_| Error::Internal("目录快照权限设置失败".into()))?;
+    } else if metadata.is_file() {
+        host_fs::set_permissions(path, host_fs::Permissions::from_mode(0o400))
+            .map_err(|_| Error::Internal("目录快照权限设置失败".into()))?;
+    }
+    Ok(())
+}
+
+fn sync_host_directory(path: &FsPath) -> Result<(), Error> {
+    host_fs::File::open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(|_| Error::Internal("目录快照同步失败".into()))
+}
+
+struct Sha256 {
+    state: [u32; 8],
+    buffer: [u8; 64],
+    buffered: usize,
+    length: u64,
+}
+
+impl Sha256 {
+    fn new() -> Self {
+        Self {
+            state: [
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+                0x5be0cd19,
+            ],
+            buffer: [0; 64],
+            buffered: 0,
+            length: 0,
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        self.length += bytes.len() as u64;
+        let mut input = bytes;
+        if self.buffered != 0 {
+            let count = (64 - self.buffered).min(input.len());
+            self.buffer[self.buffered..self.buffered + count].copy_from_slice(&input[..count]);
+            self.buffered += count;
+            input = &input[count..];
+            if self.buffered == 64 {
+                let block = self.buffer;
+                self.compress(&block);
+                self.buffered = 0;
+            }
+        }
+        while input.len() >= 64 {
+            self.compress(&input[..64]);
+            input = &input[64..];
+        }
+        self.buffer[..input.len()].copy_from_slice(input);
+        self.buffered = input.len();
+    }
+
+    fn finish(mut self) -> String {
+        let bit_length = self.length * 8;
+        self.buffer[self.buffered] = 0x80;
+        self.buffered += 1;
+        if self.buffered > 56 {
+            self.buffer[self.buffered..].fill(0);
+            let block = self.buffer;
+            self.compress(&block);
+            self.buffered = 0;
+        }
+        self.buffer[self.buffered..56].fill(0);
+        self.buffer[56..].copy_from_slice(&bit_length.to_be_bytes());
+        let block = self.buffer;
+        self.compress(&block);
+        self.state
+            .iter()
+            .map(|part| format!("{part:08x}"))
+            .collect()
+    }
+
+    fn compress(&mut self, block: &[u8]) {
+        const K: [u32; 64] = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+            0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+            0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+            0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+            0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+            0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+            0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+            0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+            0xc67178f2,
+        ];
+        let mut words = [0u32; 64];
+        for (index, chunk) in block.chunks_exact(4).take(16).enumerate() {
+            words[index] = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+        for index in 16..64 {
+            let s0 = words[index - 15].rotate_right(7)
+                ^ words[index - 15].rotate_right(18)
+                ^ (words[index - 15] >> 3);
+            let s1 = words[index - 2].rotate_right(17)
+                ^ words[index - 2].rotate_right(19)
+                ^ (words[index - 2] >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(s1);
+        }
+        let mut state = self.state;
+        for index in 0..64 {
+            let s1 =
+                state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25);
+            let choice = (state[4] & state[5]) ^ (!state[4] & state[6]);
+            let temp1 = state[7]
+                .wrapping_add(s1)
+                .wrapping_add(choice)
+                .wrapping_add(K[index])
+                .wrapping_add(words[index]);
+            let s0 =
+                state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22);
+            let majority = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2]);
+            let temp2 = s0.wrapping_add(majority);
+            state = [
+                temp1.wrapping_add(temp2),
+                state[0],
+                state[1],
+                state[2],
+                state[3].wrapping_add(temp1),
+                state[4],
+                state[5],
+                state[6],
+            ];
+        }
+        for (left, right) in self.state.iter_mut().zip(state) {
+            *left = left.wrapping_add(right);
+        }
+    }
 }
 
 async fn index(State(store): State<Store>) -> Result<Json<Value>, Error> {

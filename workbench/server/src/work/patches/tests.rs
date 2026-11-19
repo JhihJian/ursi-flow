@@ -40,6 +40,7 @@ impl Drop for Temp {
 
 struct Http {
     dir: Temp,
+    store: Store,
     task: JoinHandle<()>,
 }
 impl Drop for Http {
@@ -65,10 +66,10 @@ impl Http {
         let store = Store::open(dir.path("work")).unwrap();
         let app = directories::routes(store.clone())
             .unwrap()
-            .merge(routes(store));
+            .merge(routes(store.clone()));
         let listener = UnixListener::bind(dir.path("http.sock")).unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        Self { dir, task }
+        Self { dir, store, task }
     }
 
     async fn request(&self, method: &str, path: &str, body: &[u8]) -> (u16, Vec<u8>) {
@@ -349,6 +350,105 @@ async fn seeds_config_anchors_and_guards_them() {
     assert_eq!(app.mkdir(&work, "skills").await, 204);
     assert_eq!(app.relocate(&work, "AGENTS.md", "prompt.md").await, 204);
     assert_eq!(app.remove(&work, "skills").await, 204);
+}
+
+/// 工作包只能引用已存在的配置包，引用作为受限对象保存在工作包记录中。
+#[tokio::test]
+async fn work_package_accepts_only_config_package_reference() {
+    let app = Http::new();
+    let config_directory = app.create("config", "配置源").await;
+    let config = app.ok("GET", "/v2/patches/config", Value::Null).await;
+    let config_id = config[0]["id"].as_str().unwrap();
+    let work = app
+        .ok(
+            "POST",
+            "/v2/patches/work",
+            json!({"name":"带配置","configPackage":{"id":config_id}}),
+        )
+        .await;
+    assert_eq!(work["configPackage"], json!({"id":config_id}));
+    assert_ne!(work["directoryId"], config_directory);
+    assert_eq!(
+        app.call(
+            "POST",
+            "/v2/patches/work",
+            json!({"name":"不存在","configPackage":{"id":"missing"}}),
+        )
+        .await
+        .0,
+        404
+    );
+    assert_eq!(
+        app.call(
+            "POST",
+            "/v2/patches/config",
+            json!({"name":"嵌套","configPackage":{"id":config_id}}),
+        )
+        .await
+        .0,
+        400
+    );
+}
+
+/// 配置包快照使用独立冻结目录，源目录与快照目录互不授予对方写权限。
+#[tokio::test]
+async fn snapshots_config_package_for_attempt_without_exposing_host_path() {
+    let app = Http::new();
+    let source_directory = app.create("config", "配置源").await;
+    let config = app.ok("GET", "/v2/patches/config", Value::Null).await;
+    let package_id = config[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        app.put(&source_directory, "AGENTS.md", b"source", true)
+            .await,
+        204
+    );
+
+    let snapshot = super::snapshot_config_package(&app.store, "attempt-1", &package_id).unwrap();
+    assert_eq!(snapshot.source_package_id, package_id);
+    assert!(!snapshot.content_digest.is_empty());
+    assert_ne!(snapshot.snapshot_directory_id, source_directory);
+    assert_eq!(
+        app.get(&snapshot.snapshot_directory_id, "AGENTS.md")
+            .await
+            .1,
+        b"source"
+    );
+    assert_eq!(
+        app.put(
+            &snapshot.snapshot_directory_id,
+            "AGENTS.md",
+            b"changed",
+            true
+        )
+        .await,
+        409
+    );
+    assert_eq!(
+        app.put(&source_directory, "AGENTS.md", b"updated", true)
+            .await,
+        204
+    );
+    assert_eq!(
+        app.get(&snapshot.snapshot_directory_id, "AGENTS.md")
+            .await
+            .1,
+        b"source"
+    );
+    assert_eq!(
+        app.store
+            .read(|db| Ok(db["configPackageSnapshots"]["attempt-1"].clone()))
+            .unwrap(),
+        json!({
+            "sourcePackageId": package_id,
+            "contentDigest": snapshot.content_digest,
+            "snapshotDirectoryId": snapshot.snapshot_directory_id
+        })
+    );
+    let repeated = super::snapshot_config_package(&app.store, "attempt-1", &package_id).unwrap();
+    assert_eq!(
+        repeated.snapshot_directory_id,
+        snapshot.snapshot_directory_id
+    );
 }
 
 /// 文件按原始字节读写，默认只新建，覆盖必须显式确认。
