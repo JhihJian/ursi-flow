@@ -234,7 +234,9 @@
 /* FLOW.md 元信息：键值块，不参与正文标题层级 */
 @layer components {
   .md-meta { @apply mb-4 rounded-lg border border-line bg-base px-3 py-2 text-xs }
-  .md-meta > div { @apply flex gap-3 border-b border-line/60 py-1 last:border-0 }
-  .md-meta dt { @apply w-20 shrink-0 font-mono text-txt3 }
-  .md-meta dd { @apply min-w-0 flex-1 break-words text-txt2 }
+  /* 每项一行：键在上、值在下，长文本按行换行而不是被挤成窄列。 */
+  .md-meta > div { @apply border-b border-line/60 py-1.5 last:border-0 }
+  .md-meta dt { @apply font-mono text-[11px] text-txt3 }
+  .md-meta dd { @apply mt-0.5 break-words leading-5 text-txt2 }
+  .md-meta dd.is-block { @apply whitespace-pre-wrap font-mono text-[11px] leading-[1.7] text-txt2 }
 }

@@ -101,7 +101,7 @@ export function Markdown({
           {meta.map(([key, value]) => (
             <div key={key}>
               <dt>{key}</dt>
-              <dd>{value}</dd>
+              <dd className={value.includes('\n') ? 'is-block' : undefined}>{value}</dd>
             </div>
           ))}
         </dl>
@@ -131,11 +131,15 @@ function splitFrontmatter(text: string): { meta: [string, string][]; body: strin
   const meta: [string, string][] = []
   let key = ''
   for (const line of match[1].split(/\r?\n/)) {
-    const pair = line.match(/^([\w-]+):\s*(.*)$/)
+    // 顶层键单独成项；嵌套内容（如 variables）保留缩进与换行，按原样逐行展示。
+    const pair = line.match(/^([\w-]+):[ \t]*(.*)$/)
     if (pair) {
       key = pair[1]
       meta.push([key, pair[2]])
-    } else if (key && line.trim()) meta[meta.length - 1][1] += ' ' + line.trim()
+    } else if (key && line.trim()) {
+      const [last] = meta.slice(-1)
+      last[1] = last[1] ? `${last[1]}\n${line.trimEnd()}` : line.trimEnd()
+    }
   }
   return { meta, body: text.slice(match[0].length) }
 }
