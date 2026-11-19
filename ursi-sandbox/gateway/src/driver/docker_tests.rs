@@ -1,5 +1,5 @@
 use super::*;
-use crate::models::{BundleRef, PortSpec, SandboxSpec, Status};
+use crate::models::{BundleRef, Endpoint, EndpointState, SandboxSpec, Status};
 use serde_json::json;
 
 fn sandbox() -> Sandbox {
@@ -8,7 +8,6 @@ fn sandbox() -> Sandbox {
         spec: SandboxSpec {
             image: "runtime:latest".into(),
             command: vec![],
-            ports: vec![],
             labels: BTreeMap::new(),
             memory_mb: 256,
             cpus: 1.5,
@@ -29,7 +28,7 @@ fn sandbox() -> Sandbox {
 }
 
 fn driver() -> DockerDriver {
-    DockerDriver::new("unit".into(), "0.0.0.0".into(), "gateway.example".into()).unwrap()
+    DockerDriver::new("unit".into()).unwrap()
 }
 
 fn object(driver: &DockerDriver, sandbox: &Sandbox, running: bool) -> Value {
@@ -82,10 +81,7 @@ fn drained(driver: &DockerDriver) {
 #[test]
 fn configuration_names_and_volume_identity_are_strict() {
     for namespace in ["", "../host", "-option", "name with spaces"] {
-        assert!(DockerDriver::new(namespace.into(), "0.0.0.0".into(), "localhost".into()).is_err());
-    }
-    for advertise in ["", "0.0.0.0", "::", "http://host", "host:8000", "host/path"] {
-        assert!(DockerDriver::new("unit".into(), "0.0.0.0".into(), advertise.into()).is_err());
+        assert!(DockerDriver::new(namespace.into()).is_err());
     }
     let driver = driver();
     let sandbox = sandbox();
@@ -113,20 +109,6 @@ fn create_flags_enforce_resources_security_and_visibility_without_shell() {
     let driver = driver();
     let mut sandbox = sandbox();
     sandbox.spec.labels.insert(SCOPE.into(), "foreign".into());
-    sandbox.spec.ports = vec![
-        PortSpec {
-            name: "web".into(),
-            port: 8080,
-            visibility: Visibility::Public,
-            ready: false,
-        },
-        PortSpec {
-            name: "cdp".into(),
-            port: 9222,
-            visibility: Visibility::Internal,
-            ready: true,
-        },
-    ];
     sandbox.spec.bundle = Some(BundleRef {
         url: "https://runtime.example/bundle?x=$HOME".into(),
         sha256: "a".repeat(64),
@@ -145,14 +127,10 @@ fn create_flags_enforce_resources_security_and_visibility_without_shell() {
             "--mount",
             "type=volume,src=unit-test-v1,dst=/ursi/workspace",
         ]),
-        args(&["--publish", "0.0.0.0::8080"]),
     ] {
         assert!(arguments.windows(2).any(|window| window == pair));
     }
-    assert_eq!(
-        arguments.iter().filter(|arg| *arg == "--publish").count(),
-        1
-    );
+    assert!(!arguments.iter().any(|arg| arg == "--publish"));
     assert!(arguments.contains(&"io.ursi.scope=unit".into()));
     assert!(arguments.contains(&"io.ursi.user.io.ursi.scope=foreign".into()));
     assert!(arguments.contains(&"URSI_BUNDLE_URL=https://runtime.example/bundle?x=$HOME".into()));
@@ -176,28 +154,30 @@ fn create_flags_enforce_resources_security_and_visibility_without_shell() {
 fn observed_uses_actual_running_health_and_distinct_network_addresses() {
     let driver = driver();
     let mut sandbox = sandbox();
-    sandbox.spec.ports = vec![
-        PortSpec {
+    sandbox.endpoints = vec![
+        Endpoint {
             name: "web".into(),
+            bundle: "web".into(),
+            protocol: "http".into(),
             port: 8080,
-            visibility: Visibility::Public,
+            state: EndpointState::Declared,
             ready: false,
         },
-        PortSpec {
+        Endpoint {
             name: "cdp".into(),
+            bundle: "browser".into(),
+            protocol: "tcp".into(),
             port: 9222,
-            visibility: Visibility::Internal,
+            state: EndpointState::Declared,
             ready: true,
         },
     ];
     let mut object = object(&driver, &sandbox, true);
     object["State"]["Health"] = json!({"Status": "starting"});
-    object["NetworkSettings"]["Ports"] =
-        json!({"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32123"}]});
     let observed = driver.observed(&sandbox, &object).unwrap();
     assert!(observed.running);
     assert_eq!(observed.healthy, Some(false));
-    assert_eq!(observed.endpoints[0].address, "gateway.example:32123");
+    assert_eq!(observed.endpoints[0].address, "172.18.0.4:8080");
     assert_eq!(observed.endpoints[1].address, "172.18.0.4:9222");
     object["State"]["Health"]["Status"] = json!("healthy");
     assert_eq!(

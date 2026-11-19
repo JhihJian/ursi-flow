@@ -19,21 +19,12 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Visibility {
-    Public,
-    Internal,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct PortSpec {
-    pub name: String,
-    pub port: u16,
-    pub visibility: Visibility,
-    #[serde(default)]
-    pub ready: bool,
+#[serde(rename_all = "snake_case")]
+pub enum EndpointState {
+    Declared,
+    Ready,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -42,8 +33,6 @@ pub struct SandboxSpec {
     pub image: String,
     #[serde(default)]
     pub command: Vec<String>,
-    #[serde(default)]
-    pub ports: Vec<PortSpec>,
     #[serde(default)]
     pub labels: BTreeMap<String, String>,
     #[serde(default = "default_memory")]
@@ -112,23 +101,39 @@ pub struct Sandbox {
     #[serde(default)]
     pub retired: Vec<Resource>,
     pub revision: u64,
+    /// 由管理员注册的 bundle 展开而来的逻辑端点，可随 SQLite JSON 持久化恢复。
     pub endpoints: Vec<Endpoint>,
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Endpoint {
     pub name: String,
+    pub bundle: String,
+    pub protocol: String,
     pub port: u16,
-    pub visibility: Visibility,
-    /// Gateway 可拨号地址，内部端点不会映射宿主。
+    pub state: EndpointState,
+    pub ready: bool,
+}
+
+/// 驱动观察结果的内部端点。address 不属于公共 Sandbox/Endpoint。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedEndpoint {
+    pub name: String,
+    pub bundle: String,
+    pub protocol: String,
+    pub port: u16,
+    pub state: EndpointState,
+    pub ready: bool,
     pub address: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Observed {
     pub running: bool,
-    pub endpoints: Vec<Endpoint>,
+    pub endpoints: Vec<ObservedEndpoint>,
     /// 镜像/容器配置的健康状态，未配置 healthcheck 时为 None。
     pub healthy: Option<bool>,
 }
@@ -163,22 +168,6 @@ impl SandboxSpec {
         {
             return Err(Error::Invalid("资源限制超出允许范围".into()));
         }
-        let mut names = std::collections::HashSet::new();
-        let mut ports = std::collections::HashSet::new();
-        for p in &self.ports {
-            if !valid_name(&p.name)
-                || p.port == 0
-                || !names.insert(&p.name)
-                || !ports.insert(p.port)
-            {
-                return Err(Error::Invalid("端点名称/端口非法或重复".into()));
-            }
-            if (p.name == "cdp" || p.name == "novnc" || p.port == 9222 || p.port == 6080)
-                && p.visibility != Visibility::Internal
-            {
-                return Err(Error::Invalid("CDP/noVNC 必须为内部端点".into()));
-            }
-        }
         if self.labels.len() > 64
             || self.labels.iter().any(|(key, value)| {
                 key.is_empty()
@@ -190,10 +179,7 @@ impl SandboxSpec {
         {
             return Err(Error::Invalid("用户标签非法或过大".into()));
         }
-        if self.ports.len() > 32
-            || self.command.len() > 128
-            || self.command.iter().any(|v| v.contains('\0'))
-        {
+        if self.command.len() > 128 || self.command.iter().any(|v| v.contains('\0')) {
             return Err(Error::Invalid("规格过大或命令包含空字节".into()));
         }
         if let Some(profile) = &self.runtime_profile {
@@ -215,3 +201,7 @@ impl SandboxSpec {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "models_tests.rs"]
+mod tests;

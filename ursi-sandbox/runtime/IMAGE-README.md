@@ -1,6 +1,6 @@
 # Pi 执行环境镜像与 bundle
 
-`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。IDE、CDP、noVNC 属于独立环境能力。
+`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。当前 runtime bundle 只组合 SSH 与 session-service ACP；IDE、CDP、noVNC 是未来独立 bundle，镜像中存在基础程序不代表这些端点已实现。
 
 ## 构建
 
@@ -10,6 +10,11 @@
 docker build -t ursi-runtime-pi:local runtime/image
 runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle
 (cd /tmp/ursi-bundle && sha256sum -c runtime-bundle.sha256)
+
+# 组合额外 bundle 定义，端点名称和容器端口必须全局不重复
+runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle \
+  --manifest /private/runtime/base.json \
+  --bundles /private/runtime/extra.json
 ```
 
 镜像支持 amd64、arm64 的 Node 安装，bundle 中的服务二进制必须匹配镜像架构，glibc 要求不超过 2.39。可用 Docker build args `BASE_IMAGE`、`NODE_VERSION`、`NODE_DOWNLOAD_BASE`、`NPM_REGISTRY` 选择基础镜像和下载源。OpenSSH 源码阶段支持 `UBUNTU_SOURCE_MIRROR`，默认 Ubuntu 官方仓库，例如可指定 `--build-arg UBUNTU_SOURCE_MIRROR=http://mirrors.aliyun.com/ubuntu/`；APT 按 Ubuntu 签名元数据验证源码和软件包。Node 下载校验发行目录中的 SHA256，Pi 固定安装 `@earendil-works/pi-coding-agent@1.5.0`。
@@ -32,7 +37,24 @@ bundle 构建只要求输入文件可执行，因此镜像测试可传入明确�
 
 bootstrap 拒绝缺失配置、可被其他用户访问的配置目录以及可写配置挂载。authorized_keys 会复制到 root 所有的公共公钥文件供 sshd 校验。session-service 以 root 启动，负责将 Pi 配置复制到私有运行目录、以 agent UID/GID 1000 启动 CLI。session token 保留在 root 配置中。
 
-Gateway profile 白名单示例为 `{"pi":{"config_dir":"/absolute/private/config"}}`，通过 `URSI_GATEWAY_RUNTIME_PROFILES` 指定此 JSON 文件。镜像单独运行时使用相同的配置和权限约束：
+Gateway profile 白名单示例为 `{"pi":{"config_dir":"/absolute/private/config"}}`，通过 `URSI_GATEWAY_RUNTIME_PROFILES` 指定此 JSON 文件。管理员还要在 Gateway 注册表中声明镜像允许组合的 bundle，例如：
+
+```json
+{
+  "bundles": {
+    "pi-execution": {
+      "endpoints": [
+        {"name": "ssh", "protocol": "ssh", "port": 2222},
+        {"name": "agent_session", "protocol": "acp", "port": 8765}
+      ],
+      "requires": []
+    }
+  },
+  "images": {"ursi-runtime-pi:local": ["pi-execution"]}
+}
+```
+
+注册表中的依赖必须存在且不能形成循环，组合端点名和端口不能冲突。未注册镜像不开放受管端点。镜像单独运行时使用相同的配置和权限约束：
 
 ```bash
 docker run --name ursi-runtime-example \
@@ -44,11 +66,10 @@ docker run --name ursi-runtime-example \
   -e URSI_BUNDLE_URL=https://example.invalid/runtime-bundle.tar.gz \
   -e 'URSI_BUNDLE_SHA256=替换为64位小写摘要' \
   -e URSI_BUNDLE_MIN_IMAGE_LEVEL=1 \
-  -p 0.0.0.0:2222:2222 \
   ursi-runtime-pi:local
 ```
 
-示例 URL 和摘要需替换为已发布 bundle。session-service 默认内部监听 8765，公开策略由 Gateway 管理。SSH 只接受 agent 公钥，root、密码、代理转发及 TCP 转发均禁用。
+示例 URL 和摘要需替换为已发布 bundle。session-service 默认内部监听 8765，SSH 监听 2222。直接 `docker run` 不发布容器端口；受管访问只能由 Gateway bridge 按管理员注册的 image -> bundles 组合提供。Gateway 管理 address 和 visibility，用户不能在 `SandboxSpec` 中配置 ports 或 visibility。SSH 只接受 agent 公钥，root、密码、代理转发及 TCP 转发均禁用。
 
 ## 目录与服务环境
 
@@ -78,7 +99,7 @@ bootstrap 向 supervisord 传递最小环境，bundle URL 和额外注入环境�
 
 ## 校验、就绪与停止
 
-bootstrap 同时检查 Gateway 提供的最低镜像级别与 bundle 清单级别。归档最多 512 MiB、4096 个成员，只接受普通文件与目录，拒绝绝对路径、`..`、重复成员、链接、设备文件以及 PAX/GNU 扩展头。构建器输出 USTAR 格式，bootstrap 在 tarfile 解析前逐块检查头部和总解压量，限制扩展头带来的内存分配。解包后清单逐文件 SHA256 必须匹配，目录与文件权限统一规范化。
+bootstrap 同时检查 Gateway 提供的最低镜像级别与 bundle 清单级别。归档最多 512 MiB、4096 个成员，只接受普通文件与目录，拒绝绝对路径、`..`、重复成员、链接、设备文件以及 PAX/GNU 扩展头。构建器输出 USTAR 格式，bootstrap 在 tarfile 解析前逐块检查头部和总解压量，限制扩展头带来的内存分配。解包后清单逐文件 SHA256 必须匹配，目录与文件权限统一规范化。manifest 的 `bundles`、`required_capabilities`、`services`、`endpoints`、`readiness` 由构建器生成；endpoint 只含 name/protocol/port，不含 address、visibility 或 Gateway key。
 
 缓存保留原始归档。重启先验证归档 SHA256，再重新解包到临时目录，对照已安装内容、权限、类型和路径集合。验证成功后可离线启动，损坏缓存明确失败，保留原目录供排查。缓存位于容器可写层，容器删除后会丢失。运行中 bundle 以 SHA256 固定，升级通过新容器或停止后重新配置完成。
 

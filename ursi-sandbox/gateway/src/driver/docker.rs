@@ -16,7 +16,7 @@ use tokio::{
 
 use super::Driver;
 use crate::models::{
-    Capabilities, Endpoint, Error, Observed, Resource, Result, Sandbox, Visibility, valid_name,
+    Capabilities, Error, Observed, ObservedEndpoint, Resource, Result, Sandbox, valid_name,
 };
 
 const SCOPE: &str = "io.ursi.scope";
@@ -33,8 +33,6 @@ type Script = std::sync::Mutex<std::collections::VecDeque<(Vec<String>, Result<C
 
 pub struct DockerDriver {
     namespace: String,
-    public_bind: IpAddr,
-    advertise_host: String,
     docker_host: Option<String>,
     identity: String,
     runtime_profiles: super::profiles::RuntimeProfiles,
@@ -67,12 +65,8 @@ impl DockerDriver {
     /// 解析 Docker CLI 的当前连接配置，并固定后续所有命令的目标。
     /// DOCKER_CONTEXT 优先于 DOCKER_HOST，其次为配置文件中的当前 context。
     /// 仅支持本地 Unix socket，不加载远端 context 的 TLS/SSH 配置。
-    pub async fn connect(
-        namespace: String,
-        public_bind: String,
-        advertise_host: String,
-    ) -> Result<Self> {
-        let mut driver = Self::new(namespace, public_bind, advertise_host)?;
+    pub async fn connect(namespace: String) -> Result<Self> {
+        let mut driver = Self::new(namespace)?;
         let context = docker_env("DOCKER_CONTEXT")?;
         let host = docker_env("DOCKER_HOST")?;
         driver.initialize_connection(context, host).await?;
@@ -91,37 +85,14 @@ impl DockerDriver {
     }
 
     /// 仅构造配置，不访问 Docker。生产入口应使用 connect。
-    pub fn new(namespace: String, public_bind: String, advertise_host: String) -> Result<Self> {
+    pub fn new(namespace: String) -> Result<Self> {
         if !valid_name(&namespace) || !namespace.as_bytes()[0].is_ascii_alphanumeric() {
             return Err(Error::Invalid(
                 "Docker namespace 必须以字母或数字开头，且仅含字母、数字、下划线和连字符".into(),
             ));
         }
-        let public_bind = public_bind
-            .parse()
-            .map_err(|_| Error::Invalid("public_bind 必须为 IP 地址".into()))?;
-        let advertise_host = advertise_host.trim_matches(['[', ']']).to_owned();
-        let host_is_ip = advertise_host
-            .parse::<IpAddr>()
-            .is_ok_and(|ip| !ip.is_unspecified());
-        let host_is_dns = !advertise_host.is_empty()
-            && advertise_host.len() <= 253
-            && advertise_host.split('.').all(|part| {
-                !part.is_empty()
-                    && part.len() <= 63
-                    && part.as_bytes()[0].is_ascii_alphanumeric()
-                    && part.as_bytes()[part.len() - 1].is_ascii_alphanumeric()
-                    && part.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
-            });
-        if !host_is_ip && (!host_is_dns || advertise_host.parse::<IpAddr>().is_ok()) {
-            return Err(Error::Invalid(
-                "advertise_host 必须为可访问的 IP 或主机名，不含端口".into(),
-            ));
-        }
         Ok(Self {
             namespace,
-            public_bind,
-            advertise_host,
             docker_host: None,
             identity: String::new(),
             runtime_profiles: Default::default(),
@@ -426,14 +397,6 @@ impl DockerDriver {
             }
             args.extend(["--label".into(), format!("io.ursi.user.{key}={value}")]);
         }
-        for port in &sandbox.spec.ports {
-            if port.visibility == Visibility::Public {
-                args.extend([
-                    "--publish".into(),
-                    format!("{}::{}", host(&self.public_bind.to_string()), port.port),
-                ]);
-            }
-        }
         if let Some(bundle) = &sandbox.spec.bundle {
             args.extend([
                 "--env".into(),
@@ -457,57 +420,30 @@ impl DockerDriver {
             .as_str()
             .map(|status| status == "healthy");
         let mut endpoints = Vec::new();
-        if running {
-            for port in &sandbox.spec.ports {
-                let address = match port.visibility {
-                    Visibility::Public => {
-                        let bindings = object["NetworkSettings"]["Ports"]
-                            [format!("{}/tcp", port.port)]
-                        .as_array()
-                        .ok_or_else(|| Error::Unavailable(format!("端口 {} 未发布", port.port)))?;
-                        let binding = bindings
-                            .iter()
-                            .find(|b| {
-                                b["HostIp"]
-                                    .as_str()
-                                    .and_then(|ip| ip.parse::<IpAddr>().ok())
-                                    == Some(self.public_bind)
-                            })
-                            .ok_or_else(|| {
-                                Error::Unavailable("公开端口绑定地址与配置不符".into())
-                            })?;
-                        let published = binding["HostPort"]
-                            .as_str()
-                            .and_then(|v| v.parse::<u16>().ok())
-                            .filter(|p| *p > 0)
-                            .ok_or_else(|| Error::Unavailable("公开端口无有效宿主端口".into()))?;
-                        format!("{}:{published}", host(&self.advertise_host))
-                    }
-                    Visibility::Internal => {
-                        let ip = object["NetworkSettings"]["Networks"]
-                            .as_object()
-                            .into_iter()
-                            .flat_map(|networks| networks.values())
-                            .flat_map(|network| {
-                                [
-                                    network["IPAddress"].as_str(),
-                                    network["GlobalIPv6Address"].as_str(),
-                                ]
-                            })
-                            .flatten()
-                            .filter_map(|v| v.parse::<IpAddr>().ok())
-                            .find(|ip| !ip.is_unspecified())
-                            .ok_or_else(|| {
-                                Error::Unavailable("运行中的容器没有内部网络地址".into())
-                            })?;
-                        format!("{}:{}", host(&ip.to_string()), port.port)
-                    }
-                };
-                endpoints.push(Endpoint {
-                    name: port.name.clone(),
-                    port: port.port,
-                    visibility: port.visibility,
-                    address,
+        if running && !sandbox.endpoints.is_empty() {
+            let ip = object["NetworkSettings"]["Networks"]
+                .as_object()
+                .into_iter()
+                .flat_map(|networks| networks.values())
+                .flat_map(|network| {
+                    [
+                        network["IPAddress"].as_str(),
+                        network["GlobalIPv6Address"].as_str(),
+                    ]
+                })
+                .flatten()
+                .filter_map(|value| value.parse::<IpAddr>().ok())
+                .find(|ip| !ip.is_unspecified())
+                .ok_or_else(|| Error::Unavailable("运行中的容器没有内部网络地址".into()))?;
+            for declared in &sandbox.endpoints {
+                endpoints.push(ObservedEndpoint {
+                    name: declared.name.clone(),
+                    bundle: declared.bundle.clone(),
+                    protocol: declared.protocol.clone(),
+                    port: declared.port,
+                    state: crate::models::EndpointState::Ready,
+                    ready: true,
+                    address: format!("{}:{}", host(&ip.to_string()), declared.port),
                 });
             }
         }

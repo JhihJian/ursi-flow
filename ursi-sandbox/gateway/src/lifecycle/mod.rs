@@ -1,7 +1,7 @@
 //! 元数据先于外部副作用提交，按沙箱互斥执行，并以稳定代际接回中断操作。
 pub mod store;
 
-use crate::{driver::Driver, models::*};
+use crate::{driver::Driver, models::*, registry::Registry};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -9,7 +9,6 @@ use std::{
 };
 use store::Store;
 use tokio::{
-    net::TcpStream,
     sync::{Mutex as AsyncMutex, watch},
     task::JoinSet,
 };
@@ -25,18 +24,24 @@ pub enum Action {
 pub struct Service {
     store: Arc<Store>,
     driver: Arc<dyn Driver>,
+    registry: Arc<Registry>,
     locks: Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
     stopping: std::sync::atomic::AtomicBool,
 }
 
 impl Service {
-    pub fn new(store: Arc<Store>, driver: Arc<dyn Driver>) -> Arc<Self> {
+    pub fn new(store: Arc<Store>, driver: Arc<dyn Driver>, registry: Arc<Registry>) -> Arc<Self> {
         Arc::new(Self {
             store,
             driver,
+            registry,
             locks: Mutex::new(HashMap::new()),
             stopping: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+    pub fn new_without_registry(store: Arc<Store>, driver: Arc<dyn Driver>) -> Arc<Self> {
+        let registry = Registry::new(Default::default()).expect("empty registry is valid");
+        Self::new(store, driver, Arc::new(registry))
     }
     pub fn is_stopping(&self) -> bool {
         self.stopping.load(std::sync::atomic::Ordering::Acquire)
@@ -73,12 +78,35 @@ impl Service {
     pub fn list(&self) -> Result<Vec<Sandbox>> {
         self.store.list()
     }
+    fn declared_endpoints(&self, image: &str) -> Result<Vec<Endpoint>> {
+        self.registry
+            .expand_image_with_bundles(image)
+            .map_err(|error| Error::Invalid(format!("注册表展开失败: {error}")))
+            .map(|endpoints| {
+                endpoints
+                    .into_iter()
+                    .map(|endpoint| Endpoint {
+                        name: endpoint.name,
+                        bundle: endpoint.bundle,
+                        protocol: endpoint.protocol,
+                        port: endpoint.port,
+                        state: EndpointState::Declared,
+                        ready: false,
+                    })
+                    .collect()
+            })
+    }
+    fn refresh_declared_endpoints(&self, sandbox: &mut Sandbox) -> Result<()> {
+        sandbox.endpoints = self.declared_endpoints(&sandbox.spec.image)?;
+        Ok(())
+    }
     pub async fn create(&self, spec: SandboxSpec, key: Option<String>) -> Result<Sandbox> {
         self.ensure_accepting()?;
         self.driver.validate_spec(&spec)?;
         if key.as_ref().is_some_and(|v| v.is_empty() || v.len() > 256) {
             return Err(Error::Invalid("幂等键无效".into()));
         }
+        let endpoints = self.declared_endpoints(&spec.image)?;
         let sandbox = Sandbox {
             id: uuid::Uuid::new_v4().simple().to_string(),
             spec,
@@ -90,7 +118,7 @@ impl Service {
             operation: Some(Operation::Create),
             retired: vec![],
             revision: 0,
-            endpoints: vec![],
+            endpoints,
             error: None,
         };
         self.store.insert(&sandbox, key.as_deref())
@@ -159,7 +187,7 @@ impl Service {
                 sandbox.status = Status::Preparing;
             }
         }
-        sandbox.endpoints.clear();
+        self.refresh_declared_endpoints(&mut sandbox)?;
         sandbox.error = None;
         self.store.update(&mut sandbox)?;
         Ok(sandbox)
@@ -171,6 +199,11 @@ impl Service {
         self.driver.logs(&self.get(id)?, tail).await
     }
     pub async fn resolve_endpoint(&self, id: &str, name: &str) -> Result<Endpoint> {
+        self.resolve_target(id, name)
+            .await
+            .map(|(endpoint, _)| endpoint)
+    }
+    pub async fn resolve_target(&self, id: &str, name: &str) -> Result<(Endpoint, String)> {
         let lock = self.lock_for(id);
         let _guard = lock
             .try_lock()
@@ -180,44 +213,48 @@ impl Service {
             return Err(Error::Conflict("沙箱未就绪".into()));
         }
         let declared = sandbox
-            .spec
-            .ports
+            .endpoints
             .iter()
-            .find(|p| p.name == name)
+            .find(|endpoint| endpoint.name == name)
             .ok_or_else(|| Error::NotFound(name.into()))?;
         let observed = self.driver.observe(&sandbox).await?;
         if !observed.running || observed.healthy == Some(false) {
             return Err(Error::Unavailable("沙箱实际不可用".into()));
         }
-        observed
+        let target = observed
             .endpoints
             .into_iter()
-            .find(|p| {
-                p.name == declared.name
-                    && p.port == declared.port
-                    && p.visibility == declared.visibility
+            .find(|endpoint| {
+                endpoint.name == declared.name
+                    && endpoint.bundle == declared.bundle
+                    && endpoint.protocol == declared.protocol
+                    && endpoint.port == declared.port
             })
-            .ok_or_else(|| Error::NotFound(name.into()))
+            .ok_or_else(|| Error::NotFound(name.into()))?;
+        Ok((declared.clone(), target.address))
     }
     async fn ready(&self, sandbox: &Sandbox, observed: Observed) -> Result<Vec<Endpoint>> {
         if !observed.running || observed.healthy == Some(false) {
             return Err(Error::Unavailable("容器或健康检查尚未就绪".into()));
         }
-        for port in sandbox.spec.ports.iter().filter(|p| p.ready) {
-            let endpoint = observed
+        let mut endpoints = Vec::with_capacity(sandbox.endpoints.len());
+        for declared in &sandbox.endpoints {
+            let observed = observed
                 .endpoints
                 .iter()
-                .find(|p| p.name == port.name && p.port == port.port)
-                .ok_or_else(|| Error::Unavailable(format!("必需端点 {} 未发现", port.name)))?;
-            tokio::time::timeout(
-                Duration::from_millis(500),
-                TcpStream::connect(&endpoint.address),
-            )
-            .await
-            .map_err(|_| Error::Unavailable("必需端点连接超时".into()))?
-            .map_err(|_| Error::Unavailable("必需端点未就绪".into()))?;
+                .find(|endpoint| {
+                    endpoint.name == declared.name
+                        && endpoint.bundle == declared.bundle
+                        && endpoint.protocol == declared.protocol
+                        && endpoint.port == declared.port
+                })
+                .ok_or_else(|| Error::Unavailable(format!("必需端点 {} 未发现", declared.name)))?;
+            let mut endpoint = declared.clone();
+            endpoint.state = observed.state.clone();
+            endpoint.ready = observed.ready;
+            endpoints.push(endpoint);
         }
-        Ok(observed.endpoints)
+        Ok(endpoints)
     }
     /// 可被启动/周期对账与独立恢复测试调用。每轮最多执行一次操作推进。
     pub async fn reconcile(&self, id: &str) -> Result<()> {
@@ -245,6 +282,9 @@ impl Service {
         result
     }
     async fn advance(&self, sandbox: &mut Sandbox) -> Result<()> {
+        if !matches!(sandbox.operation, Some(Operation::Delete)) {
+            self.refresh_declared_endpoints(sandbox)?;
+        }
         match sandbox.operation.clone() {
             Some(Operation::Delete) => {
                 // 先停止/移除全部工作负载，再删除卷，兼容保数据重建中途被删除。

@@ -52,11 +52,11 @@ pub async fn connect(service: &Service, id: &str, endpoint: &str) -> Result<Targ
         )));
     }
     let stream = time::timeout(CONNECT_TIMEOUT, async {
-        let endpoint = service
-            .resolve_endpoint(id, endpoint)
+        let (_endpoint, address) = service
+            .resolve_target(id, endpoint)
             .await
             .map_err(ConnectError::Service)?;
-        TcpStream::connect(&endpoint.address)
+        TcpStream::connect(&address)
             .await
             .map_err(|_| ConnectError::Unreachable)
     })

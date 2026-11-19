@@ -9,7 +9,7 @@ fn setup() -> (TempDir, Arc<Store>, Arc<FakeDriver>, Arc<Service>) {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(&dir.path().join("metadata.sqlite")).unwrap());
     let driver = Arc::new(FakeDriver::new());
-    let service = Service::new(store.clone(), driver.clone());
+    let service = Service::new_without_registry(store.clone(), driver.clone());
     (dir, store, driver, service)
 }
 
@@ -72,7 +72,7 @@ async fn failed_query_does_not_delete_or_erase_intent() {
         service.get(&created.id).unwrap().operation,
         Some(Operation::Delete)
     ));
-    let recovered = Service::new(service.store.clone(), driver);
+    let recovered = Service::new_without_registry(service.store.clone(), driver);
     recovered.reconcile(&created.id).await.unwrap();
     assert!(matches!(
         recovered.get(&created.id),
@@ -89,7 +89,7 @@ async fn crash_after_create_adopts_resource() {
     drop(service);
     drop(store);
     let store = Arc::new(Store::open(&dir.path().join("metadata.sqlite")).unwrap());
-    let recovered = Service::new(store, driver);
+    let recovered = Service::new_without_registry(store, driver);
     recovered.reconcile(&created.id).await.unwrap();
     let current = recovered.get(&created.id).unwrap();
     assert_eq!(current.resource, created.resource);
@@ -116,7 +116,7 @@ async fn rebuild_generations_survive_partial_success_and_restart() {
         drop(service);
         drop(store);
         let store = Arc::new(Store::open(&dir.path().join("metadata.sqlite")).unwrap());
-        let recovered = Service::new(store, driver.clone());
+        let recovered = Service::new_without_registry(store, driver.clone());
         recovered.reconcile(&created.id).await.unwrap();
         let current = recovered.get(&created.id).unwrap();
         assert_eq!(current.resource, rebuilding.resource);
@@ -178,26 +178,31 @@ async fn conflicting_actions_are_rejected_before_side_effects() {
 }
 
 #[tokio::test]
-async fn readiness_requires_declared_port_not_only_running_process() {
-    let (_dir, _store, _driver, service) = setup();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    let mut input = spec();
-    input.ports.push(PortSpec {
-        name: "required".into(),
-        port,
-        visibility: Visibility::Internal,
-        ready: true,
-    });
-    let created = service.create(input, None).await.unwrap();
-    assert!(service.reconcile(&created.id).await.is_err());
-    assert_eq!(service.get(&created.id).unwrap().status, Status::Preparing);
-    let _listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .unwrap();
+async fn readiness_requires_registered_endpoint_and_hides_internal_address() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("metadata.sqlite")).unwrap());
+    let driver = Arc::new(FakeDriver::new());
+    let registry = Registry::from_json(
+        r#"{"bundles":{"terminal":{"endpoints":[{"name":"ssh","protocol":"ssh","port":22}]}},"images":{"alpine:3.22":["terminal"]}}"#,
+    )
+    .unwrap();
+    let service = Service::new(store, driver, Arc::new(registry));
+    let created = service.create(spec(), None).await.unwrap();
+    assert_eq!(created.endpoints.len(), 1);
+    assert_eq!(created.endpoints[0].name, "ssh");
     service.reconcile(&created.id).await.unwrap();
-    assert_eq!(service.get(&created.id).unwrap().status, Status::Running);
+    let current = service.get(&created.id).unwrap();
+    assert_eq!(current.status, Status::Running);
+    assert!(current.endpoints[0].ready);
+    let (endpoint, address) = service.resolve_target(&created.id, "ssh").await.unwrap();
+    assert_eq!(endpoint.name, "ssh");
+    assert_eq!(address, "127.0.0.1:22");
+    assert!(
+        serde_json::to_value(endpoint)
+            .unwrap()
+            .get("address")
+            .is_none()
+    );
     assert!(matches!(
         service.resolve_endpoint(&created.id, "unknown").await,
         Err(Error::NotFound(_))
@@ -284,7 +289,7 @@ async fn assert_stopping_rejects_mutations(service: &Service, id: &str) {
 #[tokio::test]
 async fn supervision_reconciliation_panic_stops_and_rejects_mutations() {
     let (_dir, store, _driver, _service) = setup();
-    let service = Service::new(store, Arc::new(PanicDriver(FakeDriver::new())));
+    let service = Service::new_without_registry(store, Arc::new(PanicDriver(FakeDriver::new())));
     let created = service.create(spec(), None).await.unwrap();
     let (_stop, rx) = watch::channel(false);
     let result = tokio::time::timeout(Duration::from_secs(2), service.clone().run(rx))

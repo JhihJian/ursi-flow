@@ -10,7 +10,7 @@ references:
 
 ## 功能意图
 
-以独立调用方身份接入 Gateway 和沙箱 ACP 服务，验证沙箱 Agent 执行能力，脱离 server、工作流和 Web 页面使用。
+以独立调用方身份接入 Gateway 和沙箱服务，验证沙箱 Agent 执行能力，脱离 server、工作流和 Web 页面使用。客户端通过 Gateway Bearer 查询逻辑 endpoint，并以 `ursi-tcp-v1` bridge 转发上层 TCP 协议。
 
 ## 关键功能与验收
 
@@ -23,8 +23,18 @@ references:
 - Gateway 身份和 session token 由环境变量或文件提供，URL 和 argv 不携带凭据，输出过滤已知身份。
 - HTTP 202 保留受理状态，由调用方查询实际完成状态，错误具有明确非零退出码。
 - SSH 禁用密码认证，使用独立 known_hosts 和指定私钥，每次操作有期限。
-
 - 主用户验收只通过 `ursi-sandbox-client` 操作沙箱，不通过 Python 脚本执行。新建沙箱并等待就绪，通过 SSH 在空工作目录编写 `index.html`，通过 SFTP 下载并核对 SHA-256。删除后确认 404，下载页面在浏览器中显示 `Hello World`。
+
+### 逻辑 endpoint bridge
+
+提供最小 `forward` CLI 和 `Bridge` 库 API。endpoint DTO 严格只包含 `name`、`bundle`、`protocol`、`port`、`state`、`ready`，拒绝 `address`、`visibility` 以及其他未知字段。调用方只提供 sandbox ID、endpoint name 和可选本地监听地址，不能指定任意远端 host/port。
+
+#### 验收
+
+- bridge 先调用 `/api/v1/sandboxes/{id}/endpoints`，只允许 `ready` endpoint。
+- 每个本地 TCP 连接独立连接 `/api/v1/sandboxes/{id}/connect/{endpoint_name}`，携带 Gateway Bearer 和 `ursi-tcp-v1`，不向用户索要 endpoint 级 token。
+- 二进制消息有限大小双向转发，文本 `eof` 实现半关闭，处理 Ping/Pong，连接错误、Ctrl-C 和生命周期取消都能回收本地与 WebSocket 连接。
+- fake HTTP/WS 测试覆盖 subprotocol、路径 endpoint name、Bearer、双向字节、EOF 和握手错误退出。bridge 不解析 SSH、ACP、HTTP 等上层协议。
 
 ### ACP 任务与会话控制
 

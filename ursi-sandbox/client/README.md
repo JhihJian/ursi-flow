@@ -1,6 +1,6 @@
 # 独立沙箱客户端与真实 Agent 验收
 
-`ursi-sandbox-client` 通过 Gateway HTTP 管理沙箱，通过 SSH/SFTP 操作仓库，通过 ACP WebSocket 驱动 Agent。它与 server、FSM、Web 和 session-service crate 独立，仅使用 [Gateway 契约](../gateway/CONTRACT.md) 与 [Agent 契约](../runtime/AGENT-CONTRACT.md)。
+`ursi-sandbox-client` 通过 Gateway HTTP 管理沙箱，并用 Gateway 的逻辑 endpoint WebSocket bridge 转发 SSH/SFTP、ACP 等上层字节协议。它与 server、FSM、Web 和 session-service crate 独立，仅使用 [Gateway 契约](../gateway/CONTRACT.md) 与 [Agent 契约](../runtime/AGENT-CONTRACT.md)。客户端只使用 Gateway Bearer，不要求用户输入 endpoint 级凭据。
 
 ## 构建与定向验证
 
@@ -14,7 +14,7 @@ python3 -B -m unittest discover -s client/scripts -p 'test_*.py' -v
 ./target/debug/ursi-sandbox-client --help
 ```
 
-常规测试使用 fake HTTP/ACP 对端检查协议和 CLI 退出码，Python 策略测试检查 opt-in、root 入口、scope 清理边界、跨 UID 进程身份与取消回收判据，以及失败诊断脱敏。`real_pi_agent_acceptance` 默认 ignored。真实执行需要集成后的 Gateway、正式 Runtime 镜像、bundle 和真实模型配置，并显式启用 `URSI_AGENT_ACCEPTANCE=1`。
+常规测试使用 fake HTTP/ACP/ursi-tcp-v1 对端检查协议、bridge 字节转发和 CLI 退出码，Python 策略测试检查 opt-in、root 入口、scope 清理边界、跨 UID 进程身份与取消回收判据，以及失败诊断脱敏。`real_pi_agent_acceptance` 默认 ignored。真实执行需要集成后的 Gateway、正式 Runtime 镜像、bundle 和真实模型配置，并显式启用 `URSI_AGENT_ACCEPTANCE=1`。
 
 依赖工具：构建需要 Rust 工具链，SSH/SFTP 子命令需要 OpenSSH 客户端。真实验收需要以 root 身份运行，具备 Linux、本机 Docker daemon、Python 3.10+、`docker`、`ssh`、`sftp`、`ssh-keygen`。容器内的 Python3、Git、Pi 及 SSH 服务由正式 Runtime 镜像提供。
 
@@ -26,11 +26,11 @@ python3 -B -m unittest discover -s client/scripts -p 'test_*.py' -v
 | --- | --- |
 | `URSI_GATEWAY_URL` | Gateway HTTP(S) 根地址 |
 | `URSI_GATEWAY_KEY` 或 `URSI_GATEWAY_KEY_FILE` | Gateway Bearer 身份 |
-| `URSI_ACP_URL` | 完整 ACP WS(S) 地址，例如 `ws://172.17.0.2:8765/acp` |
-| `URSI_SESSION_TOKEN` 或 `URSI_SESSION_TOKEN_FILE` | session-service Bearer 身份 |
+| `URSI_SANDBOX_ID` | ACP 通过 Gateway bridge 时的沙箱 ID |
+| `URSI_ACP_ENDPOINT` | ACP endpoint 名，默认 `session` |
 | `URSI_CLIENT_TIMEOUT_SECS` | 每次操作总期限，默认 120 秒，范围 1..86400 |
 
-Gateway 和 ACP 支持 TLS。明文 HTTP/WS 适用于受控本机容器网络。URL 拒绝用户信息、query 和 fragment，HTTP 请求关闭重定向。客户端对配置的 Bearer 身份做输出脱敏。
+Gateway HTTP 和 bridge WebSocket 支持 TLS。明文 HTTP/WS 适用于受控网络。URL 拒绝用户信息、query 和 fragment，HTTP 请求关闭重定向。客户端对配置的 Gateway Bearer 做输出脱敏。ACP、SSH 和 SFTP 都必须先通过逻辑 endpoint bridge，使用 Gateway Bearer，不要求 endpoint 级凭据。
 
 ```bash
 export URSI_GATEWAY_URL=http://127.0.0.1:8899
@@ -53,10 +53,6 @@ $CLIENT gateway delete SANDBOX_ID
 {
   "image": "ursi-runtime-pi:local",
   "runtime_profile": "pi",
-  "ports": [
-    {"name":"ssh","port":2222,"visibility":"public","ready":true},
-    {"name":"session","port":8765,"visibility":"internal","ready":true}
-  ],
   "memory_mb": 2048,
   "cpus": 2.0,
   "bundle": {
@@ -69,22 +65,38 @@ $CLIENT gateway delete SANDBOX_ID
 
 Gateway 的创建、启停、删除返回受理结果。调用方继续查询，直到目标 `status` 且 `operation:null`。删除完成后查询为 404。
 
+### 逻辑 endpoint bridge
+
+```bash
+$CLIENT gateway endpoints SANDBOX_ID
+$CLIENT forward SANDBOX_ID ssh
+# 默认监听 127.0.0.1:0，JSONL result 返回实际 listen 地址。
+$CLIENT forward SANDBOX_ID ssh 127.0.0.1:22022
+```
+
+endpoint 查询只返回 `name`、`bundle`、`protocol`、`port`、`state`、`ready`。`address` 和 `visibility` 不属于客户端结构。forward 只接受沙箱 ID 与 endpoint 名称，每个本地 TCP 连接都通过 `GET /api/v1/sandboxes/{id}/connect/{endpoint_name}` 建立 `ursi-tcp-v1` WebSocket，并携带 Gateway Bearer。客户端不接受任意远端 host/port，也不解析 WebSocket 上承载的 SSH、ACP 或 HTTP。
+
+WebSocket 二进制帧承载 TCP 字节，文本 `eof` 进行半关闭，Ping/Pong 保活，连接生命周期随本地连接和 Ctrl-C 取消。客户端消息不超过 64 KiB。Gateway key 只从 `URSI_GATEWAY_KEY` 或 `URSI_GATEWAY_KEY_FILE` 读取，绝不放入 argv 或日志。
+
 ### SSH 与 SFTP
 
 ```bash
-$CLIENT ssh HOST PORT /private/id_ed25519 /private/known_hosts /private/prepare.sh
-$CLIENT sftp-put HOST PORT /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
-$CLIENT sftp-get HOST PORT /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
+$CLIENT ssh SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts /private/prepare.sh
+$CLIENT sftp-put SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
+$CLIENT sftp-get SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
+$CLIENT sftp-get SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
 ```
 
-SSH 固定使用 `agent` 用户、公钥和指定私钥，禁用密码及交互认证。命令文件经 stdin 交给远端 `sh -se`。专用 known_hosts 使用首次连接信任（TOFU），后续密钥变化拒绝连接。需要预先校验主机身份时，可先向该文件写入受信任的主机公钥。每个沙箱使用独立 known_hosts，stop/start 复用同一文件。
+SSH 固定使用 `agent` 用户、公钥和指定私钥，禁用密码及交互认证。客户端会为 SSH/SFTP 自动创建本地临时 bridge；命令本身不解析 bridge 内的 SSH 协议。命令文件经 stdin 交给远端 `sh -se`。专用 known_hosts 使用首次连接信任（TOFU），后续主机密钥变化拒绝连接。每个沙箱使用独立 known_hosts，stop/start 复用同一文件。
 
 ### ACP 会话
 
 ```bash
-export URSI_ACP_URL=ws://CONTAINER_IP:8765/acp
-export URSI_SESSION_TOKEN_FILE=/private/session-token
-
+# Gateway bridge 模式：不需要 endpoint address
+export URSI_SANDBOX_ID=SANDBOX_ID
+export URSI_ACP_ENDPOINT=session
+export URSI_GATEWAY_URL=http://127.0.0.1:8899
+export URSI_GATEWAY_KEY_FILE=/private/gateway-key
 $CLIENT acp initialize
 $CLIENT acp new /ursi/workspace/repo
 $CLIENT acp prompt SESSION_ID /private/prompt.txt
@@ -107,7 +119,7 @@ Rust 库暴露 `Gateway`、`Acp`、`Ssh`、`Secret` 和 `PromptOutcome`。每条
 
 ## 真实验收输入
 
-验收脚本启动独立 Gateway，并将正式 bundle 发布到监听 `0.0.0.0` 的临时 HTTP 端口。Gateway 同样监听 `0.0.0.0` 临时端口，命名空间为随机 scope。会话端点通过 Gateway 返回的 internal 地址直连，需要宿主能访问本地容器 IP。本验收覆盖直连 ACP 路径。
+验收脚本启动独立 Gateway，并将正式 bundle 发布到监听 `0.0.0.0` 的临时 HTTP 端口。Gateway 同样监听 `0.0.0.0` 临时端口，命名空间为随机 scope。SSH 和 ACP 通过逻辑 endpoint bridge 连接，不读取 endpoint address。本验收覆盖 Gateway tunnel 路径。
 
 操作方准备一个最小配置目录，包含：
 

@@ -6,13 +6,13 @@
 
 | 交付 | 运行位置 | 状态与接口 |
 | --- | --- | --- |
-| [Gateway](gateway/CONTRACT.md) | 宿主服务 `ursi-gateway` | HTTP 管沙箱和端点。lifecycle 在 SQLite 记录意图并与 Docker 对账，driver 只报告或改变基础设施。可选鉴权隧道只转发字节。 |
+| [Gateway](gateway/CONTRACT.md) | 宿主服务 `ursi-gateway` | HTTP 管沙箱和逻辑端点。管理员注册表决定镜像能力，lifecycle 在 SQLite 记录意图并与 Docker 对账，driver 只报告或改变基础设施。隧道只转发字节。 |
 | [Runtime](runtime/AGENT-CONTRACT.md) | 每个沙箱内的环境镜像与 bundle | 镜像提供 Git、Pi、sshd、bootstrap 与 supervisord。bundle 交付 session-service 和监督配置。数据卷保存工作区。 |
 | [Client](client/README.md) | 调用方的 Rust 库或 CLI | 调用 Gateway API 和 Runtime 的 ACP WebSocket 子集。文件和普通命令走原生 SFTP/SSH。客户端不拥有远端任务状态。 |
 
 ## 从创建到回收
 
-1. 调用方向 Gateway 提交镜像、bundle 和管理员预置的 `runtime_profile`。操作受理后轮询资源状态。Gateway 确定容器、卷、公开或内部端点的身份，internal 端点不发布宿主端口。
+1. 调用方向 Gateway 提交镜像、可选 Runtime 包引用和管理员预置的 `runtime_profile`。操作受理后轮询资源状态。Gateway 根据管理员注册表展开 `image -> bundles`，确定逻辑端点；未注册镜像没有受管端点。容器端口不发布到宿主机。
 2. Runtime 校验 bundle 后启动常驻服务。调用方经 SSH/SFTP 准备 Git 工作区，以独立的 Bearer 身份连接 `/acp`，初始化连接并在 `session/new` 指定目录。
 3. 首次 `session/prompt` 启动该会话的 Pi 进程。session-service 将 Pi JSONL 转为文本和工具通知，每轮重验目录身份。接受请求不等于成功，只有正常 assistant 终态、Pi 已 settled 且无错误才报告完成。
 4. 断线不触发重放。调用方可查询 `_ursi/session/status`，显式取消或关闭会话。每会话监督器回收后代并确认结果。常驻监督器恢复服务，不重放任务。流程级的重试由调用方决定。

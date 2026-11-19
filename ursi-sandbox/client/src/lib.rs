@@ -1,16 +1,22 @@
 //! 独立 Gateway / ACP 调用方。只依赖公开传输契约。
-use std::{path::Path, time::Duration};
+use std::{net::SocketAddr, path::Path, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::{
-    net::TcpStream,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::watch,
     time::{Instant, timeout_at},
 };
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
-    tungstenite::{Message, client::IntoClientRequest},
+    tungstenite::{Message, client::IntoClientRequest, http::header},
 };
+
+const TCP_SUBPROTOCOL: &str = "ursi-tcp-v1";
+const MAX_TCP_MESSAGE: usize = 64 * 1024;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -81,8 +87,30 @@ impl Secret {
 
 pub struct Gateway {
     base: reqwest::Url,
-    key: Secret,
+    key: Arc<Secret>,
     http: reqwest::Client,
+    timeout: Duration,
+}
+impl Clone for Gateway {
+    fn clone(&self) -> Self {
+        Self {
+            base: self.base.clone(),
+            key: Arc::clone(&self.key),
+            http: self.http.clone(),
+            timeout: self.timeout,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Endpoint {
+    pub name: String,
+    pub bundle: String,
+    pub protocol: String,
+    pub port: u16,
+    pub state: String,
+    pub ready: bool,
 }
 impl Gateway {
     pub fn new(url: &str, key: Secret, timeout: Duration) -> Result<Self> {
@@ -92,7 +120,12 @@ impl Gateway {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| Error::Transport)?;
-        Ok(Self { base, key, http })
+        Ok(Self {
+            base,
+            key: Arc::new(key),
+            http,
+            timeout,
+        })
     }
     pub async fn request(
         &self,
@@ -126,6 +159,220 @@ impl Gateway {
         // 即使对端意外回显身份，也不把身份交给输出层。
         Ok(self.key.redact_json(&body))
     }
+
+    pub async fn endpoints(&self, sandbox_id: &str) -> Result<Vec<Endpoint>> {
+        validate_identifier(sandbox_id, "沙箱 ID")?;
+        let value = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/sandboxes/{sandbox_id}/endpoints"),
+                None,
+            )
+            .await?;
+        serde_json::from_value(value["endpoints"].clone())
+            .map_err(|_| Error::Protocol("Gateway 端点响应无效".into()))
+    }
+
+    pub async fn bridge(
+        &self,
+        sandbox_id: &str,
+        endpoint_name: &str,
+        listen: SocketAddr,
+    ) -> Result<Bridge> {
+        validate_identifier(sandbox_id, "沙箱 ID")?;
+        validate_identifier(endpoint_name, "端点名")?;
+        let endpoint = self
+            .endpoints(sandbox_id)
+            .await?
+            .into_iter()
+            .find(|endpoint| endpoint.name == endpoint_name)
+            .ok_or_else(|| Error::Invalid("端点不存在".into()))?;
+        if !endpoint.ready || endpoint.state != "ready" {
+            return Err(Error::Invalid("端点尚未就绪".into()));
+        }
+        Ok(Bridge {
+            gateway: self.clone(),
+            sandbox_id: sandbox_id.to_owned(),
+            endpoint_name: endpoint_name.to_owned(),
+            listener: TcpListener::bind(listen).await?,
+        })
+    }
+
+    async fn connect_tunnel(
+        &self,
+        sandbox_id: &str,
+        endpoint_name: &str,
+    ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
+        let mut url = self.base.clone();
+        url.set_scheme(match url.scheme() {
+            "http" => "ws",
+            "https" => "wss",
+            _ => return Err(Error::Invalid("Gateway URL 协议无效".into())),
+        })
+        .map_err(|_| Error::Invalid("Gateway URL 协议无效".into()))?;
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .map_err(|_| Error::Invalid("Gateway URL 路径无效".into()))?;
+            segments.clear();
+            segments.extend([
+                "api",
+                "v1",
+                "sandboxes",
+                sandbox_id,
+                "connect",
+                endpoint_name,
+            ]);
+        }
+        let mut request = url
+            .as_str()
+            .into_client_request()
+            .map_err(|_| Error::Invalid("Gateway WebSocket URL 无效".into()))?;
+        let mut auth = format!("Bearer {}", self.key.0)
+            .parse::<tokio_tungstenite::tungstenite::http::HeaderValue>()
+            .map_err(|_| Error::Invalid("Gateway key 无效".into()))?;
+        auth.set_sensitive(true);
+        request.headers_mut().insert(header::AUTHORIZATION, auth);
+        request.headers_mut().insert(
+            header::SEC_WEBSOCKET_PROTOCOL,
+            tokio_tungstenite::tungstenite::http::HeaderValue::from_static(TCP_SUBPROTOCOL),
+        );
+        let config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+            .max_message_size(Some(MAX_TCP_MESSAGE))
+            .max_frame_size(Some(MAX_TCP_MESSAGE));
+        tokio::time::timeout(
+            self.timeout(),
+            tokio_tungstenite::connect_async_with_config(request, Some(config), false),
+        )
+        .await
+        .map_err(|_| Error::Timeout)?
+        .map(|(socket, _)| socket)
+        .map_err(|_| Error::Transport)
+    }
+
+    fn timeout(&self) -> Duration {
+        self.timeout
+    }
+}
+
+pub struct Bridge {
+    gateway: Gateway,
+    sandbox_id: String,
+    endpoint_name: String,
+    listener: TcpListener,
+}
+
+impl Bridge {
+    pub fn local_addr(&self) -> Result<SocketAddr> {
+        Ok(self.listener.local_addr()?)
+    }
+
+    /// 接受本地 TCP 连接，直到 cancel 收到 true。每个连接使用独立 Gateway WebSocket。
+    pub async fn run_until(self, mut cancel: watch::Receiver<bool>) -> Result<()> {
+        let Bridge {
+            gateway,
+            sandbox_id,
+            endpoint_name,
+            listener,
+        } = self;
+        let mut tasks = tokio::task::JoinSet::new();
+        loop {
+            tokio::select! {
+                changed = cancel.changed() => {
+                    if changed.is_err() || *cancel.borrow() {
+                        tasks.abort_all();
+                        while tasks.join_next().await.is_some() {}
+                        return Ok(());
+                    }
+                }
+                _ = tasks.join_next(), if !tasks.is_empty() => {}
+                accepted = listener.accept() => {
+                    let (tcp, _) = accepted?;
+                    let gateway = gateway.clone();
+                    let sandbox_id = sandbox_id.clone();
+                    let endpoint_name = endpoint_name.clone();
+                    tasks.spawn(async move {
+                        let _ = relay_connection(
+                            tcp,
+                            gateway,
+                            &sandbox_id,
+                            &endpoint_name,
+                        ).await;
+                    });
+                }
+            }
+        }
+    }
+}
+
+async fn relay_connection(
+    tcp: TcpStream,
+    gateway: Gateway,
+    sandbox_id: &str,
+    endpoint_name: &str,
+) -> Result<()> {
+    let websocket = gateway.connect_tunnel(sandbox_id, endpoint_name).await?;
+    let (mut tcp_read, mut tcp_write) = tcp.into_split();
+    let (mut ws_write, mut ws_read) = websocket.split();
+    let mut buffer = vec![0u8; MAX_TCP_MESSAGE];
+    let mut local_eof = false;
+    let mut remote_eof = false;
+    let mut ping = tokio::time::interval(Duration::from_secs(20));
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        if local_eof && remote_eof {
+            let _ = ws_write.send(Message::Close(None)).await;
+            return Ok(());
+        }
+        tokio::select! {
+            count = tcp_read.read(&mut buffer), if !local_eof => {
+                let count = count?;
+                if count == 0 {
+                    ws_write.send(Message::Text("eof".into())).await.map_err(|_| Error::Transport)?;
+                    local_eof = true;
+                } else {
+                    ws_write.send(Message::Binary(buffer[..count].to_vec().into())).await.map_err(|_| Error::Transport)?;
+                }
+            }
+            message = ws_read.next(), if !remote_eof => {
+                let message = message.ok_or(Error::Closed)?.map_err(|_| Error::Transport)?;
+                match message {
+                    Message::Binary(bytes) if bytes.len() <= MAX_TCP_MESSAGE => {
+                        tcp_write.write_all(&bytes).await?;
+                    }
+                    Message::Text(text) if text == "eof" => {
+                        tcp_write.shutdown().await?;
+                        remote_eof = true;
+                    }
+                    Message::Ping(payload) => {
+                        ws_write.send(Message::Pong(payload)).await.map_err(|_| Error::Transport)?;
+                    }
+                    Message::Pong(_) => {}
+                    Message::Close(_) => return Ok(()),
+                    Message::Binary(_) | Message::Text(_) => {
+                        return Err(Error::Protocol("ursi-tcp-v1 消息超限或无效".into()));
+                    }
+                    _ => return Err(Error::Protocol("ursi-tcp-v1 消息无效".into())),
+                }
+            }
+            _ = ping.tick() => {
+                ws_write.send(Message::Ping(Vec::new().into())).await.map_err(|_| Error::Transport)?;
+            }
+        }
+    }
+}
+
+fn validate_identifier(value: &str, label: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err(Error::Invalid(format!("{label} 无效")));
+    }
+    Ok(())
 }
 
 fn checked_url(url: &str, schemes: &[&str]) -> Result<reqwest::Url> {
@@ -164,22 +411,33 @@ impl PromptOutcome {
 /// 另一个连接可取消/查询同一身份下的会话。断线不重试 prompt。
 pub struct Acp {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    token: Secret,
+    token: Option<Secret>,
     next_id: u64,
     timeout: Duration,
 }
 impl Acp {
     pub async fn connect(url: &str, token: Secret, timeout: Duration) -> Result<Self> {
+        Self::connect_inner(url, Some(token), timeout).await
+    }
+
+    /// Gateway bridge 已经完成 Gateway 身份认证，不要求 endpoint 级 ACP token。
+    pub async fn connect_without_auth(url: &str, timeout: Duration) -> Result<Self> {
+        Self::connect_inner(url, None, timeout).await
+    }
+
+    async fn connect_inner(url: &str, token: Option<Secret>, timeout: Duration) -> Result<Self> {
         let url = checked_url(url, &["ws", "wss"])?;
         let mut request = url
             .as_str()
             .into_client_request()
             .map_err(|_| Error::Invalid("ACP URL 无效".into()))?;
-        let mut auth = format!("Bearer {}", token.0)
-            .parse::<tokio_tungstenite::tungstenite::http::HeaderValue>()
-            .map_err(|_| Error::Invalid("session token 无效".into()))?;
-        auth.set_sensitive(true);
-        request.headers_mut().insert("Authorization", auth);
+        if let Some(token) = &token {
+            let mut auth = format!("Bearer {}", token.0)
+                .parse::<tokio_tungstenite::tungstenite::http::HeaderValue>()
+                .map_err(|_| Error::Invalid("session token 无效".into()))?;
+            auth.set_sensitive(true);
+            request.headers_mut().insert("Authorization", auth);
+        }
         let config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
             .max_message_size(Some(1024 * 1024))
             .max_frame_size(Some(1024 * 1024));
@@ -274,7 +532,12 @@ impl Acp {
                 return Err(Error::Protocol("JSON-RPC 版本无效".into()));
             }
             if value.get("id").is_none() && value["method"] == "session/update" {
-                on_update(self.token.redact_json(&value["params"]));
+                on_update(
+                    self.token
+                        .as_ref()
+                        .map(|token| token.redact_json(&value["params"]))
+                        .unwrap_or_else(|| value["params"].clone()),
+                );
                 continue;
             }
             if value["id"] != json!(id) {
@@ -288,10 +551,20 @@ impl Acp {
                     code: error["code"].as_i64().unwrap_or(-32000),
                     message: self
                         .token
-                        .redact(error["message"].as_str().unwrap_or("远端执行失败")),
+                        .as_ref()
+                        .map(|token| {
+                            token.redact(error["message"].as_str().unwrap_or("远端执行失败"))
+                        })
+                        .unwrap_or_else(|| {
+                            error["message"].as_str().unwrap_or("远端执行失败").into()
+                        }),
                 });
             }
-            return Ok(self.token.redact_json(&value["result"]));
+            return Ok(self
+                .token
+                .as_ref()
+                .map(|token| token.redact_json(&value["result"]))
+                .unwrap_or_else(|| value["result"].clone()));
         }
     }
 }

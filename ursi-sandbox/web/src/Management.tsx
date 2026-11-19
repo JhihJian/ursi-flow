@@ -5,7 +5,6 @@ import type { Sandbox, Source } from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
 import { Input } from './shared/ui/input'
-import { Select } from './shared/ui/select'
 import { Label } from './shared/ui/label'
 import { Alert } from './shared/ui/alert'
 import {
@@ -39,23 +38,12 @@ const randomKey = () =>
     b.toString(16).padStart(2, '0'),
   ).join('')
 type CreateMode = 'quick' | 'json'
-type QuickPort = {
-  name: string
-  port: string
-  visibility: 'public' | 'internal'
-}
-const emptyPort = (): QuickPort => ({
-  name: '',
-  port: '',
-  visibility: 'public',
-})
 function buildQuickSpec(
   image: string,
   name: string,
   command: string,
   memory: string,
   cpus: string,
-  ports: QuickPort[],
 ) {
   if (!image.trim()) throw Error('请输入镜像名')
   const memoryMb = Number(memory)
@@ -64,30 +52,12 @@ function buildQuickSpec(
     throw Error('内存必须是 16 到 65536 MiB 之间的整数')
   if (!Number.isFinite(cpuCount) || cpuCount <= 0 || cpuCount > 128)
     throw Error('CPU 必须大于 0 且不超过 128')
-  const parsedPorts = ports.map((item) => {
-    const port = Number(item.port)
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(item.name.trim()))
-      throw Error('端点名称只能包含字母、数字、下划线和短横线')
-    if (!Number.isInteger(port) || port < 1 || port > 65535)
-      throw Error('端口必须是 1 到 65535 之间的整数')
-    return {
-      name: item.name.trim(),
-      port,
-      visibility: item.visibility,
-      ready: false,
-    }
-  })
-  if (new Set(parsedPorts.map((item) => item.name)).size !== parsedPorts.length)
-    throw Error('端点名称不能重复')
-  if (new Set(parsedPorts.map((item) => item.port)).size !== parsedPorts.length)
-    throw Error('端口不能重复')
   return {
     image: image.trim(),
     command: command
       .split(/\r?\n/)
       .map((item) => item.trim())
       .filter(Boolean),
-    ports: parsedPorts,
     labels: name.trim() ? { name: name.trim() } : {},
     memory_mb: memoryMb,
     cpus: cpuCount,
@@ -102,7 +72,6 @@ export function CreateSandbox({ source }: { source: Source }) {
     [command, setCommand] = useState('sleep\n3600'),
     [memory, setMemory] = useState('256'),
     [cpus, setCpus] = useState('1'),
-    [ports, setPorts] = useState<QuickPort[]>([]),
     [text, edit] = useState(template),
     [busy, wait] = useState(false),
     [error, fail] = useState('')
@@ -118,7 +87,7 @@ export function CreateSandbox({ source }: { source: Source }) {
     try {
       const spec =
         mode === 'quick'
-          ? buildQuickSpec(image, name, command, memory, cpus, ports)
+          ? buildQuickSpec(image, name, command, memory, cpus)
           : JSON.parse(text)
       if (!spec || typeof spec.image !== 'string' || !spec.image.trim())
         throw Error('规格必须包含 image 镜像名')
@@ -247,99 +216,6 @@ export function CreateSandbox({ source }: { source: Source }) {
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder={'sleep\n3600'}
                 />
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>端口（可选）</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      setPorts((current) => [...current, emptyPort()])
-                    }
-                  >
-                    <Plus />
-                    添加端口
-                  </Button>
-                </div>
-                {ports.map((item, index) => (
-                  <div
-                    key={index}
-                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_auto]"
-                  >
-                    <Input
-                      aria-label={`端点 ${index + 1} 名称`}
-                      value={item.name}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setPorts((current) =>
-                          current.map((port, i) =>
-                            i === index
-                              ? { ...port, name: e.target.value }
-                              : port,
-                          ),
-                        )
-                      }
-                      placeholder="web"
-                    />
-                    <Input
-                      aria-label={`端点 ${index + 1} 端口`}
-                      type="number"
-                      min="1"
-                      max="65535"
-                      step="1"
-                      value={item.port}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setPorts((current) =>
-                          current.map((port, i) =>
-                            i === index
-                              ? { ...port, port: e.target.value }
-                              : port,
-                          ),
-                        )
-                      }
-                      placeholder="8080"
-                    />
-                    <Select
-                      aria-label={`端点 ${index + 1} 可见性`}
-                      value={item.visibility}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setPorts((current) =>
-                          current.map((port, i) =>
-                            i === index
-                              ? {
-                                  ...port,
-                                  visibility: e.target
-                                    .value as QuickPort['visibility'],
-                                }
-                              : port,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="public">公开</option>
-                      <option value="internal">内部</option>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`移除端点 ${index + 1}`}
-                      disabled={busy}
-                      onClick={() =>
-                        setPorts((current) =>
-                          current.filter((_, i) => i !== index),
-                        )
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ))}
               </div>
             </div>
           ) : (

@@ -40,9 +40,6 @@ test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
       expect(r.request().postDataJSON()).toEqual({
         image: 'node:22',
         command: ['npm', 'start'],
-        ports: [
-          { name: 'web', port: 8080, visibility: 'public', ready: false },
-        ],
         labels: { name: 'quick-web' },
         memory_mb: 512,
         cpus: 2,
@@ -54,7 +51,6 @@ test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
           spec: {
             image: 'node:22',
             command: ['npm', 'start'],
-            ports: [{ name: 'web', port: 8080, visibility: 'public' }],
             labels: { name: 'quick-web' },
             memory_mb: 512,
             cpus: 2,
@@ -78,9 +74,6 @@ test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
   await page.getByLabel('命令参数（每行一个参数，可选）').fill('npm\nstart')
   await page.getByLabel('内存（MiB）').fill('512')
   await page.getByLabel('CPU').fill('2')
-  await page.getByRole('button', { name: '添加端口' }).click()
-  await page.getByLabel('端点 1 名称').fill('web')
-  await page.getByLabel('端点 1 端口').fill('8080')
   await page.getByRole('button', { name: '提交创建' }).click()
   await expect(page).toHaveURL(/#\/sandboxes\/[a-f0-9]{32}$/)
 })

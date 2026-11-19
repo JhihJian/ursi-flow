@@ -4,6 +4,7 @@ use ursi_gateway::{
     gateway_api,
     lifecycle::{Service, store::Store},
     models::{Error, Result},
+    registry::{Registry, RegistryError},
 };
 
 fn env(name: &str, default: &str) -> String {
@@ -32,12 +33,8 @@ async fn run() -> Result<()> {
     let (driver, identity): (Arc<dyn Driver>, String) = match name.as_str() {
         #[cfg(feature = "driver-docker")]
         "docker" => {
-            let driver = ursi_gateway::driver::docker::DockerDriver::connect(
-                namespace.clone(),
-                env("URSI_GATEWAY_PUBLIC_BIND", "0.0.0.0"),
-                env("URSI_GATEWAY_ADVERTISE_HOST", "127.0.0.1"),
-            )
-            .await?;
+            let driver =
+                ursi_gateway::driver::docker::DockerDriver::connect(namespace.clone()).await?;
             let driver = if let Some(path) = std::env::var_os("URSI_GATEWAY_RUNTIME_PROFILES") {
                 driver.with_runtime_profiles(ursi_gateway::driver::profiles::RuntimeProfiles::load(
                     Path::new(&path),
@@ -60,7 +57,16 @@ async fn run() -> Result<()> {
         "./gateway.sqlite",
     )))?);
     store.bind_identity(&identity)?;
-    let service = Service::new(store, driver);
+    let registry_path =
+        Path::new(&env("URSI_GATEWAY_REGISTRY", "./gateway-registry.json")).to_owned();
+    let registry = match Registry::load(&registry_path) {
+        Ok(registry) => registry,
+        Err(RegistryError::Io(_)) if !registry_path.exists() => {
+            Registry::new(Default::default()).expect("empty registry is valid")
+        }
+        Err(error) => return Err(Error::Invalid(format!("Gateway registry 无效: {error}"))),
+    };
+    let service = Service::new(store, driver, Arc::new(registry));
     let tunnel = match env("URSI_GATEWAY_TUNNEL", "false").as_str() {
         "true" => true,
         "false" => false,

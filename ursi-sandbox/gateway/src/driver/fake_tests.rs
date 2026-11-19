@@ -1,5 +1,5 @@
 use super::*;
-use crate::models::{PortSpec, SandboxSpec, Status, Visibility};
+use crate::models::{Endpoint, EndpointState, SandboxSpec, Status};
 
 fn sandbox(generation: u64, data_generation: u64) -> Sandbox {
     Sandbox {
@@ -7,7 +7,6 @@ fn sandbox(generation: u64, data_generation: u64) -> Sandbox {
         spec: SandboxSpec {
             image: "test:latest".into(),
             command: vec![],
-            ports: vec![],
             labels: Default::default(),
             memory_mb: 256,
             cpus: 1.0,
@@ -139,10 +138,12 @@ async fn partial_creates_recover_and_stopped_resources_hide_endpoints() {
     for point in ["ensure_after_volume", "ensure_after_create"] {
         let driver = FakeDriver::new();
         let mut sandbox = sandbox(1, 1);
-        sandbox.spec.ports.push(PortSpec {
+        sandbox.endpoints.push(Endpoint {
             name: "ssh".into(),
+            bundle: "terminal".into(),
+            protocol: "ssh".into(),
             port: 22,
-            visibility: Visibility::Public,
+            state: EndpointState::Declared,
             ready: false,
         });
         driver.fail_next(point);

@@ -22,9 +22,11 @@ export const rows: Sandbox[] = samples.map(
         ? [
             {
               name: 'web',
+              bundle: 'web',
+              protocol: 'http',
               port: 8080,
-              visibility: 'public',
-              address: `127.0.0.1:${32100 + i}`,
+              state: 'ready',
+              ready: true,
             },
           ]
         : [],

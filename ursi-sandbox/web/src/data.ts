@@ -13,9 +13,11 @@ export interface Sandbox {
   operation: { kind: string } | null
   endpoints: {
     name: string
-    address: string
+    bundle: string
+    protocol: string
     port: number
-    visibility: string
+    state: string
+    ready: boolean
   }[]
   error: string | null
 }

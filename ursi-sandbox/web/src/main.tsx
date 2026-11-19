@@ -302,9 +302,9 @@ function Endpoints({ source, id }: { source: Source; id: string }) {
           {(state.value || []).map((e) => (
             <li key={e.name}>
               <b>{e.name}</b>
-              <code>{e.address}</code>
+              <code>{e.protocol}</code>
               <span>
-                {e.port} / {e.visibility === 'internal' ? '内部' : '公开'}
+                {e.bundle} · {e.port} / {e.ready ? '就绪' : '不可用'}
               </span>
             </li>
           ))}
@@ -396,9 +396,9 @@ function Details({ source }: { source: Source }) {
                 {r.endpoints.map((e) => (
                   <li key={e.name}>
                     <b>{e.name}</b>
-                    <code>{e.address}</code>
+                    <code>{e.protocol}</code>
                     <span>
-                      {e.port} / {e.visibility === 'internal' ? '内部' : '公开'}
+                      {e.bundle} · {e.port} / {e.ready ? '就绪' : '不可用'}
                     </span>
                   </li>
                 ))}

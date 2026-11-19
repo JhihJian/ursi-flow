@@ -6,7 +6,7 @@
 
 use super::Driver;
 use crate::models::{
-    Capabilities, Endpoint, Error, Observed, Resource, Result, Sandbox, valid_name,
+    Capabilities, Error, Observed, ObservedEndpoint, Resource, Result, Sandbox, valid_name,
 };
 use async_trait::async_trait;
 use std::{
@@ -81,16 +81,18 @@ fn validate(id: &str, resource: Resource) -> Result<()> {
     Ok(())
 }
 
-fn endpoints(sandbox: &Sandbox) -> Vec<Endpoint> {
+fn endpoints(sandbox: &Sandbox) -> Vec<ObservedEndpoint> {
     sandbox
-        .spec
-        .ports
+        .endpoints
         .iter()
-        .map(|port| Endpoint {
-            name: port.name.clone(),
-            port: port.port,
-            visibility: port.visibility,
-            address: format!("127.0.0.1:{}", port.port),
+        .map(|endpoint| ObservedEndpoint {
+            name: endpoint.name.clone(),
+            bundle: endpoint.bundle.clone(),
+            protocol: endpoint.protocol.clone(),
+            port: endpoint.port,
+            state: crate::models::EndpointState::Ready,
+            ready: true,
+            address: format!("127.0.0.1:{}", endpoint.port),
         })
         .collect()
 }

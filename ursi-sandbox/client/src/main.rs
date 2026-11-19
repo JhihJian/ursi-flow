@@ -12,18 +12,19 @@ const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP、ACP 客�
   gateway capabilities | list
   gateway create SPEC_JSON_FILE
   gateway status|start|stop|delete|endpoints SANDBOX_ID
+  forward SANDBOX_ID ENDPOINT_NAME [LOCAL_ADDR]
   acp initialize
   acp new WORKSPACE_CWD
   acp prompt SESSION_ID PROMPT_TEXT_FILE
   acp status|close|cancel SESSION_ID
-  ssh HOST PORT PRIVATE_KEY_FILE KNOWN_HOSTS_FILE SCRIPT_FILE
-  sftp-put|sftp-get HOST PORT PRIVATE_KEY_FILE KNOWN_HOSTS_FILE LOCAL_FILE REMOTE_FILE
+  ssh SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE SCRIPT_FILE
+  sftp-put|sftp-get SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE LOCAL_FILE REMOTE_FILE
 
 配置：
   URSI_GATEWAY_URL                  例如 http://127.0.0.1:8899
   URSI_GATEWAY_KEY[_FILE]           二选一，值或凭据文件
-  URSI_ACP_URL                      例如 ws://172.17.0.2:8765/acp
-  URSI_SESSION_TOKEN[_FILE]         二选一，值或凭据文件
+  URSI_SANDBOX_ID                    ACP、SSH、SFTP 通过 Gateway bridge 的沙箱 ID
+  URSI_ACP_ENDPOINT                  可选，默认 agent_session
   URSI_CLIENT_TIMEOUT_SECS          每操作总期限，默认 120 秒
 
 输出：JSONL，ACP update 为通知，result 才是请求结果。
@@ -49,7 +50,7 @@ fn env(name: &str) -> Result<String> {
     std::env::var(name).map_err(|_| Error::Invalid(format!("需要环境变量 {name}")))
 }
 fn emit(mut value: Value) {
-    for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+    for name in ["URSI_GATEWAY_KEY"] {
         if let Ok(secret) = Secret::from_env(name) {
             value = secret.redact_json(&value);
         }
@@ -71,9 +72,9 @@ async fn main() {
     match run(&args).await {
         Ok(code) => std::process::exit(code),
         Err(error) => {
-            // 输出层再次过滤本进程配置的两种身份，避免对端回显。
+            // 输出层再次过滤 Gateway 身份，避免对端回显。
             let mut message = error.to_string();
-            for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+            for name in ["URSI_GATEWAY_KEY"] {
                 if let Ok(secret) = Secret::from_env(name) {
                     message = secret.redact(&message);
                 }
@@ -150,7 +151,37 @@ async fn run(args: &[String]) -> Result<i32> {
                 Secret::from_env("URSI_GATEWAY_KEY")?,
                 timeout,
             )?;
-            result(gateway.request(method, &path, body).await?);
+            if operation == "endpoints" {
+                result(json!({"endpoints": gateway.endpoints(arg(args, 2)?).await?}));
+            } else {
+                result(gateway.request(method, &path, body).await?);
+            }
+        }
+        "forward" => {
+            if !(args.len() == 3 || args.len() == 4) {
+                return Err(Error::Invalid("参数数量错误，运行 --help 查看说明".into()));
+            }
+            let listen = args
+                .get(3)
+                .map(String::as_str)
+                .unwrap_or("127.0.0.1:0")
+                .parse()
+                .map_err(|_| Error::Invalid("本地监听地址无效".into()))?;
+            let gateway = Gateway::new(
+                &env("URSI_GATEWAY_URL")?,
+                Secret::from_env("URSI_GATEWAY_KEY")?,
+                timeout,
+            )?;
+            let bridge = gateway.bridge(arg(args, 1)?, arg(args, 2)?, listen).await?;
+            let address = bridge.local_addr()?;
+            result(json!({"listen": address.to_string()}));
+            let (cancel, receiver) = tokio::sync::watch::channel(false);
+            tokio::spawn(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                let _ = cancel.send(true);
+            });
+            bridge.run_until(receiver).await?;
+            return Ok(0);
         }
         "acp" => {
             let operation = arg(args, 1)?;
@@ -163,15 +194,27 @@ async fn run(args: &[String]) -> Result<i32> {
                     _ => return Err(Error::Invalid("未知 ACP 命令".into())),
                 },
             )?;
-            let mut acp = Acp::connect(
-                &env("URSI_ACP_URL")?,
-                Secret::from_env("URSI_SESSION_TOKEN")?,
+            let sandbox_id = env("URSI_SANDBOX_ID")?;
+            let gateway = Gateway::new(
+                &env("URSI_GATEWAY_URL")?,
+                Secret::from_env("URSI_GATEWAY_KEY")?,
                 timeout,
-            )
-            .await?;
+            )?;
+            let endpoint =
+                std::env::var("URSI_ACP_ENDPOINT").unwrap_or_else(|_| "agent_session".into());
+            let bridge = gateway
+                .bridge(&sandbox_id, &endpoint, "127.0.0.1:0".parse().unwrap())
+                .await?;
+            let address = bridge.local_addr()?;
+            let (bridge_control, receiver) = tokio::sync::watch::channel(false);
+            let bridge_task = tokio::spawn(bridge.run_until(receiver));
+            let acp_url = format!("ws://{address}/acp");
+            let mut acp = Acp::connect_without_auth(&acp_url, timeout).await?;
             let initialized = acp.initialize().await?;
             if operation == "initialize" {
                 result(initialized);
+                let _ = bridge_control.send(true);
+                let _ = bridge_task.await;
                 return Ok(0);
             }
             let session = arg(args, 2)?;
@@ -187,6 +230,8 @@ async fn run(args: &[String]) -> Result<i32> {
                     acp.notify("session/cancel", json!({"sessionId":session}))
                         .await?;
                     result(json!({"cancelSent":true,"sessionId":session}));
+                    let _ = bridge_control.send(true);
+                    let _ = bridge_task.await;
                     return Ok(0);
                 }
                 _ => unreachable!(),
@@ -205,16 +250,31 @@ async fn run(args: &[String]) -> Result<i32> {
                 0
             };
             result(value);
+            let _ = bridge_control.send(true);
+            let _ = bridge_task.await;
             return Ok(code);
         }
         "ssh" | "sftp-put" | "sftp-get" => {
             let operation = arg(args, 0)?;
             count(args, if operation == "ssh" { 6 } else { 7 })?;
+            let gateway = Gateway::new(
+                &env("URSI_GATEWAY_URL")?,
+                Secret::from_env("URSI_GATEWAY_KEY")?,
+                timeout,
+            )?;
+            let bridge = gateway
+                .bridge(arg(args, 1)?, arg(args, 2)?, "127.0.0.1:0".parse().unwrap())
+                .await?;
+            let address = bridge.local_addr()?;
+            let (host, port) = match address {
+                std::net::SocketAddr::V4(address) => ("127.0.0.1".into(), address.port()),
+                std::net::SocketAddr::V6(address) => ("[::1]".into(), address.port()),
+            };
+            let (bridge_control, receiver) = tokio::sync::watch::channel(false);
+            let bridge_task = tokio::spawn(bridge.run_until(receiver));
             let ssh = Ssh {
-                host: arg(args, 1)?.into(),
-                port: arg(args, 2)?
-                    .parse()
-                    .map_err(|_| Error::Invalid("SSH 端口无效".into()))?,
+                host,
+                port,
                 identity: arg(args, 3)?.into(),
                 known_hosts: arg(args, 4)?.into(),
                 timeout,
@@ -232,7 +292,7 @@ async fn run(args: &[String]) -> Result<i32> {
             // SSH 内容是调用方显式请求的仓库输出，身份配置不放入脚本。
             let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
             let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            for name in ["URSI_GATEWAY_KEY", "URSI_SESSION_TOKEN"] {
+            for name in ["URSI_GATEWAY_KEY"] {
                 if let Ok(secret) = Secret::from_env(name) {
                     stdout = secret.redact(&stdout);
                     stderr = secret.redact(&stderr);
@@ -241,6 +301,8 @@ async fn run(args: &[String]) -> Result<i32> {
             result(
                 json!({"success":output.status.success(),"code":output.status.code(),"stdout":stdout,"stderr":stderr}),
             );
+            let _ = bridge_control.send(true);
+            let _ = bridge_task.await;
             return Ok(if output.status.success() { 0 } else { 1 });
         }
         _ => return Err(Error::Invalid("未知命令，运行 --help 查看说明".into())),

@@ -1,0 +1,29 @@
+{
+  "bundles": {
+    "pi-execution": {
+      "version": "1",
+      "endpoints": [
+        {"name": "ssh", "protocol": "ssh", "port": 2222},
+        {"name": "agent_session", "protocol": "acp", "port": 8765}
+      ],
+      "services": ["sshd", "session-service"],
+      "readiness": {
+        "ssh": "authenticated exec",
+        "agent_session": "GET /healthz"
+      }
+    },
+    "browser": {
+      "version": "1",
+      "endpoints": [
+        {"name": "cdp", "protocol": "http", "port": 9222},
+        {"name": "desktop", "protocol": "websocket", "port": 6080}
+      ],
+      "requires": ["pi-execution"],
+      "services": ["chromium", "novnc"]
+    }
+  },
+  "images": {
+    "ursi-runtime-pi:local": ["pi-execution"],
+    "ursi-runtime-browser:local": ["browser"]
+  }
+}
