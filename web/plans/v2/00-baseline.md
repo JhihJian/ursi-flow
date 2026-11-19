@@ -26,6 +26,6 @@
 
 ## 合并结果
 
-六个工作包依次以 `--no-ff` 合并到 `main`，合并完成后 `e31dcde` 为当前交付点。合并后补了三处收尾：把 `acceptance/` 纳入 `tsconfig.json` 的类型检查范围、给办理页动作下拉补 `aria-label="动作"`、按改名后的可访问名称收紧验收脚本的选择器。
+六个工作包依次以 `--no-ff` 合并到 `main`，随后以一次收尾提交结束，`main` 最新提交即交付点。合并后补了三处收尾：把 `acceptance/` 纳入 `tsconfig.json` 的类型检查范围、给办理页动作下拉补 `aria-label="动作"`、按改名后的可访问名称收紧验收脚本的选择器。
 
 合并后整站复跑：`npm run lint`、`npx tsc --noEmit`、`npm run test`（19 个文件 130 个用例）、`npm run build`、`npx playwright test`（20 个用例）、`npm run test:acceptance`（真实 Server 三个场景）全部通过。
