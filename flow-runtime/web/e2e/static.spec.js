@@ -11,6 +11,13 @@ test('纯静态子目录：主题、列表、深链刷新与只读演示', async
   await page.goto(base)
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(9, 9, 9)')
   await expect(page.getByText('演示数据')).toBeVisible()
+  // 列表页给出名称、说明、节点数与修订；筛选只留命中的包。
+  await expect(page.getByRole('link', { name: /发布检查/ })).toContainText('校验版本号与发布清单后完成发布。')
+  await expect(page.getByRole('link', { name: /普通流转/ })).toContainText('4 个节点')
+  await page.getByLabel('筛选 Flow 包').fill('release')
+  await expect(page.getByText('1 / 2 个包')).toBeVisible()
+  await expect(page.getByRole('link', { name: /普通流转/ })).toHaveCount(0)
+  await page.getByLabel('筛选 Flow 包').fill('')
   await page.getByRole('link', { name: /release-check/ }).click()
   await expect(page).toHaveURL(/\/dist\/#\/flows\/release-check\/edit$/)
   await page.reload()
@@ -22,6 +29,9 @@ test('纯静态子目录：主题、列表、深链刷新与只读演示', async
   await page.getByRole('button', { name: 'references/checklist.md' }).click()
   await expect(page.getByLabel('Markdown 源码')).toContainText('发布检查清单')
   await page.getByRole('link', { name: '运行记录' }).click()
+  await page.getByLabel('筛选运行记录').fill('verify')
+  await expect(page.getByText('2 / 4 条')).toBeVisible()
+  await page.getByLabel('筛选运行记录').fill('')
   await page.getByRole('link', { name: 'verify-003', exact: true }).click()
   await expect(page.locator('[data-status="failed"]').first()).toBeVisible()
   // 详情分流转图与节点执行两类记录：命令节点在节点执行页直接给出标准错误。

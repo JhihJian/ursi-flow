@@ -11,6 +11,7 @@ import {
   Play,
   RotateCcw,
   Save,
+  Search,
   ShieldCheck,
   Trash2,
   Workflow,
@@ -48,7 +49,15 @@ import { Markdown, MarkdownEditor } from './Markdown'
 import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
 import { providerMissing, type FlowFiles, type Source } from './data'
-import { parseFlow, serializeFlow, splitSections, joinSections, syncSections } from './flow/doc'
+import {
+  frontmatterMeta,
+  frontmatterOf,
+  joinSections,
+  parseFlow,
+  serializeFlow,
+  splitSections,
+  syncSections,
+} from './flow/doc'
 import { graphIssues, type ActionKind, type FlowGraph } from './flow/graph'
 import { setActionKind } from './flow/edit'
 
@@ -81,9 +90,56 @@ flowchart TD
 `
 const blankFiles = (): FlowFiles => ({ 'FLOW.md': template })
 
+interface FlowEntry {
+  id: string
+  revision?: string
+  name?: string
+  description?: string
+  nodes?: number
+  files?: number
+  error?: string
+}
+
+/** 列表需要名称、说明与规模：逐个读包，单个失败不影响其余行。 */
+async function listFlows(source: Source, signal: AbortSignal): Promise<FlowEntry[]> {
+  const ids = await source.flows(signal)
+  return Promise.all(
+    ids.map(async (id): Promise<FlowEntry> => {
+      try {
+        const pkg = await source.flow(id, signal)
+        const text = pkg.files['FLOW.md'] ?? ''
+        // 元信息与图分别解析：图坏了也要能列出名称与说明。
+        const meta = { ...frontmatterMeta(frontmatterOf(text)) }
+        let nodes: number | undefined
+        try {
+          nodes = parseFlow(text).graph.nodes.length
+        } catch {
+          nodes = undefined
+        }
+        return {
+          id,
+          revision: pkg.revision,
+          ...meta,
+          nodes,
+          files: Object.keys(pkg.files).length,
+        }
+      } catch (cause) {
+        return { id, error: message(cause) }
+      }
+    }),
+  )
+}
+
 export function Flows({ source }: { source: Source }) {
-  const state = useLoad((signal) => source.flows(signal), [source])
-  const ids = state.value || []
+  const state = useLoad((signal) => listFlows(source, signal), [source])
+  const [query, setQuery] = useState('')
+  const rows = state.value || []
+  const needle = query.trim().toLowerCase()
+  const shown = needle
+    ? rows.filter((row) =>
+        [row.id, row.name, row.description].some((value) => value?.toLowerCase().includes(needle)),
+      )
+    : rows
   return (
     <main>
       <PageHeading
@@ -103,7 +159,7 @@ export function Flows({ source }: { source: Source }) {
       />
       {!state.value ? (
         <AsyncState state={state} />
-      ) : !ids.length ? (
+      ) : !rows.length ? (
         <Empty role="status">
           <EmptyMedia>
             <Workflow />
@@ -116,27 +172,81 @@ export function Flows({ source }: { source: Source }) {
           </EmptyContent>
         </Empty>
       ) : (
-        <ItemGroup>
-          {ids.map((id) => (
-            <Item key={id} asChild>
-              <Link to={`/flows/${encodeURIComponent(id)}/edit`}>
-                <ItemMedia>
-                  <Workflow />
-                </ItemMedia>
-                <ItemContent>
-                  <ItemTitle>{id}</ItemTitle>
-                  <ItemDescription>用图形或文档编辑包内容</ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  <span className="text-xs text-muted-foreground">打开</span>
-                  <ChevronRight className="size-4 text-muted-foreground" />
-                </ItemActions>
-              </Link>
-            </Item>
-          ))}
-        </ItemGroup>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="按名称或说明筛选"
+                aria-label="筛选 Flow 包"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {needle ? `${shown.length} / ${rows.length} 个包` : `共 ${rows.length} 个包`}
+            </p>
+          </div>
+          {!shown.length ? (
+            <Empty>
+              <EmptyMedia>
+                <Search />
+              </EmptyMedia>
+              <EmptyTitle>没有匹配的 Flow 包</EmptyTitle>
+              <EmptyContent>
+                <Button variant="ghost" size="sm" onClick={() => setQuery('')}>
+                  清除筛选
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : (
+            <ItemGroup>
+              {shown.map((row) => (
+                <Item key={row.id} asChild>
+                  <Link to={`/flows/${encodeURIComponent(row.id)}/edit`}>
+                    <ItemMedia>
+                      <Workflow />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                        <span className="truncate">{row.name || row.id}</span>
+                        <code className="truncate font-mono text-[11px] font-normal text-muted-foreground">
+                          {row.id}
+                        </code>
+                      </ItemTitle>
+                      <ItemDescription>
+                        {row.error ? (
+                          <span className="text-warn">无法读取包内容：{row.error}</span>
+                        ) : (
+                          row.description || '这个包还没有写说明'
+                        )}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions className="gap-2">
+                      {row.error ? (
+                        <Badge variant="warn">不可用</Badge>
+                      ) : (
+                        <>
+                          {typeof row.nodes === 'number' && (
+                            <Badge variant="outline">{row.nodes} 个节点</Badge>
+                          )}
+                          {row.revision && (
+                            <Badge variant="default" className="hidden font-mono sm:inline-flex">
+                              {row.revision.slice(0, 8)}
+                            </Badge>
+                          )}
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        </>
+                      )}
+                    </ItemActions>
+                  </Link>
+                </Item>
+              ))}
+            </ItemGroup>
+          )}
+        </div>
       )}
-      <p className="mt-3 text-xs text-muted-foreground">共 {ids.length} 个 Flow 包</p>
     </main>
   )
 }

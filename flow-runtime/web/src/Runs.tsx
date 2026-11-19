@@ -8,12 +8,14 @@ import {
   ListOrdered,
   Network,
   RefreshCw,
+  Search,
   SlidersHorizontal,
   Terminal,
 } from 'lucide-react'
 import { AsyncState, PageHeading, Refresh, Status, message, useLoad, type Loaded } from './main'
 import { Alert, AlertDescription } from './components/ui/alert'
 import { Badge } from './components/ui/badge'
+import { Input } from './components/ui/input'
 import { Button, buttonVariants } from './components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
 import {
@@ -83,8 +85,17 @@ const isAgent = (node: NodeRun) => node.actionKind === '新建Agent' || node.act
 
 export function Runs({ source }: { source: Source }) {
   const state = useLoad((signal) => source.runs(signal), [source])
+  const [query, setQuery] = useState('')
   const rows = state.value || []
   const running = rows.filter((row) => row.status === 'running').length
+  const needle = query.trim().toLowerCase()
+  const shown = needle
+    ? rows.filter((row) =>
+        [row.id, row.flow, row.revision, row.cwd, row.status].some((value) =>
+          value?.toLowerCase().includes(needle),
+        ),
+      )
+    : rows
   return (
     <main>
       <PageHeading
@@ -107,51 +118,95 @@ export function Runs({ source }: { source: Source }) {
           </EmptyContent>
         </Empty>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {['Run ID', 'Flow', '状态', '修订', '工作目录', ''].map((cell) => (
-                <TableHead key={cell}>{cell}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link className="font-medium text-foreground hover:underline" to={`/runs/${encodeURIComponent(row.id)}`}>
-                    {row.id}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link className="hover:underline" to={`/flows/${encodeURIComponent(row.flow)}/edit`}>
-                    {row.flow}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Status status={row.status} />
-                </TableCell>
-                <TableCell className="font-mono" data-label="修订">
-                  {row.revision.slice(0, 8)}
-                </TableCell>
-                <TableCell className="font-mono" data-label="工作目录">
-                  {row.cwd}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="icon-sm" asChild>
-                    <Link
-                      to={`/runs/${encodeURIComponent(row.id)}`}
-                      aria-label={`查看运行 ${row.id}`}
-                      title="查看详情"
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="按 Run、Flow 或状态筛选"
+                aria-label="筛选运行记录"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {needle ? `${shown.length} / ${rows.length} 条` : `共 ${rows.length} 条`}
+            </p>
+          </div>
+          {!shown.length ? (
+            <Empty>
+              <EmptyMedia>
+                <Search />
+              </EmptyMedia>
+              <EmptyTitle>没有匹配的运行记录</EmptyTitle>
+              <EmptyContent>
+                <Button variant="ghost" size="sm" onClick={() => setQuery('')}>
+                  清除筛选
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {['Run', 'Flow', '状态', '修订', '工作目录', ''].map((cell, index) => (
+                    <TableHead key={cell || index} className={index === 5 ? 'w-14' : undefined}>
+                      {cell}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shown.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="min-w-0">
+                      <Link
+                        className="block truncate font-mono text-[12px] font-medium text-foreground hover:underline"
+                        title={row.id}
+                        to={`/runs/${encodeURIComponent(row.id)}`}
+                      >
+                        {row.id}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        className="whitespace-nowrap hover:underline"
+                        to={`/flows/${encodeURIComponent(row.flow)}/edit`}
+                      >
+                        {row.flow}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Status status={row.status} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs" data-label="修订">
+                      {row.revision.slice(0, 8)}
+                    </TableCell>
+                    <TableCell
+                      className="max-w-72 truncate font-mono text-xs text-muted-foreground"
+                      title={row.cwd}
+                      data-label="工作目录"
                     >
-                      <ChevronRight />
-                    </Link>
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                      {row.cwd}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon-sm" asChild>
+                        <Link
+                          to={`/runs/${encodeURIComponent(row.id)}`}
+                          aria-label={`查看运行 ${row.id}`}
+                          title="查看详情"
+                        >
+                          <ChevronRight />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
       )}
     </main>
   )

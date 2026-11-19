@@ -1,5 +1,6 @@
 // FLOW.md 文档模型：开头元信息、Mermaid 图与各节点的动作/结果小节。
 // 图形编辑只改图语句和小节骨架，节点提示词与脚本正文保持原文。
+import { parse as parseYaml } from 'yaml'
 import { parseGraph, serializeGraph, type ActionKind, type FlowGraph } from './graph'
 
 export interface FlowSection {
@@ -16,18 +17,43 @@ export interface ParsedFlow {
   post: string
 }
 
+/** 开头元信息的字段；列表页只读名称与说明，解析失败按没有元信息处理。 */
+export interface FlowMeta {
+  name?: string
+  description?: string
+}
+
+export function frontmatterMeta(frontmatter: string): FlowMeta {
+  const body = frontmatter.replace(/^---\r?\n/, '').replace(/\r?\n---[ \t]*\n?$/, '')
+  if (!body.trim()) return {}
+  try {
+    const data = parseYaml(body) as Record<string, unknown> | null
+    if (!data || typeof data !== 'object') return {}
+    const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : undefined)
+    const meta: FlowMeta = {}
+    const name = text(data.name)
+    const description = text(data.description)
+    if (name) meta.name = name
+    if (description) meta.description = description
+    return meta
+  } catch {
+    return {}
+  }
+}
+
 const fence = '```'
 const mermaidFence = /```mermaid[^\n]*\n([\s\S]*?)```/
 export const ACTION_FENCE = /```(新建Agent|复用Agent|执行自定义命令|执行Flow)[ \t]*\n([\s\S]*?)```/
 
-export function parseFlow(text: string): ParsedFlow {
-  let frontmatter = ''
-  let rest = text
+/** 取出开头元信息原文；没有元信息时返回空串。 */
+export function frontmatterOf(text: string): string {
   const head = text.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/)
-  if (head) {
-    frontmatter = head[0].replace(/\r\n/g, '\n').replace(/\n*$/, '\n')
-    rest = text.slice(head[0].length)
-  }
+  return head ? head[0].replace(/\r\n/g, '\n').replace(/\n*$/, '\n') : ''
+}
+
+export function parseFlow(text: string): ParsedFlow {
+  const frontmatter = frontmatterOf(text)
+  const rest = text.slice(frontmatter.length)
   const match = rest.match(mermaidFence)
   if (!match) throw new Error('FLOW.md 缺少 mermaid 图')
   const start = match.index ?? 0

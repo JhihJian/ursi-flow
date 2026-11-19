@@ -529,3 +529,19 @@ test('路由记录按时间排列并区分开始、结束与判定', async () =>
   assert.equal(decisionSummary(facts.routeDecisions[0], () => '第二步'), '已分析 → 第二步')
   assert.equal(enteredFromLabel({ kind: 'parallel' }), '并行分支')
 })
+
+test('列表用的元信息解析：名称与说明取开头元信息，缺项或坏 YAML 都不报错', async () => {
+  const { frontmatterOf, frontmatterMeta } = await flow('doc.ts')
+  const text = `---\nname: 发布检查\ndescription: 校验版本号与发布清单。\nvariables:\n  任务:\n    description: 输入\n---\n\n\`\`\`mermaid\nflowchart TD\n  start((开始)) --> work[执行]\n\`\`\`\n`
+  const head = frontmatterOf(text)
+  assert.match(head, /^---\nname: 发布检查/)
+  assert.deepEqual(frontmatterMeta(head), {
+    name: '发布检查',
+    description: '校验版本号与发布清单。',
+  })
+  // 没有元信息、只有部分字段或 YAML 写坏时都退化为空对象或部分字段。
+  assert.equal(frontmatterOf('# 无元信息'), '')
+  assert.deepEqual(frontmatterMeta(''), {})
+  assert.deepEqual(frontmatterMeta('---\nname: 只有名称\n---\n'), { name: '只有名称' })
+  assert.deepEqual(frontmatterMeta('---\nname: [坏\n---\n'), {})
+})

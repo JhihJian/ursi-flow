@@ -51,6 +51,13 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 
 嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
 
+## 列表页
+
+- **Flow 包**：每行显示 `FLOW.md` 元信息里的名称与说明、节点数和当前修订，包读不到时标为不可用并给出原因。顶部的筛选框按名称或说明过滤，右侧显示命中数与总数。
+- **运行记录**：表格列出 Run、Flow、状态、修订与工作目录，筛选框按 Run、Flow、修订、目录或状态过滤。
+
+两个列表都只用 shadcn 组件（`Item`、`Table`、`Input`、`Button`、`Badge`、`Empty`），筛选只对已读到的数据生效，不额外请求接口。
+
 ## 运行详情
 
 运行记录详情共用一个页头与两类记录。页头给出运行 ID、状态、Flow 与修订、开始时间与耗时，右侧是「运行参数」「刷新」「停止运行」；下面一行统计节点访问、路由判定、并行轮次与恢复记录。运行参数（工作目录、修订、并发、模型、服务地址与启动变量）收在同名对话框里，不再占正文。
