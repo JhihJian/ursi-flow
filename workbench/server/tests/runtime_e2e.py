@@ -1,4 +1,4 @@
-"""Black-box acceptance: scripts/ci/run-workspace-isolation.sh server (Linux)."""
+"""Black-box acceptance for the workbench server, run on Linux."""
 import argparse
 from http.client import HTTPConnection
 import json
