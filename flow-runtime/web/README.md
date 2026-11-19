@@ -49,14 +49,16 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 {"mode":"live","apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
 ```
 
-嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
+嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`（`?detail=1` 返回包摘要）、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
 
 ## 列表页
 
-- **Flow 包**：每行显示 `FLOW.md` 元信息里的名称与说明、节点数和当前修订，包读不到时标为不可用并给出原因。顶部的筛选框按名称或说明过滤，右侧显示命中数与总数。
-- **运行记录**：表格列出 Run、Flow、状态、修订与工作目录，筛选框按 Run、Flow、修订、目录或状态过滤。
+两个列表都是数据表格（`src/components/ui/data-table.tsx`）：TanStack Table 提供模型，标记与样式用本目录的 shadcn `Table`。表头可点击排序，筛选框按关键字匹配，行数超过一页时给出翻页；窄屏隐藏次要列，页面不产生横向滚动。
 
-两个列表都只用 shadcn 组件（`Item`、`Table`、`Input`、`Button`、`Badge`、`Empty`），筛选只对已读到的数据生效，不额外请求接口。
+- **Flow 包**：一次请求 `GET /api/v1/flows?detail=1` 取回每个包的名称、说明、节点数、启动变量数与修订（只返回标识的 `GET /api/v1/flows` 保留给工作台）。解析不了的包占一行并标为「不可用」，不影响其他行。行内提供「编辑」与「删除」，删除前弹确认框，成功后清空筛选并刷新列表；演示模式禁用删除按钮。
+- **运行记录**：列出 Run、Flow、状态、修订与工作目录，行内「详情」进入运行页。
+
+删除只作用于当前修订的包目录，已启动的运行仍按各自固定的修订读取历史。
 
 ## 运行详情
 

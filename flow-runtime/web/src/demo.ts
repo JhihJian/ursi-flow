@@ -1,6 +1,7 @@
 // 演示数据：只在静态交付或未配置 Runtime 时使用，不连接 daemon，也不执行命令。
 import { ApiError, type FlowConfig, type FlowFiles, type FlowPackage, type RouteDecision, type Run, type RunHistory, type Source } from './data'
 import { demoSessions } from './demo-trajectory'
+import { frontmatterMeta, frontmatterOf, parseFlow } from './flow/doc'
 
 const ordinary: FlowFiles = {
   'FLOW.md': `---
@@ -348,6 +349,18 @@ export const demoSource: Source = {
   mode: 'demo',
   workspace: { name: 'default', path: base.cwd },
   flows: async () => Object.keys(packages),
+  flowSummaries: async () =>
+    Object.values(packages).map((pkg) => {
+      const text = pkg.files['FLOW.md'] ?? ''
+      const meta = frontmatterMeta(frontmatterOf(text))
+      let nodes: number | undefined
+      try {
+        nodes = parseFlow(text).graph.nodes.length
+      } catch {
+        nodes = undefined
+      }
+      return { id: pkg.id, revision: pkg.revision, ...meta, nodes }
+    }),
   flow: async (id) => {
     const found = packages[id]
     if (!found) throw new ApiError(404, 'not_found', 'Flow 不存在')

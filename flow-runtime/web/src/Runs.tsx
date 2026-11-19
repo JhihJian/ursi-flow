@@ -8,14 +8,22 @@ import {
   ListOrdered,
   Network,
   RefreshCw,
-  Search,
   SlidersHorizontal,
   Terminal,
 } from 'lucide-react'
-import { AsyncState, PageHeading, Refresh, Status, message, useLoad, type Loaded } from './main'
+import {
+  AsyncState,
+  PageHeading,
+  Refresh,
+  Status,
+  message,
+  statusLabel,
+  useLoad,
+  type Loaded,
+} from './main'
 import { Alert, AlertDescription } from './components/ui/alert'
 import { Badge } from './components/ui/badge'
-import { Input } from './components/ui/input'
+import { DataTable, dataTableFeatures, type DataTableColumn } from './components/ui/data-table'
 import { Button, buttonVariants } from './components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
 import {
@@ -46,7 +54,8 @@ import {
   TableRow,
 } from './components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
-import type { FlowPackage, NodeRun, RunHistory, Source } from './data'
+import { createColumnHelper } from '@tanstack/react-table'
+import type { FlowPackage, NodeRun, Run, RunHistory, Source } from './data'
 import { actionOf, parseFlow, splitSections } from './flow/doc'
 import type { ActionKind, FlowGraph } from './flow/graph'
 import {
@@ -85,17 +94,88 @@ const isAgent = (node: NodeRun) => node.actionKind === '新建Agent' || node.act
 
 export function Runs({ source }: { source: Source }) {
   const state = useLoad((signal) => source.runs(signal), [source])
-  const [query, setQuery] = useState('')
   const rows = state.value || []
   const running = rows.filter((row) => row.status === 'running').length
-  const needle = query.trim().toLowerCase()
-  const shown = needle
-    ? rows.filter((row) =>
-        [row.id, row.flow, row.revision, row.cwd, row.status].some((value) =>
-          value?.toLowerCase().includes(needle),
+  const columns = useMemo<DataTableColumn<Run>[]>(() => {
+    const helper = createColumnHelper<typeof dataTableFeatures, Run>()
+    return helper.columns([
+      helper.accessor((row) => row.id, {
+        id: 'id',
+        header: 'Run',
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <Link
+            className="block max-w-32 truncate font-mono text-[11px] font-medium text-foreground hover:underline sm:max-w-56 sm:text-[12px]"
+            title={row.original.id}
+            to={`/runs/${encodeURIComponent(row.original.id)}`}
+          >
+            {row.original.id}
+          </Link>
         ),
-      )
-    : rows
+      }),
+      helper.accessor((row) => row.flow, {
+        id: 'flow',
+        header: 'Flow',
+        meta: { className: 'hidden sm:table-cell', cellClassName: 'hidden sm:table-cell' },
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <Link
+            className="whitespace-nowrap hover:underline"
+            to={`/flows/${encodeURIComponent(row.original.flow)}/edit`}
+          >
+            {row.original.flow}
+          </Link>
+        ),
+      }),
+      helper.accessor((row) => statusLabel(row.status), {
+        id: 'status',
+        header: '状态',
+        sortFn: 'text',
+        cell: ({ row }) => <Status status={row.original.status} />,
+      }),
+      helper.accessor((row) => row.revision, {
+        id: 'revision',
+        header: '修订',
+        meta: { className: 'hidden sm:table-cell', cellClassName: 'hidden sm:table-cell' },
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <code className="font-mono text-[11px] text-muted-foreground">
+            {row.original.revision.slice(0, 8)}
+          </code>
+        ),
+      }),
+      helper.accessor((row) => row.cwd, {
+        id: 'cwd',
+        header: '工作目录',
+        meta: { className: 'hidden lg:table-cell', cellClassName: 'hidden lg:table-cell' },
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <span
+            className="block max-w-72 truncate font-mono text-[11px] text-muted-foreground"
+            title={row.original.cwd}
+          >
+            {row.original.cwd}
+          </span>
+        ),
+      }),
+      helper.display({
+        id: 'actions',
+        header: () => <span className="sr-only">操作</span>,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="icon-sm" asChild>
+              <Link
+                to={`/runs/${encodeURIComponent(row.original.id)}`}
+                aria-label={`查看运行 ${row.original.id}`}
+              >
+                <ChevronRight />
+              </Link>
+            </Button>
+          </div>
+        ),
+      }),
+    ])
+  }, [])
   return (
     <main>
       <PageHeading
@@ -118,95 +198,13 @@ export function Runs({ source }: { source: Source }) {
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="按 Run、Flow 或状态筛选"
-                aria-label="筛选运行记录"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {needle ? `${shown.length} / ${rows.length} 条` : `共 ${rows.length} 条`}
-            </p>
-          </div>
-          {!shown.length ? (
-            <Empty>
-              <EmptyMedia>
-                <Search />
-              </EmptyMedia>
-              <EmptyTitle>没有匹配的运行记录</EmptyTitle>
-              <EmptyContent>
-                <Button variant="ghost" size="sm" onClick={() => setQuery('')}>
-                  清除筛选
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {['Run', 'Flow', '状态', '修订', '工作目录', ''].map((cell, index) => (
-                    <TableHead key={cell || index} className={index === 5 ? 'w-14' : undefined}>
-                      {cell}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {shown.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="min-w-0">
-                      <Link
-                        className="block truncate font-mono text-[12px] font-medium text-foreground hover:underline"
-                        title={row.id}
-                        to={`/runs/${encodeURIComponent(row.id)}`}
-                      >
-                        {row.id}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        className="whitespace-nowrap hover:underline"
-                        to={`/flows/${encodeURIComponent(row.flow)}/edit`}
-                      >
-                        {row.flow}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Status status={row.status} />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs" data-label="修订">
-                      {row.revision.slice(0, 8)}
-                    </TableCell>
-                    <TableCell
-                      className="max-w-72 truncate font-mono text-xs text-muted-foreground"
-                      title={row.cwd}
-                      data-label="工作目录"
-                    >
-                      {row.cwd}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon-sm" asChild>
-                        <Link
-                          to={`/runs/${encodeURIComponent(row.id)}`}
-                          aria-label={`查看运行 ${row.id}`}
-                          title="查看详情"
-                        >
-                          <ChevronRight />
-                        </Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+        <DataTable
+          columns={columns}
+          data={rows}
+          filterPlaceholder="按 Run、Flow、状态或目录筛选"
+          countLabel="条记录"
+          emptyTitle="暂无运行记录"
+        />
       )}
     </main>
   )

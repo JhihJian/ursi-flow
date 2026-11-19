@@ -11,7 +11,6 @@ import {
   Play,
   RotateCcw,
   Save,
-  Search,
   ShieldCheck,
   Trash2,
   Workflow,
@@ -30,17 +29,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from './components/ui/dialog'
+import { DataTable, dataTableFeatures, type DataTableColumn } from './components/ui/data-table'
 import { Empty, EmptyContent, EmptyMedia, EmptyTitle } from './components/ui/empty'
 import { Input } from './components/ui/input'
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from './components/ui/item'
 import { Label } from './components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Textarea } from './components/ui/textarea'
@@ -48,7 +39,8 @@ import { FlowCanvas } from './Graph'
 import { Markdown, MarkdownEditor } from './Markdown'
 import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
-import { providerMissing, type FlowFiles, type Source } from './data'
+import { createColumnHelper } from '@tanstack/react-table'
+import { providerMissing, type FlowFiles, type FlowSummary, type Source } from './data'
 import {
   frontmatterMeta,
   frontmatterOf,
@@ -90,61 +82,132 @@ flowchart TD
 `
 const blankFiles = (): FlowFiles => ({ 'FLOW.md': template })
 
-interface FlowEntry {
-  id: string
-  revision?: string
-  name?: string
-  description?: string
-  nodes?: number
-  files?: number
-  error?: string
-}
-
-/** 列表需要名称、说明与规模：逐个读包，单个失败不影响其余行。 */
-async function listFlows(source: Source, signal: AbortSignal): Promise<FlowEntry[]> {
-  const ids = await source.flows(signal)
-  return Promise.all(
-    ids.map(async (id): Promise<FlowEntry> => {
-      try {
-        const pkg = await source.flow(id, signal)
-        const text = pkg.files['FLOW.md'] ?? ''
-        // 元信息与图分别解析：图坏了也要能列出名称与说明。
-        const meta = { ...frontmatterMeta(frontmatterOf(text)) }
-        let nodes: number | undefined
-        try {
-          nodes = parseFlow(text).graph.nodes.length
-        } catch {
-          nodes = undefined
-        }
-        return {
-          id,
-          revision: pkg.revision,
-          ...meta,
-          nodes,
-          files: Object.keys(pkg.files).length,
-        }
-      } catch (cause) {
-        return { id, error: message(cause) }
-      }
-    }),
-  )
-}
-
+/** 列表行：名称、说明与规模来自 daemon 的摘要接口，一次请求读完整个目录。 */
 export function Flows({ source }: { source: Source }) {
-  const state = useLoad((signal) => listFlows(source, signal), [source])
-  const [query, setQuery] = useState('')
+  const state = useLoad((signal) => source.flowSummaries(signal), [source])
   const rows = state.value || []
-  const needle = query.trim().toLowerCase()
-  const shown = needle
-    ? rows.filter((row) =>
-        [row.id, row.name, row.description].some((value) => value?.toLowerCase().includes(needle)),
-      )
-    : rows
+  const [removing, setRemoving] = useState<FlowSummary | null>(null)
+  const [resetKey, setResetKey] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const readOnly = source.mode === 'demo'
+
+  const columns = useMemo<DataTableColumn<FlowSummary>[]>(() => {
+    const helper = createColumnHelper<typeof dataTableFeatures, FlowSummary>()
+    return helper.columns([
+      // 筛选按显示名、标识与说明匹配，与输入框提示一致。
+      helper.accessor((row) => `${row.name ?? ''} ${row.id}`, {
+        id: 'name',
+        header: '名称',
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <Link
+              className="truncate font-medium text-foreground hover:underline"
+              to={`/flows/${encodeURIComponent(row.original.id)}/edit`}
+            >
+              {row.original.name || row.original.id}
+            </Link>
+            <code className="truncate font-mono text-[11px] text-muted-foreground">
+              {row.original.id}
+            </code>
+          </div>
+        ),
+      }),
+      helper.accessor((row) => row.description ?? '', {
+        id: 'description',
+        header: '说明',
+        meta: { className: 'hidden lg:table-cell', cellClassName: 'hidden lg:table-cell' },
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.error ? (
+            <span className="line-clamp-2 text-xs text-warn">无法解析：{row.original.error}</span>
+          ) : (
+            <span className="line-clamp-2 text-xs text-muted-foreground">
+              {row.original.description || '还没有写说明'}
+            </span>
+          ),
+      }),
+      helper.accessor((row) => row.nodes ?? -1, {
+        id: 'nodes',
+        header: '节点',
+        sortFn: 'alphanumeric',
+        cell: ({ row }) =>
+          row.original.error ? (
+            <Badge variant="warn">不可用</Badge>
+          ) : (
+            <span className="tabular-nums">{row.original.nodes ?? '·'}</span>
+          ),
+      }),
+      helper.accessor((row) => row.variables ?? 0, {
+        id: 'variables',
+        header: '启动变量',
+        meta: { className: 'hidden sm:table-cell', cellClassName: 'hidden sm:table-cell' },
+        sortFn: 'alphanumeric',
+        cell: ({ row }) => <span className="tabular-nums">{row.original.variables ?? 0}</span>,
+      }),
+      helper.accessor((row) => row.revision ?? '', {
+        id: 'revision',
+        header: '修订',
+        meta: { className: 'hidden sm:table-cell', cellClassName: 'hidden sm:table-cell' },
+        sortFn: 'text',
+        cell: ({ row }) => (
+          <code className="font-mono text-[11px] text-muted-foreground">
+            {row.original.revision ? row.original.revision.slice(0, 8) : '·'}
+          </code>
+        ),
+      }),
+      helper.display({
+        id: 'actions',
+        header: () => <span className="sr-only">操作</span>,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="sm" asChild>
+              <Link to={`/flows/${encodeURIComponent(row.original.id)}/edit`}>
+                编辑
+                <ChevronRight />
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`删除 ${row.original.id}`}
+              title={readOnly ? '演示数据不能删除' : '删除'}
+              disabled={readOnly}
+              onClick={() => {
+                setError('')
+                setRemoving(row.original)
+              }}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ),
+      }),
+    ])
+  }, [readOnly])
+
+  const remove = async () => {
+    if (!removing) return
+    setBusy(true)
+    setError('')
+    try {
+      await source.remove(removing.id)
+      setRemoving(null)
+      setResetKey((count) => count + 1)
+      state.refresh()
+    } catch (cause) {
+      setError(message(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <main>
       <PageHeading
         title="Flow 包"
-        description="已发布的流程目录，新运行使用当前修订"
+        description={`${rows.length} 个包 · 新运行使用当前修订`}
         actions={
           <>
             <Refresh state={state} />
@@ -172,81 +235,38 @@ export function Flows({ source }: { source: Source }) {
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="按名称或说明筛选"
-                aria-label="筛选 Flow 包"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {needle ? `${shown.length} / ${rows.length} 个包` : `共 ${rows.length} 个包`}
-            </p>
-          </div>
-          {!shown.length ? (
-            <Empty>
-              <EmptyMedia>
-                <Search />
-              </EmptyMedia>
-              <EmptyTitle>没有匹配的 Flow 包</EmptyTitle>
-              <EmptyContent>
-                <Button variant="ghost" size="sm" onClick={() => setQuery('')}>
-                  清除筛选
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : (
-            <ItemGroup>
-              {shown.map((row) => (
-                <Item key={row.id} asChild>
-                  <Link to={`/flows/${encodeURIComponent(row.id)}/edit`}>
-                    <ItemMedia>
-                      <Workflow />
-                    </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                        <span className="truncate">{row.name || row.id}</span>
-                        <code className="truncate font-mono text-[11px] font-normal text-muted-foreground">
-                          {row.id}
-                        </code>
-                      </ItemTitle>
-                      <ItemDescription>
-                        {row.error ? (
-                          <span className="text-warn">无法读取包内容：{row.error}</span>
-                        ) : (
-                          row.description || '这个包还没有写说明'
-                        )}
-                      </ItemDescription>
-                    </ItemContent>
-                    <ItemActions className="gap-2">
-                      {row.error ? (
-                        <Badge variant="warn">不可用</Badge>
-                      ) : (
-                        <>
-                          {typeof row.nodes === 'number' && (
-                            <Badge variant="outline">{row.nodes} 个节点</Badge>
-                          )}
-                          {row.revision && (
-                            <Badge variant="default" className="hidden font-mono sm:inline-flex">
-                              {row.revision.slice(0, 8)}
-                            </Badge>
-                          )}
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        </>
-                      )}
-                    </ItemActions>
-                  </Link>
-                </Item>
-              ))}
-            </ItemGroup>
-          )}
-        </div>
+        <DataTable
+          columns={columns}
+          data={rows}
+          filterPlaceholder="按名称、说明或标识筛选"
+          countLabel="个包"
+          emptyTitle="暂无 Flow 包"
+          filterResetKey={resetKey}
+        />
       )}
+      <Dialog open={Boolean(removing)} onOpenChange={(next) => !next && setRemoving(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除 {removing?.name || removing?.id}</DialogTitle>
+            <DialogDescription>
+              删除会从当前修订移除整个包目录，已启动的运行仍可读取历史。
+            </DialogDescription>
+          </DialogHeader>
+          {error && (
+            <Alert variant="error">
+              <AlertDescription role="alert">{error}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">取消</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={remove} disabled={busy}>
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

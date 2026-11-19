@@ -7,6 +7,16 @@ export interface Revision {
 export interface FlowPackage extends Revision {
   files: FlowFiles
 }
+/** 列表用的包摘要：一次取回名称、说明与规模，解析不了的包只带错误原因。 */
+export interface FlowSummary extends Revision {
+  id: string
+  name?: string
+  description?: string
+  nodes?: number
+  parallels?: number
+  variables?: number
+  error?: string
+}
 /** 模型接入配置：密钥只回传是否已配置，页面不保存明文。 */
 export interface ProviderConfig {
   baseUrl: string
@@ -168,6 +178,7 @@ export interface Source {
   mode: 'demo' | 'live'
   workspace?: { name: string; path: string }
   flows(signal?: AbortSignal): Promise<string[]>
+  flowSummaries(signal?: AbortSignal): Promise<FlowSummary[]>
   flow(id: string, signal?: AbortSignal): Promise<FlowPackage>
   create(id: string, files: FlowFiles): Promise<Revision>
   validate(id: string, files: FlowFiles): Promise<{ id: string; valid: boolean }>
@@ -243,6 +254,7 @@ function createClient(apiBase: string): Source {
   return {
     mode: 'live',
     flows: (signal) => request('/flows', { signal }),
+    flowSummaries: (signal) => request('/flows?detail=1', { signal }),
     flow: (id, signal) => request(flowPath(id), { signal }),
     create: (id, files) => send('POST', '/flows', { id, files }),
     validate: (id, files) => send('POST', '/flows/validate', { id, files }),

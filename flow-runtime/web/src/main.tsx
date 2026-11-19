@@ -94,6 +94,8 @@ export function Refresh({ state }: { state: Loaded<unknown> }) {
     </Button>
   )
 }
+/** 状态的中文名；排序与筛选都按它匹配，读起来才和界面一致。 */
+export const statusLabel = (status: string) => statusLabels[status] || status
 const statusLabels: Record<string, string> = {
   running: '运行中',
   completed: '已完成',

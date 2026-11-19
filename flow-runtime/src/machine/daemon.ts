@@ -108,6 +108,8 @@ async function dispatch(request: unknown) {
 			return catalog.change(op.slice(5), a.id, a.files, a.expectedRevision);
 		case "flow.list":
 			return catalog.list();
+		case "flow.summaries":
+			return catalog.summaries();
 		case "flow.get":
 			return catalog.get(a.id);
 		case "run.start":

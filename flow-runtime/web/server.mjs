@@ -125,7 +125,11 @@ function requireFiles(value) {
 // 把一次同源 HTTP 请求翻译成 daemon 操作；不认识的路径返回 null。
 function route(method, path, body, context) {
   if (path === '/api/v1/flows') {
-    if (method === 'GET') return { op: 'flow.list', args: {} }
+    // 不带查询参数时只返回标识，列表页用 detail=1 一次取回名称、说明与规模。
+    if (method === 'GET')
+      return context.query?.get('detail') === '1'
+        ? { op: 'flow.summaries', args: {} }
+        : { op: 'flow.list', args: {} }
     if (method === 'POST')
       return {
         op: 'flow.create',
@@ -287,7 +291,7 @@ export async function createConsole(env) {
           JSON.stringify({ error: { code: 'cross_origin', message: '只接受同源写入' } }),
         )
     }
-    const path = (req.url || '/').split('?')[0]
+    const [path, search] = (req.url || '/').split('?')
     if (path === '/console-config.json' && req.method === 'GET')
       return send(200, JSON.stringify(config))
     if (path.startsWith('/api/')) {
@@ -319,7 +323,10 @@ export async function createConsole(env) {
       }
       let request
       try {
-        request = route(req.method, path, body, { cwd })
+        request = route(req.method, path, body, {
+          cwd,
+          query: new URLSearchParams(search || ''),
+        })
       } catch (e) {
         return fail(e)
       }

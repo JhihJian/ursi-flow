@@ -34,7 +34,7 @@ daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命�
 - 可选 `contextWindow`、`maxTokens`、`reasoning`、`thinkingLevel`。
 - provider 缺字段时 `run.start` 直接返回 `invalid_request` 并列出缺项，控制台会禁用“启动运行”按钮并在页面提示缺什么。
 - `config.json` 含明文密钥，权限保持 `0600`。
-- daemon 把每次 Agent 节点执行的会话切片写到 `~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`，与 `facts.json` 同目录。`run.trajectory` 按节点执行读取切片，超过 8 MiB 只返回大小；`run.flow` 按运行持有的目录修订读取包，Flow 之后被改动或删除不影响已完成的运行。
+- daemon 把每次 Agent 节点执行的会话切片写到 `~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`，与 `facts.json` 同目录。`run.trajectory` 按节点执行读取切片，超过 8 MiB 只返回大小；`run.flow` 按运行持有的目录修订读取包，Flow 之后被改动或删除不影响已完成的运行。`flow.summaries` 一次读完当前修订下每个包的名称、说明与规模，供控制台列表使用。
 
 ## 项目边界
 

@@ -11,7 +11,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { loadFlow } from "../core/definition/flow-loader.ts";
-import { FlowSyntaxError } from "../core/definition/parser.ts";
+import { FlowSyntaxError, parseFlow } from "../core/definition/parser.ts";
 import { BusinessError, invalid } from "./errors.ts";
 
 function validId(value: unknown): value is string {
@@ -97,6 +97,38 @@ export class Catalog {
 	async list() {
 		const v = await this.current();
 		return v ? (await readdir(this.root(v))).sort() : [];
+	}
+	/** 列表用的元信息：一次读完目录下每个包的名称、说明与规模，坏的包只带错误原因。 */
+	async summaries() {
+		const revision = await this.current();
+		if (!revision) return [];
+		const root = this.root(revision);
+		const names = (await optional(readdir(root), [])).sort();
+		return Promise.all(
+			names.map(async (id) => {
+				try {
+					const flow = parseFlow(
+						await readFile(join(root, id, "FLOW.md"), "utf8"),
+						id,
+					);
+					return {
+						id,
+						revision,
+						name: flow.name,
+						description: flow.description,
+						nodes: flow.nodes.size,
+						parallels: flow.parallels.size,
+						variables: Object.keys(flow.variables ?? {}).length,
+					};
+				} catch (e) {
+					const reason =
+						e instanceof FlowSyntaxError || e instanceof Error
+							? e.message
+							: String(e);
+					return { id, revision, error: reason };
+				}
+			}),
+		);
 	}
 	async get(name: string, expectedRevision?: string) {
 		id(name);

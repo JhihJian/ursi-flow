@@ -94,6 +94,8 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   const files = { 'FLOW.md': '# flow' }
 
   assert.deepEqual(await call('GET', '/api/v1/flows'), { op: 'flow.list' })
+  // 列表页一次取回名称与规模，避免逐个读包。
+  assert.deepEqual(await call('GET', '/api/v1/flows?detail=1'), { op: 'flow.summaries' })
   await call('POST', '/api/v1/flows', { id: 'ordinary', files })
   await call('POST', '/api/v1/flows/validate', { id: 'ordinary', files })
   await call('GET', '/api/v1/flows/validate')
@@ -119,6 +121,7 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
     daemon.calls.map((request) => request.op),
     [
       'flow.list',
+      'flow.summaries',
       'flow.create',
       'flow.validate',
       'flow.get',
@@ -138,19 +141,22 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
     ],
   )
   assert.ok(daemon.calls.every((request) => request.v === 1), '请求必须携带协议版本')
-  assert.deepEqual(daemon.calls[1].args, { id: 'ordinary', files })
-  assert.deepEqual(daemon.calls[3].args, { id: 'validate' })
-  assert.deepEqual(daemon.calls[4].args, { id: 'ordinary', files, expectedRevision: 'rev-1' })
-  assert.deepEqual(daemon.calls[5].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
-  assert.deepEqual(daemon.calls[12].args, { id: 'run-1' })
-  assert.deepEqual(daemon.calls[13].args, { id: 'run-1', node: 'node-1' })
-  assert.deepEqual(daemon.calls[7].args, {
+  // 下标以 calls 顺序为准：0 是列表，1 是摘要，之后是创建。
+  assert.deepEqual(daemon.calls[0].args, {})
+  assert.deepEqual(daemon.calls[1].args, {})
+  assert.deepEqual(daemon.calls[2].args, { id: 'ordinary', files })
+  assert.deepEqual(daemon.calls[4].args, { id: 'validate' })
+  assert.deepEqual(daemon.calls[5].args, { id: 'ordinary', files, expectedRevision: 'rev-1' })
+  assert.deepEqual(daemon.calls[6].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
+  assert.deepEqual(daemon.calls[13].args, { id: 'run-1' })
+  assert.deepEqual(daemon.calls[14].args, { id: 'run-1', node: 'node-1' })
+  assert.deepEqual(daemon.calls[8].args, {
     id: 'run-1',
     flow: 'ordinary',
     cwd: workdir,
     variables: { 任务: '检查' },
   })
-  assert.deepEqual(daemon.calls[16].args, { maxConcurrent: 2 })
+  assert.deepEqual(daemon.calls[17].args, { maxConcurrent: 2 })
 })
 
 test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成', async (t) => {
