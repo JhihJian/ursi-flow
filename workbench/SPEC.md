@@ -4,9 +4,12 @@ references:
   - README.md
   - WORK-DOMAINS.md
   - PATCH-STUDIO.md
+  - EXECUTOR-DESIGN.md
 ---
 
 # 工作台
+
+执行器的项目概念、版本结构、资源关系与运行边界见[执行器设计](EXECUTOR-DESIGN.md)。
 
 ## 功能意图
 
