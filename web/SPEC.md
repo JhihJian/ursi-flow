@@ -4,13 +4,14 @@ depends-on:
   - ../server/SPEC.md
 references:
   - DESIGN.md
+  - DESIGN-v2.md
   - README.md
 ---
 # Flow 工作台
 
 ## 功能意图
 
-使用同源 HTTP 服务维护 Flow 包、运行和配置，通过独立的本地对话入口保留演示体验。
+使用同源 HTTP 服务维护 Flow 包、运行和配置，通过独立的本地对话入口保留演示体验。新版工作清单、办理详情与定义目录的目标结构见 [Web v2 界面设计](DESIGN-v2.md)。
 
 ## 关键功能与验收
 
