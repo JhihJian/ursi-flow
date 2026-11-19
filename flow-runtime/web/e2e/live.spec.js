@@ -278,10 +278,10 @@ test('停止运行与运行配置', async ({ page }) => {
   await page.getByLabel('Run ID（可选）').fill('e2e-slow-run')
   await page.getByRole('button', { name: '启动运行' }).click()
   await expect(page).toHaveURL(/\/#\/runs\/e2e-slow-run$/)
-  await expect(page.locator('.heading .badge.running')).toBeVisible()
+  await expect(page.locator('[data-status="running"]')).toBeVisible()
   await page.getByRole('button', { name: '停止运行' }).click()
   await page.getByRole('button', { name: '确认停止' }).click()
-  await expect(page.locator('.heading .badge.stopped')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('[data-status="stopped"]')).toBeVisible({ timeout: 15000 })
 
   await page.getByLabel('主导航').getByRole('link', { name: '运行配置' }).click()
   await page.getByLabel('最大并发数').fill('2')

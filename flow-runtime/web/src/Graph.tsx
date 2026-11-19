@@ -38,6 +38,11 @@ import {
   X,
 } from 'lucide-react'
 import { ACTION_KINDS, type ActionKind, type FlowGraph, type GraphNode, incoming } from './flow/graph'
+import { Button } from './components/ui/button'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
+import { Select } from './components/ui/select'
+import { Textarea } from './components/ui/textarea'
 import { layoutGraph, nodeSize, pointAtDistance, roundedPath, type Point } from './flow/layout'
 import { fixedOutgoing } from './flow/edit'
 import { actionOf, type FlowSection } from './flow/doc'
@@ -384,27 +389,36 @@ export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart
         {ACTION_KINDS.map((kind) => {
           const Icon = kindIcon[kind]
           return (
-            <button key={kind} className="cchrome-btn" onClick={() => add('work', kind)} title={kind} aria-label={kind}>
-              <Icon size={14} />
-            </button>
+            <Button
+              key={kind}
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => add('work', kind)}
+              title={kind}
+              aria-label={kind}
+            >
+              <Icon />
+            </Button>
           )
         })}
-        <button className="cchrome-btn" onClick={() => add('parallel')} title="并行" aria-label="并行">
-          <GitBranch size={14} />
-        </button>
+        <Button variant="ghost" size="icon-sm" onClick={() => add('parallel')} title="并行" aria-label="并行">
+          <GitBranch />
+        </Button>
         <span className="toolbar-divider" />
-        <button className="cchrome-btn" onClick={autoLayout} title="自动布局" aria-label="自动布局">
-          <ListTree size={14} />
-        </button>
-        <button
-          className={'cchrome-btn' + (showMinimap ? ' is-on' : '')}
+        <Button variant="ghost" size="icon-sm" onClick={autoLayout} title="自动布局" aria-label="自动布局">
+          <ListTree />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={showMinimap ? 'bg-accent-dim text-accent-2' : undefined}
           onClick={() => setShowMinimap(!showMinimap)}
           title="缩略图"
           aria-label="缩略图"
           aria-pressed={showMinimap}
         >
-          <Layers size={14} />
-        </button>
+          <Layers />
+        </Button>
         <span className="palette-count">{graph.nodes.length} 节点</span>
       </div>
 
@@ -443,13 +457,15 @@ export function FlowCanvas({ graph, sections, issues, onGraph, onAction, onStart
         )}
         {(selectedNode || selectedEdge) && (
           <aside className="canvas-inspector" aria-label="检查器">
-            <button
-              className="cchrome-btn inspector-close"
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="absolute right-2 top-2"
               aria-label="关闭检查器"
               onClick={() => setSelection(null)}
             >
-              <X size={14} />
-            </button>
+              <X />
+            </Button>
             {selectedNode ? (
               <NodeInspector
                 graph={graph}
@@ -513,10 +529,10 @@ function NodeInspector({
         <code>{node.ref}</code>
       </header>
       {!terminal && (
-        <label>
+        <Label className="flex-col items-stretch gap-1.5">
           节点名称
-          <input
-            className="input"
+          <Input
+            className="h-8 text-xs"
             value={node.name}
             onChange={(event) =>
               onGraph({
@@ -527,13 +543,13 @@ function NodeInspector({
               })
             }
           />
-        </label>
+        </Label>
       )}
       {node.kind === 'work' && (
-        <label>
+        <Label className="flex-col items-stretch gap-1.5">
           动作
-          <select
-            className="input"
+          <Select
+            className="h-8 text-xs"
             value={actions?.kind ?? ''}
             onChange={(event) => onAction(node.ref, { kind: event.target.value as ActionKind })}
           >
@@ -542,25 +558,27 @@ function NodeInspector({
                 {kind}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Label>
       )}
       {node.kind === 'work' && section && (
         <div className="inspector-block">
           <div className="inspector-block-head">
             <span>节点内容</span>
-            <button
-              className="cchrome-btn"
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
               onClick={() => setPrompt(prompt === null ? actions?.body ?? '' : null)}
             >
               {prompt === null ? '编辑' : '收起'}
-            </button>
+            </Button>
           </div>
           {prompt === null ? (
             <pre className="inspector-preview">{actions?.body || '（空）'}</pre>
           ) : (
-            <textarea
-              className="code short"
+            <Textarea
+              className="min-h-24 font-mono text-xs"
               value={prompt}
               aria-label="节点内容"
               onChange={(event) => setPrompt(event.target.value)}
@@ -573,55 +591,66 @@ function NodeInspector({
         <div className="inspector-block">
           <div className="inspector-block-head">
             <span>入口</span>
-            <button
-              className="cchrome-btn"
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
               disabled={!from}
               onClick={() => onGraph(connect(graph, from, node.ref))}
             >
-              <CornerDownRight size={13} />
+              <CornerDownRight />
               接入
-            </button>
+            </Button>
           </div>
-          <p className="muted">这个节点还不在任何路径上，选一个上游节点接入。</p>
-          <select className="input" aria-label="上游节点" value={from} onChange={(event) => setFrom(event.target.value)}>
+          <p className="text-xs text-muted-foreground">这个节点还不在任何路径上，选一个上游节点接入。</p>
+          <Select
+            className="h-8 text-xs"
+            aria-label="上游节点"
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+          >
             {upstream.map((item) => (
               <option key={item.ref} value={item.ref}>
                 {item.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
       {node.kind !== 'parallel' && (
         <div className="inspector-block">
           <div className="inspector-block-head">
             <span>结果边</span>
-            <button
-              className="cchrome-btn"
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
               disabled={!canAddOutgoing(graph, node)}
               onClick={() => onGraph(addResult(graph, node.ref))}
             >
-              <Plus size={13} />
+              <Plus />
               结果
-            </button>
+            </Button>
           </div>
-          {fixedOutgoing(node) && <p className="muted">这类节点只有一条固定出边，改连目标即可。</p>}
+          {fixedOutgoing(node) && (
+            <p className="text-xs text-muted-foreground">这类节点只有一条固定出边，改连目标即可。</p>
+          )}
           {outs.length ? (
             <ul className="inspector-edges">
               {outs.map((edge) => (
                 <li key={edge.id}>
                   {edge.result ? (
-                    <input
-                      className="input"
+                    <Input
+                      className="h-8 min-w-0 text-xs"
                       aria-label="结果名"
                       value={edge.result}
                       onChange={(event) => onGraph(renameResult(graph, edge.id, event.target.value))}
                     />
                   ) : (
-                    <span className="muted">直接流转</span>
+                    <span className="min-w-0 flex-1 text-xs text-muted-foreground">直接流转</span>
                   )}
-                  <select
-                    className="input"
+                  <Select
+                    className="h-8 text-xs"
                     aria-label="目标节点"
                     value={edge.to}
                     onChange={(event) => onGraph(retargetEdge(graph, edge.id, event.target.value))}
@@ -633,33 +662,34 @@ function NodeInspector({
                           {item.name}
                         </option>
                       ))}
-                  </select>
-                  <button
-                    className="cchrome-btn"
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label="删除结果边"
                     onClick={() => onGraph(removeEdge(graph, edge.id))}
                   >
-                    <Trash2 size={13} />
-                  </button>
+                    <Trash2 />
+                  </Button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="muted">还没有出边。</p>
+            <p className="text-xs text-muted-foreground">还没有出边。</p>
           )}
         </div>
       )}
       {node.kind === 'start' && (
-        <button className="button" onClick={onStart}>
-          <Play size={14} />
+        <Button variant="primary" className="w-full" onClick={onStart}>
+          <Play />
           用这个包启动运行
-        </button>
+        </Button>
       )}
       {!terminal && (
-        <button className="button danger" onClick={() => onGraph(removeNode(graph, node.ref))}>
-          <Trash2 size={14} />
+        <Button variant="destructive" className="w-full" onClick={() => onGraph(removeNode(graph, node.ref))}>
+          <Trash2 />
           删除节点
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -687,19 +717,19 @@ function EdgeInspector({
         </code>
       </header>
       {result && (
-        <label>
+        <Label className="flex-col items-stretch gap-1.5">
           结果名
-          <input
-            className="input"
+          <Input
+            className="h-8 text-xs"
             value={result}
             onChange={(event) => onGraph(renameResult(graph, id, event.target.value))}
           />
-        </label>
+        </Label>
       )}
-      <label>
+      <Label className="flex-col items-stretch gap-1.5">
         目标节点
-        <select
-          className="input"
+        <Select
+          className="h-8 text-xs"
           value={edge.to}
           onChange={(event) => onGraph(retargetEdge(graph, id, event.target.value))}
         >
@@ -710,12 +740,12 @@ function EdgeInspector({
                 {node.name}
               </option>
             ))}
-        </select>
-      </label>
-      <button className="button danger" onClick={() => onGraph(removeEdge(graph, id))}>
-        <Trash2 size={14} />
+        </Select>
+      </Label>
+      <Button variant="destructive" className="w-full" onClick={() => onGraph(removeEdge(graph, id))}>
+        <Trash2 />
         删除这条边
-      </button>
+      </Button>
     </div>
   )
 }

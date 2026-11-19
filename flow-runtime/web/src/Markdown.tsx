@@ -2,7 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { Eye, Pencil } from 'lucide-react'
+import { Columns2, Eye, Pencil } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
+import { Textarea } from './components/ui/textarea'
 
 marked.setOptions({ gfm: true, breaks: false })
 
@@ -160,24 +162,27 @@ export function MarkdownEditor({
   return (
     <div className={'md-editor mode-' + mode}>
       <div className="md-editor-bar">
-        <div role="tablist" aria-label="编辑方式">
-          <button role="tab" aria-selected={mode === 'edit'} onClick={() => setMode('edit')}>
-            <Pencil size={13} />
-            编辑
-          </button>
-          <button role="tab" aria-selected={mode === 'preview'} onClick={() => setMode('preview')}>
-            <Eye size={13} />
-            预览
-          </button>
-          <button role="tab" aria-selected={mode === 'split'} onClick={() => setMode('split')}>
-            分栏
-          </button>
-        </div>
+        <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>
+          <TabsList className="border-0 pb-0">
+            <TabsTrigger value="edit" className="h-7 px-2 text-xs">
+              <Pencil />
+              编辑
+            </TabsTrigger>
+            <TabsTrigger value="preview" className="h-7 px-2 text-xs">
+              <Eye />
+              预览
+            </TabsTrigger>
+            <TabsTrigger value="split" className="h-7 px-2 text-xs">
+              <Columns2 />
+              分栏
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       <div className="md-editor-body">
         {mode !== 'preview' && (
-          <textarea
-            className="code md-source"
+          <Textarea
+            className="md-source"
             aria-label="Markdown 源码"
             spellCheck={false}
             value={value}

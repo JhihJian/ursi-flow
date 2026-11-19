@@ -2,119 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 页面框架只用少量语义类：结构简单，其余交给 shadcn 组件与工具类。 */
 @layer base {
-  html { @apply bg-base font-sans text-sm text-txt antialiased; font-size:16px }
+  html { @apply bg-background font-sans text-sm text-foreground antialiased; font-size:16px }
   body { @apply min-w-0 text-sm; }
-  :focus-visible { outline:2px solid rgb(var(--c-accent));outline-offset:3px }
+  :focus-visible { outline:2px solid rgb(var(--ring));outline-offset:3px }
+  pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-base p-3 font-mono text-xs; }
+  summary { @apply cursor-pointer text-sm text-txt2; }
 }
+
 @layer components {
-  header { @apply border-b border-line bg-surface; }
   main, .bar { @apply mx-auto w-full min-w-0 max-w-[1600px] px-4 sm:px-6 lg:px-7; overflow-wrap:anywhere }
   main { @apply py-6; }
   .bar { @apply flex h-12 items-center gap-3; }
-  .brand, .mode, .back, h2 { @apply inline-flex min-w-0 items-center gap-2; }
-  .brand, h2 { @apply font-semibold; }
-  .logo { @apply inline-grid size-8 shrink-0 place-items-center rounded-lg bg-accent-dim text-accent-2; }
-  .mode { @apply ml-auto text-xs text-txt3; }
-  nav { @apply flex min-w-0 flex-wrap items-center gap-1; }
-  nav a { @apply inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-txt2 hover:bg-elevated hover:text-txt; }
-  nav a.active { @apply bg-accent-dim text-accent-2; }
-  .back { @apply mb-4 text-accent-2 hover:underline; }
-  .heading, .tools, .filters { @apply flex min-w-0 flex-wrap items-center gap-3; }
-  .heading { @apply mb-5 justify-between; }
-  h1 { @apply text-xl font-semibold; }
-  h2 { @apply text-base; }
-  h3 { @apply mb-1 text-xs font-medium text-txt3; }
-  h2 svg,button svg,h3 svg { @apply size-4 shrink-0; }
-  button, .button { @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3.5 text-sm font-medium text-txt hover:border-line-strong hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-50; }
-  button.primary, .button.primary { @apply border-transparent bg-accent-2 text-white hover:bg-accent-hover; }
-  button.icon { @apply size-8 border-0 bg-transparent px-0 text-txt3 hover:bg-elevated hover:text-txt; }
-  section { @apply mt-6; }
-  .tools { @apply mb-3 justify-between; }
-  .table-wrap { @apply overflow-x-auto rounded-xl border border-line bg-surface; }
-  table { @apply w-full border-collapse text-left text-sm; }
-  th { @apply border-b border-line bg-elevated px-4 py-2.5 text-xs font-medium text-txt3; }
-  td { @apply border-b border-line px-4 py-3 align-middle text-txt2; }
-  tr:last-child td { @apply border-0; }
-  tbody tr:hover { @apply bg-elevated/40; }
-  .identity b { @apply block font-medium text-txt; }
-  .identity small, small { @apply block text-xs text-txt3; }
-  .badge { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-elevated px-2 py-0.5 text-xs font-medium text-txt3; }
-  .badge i { @apply size-1.5 rounded-full bg-current; }
-  .badge.running { @apply bg-info/10 text-info; }
-  .badge.completed, .badge.joining { @apply bg-ok/10 text-ok; }
-  .badge.failed { @apply bg-err/10 text-err; }
-  .badge.interrupted, .badge.stopped, .badge.unknown { @apply bg-warn/10 text-warn; }
-  .warning { @apply mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-err/10 p-3 text-err; }
-  .success { @apply mt-3 rounded-lg bg-ok/10 p-3 text-ok; }
-  .empty { @apply flex flex-wrap items-center justify-center gap-3 rounded-xl border border-line bg-surface px-5 py-12 text-txt3; }
-  .muted, footer, dt, th, .evidence small { @apply text-txt3; }
-  footer { @apply mt-3 text-xs; }
-  .mono, code, pre { @apply font-mono; }
-  pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-base p-3 text-xs; }
-  pre.err { @apply text-err; }
-  /* 键值块：只在显式标注 .facts 时按多列排，避免影响 Markdown 里的 dl。 */
-  .facts { @apply grid grid-cols-2 gap-4 border-y border-line py-4 sm:grid-cols-3; }
-  .facts dd { @apply mt-0.5 break-all; }
-  details { @apply mt-3; }
-  summary { @apply cursor-pointer text-sm text-txt2; }
-  .panel { @apply max-w-2xl space-y-4 rounded-xl border border-line bg-surface p-5; }
-  label { @apply block text-xs font-medium text-txt3; }
-  .input, .code { @apply mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-txt outline-none focus:border-accent focus:ring-2 focus:ring-accent/15; }
-  .code { @apply min-h-[26rem] font-mono text-xs leading-5; }
-  .code.short { @apply min-h-24 }
-  .list { @apply divide-y divide-line rounded-xl border border-line bg-surface; }
-  .list a { @apply flex items-center gap-3 px-4 py-3 hover:bg-elevated; }
-  .list a > .identity, .list a > span:first-child { @apply min-w-0 flex-1; }
-  .cube { @apply inline-grid size-8 shrink-0 place-items-center rounded-lg bg-accent-dim text-accent-2; }
-  .editor { @apply grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]; }
-  .editor aside { @apply min-w-0; }
-  .editor section { @apply mt-0 min-w-0; }
-  /* 包文件挤在顶栏里，横向排列，文件名过长时截断。 */
-  .files { @apply flex min-w-0 flex-wrap items-center gap-1; }
-  .files li { @apply flex min-w-0 items-center gap-0.5 }
-  .file { @apply h-7 min-w-0 max-w-[11rem] flex-none justify-start truncate rounded-md border-0 bg-transparent px-2 font-mono text-[11px] text-txt2 hover:bg-elevated sm:max-w-[13rem] }
-  .file.active { @apply bg-accent-dim text-accent-2 }
-  .add-file { @apply flex items-center gap-1 }
-  .add-file .input { @apply mt-0 h-7 w-40 min-w-0 flex-1 px-2 text-[11px] sm:w-44 sm:flex-none }
-  .add-file button { @apply size-7 }
-  .start-run { @apply grid gap-4 rounded-xl border border-line bg-surface p-4 md:grid-cols-2; }
-  .start-run > :last-child { @apply justify-self-start md:col-span-2; }
-  .evidence { @apply divide-y divide-line rounded-xl border border-line bg-surface; }
-  .evidence li { @apply flex flex-wrap items-center gap-2 px-4 py-2.5; }
-  .evidence li > span { @apply min-w-0 flex-1; }
-  .evidence-cell { @apply bg-base; }
-  .evidence-grid { @apply grid gap-4 md:grid-cols-2; }
-  .evidence-grid > .wide { @apply md:col-span-2; }
-  .rotate-90 { transform: rotate(90deg); }
+  main:has(.editor-page), .editor-page { @apply max-w-[1800px] py-4 }
   @media (max-width: 640px) {
     td[data-label]::before { content: attr(data-label); @apply mr-2 text-xs text-txt3; }
-    .heading { @apply items-start; }
   }
-}
-
-/* 编辑器骨架：左侧包文件，右侧视图 */
-@layer components {
-  .editor-page { @apply max-w-[1800px] py-4 }
-  /* 编辑区顶栏：标识、包文件与运行参数各占一行，宽度全部留给画布。 */
-  .editor-bar {
-    @apply mt-3 flex flex-wrap items-end gap-x-4 gap-y-2 rounded-xl border border-line bg-surface px-3 py-2.5;
-  }
-  .bar-field { @apply flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-txt3 sm:flex-none }
-  .bar-field .input { @apply mt-0 h-8 px-2 text-xs }
-  .bar-field .code.short { @apply mt-0 h-8 min-h-8 w-40 px-2 py-1 text-[11px] sm:w-52 }
-  .bar-label { @apply inline-flex items-center gap-1.5 text-[11px] text-txt3 }
-  .bar-files { @apply flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:flex-nowrap }
-  .bar-run { @apply flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto }
-  .bar-run .primary { @apply h-8 px-3 text-xs }
-  .editor-main { @apply mt-3 min-w-0 }
-  .view-tabs { @apply mb-3 flex flex-wrap items-center gap-1 border-b border-line pb-2 }
-  .view-tabs button { @apply h-8 gap-1.5 border-0 bg-transparent px-2.5 text-txt3 }
-  .view-tabs button[aria-selected='true'] { @apply bg-accent-dim text-accent-2 }
-  .view-tabs-note { @apply ml-auto truncate font-mono text-xs text-txt3 }
-  .view-tabs-issues { @apply rounded-full bg-warn/10 px-2 py-0.5 text-xs text-warn }
-  .issues-bar { @apply mb-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn }
-  .button.danger { @apply text-err hover:border-err/40 hover:bg-err/10 }
 }
 
 /* 画布：节点卡片、出口、连线与检查器 */
@@ -134,7 +38,6 @@
     @apply absolute right-3 top-3 max-h-[calc(100%-1.5rem)] w-[17.5rem] overflow-y-auto rounded-xl border border-line bg-surface/95 p-3.5;
     box-shadow: 0 8px 24px rgb(16 24 40 / 0.1);
   }
-  .inspector-close { @apply absolute right-2 top-2 }
   .inspector { @apply space-y-3 }
   .inspector header h2 { @apply truncate text-sm }
   .inspector header code { @apply block font-mono text-[11px] text-txt3 }
@@ -143,10 +46,6 @@
   .inspector-preview { @apply mt-0 max-h-32 text-[11px] }
   .inspector-edges { @apply space-y-1.5 }
   .inspector-edges li { @apply flex items-center gap-1 }
-  .inspector-edges .input { @apply mt-0 h-8 px-2 text-xs }
-  .inspector-empty { @apply space-y-2 py-6 text-center text-xs text-txt3 }
-  .cchrome-btn { @apply inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-txt3 hover:bg-elevated hover:text-txt disabled:opacity-40 }
-  .cchrome-btn.is-on { @apply bg-accent-dim text-accent-2 }
 
   /* 宽度与 src/flow/layout.ts 的 WORK_WIDTH 保持一致。 */
   .cnode { @apply relative w-[212px] rounded-[14px] border border-line bg-surface text-xs text-txt shadow-[var(--shadow-card)] transition; box-shadow: inset 3px 0 0 transparent, var(--shadow-card) }
@@ -204,9 +103,6 @@
 @layer components {
   .md-editor { @apply rounded-xl border border-line bg-surface }
   .md-editor-bar { @apply flex items-center justify-between border-b border-line px-2 py-1.5 }
-  .md-editor-bar [role='tablist'] { @apply flex gap-1 }
-  .md-editor-bar button { @apply h-7 gap-1 border-0 bg-transparent px-2 text-xs text-txt3 }
-  .md-editor-bar button[aria-selected='true'] { @apply bg-accent-dim text-accent-2 }
   .md-editor-body { @apply grid min-h-[30rem] gap-0 md:grid-cols-2 }
   .md-editor.mode-edit .md-editor-body, .md-editor.mode-preview .md-editor-body { @apply md:grid-cols-1 }
   .md-source { @apply m-0 h-full min-h-[30rem] rounded-none border-0 border-r border-line font-mono text-xs }

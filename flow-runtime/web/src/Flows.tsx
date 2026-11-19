@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
+  ArrowLeft,
+  ChevronRight,
+  CircleAlert,
   FileCode2,
   FilePlus2,
   FileText,
@@ -12,9 +15,37 @@ import {
   Trash2,
   Workflow,
 } from 'lucide-react'
-import { AsyncState, Refresh, message, useLoad } from './main'
+import { AsyncState, PageHeading, Refresh, message, useLoad } from './main'
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
+import { Badge } from './components/ui/badge'
+import { Button, buttonVariants } from './components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog'
+import { Empty, EmptyContent, EmptyMedia, EmptyTitle } from './components/ui/empty'
+import { Input } from './components/ui/input'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from './components/ui/item'
+import { Label } from './components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
+import { Textarea } from './components/ui/textarea'
 import { FlowCanvas } from './Graph'
 import { Markdown, MarkdownEditor } from './Markdown'
+import { cn } from './lib/utils'
 import type { FlowFiles, Source } from './data'
 import { parseFlow, serializeFlow, splitSections, joinSections, syncSections } from './flow/doc'
 import { graphIssues, type ActionKind, type FlowGraph } from './flow/graph'
@@ -54,46 +85,57 @@ export function Flows({ source }: { source: Source }) {
   const ids = state.value || []
   return (
     <main>
-      <div className="heading">
-        <div>
-          <h1>Flow 包</h1>
-          <small>已发布的流程目录，新运行使用当前修订</small>
-        </div>
-        <Refresh state={state} />
-        <Link className="button primary" to="/flows/new">
-          <FilePlus2 size={16} />
-          创建 Flow
-        </Link>
-      </div>
+      <PageHeading
+        title="Flow 包"
+        description="已发布的流程目录，新运行使用当前修订"
+        actions={
+          <>
+            <Refresh state={state} />
+            <Button variant="primary" asChild>
+              <Link to="/flows/new">
+                <FilePlus2 />
+                创建 Flow
+              </Link>
+            </Button>
+          </>
+        }
+      />
       {!state.value ? (
         <AsyncState state={state} />
       ) : !ids.length ? (
-        <div role="status" className="empty">
-          <Workflow />
-          暂无 Flow 包
-          <Link className="button" to="/flows/new">
-            创建第一个 Flow
-          </Link>
-        </div>
+        <Empty role="status">
+          <EmptyMedia>
+            <Workflow />
+          </EmptyMedia>
+          <EmptyTitle>暂无 Flow 包</EmptyTitle>
+          <EmptyContent>
+            <Button asChild>
+              <Link to="/flows/new">创建第一个 Flow</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
-        <ul className="list">
+        <ItemGroup>
           {ids.map((id) => (
-            <li key={id}>
+            <Item key={id} asChild>
               <Link to={`/flows/${encodeURIComponent(id)}/edit`}>
-                <span className="cube">
-                  <Workflow size={18} />
-                </span>
-                <span className="identity">
-                  <b>{id}</b>
-                  <small>用图形或文档编辑包内容</small>
-                </span>
-                <span className="muted">打开</span>
+                <ItemMedia>
+                  <Workflow />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{id}</ItemTitle>
+                  <ItemDescription>用图形或文档编辑包内容</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <span className="text-xs text-muted-foreground">打开</span>
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </ItemActions>
               </Link>
-            </li>
+            </Item>
           ))}
-        </ul>
+        </ItemGroup>
       )}
-      <footer>共 {ids.length} 个 Flow 包</footer>
+      <p className="mt-3 text-xs text-muted-foreground">共 {ids.length} 个 Flow 包</p>
     </main>
   )
 }
@@ -290,183 +332,220 @@ export function FlowEditor({ source }: { source: Source }) {
   )
   return (
     <main className="editor-page">
-      <Link className="back" to="/flows">
+      <Link className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 mb-2')} to="/flows">
+        <ArrowLeft />
         返回 Flow 包
       </Link>
-      <div className="heading">
-        <div>
-          <h1>{editing ? name : '创建 Flow'}</h1>
-          <small>
-            {editing ? `当前修订 ${revision ? revision.slice(0, 8) : '未知'}` : '即时校验包文件，创建后进入编辑'}
-            {dirty && ' · 有未保存修改'}
-          </small>
-        </div>
-        <button onClick={() => run('validate')} disabled={readOnly || Boolean(busy)}>
-          <ShieldCheck />
-          校验
-        </button>
-        {editing && (
-          <button onClick={loaded.refresh} disabled={Boolean(busy) || loaded.loading} title="丢弃未保存修改，读取已发布修订">
-            <RotateCcw />
-            重新载入
-          </button>
-        )}
-        <button onClick={() => run('save')} disabled={readOnly || Boolean(busy) || !dirty}>
-          <Save />
-          保存
-        </button>
-        {editing && (
-          <button onClick={() => setConfirm(true)} disabled={readOnly || Boolean(busy)}>
-            <Trash2 />
-            删除
-          </button>
-        )}
-      </div>
+      <PageHeading
+        title={editing ? name : '创建 Flow'}
+        description={`${editing ? `当前修订 ${revision ? revision.slice(0, 8) : '未知'}` : '即时校验包文件，创建后进入编辑'}${dirty ? ' · 有未保存修改' : ''}`}
+        actions={
+          <>
+            <Button onClick={() => run('validate')} disabled={readOnly || Boolean(busy)}>
+              <ShieldCheck />
+              校验
+            </Button>
+            {editing && (
+              <Button
+                onClick={loaded.refresh}
+                disabled={Boolean(busy) || loaded.loading}
+                title="丢弃未保存修改，读取已发布修订"
+              >
+                <RotateCcw />
+                重新载入
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => run('save')} disabled={readOnly || Boolean(busy) || !dirty}>
+              <Save />
+              保存
+            </Button>
+            {editing && (
+              <Button variant="destructive" onClick={() => setConfirm(true)} disabled={readOnly || Boolean(busy)}>
+                <Trash2 />
+                删除
+              </Button>
+            )}
+          </>
+        }
+      />
       {error && (
-        <p role="alert" className="warning">
-          {error}
-        </p>
+        <Alert variant="error">
+          <CircleAlert />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       {notice && (
-        <p role="status" className="success">
-          {notice}
-        </p>
+        <Alert variant="success">
+          <AlertDescription role="status">{notice}</AlertDescription>
+        </Alert>
       )}
-      {confirm && (
-        <p className="warning" role="alert">
-          删除 {name} 会移除当前修订中的整个包目录，已启动的运行仍可读取历史。
-          <button onClick={() => setConfirm(false)}>取消</button>
-          <button onClick={() => run('delete')}>确认删除</button>
-        </p>
-      )}
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除 {name}</DialogTitle>
+            <DialogDescription>
+              删除会移除当前修订中的整个包目录，已启动的运行仍可读取历史。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button>取消</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={() => run('delete')}>
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <div className="editor-bar">
-        <label className="bar-field">
-          <span>Flow 标识</span>
-          <input
-            className="input"
-            value={name}
-            readOnly={editing}
-            onChange={(event) => {
-              setName(event.target.value)
-              setDirty(true)
-            }}
-            placeholder="release-check"
-          />
-        </label>
-        <div className="bar-files">
-          <span className="bar-label">
-            <FileCode2 size={13} />
-            包文件
-          </span>
-          <ul className="files">
-            {paths.map((path) => (
-              <li key={path}>
-                <button
-                  aria-pressed={selected === path}
-                  onClick={() => openFile(path)}
-                  className={selected === path ? 'file active' : 'file'}
-                >
-                  <span className="file-name">{path}</span>
-                </button>
-                {path !== 'FLOW.md' && selected === path && (
-                  <button className="icon" aria-label={`删除 ${path}`} onClick={() => removeFile(path)}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="add-file">
-            <input
-              className="input"
-              aria-label="新增文件路径"
-              placeholder="references/checklist.md"
-              value={newPath}
-              onChange={(event) => setNewPath(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  addFile()
-                }
+      <Card className="mt-4">
+        <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="grid gap-1.5">
+            <Label htmlFor="flow-name">Flow 标识</Label>
+            <Input
+              id="flow-name"
+              className="h-8 w-44 font-mono text-xs"
+              value={name}
+              readOnly={editing}
+              onChange={(event) => {
+                setName(event.target.value)
+                setDirty(true)
               }}
+              placeholder="release-check"
             />
-            <button onClick={addFile} aria-label="新增文件" title="新增文件">
-              <FilePlus2 />
-            </button>
           </div>
-        </div>
-        {editing && (
-          <div className="bar-run">
-            <label className="bar-field">
-              <span>Run ID（可选）</span>
-              <input
-                className="input"
-                value={runId}
-                onChange={(event) => setRunId(event.target.value)}
-                placeholder="自动生成"
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FileCode2 />
+              包文件
+            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-1">
+              {paths.map((path) => (
+                <span key={path} className="flex min-w-0 items-center gap-0.5">
+                  <Button
+                    size="sm"
+                    variant={selected === path ? 'secondary' : 'ghost'}
+                    aria-pressed={selected === path}
+                    onClick={() => openFile(path)}
+                    className={cn(
+                      'min-w-0 max-w-[11rem] px-2 font-mono text-[11px] sm:max-w-[13rem]',
+                      selected === path && 'bg-accent-dim text-accent-2',
+                    )}
+                  >
+                    <span className="truncate">{path}</span>
+                  </Button>
+                  {path !== 'FLOW.md' && selected === path && (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`删除 ${path}`}
+                      onClick={() => removeFile(path)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </span>
+              ))}
+            </div>
+            <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
+              <Input
+                aria-label="新增文件路径"
+                className="h-7 min-w-0 flex-1 px-2 text-[11px] sm:w-44 sm:flex-none"
+                placeholder="references/checklist.md"
+                value={newPath}
+                onChange={(event) => setNewPath(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    addFile()
+                  }
+                }}
               />
-            </label>
-            <label className="bar-field">
-              <span>启动变量（JSON）</span>
-              <textarea
-                className="code short"
-                aria-label="启动变量"
-                value={variables}
-                onChange={(event) => setVariables(event.target.value)}
-              />
-            </label>
-            <button
-              className="primary"
-              onClick={start}
-              disabled={readOnly || running || dirty || busy === 'save'}
-              title={dirty ? '请先保存包文件' : undefined}
-            >
-              <Play size={14} />
-              {running ? '启动中…' : '启动运行'}
-            </button>
+              <Button size="icon-sm" variant="ghost" onClick={addFile} aria-label="新增文件" title="新增文件">
+                <FilePlus2 />
+              </Button>
+            </div>
           </div>
-        )}
-      </div>
-      {readOnly && <p className="muted">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>}
-
-      <section className="editor-main">
-          <div className="view-tabs" role="tablist" aria-label="编辑视图">
-            {selected === 'FLOW.md' && (
-              <button
-                role="tab"
-                aria-selected={view === 'graph'}
-                disabled={!parsed.doc}
-                onClick={() => setView('graph')}
+          {editing && (
+            <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
+              <div className="grid gap-1.5">
+                <Label htmlFor="run-id">Run ID（可选）</Label>
+                <Input
+                  id="run-id"
+                  className="h-8 w-36 px-2 text-xs"
+                  value={runId}
+                  onChange={(event) => setRunId(event.target.value)}
+                  placeholder="自动生成"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="run-variables">启动变量（JSON）</Label>
+                <Textarea
+                  id="run-variables"
+                  aria-label="启动变量"
+                  className="h-8 min-h-8 w-40 px-2 py-1 font-mono text-[11px] sm:w-52"
+                  value={variables}
+                  onChange={(event) => setVariables(event.target.value)}
+                />
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={start}
+                disabled={readOnly || running || dirty || busy === 'save'}
+                title={dirty ? '请先保存包文件' : undefined}
               >
-                <Network size={14} />
+                <Play />
+                {running ? '启动中…' : '启动运行'}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {readOnly && (
+        <p className="mt-2 text-xs text-muted-foreground">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>
+      )}
+
+      <section className="mt-3 min-w-0">
+        <Tabs value={view} onValueChange={(next) => setView(next as View)}>
+          <TabsList>
+            {selected === 'FLOW.md' && (
+              <TabsTrigger value="graph" disabled={!parsed.doc}>
+                <Network />
                 图形
-              </button>
+              </TabsTrigger>
             )}
             {isMarkdown && (
-              <button role="tab" aria-selected={view === 'doc'} onClick={() => setView('doc')}>
-                <FileText size={14} />
+              <TabsTrigger value="doc">
+                <FileText />
                 文档
-              </button>
+              </TabsTrigger>
             )}
             {!isMarkdown && (
-              <button role="tab" aria-selected={view === 'code'} onClick={() => setView('code')}>
-                <FileCode2 size={14} />
+              <TabsTrigger value="code">
+                <FileCode2 />
                 脚本
-              </button>
+              </TabsTrigger>
             )}
-            <span className="view-tabs-note">{selected}</span>
-            {issues.length > 0 && <span className="view-tabs-issues">{issues.length} 处结构提示</span>}
-          </div>
+            <span className="ml-auto flex items-center gap-2">
+              <span className="truncate font-mono text-xs text-muted-foreground">{selected}</span>
+              {issues.length > 0 && <Badge variant="warn">{issues.length} 处结构提示</Badge>}
+            </span>
+          </TabsList>
 
           {view === 'graph' && parsed.doc && (
             <>
               {issues.length > 0 && (
-                <ul className="issues-bar" role="status">
-                  {issues.map((issue) => (
-                    <li key={issue}>{issue}</li>
-                  ))}
-                </ul>
+                <Alert variant="warning" role="status">
+                  <AlertTitle>{issues.length} 处结构提示</AlertTitle>
+                  <AlertDescription>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {issues.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
               )}
               <FlowCanvas
                 graph={parsed.doc.graph}
@@ -481,9 +560,10 @@ export function FlowEditor({ source }: { source: Source }) {
             </>
           )}
           {view === 'graph' && !parsed.doc && (
-            <p role="alert" className="warning">
-              {parsed.error}。切到文档视图即可直接修改 FLOW.md 原文。
-            </p>
+            <Alert variant="warning" className="mt-3">
+              <CircleAlert />
+              <AlertDescription>{parsed.error}。切到文档视图即可直接修改 FLOW.md 原文。</AlertDescription>
+            </Alert>
           )}
           {view === 'doc' &&
             (isMarkdown ? (
@@ -497,17 +577,18 @@ export function FlowEditor({ source }: { source: Source }) {
                 }}
               />
             ) : (
-              <p className="muted">只有 Markdown 文件提供文档视图。</p>
+              <p className="mt-3 text-sm text-muted-foreground">只有 Markdown 文件提供文档视图。</p>
             ))}
           {view === 'code' && !isMarkdown && (
-            <textarea
-              className="code"
+            <Textarea
+              className="mt-3 min-h-[26rem] font-mono text-xs leading-5"
               aria-label={`${selected} 内容`}
               spellCheck={false}
               value={files[selected] ?? ''}
               onChange={(event) => writeFile(selected, event.target.value)}
             />
           )}
+        </Tabs>
       </section>
     </main>
   )

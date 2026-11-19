@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CircleAlert, History, RefreshCw, Server, Settings2, Workflow } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
+import { Badge } from './components/ui/badge'
+import { Button, buttonVariants } from './components/ui/button'
+import { Empty, EmptyContent, EmptyMedia, EmptyTitle } from './components/ui/empty'
 import { HashRouter, NavLink, Route, Routes } from 'react-router'
 import { Flows, FlowEditor } from './Flows'
 import { RunDetail, Runs } from './Runs'
 import { Config } from './Config'
 import { ApiError, loadSource, type Source } from './data'
 import { initAppearance } from './theme'
+import { cn } from './lib/utils'
 import './tokens.css'
 import './style.css'
 
@@ -42,26 +47,51 @@ export function message(error: unknown): string {
   return '操作未完成，请稍后重试。'
 }
 export function AsyncState({ state }: { state: Loaded<unknown> }) {
+  if (state.error)
+    return (
+      <Alert variant="error">
+        <CircleAlert />
+        <AlertDescription role="status">{state.error}</AlertDescription>
+        <Button size="sm" onClick={state.refresh}>
+          重试
+        </Button>
+      </Alert>
+    )
   return (
-    <div role="status" className="empty">
-      {state.error ? (
-        <>
-          <CircleAlert />
-          {state.error}
-          <button onClick={state.refresh}>重试</button>
-        </>
-      ) : (
-        '正在读取…'
-      )}
+    <Empty role="status">
+      <EmptyMedia>
+        <RefreshCw className="animate-spin" />
+      </EmptyMedia>
+      <EmptyTitle>正在读取…</EmptyTitle>
+    </Empty>
+  )
+}
+/** 页面标题栏：标题、说明与右侧操作。 */
+export function PageHeading({
+  title,
+  description,
+  actions,
+}: {
+  title: React.ReactNode
+  description?: React.ReactNode
+  actions?: React.ReactNode
+}) {
+  return (
+    <div className="mb-5 flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold">{title}</h1>
+        {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+      </div>
+      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   )
 }
 export function Refresh({ state }: { state: Loaded<unknown> }) {
   return (
-    <button onClick={state.refresh} disabled={state.loading}>
+    <Button onClick={state.refresh} disabled={state.loading}>
       <RefreshCw />
       刷新
-    </button>
+    </Button>
   )
 }
 const statusLabels: Record<string, string> = {
@@ -72,19 +102,27 @@ const statusLabels: Record<string, string> = {
   stopped: '已停止',
   unknown: '状态未知',
 }
+const statusVariants: Record<string, 'info' | 'ok' | 'err' | 'warn' | 'default'> = {
+  running: 'info',
+  completed: 'ok',
+  failed: 'err',
+  interrupted: 'warn',
+  stopped: 'warn',
+  unknown: 'warn',
+}
 export function Status({ status }: { status: string }) {
   return (
-    <span className={'badge ' + status}>
-      <i />
+    <Badge variant={statusVariants[status] ?? 'default'} data-status={status}>
+      <i className="size-1.5 rounded-full bg-current" />
       {statusLabels[status] || status}
-    </span>
+    </Badge>
   )
 }
 function Mode({ source }: { source?: Source }) {
   if (!source) return null
   return (
-    <span className="mode">
-      <Server size={14} />
+    <span className="ml-auto flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+      <Server className="size-3.5 shrink-0" />
       {source.mode === 'demo'
         ? '演示数据'
         : source.workspace
@@ -95,27 +133,31 @@ function Mode({ source }: { source?: Source }) {
 }
 function Header({ source }: { source?: Source }) {
   return (
-    <header>
+    <header className="border-b border-border bg-card">
       <div className="bar">
-        <span className="brand">
-          <span className="logo">
-            <Workflow size={22} />
+        <span className="flex min-w-0 items-center gap-2 font-semibold">
+          <span className="inline-grid size-8 shrink-0 place-items-center rounded-lg bg-accent-dim text-accent-2">
+            <Workflow className="size-[22px]" />
           </span>
           Ursi Flow
         </span>
-        <nav aria-label="主导航">
-          <NavLink to="/flows">
-            <Workflow size={16} />
-            Flow 包
-          </NavLink>
-          <NavLink to="/runs">
-            <History size={16} />
-            运行记录
-          </NavLink>
-          <NavLink to="/flow-config">
-            <Settings2 size={16} />
-            运行配置
-          </NavLink>
+        <nav aria-label="主导航" className="flex min-w-0 flex-wrap items-center gap-1">
+          {[
+            { to: '/flows', icon: Workflow, label: 'Flow 包' },
+            { to: '/runs', icon: History, label: '运行记录' },
+            { to: '/flow-config', icon: Settings2, label: '运行配置' },
+          ].map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(buttonVariants({ variant: 'ghost', size: 'sm' }), isActive && 'bg-accent-dim text-accent-2')
+              }
+            >
+              <Icon />
+              {label}
+            </NavLink>
+          ))}
         </nav>
         <Mode source={source} />
       </div>
@@ -136,8 +178,8 @@ function Pages({ source }: { source: Source }) {
         path="*"
         element={
           <main>
-            页面不存在
-            <NavLink className="back" to="/flows">
+            <p>页面不存在。</p>
+            <NavLink className={cn(buttonVariants({ variant: 'link', size: 'sm' }), 'mt-3')} to="/flows">
               返回 Flow 包
             </NavLink>
           </main>

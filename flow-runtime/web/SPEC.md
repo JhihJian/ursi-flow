@@ -53,3 +53,4 @@ references:
 
 - 未配置 Runtime 时页面标注“演示数据”，样例覆盖成功、失败、运行中与已停止的运行；演示模式不发起 `/api` 请求，也不写入任何数据。
 - 页面采用与工作台一致的主题变量，同源时读取 `ursi-flow:theme` 与 `ursi-flow:palette` 外观偏好；桌面与窄屏都不产生横向滚动。
+- 界面由 `src/components/ui` 下的 shadcn 组件组装：列表用 `Item`/`ItemGroup` 与 `Table`，表单用 `Input`/`Textarea`/`Select`/`Label`，动作用 `Button`，状态与提示用 `Badge`/`Alert`/`Empty`，视图与确认用 `Tabs`/`Dialog`。页面样式只补画布、Markdown 与主题变量，不用全局元素选择器覆盖组件。

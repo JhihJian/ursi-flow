@@ -1,6 +1,6 @@
 # Flow 控制台
 
-`flow-runtime/web` 是 Runtime 的独立控制台。操作者不经工作台和 CLI 就能维护 Flow 包、启动和停止运行、查看节点与路由证据、修改执行配置。页面使用 React 19、TypeScript、React Router、Tailwind CSS 3 和 Vite，构建产物是静态文件，可单独发布，也可嵌入工作台。
+`flow-runtime/web` 是 Runtime 的独立控制台。操作者不经工作台和 CLI 就能维护 Flow 包、启动和停止运行、查看节点与路由证据、修改执行配置。页面使用 React 19、TypeScript、React Router、Tailwind CSS 3、shadcn 组件和 Vite，构建产物是静态文件，可单独发布，也可嵌入工作台。
 
 ## 独立预览
 

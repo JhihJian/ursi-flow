@@ -1,18 +1,21 @@
 import { useState } from 'react'
 import { Save } from 'lucide-react'
-import { AsyncState, message, useLoad } from './main'
+import { AsyncState, PageHeading, message, useLoad } from './main'
+import { Alert, AlertDescription } from './components/ui/alert'
+import { Button } from './components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './components/ui/card'
+import { Input } from './components/ui/input'
+import { Label } from './components/ui/label'
 import type { FlowConfig, Source } from './data'
 
 export function Config({ source }: { source: Source }) {
   const loaded = useLoad((signal) => source.config(signal), [source])
   return (
     <main>
-      <div className="heading">
-        <div>
-          <h1>运行配置</h1>
-          <small>新运行使用当前配置，已在运行的 Run 保留启动时的配置</small>
-        </div>
-      </div>
+      <PageHeading
+        title="运行配置"
+        description="新运行使用当前配置，已在运行的 Run 保留启动时的配置"
+      />
       {!loaded.value ? (
         <AsyncState state={loaded} />
       ) : (
@@ -51,55 +54,71 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
   }
   return (
     <form
-      className="panel"
+      className="max-w-xl"
       onSubmit={(event) => {
         event.preventDefault()
         void save()
       }}
     >
-      <fieldset disabled={busy || source.mode === 'demo'}>
-        <label className="block">
-          执行器
-          <input className="input mt-2" readOnly value={saved.executor} />
-        </label>
-        <label className="block">
-          模型
-          <input
-            className="input mt-2"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="使用执行器默认模型"
-          />
-        </label>
-        <label className="block">
-          最大并发数
-          <input
-            className="input mt-2"
-            type="number"
-            required
-            min={1}
-            max={64}
-            step={1}
-            value={limit}
-            onChange={(event) => setLimit(event.target.value)}
-          />
-        </label>
-        {error && (
-          <p role="alert" className="warning">
-            {error}
-          </p>
-        )}
-        {success && (
-          <p role="status" className="success">
-            配置已保存。
-          </p>
-        )}
-        <button type="submit" className="primary" disabled={!dirty || busy}>
-          <Save />
-          保存配置
-        </button>
-      </fieldset>
-      {source.mode === 'demo' && <p className="muted">演示数据不能修改配置。</p>}
+      <Card>
+        <CardHeader>
+          <CardTitle>执行器与并发</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <fieldset
+            disabled={busy || source.mode === 'demo'}
+            className="grid gap-4 disabled:opacity-70"
+          >
+            <div className="grid gap-1.5">
+              <Label htmlFor="config-executor">执行器</Label>
+              <Input id="config-executor" className="font-mono" readOnly value={saved.executor} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="config-model">模型</Label>
+              <Input
+                id="config-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="使用执行器默认模型"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="config-limit">最大并发数</Label>
+              <Input
+                id="config-limit"
+                type="number"
+                required
+                min={1}
+                max={64}
+                step={1}
+                value={limit}
+                onChange={(event) => setLimit(event.target.value)}
+              />
+            </div>
+            {error && (
+              <Alert variant="error">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            {success && (
+              <Alert variant="success">
+                <AlertDescription role="status">配置已保存。</AlertDescription>
+              </Alert>
+            )}
+            {source.mode === 'demo' && (
+              <Alert>
+                <AlertDescription>演示数据不能修改配置。</AlertDescription>
+              </Alert>
+            )}
+          </fieldset>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" variant="primary" disabled={!dirty || busy || source.mode === 'demo'}>
+            <Save />
+            保存配置
+          </Button>
+        </CardFooter>
+      </Card>
     </form>
   )
 }
