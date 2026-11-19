@@ -31,21 +31,22 @@ export interface WorkPackage {
   deliverables?: string[]
   actions: Record<string, unknown>
 }
+/** `GET /packages` 的最新版正文，额外带对象的启用状态。 */
+export interface PackageSummary extends WorkPackage { active: boolean }
 export interface CreateItemResponse { id: string; status: ItemStatus }
 
 export function itemPath(id: string) { return `/items/${encodeURIComponent(id)}` }
-export function packageRevisionPath(id: string, revision: number) {
-  return `/packages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(String(revision))}`
-}
 export function listItems(status: ItemStatus | '', signal: AbortSignal) {
   const query = status ? `?status=${encodeURIComponent(status)}` : ''
   return requestV2<ItemSummary[]>(`/items${query}`, { signal })
 }
+/** 目录里所有对象的最新版，含已停用对象；派工只接受 `active` 的包。 */
 export function readPackages(signal: AbortSignal) {
-  return requestV2<Array<WorkPackage & { active: boolean }>>('/packages', { signal })
+  return requestV2<PackageSummary[]>('/packages', { signal })
 }
-export function readPackage(id: string, revision: number, signal: AbortSignal) {
-  return requestV2<WorkPackage>(packageRevisionPath(id, revision), { signal })
+/** 指定包的冻结修订，按版本从早到晚；正文与对应修订的读取结果一致。 */
+export function readRevisions(id: string, signal: AbortSignal) {
+  return requestV2<WorkPackage[]>(`/packages/${encodeURIComponent(id)}/revisions`, { signal })
 }
 export function createItem(body: {
   requestId: string

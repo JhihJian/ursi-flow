@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { errorMessage } from '@/shared/api'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
@@ -8,106 +8,179 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { createItem, readPackage, readPackages, type InputType, type WorkPackage } from './model'
-import { createRequestIds } from './dispatch'
+import { createRequestIds, useDispatch } from './dispatch'
+import { declarationsOf, initialDraft, parseDeclared, placeholderOf, type Draft } from './input'
+import {
+  createItem, itemPath, readPackages, readRevisions, type InputType, type WorkPackage,
+} from './model'
 
-function initialSelection(packages: WorkPackage[], params: URLSearchParams) {
-  const id = params.get('package') || packages[0]?.id || ''
-  const match = packages.find(item => item.id === id)
-  const revision = Number(params.get('revision')) || match?.revision || 0
-  return { id, revision }
+/** 深链里的修订号只在是正整数时才参与选择，0 和非法值退回该包的最新版。 */
+function revisionOf(params: URLSearchParams) {
+  const value = Number(params.get('revision') ?? '')
+  return Number.isInteger(value) && value > 0 ? value : 0
 }
 
 export function StartWork() {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const packages = useResource(readPackages, [])
-  const [selection, setSelection] = useState({ id: '', revision: 0 })
-  const initialized = useRef(false)
-  useEffect(() => {
-    if (!initialized.current && packages.data.length) {
-      initialized.current = true
-      setSelection(initialSelection(packages.data, new URLSearchParams(location.search)))
-    }
-  }, [packages.data, location.search])
-  const updateSelection = (id: string, revision: number) => {
-    setSelection({ id, revision })
-    const query = new URLSearchParams({ package: id, revision: String(revision) })
-    navigate(`/items/new?${query}`)
+  const [params, setParams] = useSearchParams()
+  const catalog = useResource(readPackages, [])
+  const dispatchable = catalog.data.filter(item => item.active)
+  const requested = params.get('package') ?? ''
+  const known = requested ? catalog.data.find(item => item.id === requested) : undefined
+  const selected = requested ? dispatchable.find(item => item.id === requested) : dispatchable[0]
+  const loaded = !catalog.loading && !catalog.error
+  // 目录没读到时不能断言包不存在，避免把故障说成停用或缺失。
+  const blocked = loaded && requested && !selected ? (known ? '停用' : '不存在') : ''
+
+  const choose = (id: string, revision?: number) => {
+    const next = new URLSearchParams({ package: id })
+    if (revision) next.set('revision', String(revision))
+    setParams(next, { replace: true })
   }
-  const selected = packages.data.find(item => item.id === selection.id)
+
   return <div className="page-stack break-words">
-    <PageHeader title="发起工作" description="选择已发布的工作包版本，创建一张待办理工作项" actions={<Button asChild><Link to="/items">返回工作清单</Link></Button>} />
-    <ResourceState loading={packages.loading && packages.data.length === 0} error={packages.error} empty={!packages.loading && !packages.error && packages.data.length === 0}
-      title={packages.error ? undefined : '暂无可用工作包'} description="请先发布一个工作包版本，再从这里发起工作。" onRetry={packages.reload}>
+    <PageHeader title="发起工作" description="选择已发布的工作包版本，按声明填写材料后创建一张待办理工作项"
+      actions={<Button asChild><Link to="/items">返回工作清单</Link></Button>} />
+    <ResourceState loading={catalog.loading && catalog.data.length === 0} error={catalog.error}
+      empty={!catalog.loading && !catalog.error && dispatchable.length === 0 && !blocked}
+      title={catalog.error ? undefined : '暂无可用工作包'}
+      description={catalog.error ? undefined : '先发布一个启用中的工作包版本，再从这里发起工作。'}
+      onRetry={catalog.reload}>
       <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
     </ResourceState>
-    {packages.data.length > 0 && <>
-      <section className="panel space-y-4 p-4 sm:p-5">
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-          <label className="field"><span className="field-label">工作包</span><Select aria-label="工作包" value={selection.id} onChange={event => {
-            const next = packages.data.find(item => item.id === event.target.value)
-            if (next) updateSelection(next.id, next.revision)
-          }}>{packages.data.map(item => <option key={item.id} value={item.id}>{item.id} · 最新 v{item.revision}</option>)}</Select></label>
-          <label className="field"><span className="field-label">修订版本</span><Input aria-label="修订版本" type="number" min="1" value={selection.revision || ''} onChange={event => updateSelection(selection.id, Number(event.target.value) || 0)} /></label>
-        </div>
-      </section>
-      {selected && selection.revision > 0 && <PackageForm key={`${selection.id}:${selection.revision}`} packageId={selection.id} revision={selection.revision} />}
-    </>}
+    {blocked && <section className="panel space-y-3 p-4 sm:p-5" role="alert">
+      <h2 className="font-semibold text-txt">无法从该版本发起工作</h2>
+      <p className="break-words text-sm text-txt2">工作包 {requested} {blocked}，不能用于新的派工。已发出的工作项仍可在清单里查看。</p>
+      <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
+    </section>}
+    {dispatchable.length > 0 && <section className="panel space-y-4 p-4 sm:p-5">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+        <label className="field"><span className="field-label">工作包</span>
+          <Select aria-label="工作包" value={selected?.id ?? ''} onChange={event => choose(event.target.value)}>
+            {!selected && <option value="">选择其他工作包</option>}
+            {dispatchable.map(item => <option key={item.id} value={item.id}>{item.id} · 最新 v{item.revision}</option>)}
+          </Select>
+        </label>
+      </div>
+    </section>}
+    {selected && <VersionPicker key={selected.id} packageId={selected.id} requestedRevision={revisionOf(params)}
+      onRevision={revision => choose(selected.id, revision)} />}
   </div>
 }
 
-function parseValue(type: InputType, value: string | boolean): unknown {
-  if (type === 'boolean') return value === true || value === 'true'
-  if (type === 'number') return Number(value)
-  if (type === 'integer') return Number(value)
-  if (type === 'array' || type === 'object') return JSON.parse(String(value))
-  return String(value)
-}
-function inputValue(type: InputType, value: string | boolean | undefined): string {
-  if (type === 'boolean') return ''
-  return typeof value === 'string' ? value : value == null ? '' : String(value)
+/** 修订列表决定可选版本；深链指向的版本在列表里就用它，否则用最新版。 */
+function VersionPicker({ packageId, requestedRevision, onRevision }: {
+  packageId: string
+  requestedRevision: number
+  onRevision: (revision: number) => void
+}) {
+  const revisions = useResource(signal => readRevisions(packageId, signal), [])
+  const versions = revisions.data
+  const revision = versions.some(item => item.revision === requestedRevision) ? requestedRevision : versions.at(-1)?.revision
+  const current = versions.find(item => item.revision === revision)
+  if (revisions.error) return <ResourceState error={revisions.error} onRetry={revisions.reload} />
+  if (revisions.loading) return <ResourceState loading />
+  if (!current || !revision) return <ResourceState empty title="该工作包没有可派工的版本"
+    description="工作包还没有发布修订，请到目录里发布后再发起。">
+    <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
+  </ResourceState>
+  return <PackageForm key={`${packageId}:${revision}`} packageId={packageId} pkg={current} revision={revision}
+    versions={versions.map(item => item.revision)} onRevision={onRevision} />
 }
 
-function PackageForm({ packageId, revision }: { packageId: string; revision: number }) {
-  const result = useResource(signal => readPackage(packageId, revision, signal), null)
-  const [draft, setDraft] = useState<Record<string, string | boolean> | null>(null)
+function PackageForm({ packageId, pkg, revision, versions, onRevision }: {
+  packageId: string
+  pkg: WorkPackage
+  revision: number
+  versions: number[]
+  onRevision: (revision: number) => void
+}) {
+  const navigate = useNavigate()
+  const declarations = useMemo(() => declarationsOf(pkg.inputs), [pkg.inputs])
+  const [draft, setDraft] = useState<Draft>(() => initialDraft(declarations))
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [requestError, setRequestError] = useState('')
-  const [createdId, setCreatedId] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const requestIds = useRef(createRequestIds())
-  const pkg = result.data
-  const declarations = useMemo(() => Object.entries(pkg?.inputs || {}), [pkg])
-  const defaults = useMemo(
-    () => Object.fromEntries(declarations.map(([name, type]) => [name, type === 'boolean' ? false : ''])),
-    [declarations],
-  )
-  const values = draft ?? defaults
-  if (!pkg || result.loading || result.error) return <ResourceState loading={result.loading} error={result.error} onRetry={result.reload} />
+  const dispatch = useDispatch()
+  const values = { ...initialDraft(declarations), ...draft }
+
   const setValue = (name: string, value: string | boolean) => {
-    setDraft(previous => ({ ...(previous ?? defaults), [name]: value }))
-    setRequestError(''); setCreatedId('')
+    setDraft(previous => ({ ...previous, [name]: value }))
+    setErrors(previous => (previous[name] ? { ...previous, [name]: '' } : previous))
+    setRequestError('')
   }
+
   async function submit() {
-    if (submitting) return
-    let input: Record<string, unknown>
-    try {
-      input = Object.fromEntries(declarations.map(([name, type]) => [name, parseValue(type, values[name] ?? '')]))
-    } catch { setRequestError('输入材料必须是合法的 JSON。'); return }
-    const payload = { package: packageId, revision, input }
-    setSubmitting(true); setRequestError(''); setCreatedId('')
-    try {
-      const item = await createItem({ ...payload, requestId: requestIds.current(payload) }, new AbortController().signal)
-      setCreatedId(item.id)
-    } catch (cause) {
-      setRequestError(errorMessage(cause))
-    } finally { setSubmitting(false) }
+    const parsed = parseDeclared(declarations, values)
+    setErrors(parsed.errors)
+    if (!parsed.valid) { setRequestError(''); return }
+    const parameters = { package: packageId, revision, input: parsed.input }
+    setRequestError('')
+    await dispatch.run(
+      signal => createItem({ ...parameters, requestId: requestIds.current(parameters) }, signal),
+      id => navigate(itemPath(id)),
+      cause => setRequestError(errorMessage(cause)),
+    )
   }
+
   return <section className="panel space-y-5 p-4 sm:p-5">
-    <div><h2 className="text-lg font-semibold">{packageId} v{revision}</h2><p className="mt-1 whitespace-pre-wrap break-words text-sm text-txt2">{pkg.sop}</p></div>
-    <dl className="grid gap-4 border-y border-line py-4 sm:grid-cols-2"><div><dt className="field-label">验收标准</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{pkg.acceptance}</dd></div><div><dt className="field-label">交付物</dt><dd className="mt-1 break-words text-sm">{pkg.deliverables?.join('、') || '未声明'}</dd></div></dl>
-    {declarations.length > 0 ? <div className="space-y-4"><h3 className="font-semibold">本次材料</h3>{declarations.map(([name, type]) => <label className="field" key={name}><span className="field-label">{name} <span className="text-txt3">({type})</span></span>{type === 'boolean' ? <span className="flex items-center gap-2"><input type="checkbox" checked={Boolean(values[name])} onChange={event => setValue(name, event.target.checked)} />是</span> : type === 'object' || type === 'array' ? <Textarea aria-label={name} value={inputValue(type, values[name])} onChange={event => setValue(name, event.target.value)} rows={4} placeholder={type === 'array' ? '[ ]' : '{ }'} /> : <Input aria-label={name} type={type === 'number' || type === 'integer' ? 'number' : 'text'} value={inputValue(type, values[name])} onChange={event => setValue(name, event.target.value)} />}</label>)}</div> : <p className="text-sm text-txt2">此版本不要求额外材料。</p>}
-    {requestError && <p role="alert" className="break-words text-sm text-err">{requestError} 请求标识已保留，重试不会重复创建相同工作项。</p>}
-    {createdId ? <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-ok">工作项已创建：{createdId}</p><Button variant="primary" asChild><Link to={`/items/${encodeURIComponent(createdId)}`}>打开工作项</Link></Button></div> : <Button variant="primary" loading={submitting} onClick={() => void submit}>创建待办理工作项</Button>}
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h2 className="break-all text-lg font-semibold">{packageId} v{revision}</h2>
+        <p className="mt-1 whitespace-pre-wrap break-words text-sm text-txt2">{pkg.sop}</p>
+      </div>
+      {versions.length > 1 && <label className="field w-32"><span className="field-label">修订版本</span>
+        <Select aria-label="修订版本" value={revision} onChange={event => onRevision(Number(event.target.value))}>
+          {versions.map(item => <option key={item} value={item}>{revision === item ? `v${item} · 当前` : `v${item}`}</option>)}
+        </Select>
+      </label>}
+    </div>
+    <dl className="grid gap-4 border-y border-line py-4 sm:grid-cols-2">
+      <div><dt className="field-label">验收标准</dt>
+        <dd className="mt-1 whitespace-pre-wrap break-words text-sm">{pkg.acceptance}</dd></div>
+      <div><dt className="field-label">交付物</dt>
+        <dd className="mt-1 break-words text-sm">{pkg.deliverables?.join('、') || '未声明'}</dd></div>
+    </dl>
+    {declarations.length > 0 ? <div className="space-y-4">
+      <h3 className="font-semibold text-txt">本次材料</h3>
+      {declarations.map(([name, type]) => <Field key={name} name={name} type={type} value={values[name]}
+        error={errors[name]} onChange={value => setValue(name, value)} />)}
+    </div> : <p className="text-sm text-txt2">此版本不要求额外材料。</p>}
+    {requestError && <p role="alert" className="break-words text-sm text-err">{requestError} 表单内容已保留，可直接重试。</p>}
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="primary" loading={dispatch.busy} onClick={() => void submit()}>创建待办理工作项</Button>
+      <p className="text-xs text-txt3">只创建单据，执行由详情页发起。</p>
+    </div>
   </section>
+}
+
+function Field({ name, type, value, error, onChange }: {
+  name: string
+  type: InputType
+  value: string | boolean | undefined
+  error?: string
+  onChange: (value: string | boolean) => void
+}) {
+  const text = typeof value === 'string' ? value : ''
+  const invalid = Boolean(error)
+  const label = <span className="field-label">{name} <span className="text-txt3">({type})</span></span>
+  if (type === 'boolean') {
+    return <label className="field">
+      {label}
+      <span className="flex items-center gap-2 text-sm">
+        <input type="checkbox" aria-label={name} checked={value === true}
+          onChange={event => onChange(event.target.checked)} />
+        {value === true ? '是' : '否'}
+      </span>
+      {error && <span className="text-sm text-err">{error}</span>}
+    </label>
+  }
+  return <label className="field">
+    {label}
+    {type === 'object' || type === 'array'
+      ? <Textarea aria-label={name} aria-invalid={invalid} value={text} rows={4}
+        placeholder={placeholderOf(type)} onChange={event => onChange(event.target.value)} />
+      : <Input aria-label={name} aria-invalid={invalid} inputMode={type === 'number' || type === 'integer' ? 'decimal' : undefined}
+        value={text} placeholder={placeholderOf(type)} onChange={event => onChange(event.target.value)} />}
+    {error && <span className="text-sm text-err">{error}</span>}
+  </label>
 }
