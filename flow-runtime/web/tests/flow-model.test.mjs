@@ -478,3 +478,54 @@ test('运行配置读出时补齐 provider 形状，旧运行不因缺字段崩�
   })
   assert.equal(current.config.provider.baseUrl, 'http://x')
 })
+
+test('路由记录按时间排列并区分开始、结束与判定', async () => {
+  const { routeRecords, finishSummary, decisionSummary, enteredFromLabel } = await import(
+    join(root, 'src', 'flow', 'route-records.ts')
+  )
+  const node = (id, ref, sequence, startedAt, completedAt, extra = {}) => ({
+    id,
+    runId: 'r',
+    sequence,
+    nodeRef: ref,
+    nodeName: ref,
+    actionKind: '新建Agent',
+    status: completedAt ? 'completed' : 'running',
+    startedAt,
+    completedAt,
+    input: { 任务: 'x' },
+    enteredFrom: { kind: 'start' },
+    ...extra,
+  })
+  const facts = {
+    nodeRuns: [
+      node('b', 'second', 2, '2025-01-08T09:02:00.000Z', '2025-01-08T09:04:00.000Z', {
+        outcome: { result: '已完成' },
+      }),
+      node('a', 'first', 1, '2025-01-08T09:01:00.000Z', '2025-01-08T09:02:00.000Z', {
+        outcome: { result: '已分析' },
+      }),
+      node('c', 'third', 3, '2025-01-08T09:05:00.000Z'),
+    ],
+    routeDecisions: [
+      {
+        id: 'd1',
+        runId: 'r',
+        sequence: 2,
+        sourceNodeRunId: 'a',
+        result: '已分析',
+        destination: { kind: 'node', ref: 'second' },
+        selectedAt: '2025-01-08T09:02:00.000Z',
+      },
+    ],
+  }
+  const records = routeRecords(facts)
+  // 同一时刻先结束、再判定、最后开始下一个节点；未完成的节点只有开始记录。
+  assert.deepEqual(
+    records.map((record) => record.id),
+    ['start:a', 'finish:a', 'decision:d1', 'start:b', 'finish:b', 'start:c'],
+  )
+  assert.equal(finishSummary(facts.nodeRuns[1]), '提交 已分析')
+  assert.equal(decisionSummary(facts.routeDecisions[0], () => '第二步'), '已分析 → 第二步')
+  assert.equal(enteredFromLabel({ kind: 'parallel' }), '并行分支')
+})

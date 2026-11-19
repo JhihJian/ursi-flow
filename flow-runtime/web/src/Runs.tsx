@@ -1,6 +1,15 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { ArrowLeft, ChevronRight, CircleStop, History, Network, RefreshCw, Terminal } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronRight,
+  CircleStop,
+  History,
+  ListOrdered,
+  Network,
+  RefreshCw,
+  Terminal,
+} from 'lucide-react'
 import { AsyncState, PageHeading, Refresh, Status, message, useLoad, type Loaded } from './main'
 import { Alert, AlertDescription } from './components/ui/alert'
 import { Badge } from './components/ui/badge'
@@ -36,6 +45,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import type { FlowPackage, NodeRun, RunHistory, Source } from './data'
 import { actionOf, parseFlow, splitSections } from './flow/doc'
 import type { ActionKind, FlowGraph } from './flow/graph'
+import {
+  clock,
+  decisionSummary,
+  enteredFromLabel,
+  finishSummary,
+  routeRecords,
+} from './flow/route-records'
 import { runFlowState } from './flow/run-state'
 import { RunGraph } from './RunGraph'
 import { cn } from './lib/utils'
@@ -461,6 +477,9 @@ function FlowPanel({
   const current = state?.currentRef
     ? graph?.graph.nodes.find((node) => node.ref === state.currentRef)?.name
     : undefined
+  // 判定去向按图形里的节点名显示，读到旧修订里已删掉的引用时退回引用本身。
+  const names: Record<string, string> = {}
+  for (const node of graph?.graph.nodes ?? []) names[node.ref] = node.name
   return (
     <>
       <Section title="流转图" meta={current ? `当前节点：${current}` : undefined}>
@@ -488,45 +507,228 @@ function FlowPanel({
           />
         )}
       </Section>
-      <Section
-        title={
-          <>
-            <Network />
-            路由证据
-          </>
-        }
-        meta={facts ? `${facts.routeDecisions.length} 次选择` : '读取中…'}
-      >
-        {!facts || facts.routeDecisions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">还没有路由记录。</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {['#', '来源节点', '结果', '去向', '选择时间'].map((cell) => (
-                  <TableHead key={cell}>{cell}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {facts.routeDecisions.map((decision) => (
-                <TableRow key={decision.id}>
-                  <TableCell className="font-mono">{decision.sequence}</TableCell>
-                  <TableCell>{refName(facts, decision.sourceNodeRunId)}</TableCell>
-                  <TableCell>{decision.result}</TableCell>
-                  <TableCell>
-                    {decision.destination.kind === 'finish'
-                      ? '结束'
-                      : decision.destination.ref || decision.destination.kind}
-                  </TableCell>
-                  <TableCell>{when(decision.selectedAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Section>
+      <RouteRecords facts={facts} names={names} onOpenNode={onSelect} />
     </>
+  )
+}
+
+/** 路由记录：节点开始、节点结束与路由判定按时间排在一起，点开看当时的入参与提交。 */
+function RouteRecords({
+  facts,
+  names,
+  onOpenNode,
+}: {
+  facts?: RunHistory
+  names: Record<string, string>
+  onOpenNode: (ref: string) => void
+}) {
+  const records = useMemo(
+    () => (facts ? routeRecords(facts) : []),
+    [facts],
+  )
+  const [openId, setOpenId] = useState('')
+  const open = records.find((record) => record.id === openId)
+  const nameOf = (ref: string) =>
+    names[ref] ??
+    facts?.nodeRuns.find((node) => node.nodeRef === ref)?.nodeName ??
+    ref
+  const decisions = facts?.routeDecisions.length ?? 0
+  return (
+    <Section
+      title={
+        <>
+          <ListOrdered />
+          路由记录
+        </>
+      }
+      meta={
+        facts
+          ? `${records.length} 条 · ${facts.nodeRuns.length} 次节点访问 · ${decisions} 次判定`
+          : '读取中…'
+      }
+    >
+      {!facts ? (
+        <p className="text-sm text-muted-foreground">正在读取路由记录…</p>
+      ) : !records.length ? (
+        <p className="text-sm text-muted-foreground">这次运行还没有节点开始或路由判定。</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {['时间', '类型', '节点', '记录', ''].map((cell) => (
+                <TableHead key={cell}>{cell}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {records.map((record) => (
+              <TableRow key={record.id}>
+                <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                  {clock(record.at)}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" data-kind={record.kind}>
+                    {record.kind === 'start' ? '开始' : record.kind === 'finish' ? '结束' : '判定'}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {record.nodeRun ? (
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-2">
+                      <b className="font-medium text-foreground">{nodeLabel(record.nodeRun)}</b>
+                      <code className="text-[11px] text-muted-foreground">{record.nodeRun.nodeRef}</code>
+                    </span>
+                  ) : record.decision ? (
+                    <span className="text-muted-foreground">
+                      来自 {refName(facts, record.decision.sourceNodeRunId)}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {record.nodeRun ? (
+                    record.kind === 'start' ? (
+                      <span className="text-muted-foreground">{record.nodeRun.actionKind}</span>
+                    ) : (
+                      finishSummary(record.nodeRun)
+                    )
+                  ) : record.decision ? (
+                    decisionSummary(record.decision, nameOf)
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => setOpenId(record.id)}>
+                    查看
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <Dialog open={Boolean(open)} onOpenChange={(next) => !next && setOpenId('')}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+          {open?.nodeRun && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {open.kind === 'start' ? '节点开始' : '节点结束'} · {nodeLabel(open.nodeRun)}
+                </DialogTitle>
+                <DialogDescription>
+                  <code>{open.nodeRun.nodeRef}</code> · {open.nodeRun.actionKind} ·{' '}
+                  {when(open.at)}
+                  {open.kind === 'finish' &&
+                    ` · 耗时 ${duration(open.nodeRun.startedAt, open.nodeRun.completedAt)}`}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <h3>{open.kind === 'start' ? '入参' : '提交的结果'}</h3>
+                  <pre>
+                    {open.kind === 'start'
+                      ? json(open.nodeRun.input)
+                      : json(
+                          open.nodeRun.outcome ?? open.nodeRun.error ?? null,
+                        )}
+                  </pre>
+                </div>
+                {open.kind === 'start' ? (
+                  <div className="space-y-4">
+                    <div>
+                      <h3>进入方式</h3>
+                      <p className="text-sm">
+                        {enteredFromLabel(open.nodeRun.enteredFrom)}
+                      </p>
+                      <pre>{json(open.nodeRun.enteredFrom)}</pre>
+                    </div>
+                    {open.nodeRun.session && (
+                      <div>
+                        <h3>会话</h3>
+                        <pre>{json(open.nodeRun.session)}</pre>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <h3>状态</h3>
+                      <dl className="text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="text-muted-foreground">节点状态</dt>
+                          <dd>
+                            <Status status={open.nodeRun.status} />
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-muted-foreground">开始</dt>
+                          <dd>{when(open.nodeRun.startedAt)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-muted-foreground">完成</dt>
+                          <dd>{when(open.nodeRun.completedAt)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                    {open.nodeRun.commandResult && (
+                      <div>
+                        <h3>命令输出</h3>
+                        <pre>{open.nodeRun.commandResult.stdout || '（无标准输出）'}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="ghost">关闭</Button>
+                </DialogClose>
+                <Button
+                  onClick={() => {
+                    setOpenId('')
+                    onOpenNode(open.nodeRun!.nodeRef)
+                  }}
+                >
+                  查看节点执行
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+          {open?.decision && (
+            <>
+              <DialogHeader>
+                <DialogTitle>路由判定 · {open.decision.result}</DialogTitle>
+                <DialogDescription>
+                  来自 {refName(facts!, open.decision.sourceNodeRunId)} · {when(open.at)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <h3>判定</h3>
+                  <pre>{json(open.decision)}</pre>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <h3>去向</h3>
+                    <p className="text-sm">
+                      {open.decision.destination.kind === 'finish'
+                        ? '结束这次运行'
+                        : `${nameOf(open.decision.destination.ref)} · ${open.decision.destination.ref}`}
+                    </p>
+                  </div>
+                  <div>
+                    <h3>来源节点</h3>
+                    <p className="text-sm">{refName(facts!, open.decision.sourceNodeRunId)}</p>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="ghost">关闭</Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Section>
   )
 }
 
