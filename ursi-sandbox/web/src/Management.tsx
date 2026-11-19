@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Play, Plus, Square, Trash2 } from 'lucide-react'
+import { Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-react'
 import type { Sandbox, Source } from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
@@ -274,7 +274,8 @@ export function Actions({
 }) {
   const [busy, wait] = useState(false),
     [error, fail] = useState(''),
-    [confirm, ask] = useState(false)
+    [confirm, ask] = useState(false),
+    [rebuild, askRebuild] = useState<boolean | null>(null)
   const disabled = !source.manage || busy || Boolean(row.operation)
   async function run(action: 'start' | 'stop' | 'delete') {
     if (disabled || !source.action) return
@@ -285,6 +286,19 @@ export function Actions({
       refresh(await source.action(row.id, action))
     } catch (e) {
       fail(e instanceof Error ? e.message : '操作未确认，请刷新状态')
+    } finally {
+      wait(false)
+    }
+  }
+  async function runRebuild(preserveData: boolean) {
+    if (disabled || !source.rebuild) return
+    wait(true)
+    fail('')
+    askRebuild(null)
+    try {
+      refresh(await source.rebuild(row.id, preserveData))
+    } catch (e) {
+      fail(e instanceof Error ? e.message : '重建请求未确认，请刷新状态')
     } finally {
       wait(false)
     }
@@ -308,6 +322,26 @@ export function Actions({
           <Square />
           停止
         </Button>
+        {source.capabilities.rebuild_preserve_data && (
+          <Button
+            variant="outline"
+            disabled={disabled}
+            onClick={() => askRebuild(true)}
+          >
+            <RefreshCw />
+            保留数据重建
+          </Button>
+        )}
+        {source.capabilities.rebuild_destroy_data && (
+          <Button
+            variant="outline"
+            disabled={disabled}
+            onClick={() => askRebuild(false)}
+          >
+            <RefreshCw />
+            销毁数据重建
+          </Button>
+        )}
         <Button
           variant="destructive"
           disabled={disabled}
@@ -317,6 +351,36 @@ export function Actions({
           删除
         </Button>
       </div>
+      <Dialog
+        open={rebuild !== null}
+        onOpenChange={(open) => {
+          if (!open) askRebuild(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {rebuild ? '保留数据重建沙箱' : '销毁数据重建沙箱'}
+            </DialogTitle>
+            <DialogDescription>
+              {rebuild
+                ? '容器会重新创建，工作区数据和数据代际保持不变。'
+                : '容器和工作区数据会重新创建，数据代际将递增，此操作不能撤销。'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => askRebuild(null)}>
+              取消
+            </Button>
+            <Button
+              variant={rebuild ? 'primary' : 'destructive'}
+              onClick={() => void runRebuild(rebuild === true)}
+            >
+              {rebuild ? '确认重建' : '确认销毁并重建'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={confirm} onOpenChange={ask}>
         <DialogContent>
           <DialogHeader>
@@ -351,23 +415,22 @@ export function CliTools() {
   return (
     <Collapsible className="mt-5">
       <CollapsibleTrigger className="text-sm font-medium text-txt2">
-        运行时工具（独立 CLI）
+        端点访问（独立 CLI）
       </CollapsibleTrigger>
       <CollapsibleContent>
+        <p className="muted">
+          当前 Web 控制台已覆盖沙箱生命周期、端点状态和日志。SSH、SFTP 与 ACP
+          是数据面协议，使用独立 Client 通过 Gateway bridge 访问，Gateway key
+          不会发送到浏览器。
+        </p>
         <dl>
           <div>
             <dt>ACP 会话</dt>
-            <dd>
-              acp initialize / new / prompt / status / cancel / close，连接
-              Runtime 会话端点并使用会话令牌。
-            </dd>
+            <dd>acp initialize / new / prompt / status / cancel / close。</dd>
           </div>
           <div>
             <dt>工作区访问</dt>
-            <dd>
-              ssh 执行脚本，sftp-put / sftp-get 传输文件。使用本机 SSH 私钥及
-              known_hosts。
-            </dd>
+            <dd>ssh 执行脚本，sftp-put / sftp-get 传输文件。</dd>
           </div>
         </dl>
       </CollapsibleContent>

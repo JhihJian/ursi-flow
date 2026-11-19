@@ -17,11 +17,15 @@ test('演示与真实配置分离，配置不完整时拒绝启动', async (t) =
   assert.equal((await fetch(base + '/api/v1/sandboxes')).status, 404)
 })
 test('管理员写请求必须使用白名单路径和同源操作头', async (t) => {
-  const calls = []
+  const calls = [],
+    bodies = []
   const url = await listen(
     t,
-    http.createServer((req, res) => {
+    http.createServer(async (req, res) => {
+      let body = ''
+      for await (const chunk of req) body += chunk
       calls.push(req.method + ' ' + req.url)
+      bodies.push(body)
       res.end('{}')
     }),
   )
@@ -37,8 +41,11 @@ test('管理员写请求必须使用白名单路径和同源操作头', async (t
   const headers = {
     Authorization: 'Basic ' + Buffer.from('admin:' + pass).toString('base64'),
   }
-  const path = '/api/v1/sandboxes/' + 'a'.repeat(32) + '/stop'
-  const post = (p, h) => fetch(base + p, { method: 'POST', headers: h })
+  const id = 'a'.repeat(32)
+  const path = '/api/v1/sandboxes/' + id + '/stop'
+  const rebuildPath = '/api/v1/sandboxes/' + id + '/rebuild'
+  const post = (p, h, body) =>
+    fetch(base + p, { method: 'POST', headers: h, body })
   assert.equal((await post(path, {})).status, 401)
   assert.equal((await post(path, headers)).status, 403)
   const h = { ...headers, 'X-Ursi-Action': 'manage' }
@@ -51,7 +58,18 @@ test('管理员写请求必须使用白名单路径和同源操作头', async (t
     405,
   )
   assert.equal((await post(path, h)).status, 200)
-  assert.deepEqual(calls, ['POST ' + path])
+  assert.equal(
+    (
+      await post(
+        rebuildPath,
+        { ...h, 'content-type': 'application/json' },
+        '{"preserve_data":true}',
+      )
+    ).status,
+    200,
+  )
+  assert.deepEqual(calls, ['POST ' + path, 'POST ' + rebuildPath])
+  assert.deepEqual(bodies, ['', '{"preserve_data":true}'])
 })
 test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日志', async (t) => {
   const requests = []
@@ -83,7 +101,12 @@ test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日�
     await (await fetch(base + '/console-config.json', { headers })).json(),
     { mode: 'gateway', manage: false },
   )
-  for (const path of [list, item, item + '/logs?tail=200'])
+  for (const path of [
+    '/api/v1/capabilities',
+    list,
+    item,
+    item + '/logs?tail=200',
+  ])
     assert.equal((await fetch(base + path, { headers })).status, 200)
   assert.equal(
     (await fetch(base + item, { method: 'DELETE', headers })).status,
@@ -95,7 +118,7 @@ test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日�
   )
   assert.deepEqual(
     requests,
-    [list, item, item + '/logs?tail=200'].map((path) => [
+    ['/api/v1/capabilities', list, item, item + '/logs?tail=200'].map((path) => [
       path,
       'Bearer ' + key,
     ]),

@@ -22,11 +22,27 @@ export interface Sandbox {
   error: string | null
 }
 type Read<T> = T | Promise<T>
+export interface Capabilities {
+  rebuild_preserve_data: boolean
+  rebuild_destroy_data: boolean
+  tunnel_enabled: boolean
+}
+interface GatewayCapabilities {
+  capabilities: Omit<Capabilities, 'tunnel_enabled'>
+  tunnel_enabled: boolean
+}
+const defaultCapabilities: Capabilities = {
+  rebuild_preserve_data: false,
+  rebuild_destroy_data: false,
+  tunnel_enabled: false,
+}
 export interface Source {
   demo: boolean
   manage: boolean
+  capabilities: Capabilities
   create?: (spec: unknown, key: string) => Promise<Sandbox>
   action?: (id: string, action: 'start' | 'stop' | 'delete') => Promise<Sandbox>
+  rebuild?: (id: string, preserveData: boolean) => Promise<Sandbox>
   list: (signal: AbortSignal) => Read<Sandbox[]>
   detail: (id: string, signal: AbortSignal) => Read<Sandbox>
   logs: (id: string, signal: AbortSignal) => Read<string>
@@ -77,6 +93,7 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
     return {
       demo: true,
       manage: false,
+      capabilities: defaultCapabilities,
       list: () => rows,
       detail: item,
       endpoints: (id) => item(id).endpoints,
@@ -86,9 +103,20 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
   }
   if (mode !== 'gateway') throw new Error('数据源配置无效')
   const base = './api/v1/sandboxes'
+  const gatewayCapabilities = await json<GatewayCapabilities>(
+    './api/v1/capabilities',
+    signal,
+  ).catch(() => null)
+  const capabilities = gatewayCapabilities
+    ? {
+        ...gatewayCapabilities.capabilities,
+        tunnel_enabled: gatewayCapabilities.tunnel_enabled,
+      }
+    : defaultCapabilities
   return {
     demo: false,
     manage: manage === true,
+    capabilities,
     create: manage
       ? (spec, key) =>
           json(base, undefined, {
@@ -111,6 +139,17 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
               headers: { 'X-Ursi-Action': 'manage' },
             },
           )
+      : undefined,
+    rebuild: manage
+      ? (id, preserveData) =>
+          json(`${base}/${encodeURIComponent(id)}/rebuild`, undefined, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Ursi-Action': 'manage',
+            },
+            body: JSON.stringify({ preserve_data: preserveData }),
+          })
       : undefined,
     list: async (s) =>
       (await json<{ sandboxes: Sandbox[] }>(base, s)).sandboxes,

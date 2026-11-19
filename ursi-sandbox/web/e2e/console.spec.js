@@ -77,6 +77,60 @@ test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
   await page.getByRole('button', { name: '提交创建' }).click()
   await expect(page).toHaveURL(/#\/sandboxes\/[a-f0-9]{32}$/)
 })
+test('管理员可以选择保留数据重建并提交 Gateway 请求', async ({ page }) => {
+  await page.route('**/console-config.json', (r) =>
+    r.fulfill({ json: { mode: 'gateway', manage: true } }),
+  )
+  await page.route('**/api/v1/capabilities', (r) =>
+    r.fulfill({
+      json: {
+        driver: 'fake',
+        capabilities: {
+          rebuild_preserve_data: true,
+          rebuild_destroy_data: true,
+        },
+        tunnel_enabled: false,
+      },
+    }),
+  )
+  let rebuildBody
+  await page.route('**/api/v1/sandboxes/' + 'a'.repeat(32) + '/rebuild', async (r) => {
+    rebuildBody = r.request().postDataJSON()
+    return r.fulfill({
+      status: 202,
+      json: {
+        id: 'a'.repeat(32),
+        spec: { image: 'node:22', labels: { name: 'rebuild-web' }, cpus: 1, memory_mb: 256 },
+        resource: { generation: 2, data_generation: 1 },
+        status: 'preparing',
+        operation: { kind: 'rebuild', preserve_data: true },
+        retired: [],
+        revision: 2,
+        endpoints: [],
+        error: null,
+      },
+    })
+  })
+  await page.route('**/api/v1/sandboxes/' + 'a'.repeat(32), (r) =>
+    r.fulfill({
+      json: {
+        id: 'a'.repeat(32),
+        spec: { image: 'node:22', labels: { name: 'rebuild-web' }, cpus: 1, memory_mb: 256 },
+        resource: { generation: 1, data_generation: 1 },
+        status: 'running',
+        operation: null,
+        endpoints: [],
+        error: null,
+        revision: 1,
+      },
+    }),
+  )
+  await page.goto('/sandboxes/' + 'a'.repeat(32))
+  await page.getByRole('button', { name: '保留数据重建' }).click()
+  await page.getByRole('button', { name: '确认重建' }).click()
+  await expect.poll(() => rebuildBody).toEqual({ preserve_data: true })
+  await expect(page.getByText('Gateway 正在处理：rebuild')).toBeVisible()
+})
 test('Gateway 失败时显示错误，重试后识别空列表', async ({ page }) => {
   await page.route('**/console-config.json', (r) =>
     r.fulfill({ json: { mode: 'gateway' } }),

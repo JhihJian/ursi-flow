@@ -1,6 +1,6 @@
 # 沙箱资源控制台
 
-`/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止或确认删除实例，请求受理后页面轮询最终状态。可通过统计卡片按状态筛选。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
+`/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止、选择保留数据或销毁数据重建，或确认删除实例，请求受理后页面轮询最终状态。页面按 Gateway capabilities 展示可用的重建方式。可通过统计卡片按状态筛选。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
 
 ## 独立预览
 
@@ -36,7 +36,7 @@ npm start
 
 ### CLI 对照
 
-`gateway list/create/status/start/stop/delete/endpoints` 分别对应实例列表、创建规格以及详情的状态、操作与服务端点。端点读取自 Gateway 的实例快照。SSH/SFTP 工作区访问、ACP 会话命令使用独立身份，仍通过 [CLI](../client/README.md) 执行。
+`gateway list/create/status/start/stop/rebuild/delete/endpoints` 分别对应实例列表、创建规格、详情状态、生命周期操作、两种重建、删除和服务端点。端点读取自 Gateway 的实例快照。SSH/SFTP 工作区访问、ACP 会话命令使用独立身份，仍通过 [CLI](../client/README.md) 执行，并通过 Gateway bridge 连接。Web 页面不接收 Gateway key，也不拼接端点地址。
 
 ## 测试
 

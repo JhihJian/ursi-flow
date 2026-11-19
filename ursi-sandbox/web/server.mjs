@@ -68,11 +68,15 @@ export function createConsole(env) {
       )
     const collection = '/api/v1/sandboxes'
     const create = req.method === 'POST' && path === collection
+    const rebuild =
+      req.method === 'POST' &&
+      /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/rebuild$/.test(path)
     if (write) {
       if (!live || !manage) return send(403, '{}')
       if (
         !(
           create ||
+          rebuild ||
           (req.method === 'POST' &&
             /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/(start|stop)$/.test(path)) ||
           (req.method === 'DELETE' &&
@@ -98,7 +102,7 @@ export function createConsole(env) {
       try {
         const headers = { Authorization: `Bearer ${key}` }
         let body
-        if (create) {
+        if (create || rebuild) {
           if (req.headers['content-type'] !== 'application/json')
             return send(415, '{}')
           const chunks = []
@@ -110,10 +114,12 @@ export function createConsole(env) {
           }
           body = Buffer.concat(chunks)
           headers['Content-Type'] = 'application/json'
-          const idem = req.headers['idempotency-key']
-          if (typeof idem !== 'string' || !/^[a-f0-9]{32}$/.test(idem))
-            return send(400, '{}')
-          headers['Idempotency-Key'] = idem
+          if (create) {
+            const idem = req.headers['idempotency-key']
+            if (typeof idem !== 'string' || !/^[a-f0-9]{32}$/.test(idem))
+              return send(400, '{}')
+            headers['Idempotency-Key'] = idem
+          }
         }
         const r = await fetch(new URL(path, url), {
           method: req.method,
