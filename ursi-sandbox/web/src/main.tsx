@@ -32,11 +32,6 @@ import { Input } from './shared/ui/input'
 import { Select } from './shared/ui/select'
 import { Badge as UiBadge } from './shared/ui/badge'
 import { Alert } from './shared/ui/alert'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from './shared/ui/collapsible'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
 import { initAppearance } from './theme'
 import './tokens.css'
@@ -148,7 +143,6 @@ function Header({ source }: { source?: Source }) {
 }
 function List({ source }: { source: Source }) {
   const state = useLoad((s) => source.list(s), [source])
-  const caps = useLoad((s) => source.capabilities(s), [source])
   const [q, search] = useState(''),
     [status, filter] = useState('')
   const rows = state.value || [],
@@ -175,24 +169,6 @@ function List({ source }: { source: Source }) {
         <Refresh state={state} />
         <CreateSandbox source={source} />
       </div>
-      <Collapsible className="mb-4 rounded-lg border border-line bg-surface p-3">
-        <CollapsibleTrigger className="text-sm font-medium text-txt2">
-          Gateway 能力
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {caps.value ? (
-            <p className="mt-3 text-sm text-txt3">
-              驱动：{caps.value.driver} · 隧道：
-              {caps.value.tunnel_enabled ? '开启' : '关闭'}{' '}
-              {Object.entries(caps.value.capabilities)
-                .map(([k, v]) => `${k}: ${v ? '支持' : '不支持'}`)
-                .join(' · ')}
-            </p>
-          ) : (
-            <AsyncState state={caps} />
-          )}
-        </CollapsibleContent>
-      </Collapsible>
       <div className="stats">
         {stats.map(([value, label, Icon]) => (
           <Button

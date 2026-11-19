@@ -23,11 +23,6 @@ type Read<T> = T | Promise<T>
 export interface Source {
   demo: boolean
   manage: boolean
-  capabilities: (signal: AbortSignal) => Read<{
-    driver: string
-    tunnel_enabled: boolean
-    capabilities: Record<string, boolean>
-  }>
   create?: (spec: unknown, key: string) => Promise<Sandbox>
   action?: (id: string, action: 'start' | 'stop' | 'delete') => Promise<Sandbox>
   list: (signal: AbortSignal) => Read<Sandbox[]>
@@ -80,11 +75,6 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
     return {
       demo: true,
       manage: false,
-      capabilities: () => ({
-        driver: '演示样例',
-        tunnel_enabled: false,
-        capabilities: {},
-      }),
       list: () => rows,
       detail: item,
       endpoints: (id) => item(id).endpoints,
@@ -97,7 +87,6 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
   return {
     demo: false,
     manage: manage === true,
-    capabilities: (s) => json('./api/v1/capabilities', s),
     create: manage
       ? (spec, key) =>
           json(base, undefined, {

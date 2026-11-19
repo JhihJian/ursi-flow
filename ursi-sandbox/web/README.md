@@ -1,6 +1,6 @@
 # 沙箱资源控制台
 
-`/sandboxes` 提供 Gateway 实例管理。管理员可提交完整 SandboxSpec 创建沙箱，并在详情页启动、停止或确认删除实例。请求受理后页面轮询最终状态。列表可展开 Gateway 能力。可按状态筛选，按名称（`labels.name`）、ID 或镜像搜索。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
+`/sandboxes` 提供 Gateway 实例管理。管理员可提交完整 SandboxSpec 创建沙箱，并在详情页启动、停止或确认删除实例。请求受理后页面轮询最终状态。可按状态筛选，按名称（`labels.name`）、ID 或镜像搜索。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
 
 ## 独立预览
 
@@ -36,7 +36,7 @@ npm start
 
 ### CLI 对照
 
-`gateway capabilities/list/create/status/start/stop/delete/endpoints` 分别对应列表的能力面板、实例列表、创建规格以及详情的状态、操作与服务端点。端点读取自 Gateway 的实例快照。SSH/SFTP 工作区访问、ACP 会话命令使用独立身份，仍通过 [CLI](../client/README.md) 执行。
+`gateway list/create/status/start/stop/delete/endpoints` 分别对应实例列表、创建规格以及详情的状态、操作与服务端点。端点读取自 Gateway 的实例快照。SSH/SFTP 工作区访问、ACP 会话命令使用独立身份，仍通过 [CLI](../client/README.md) 执行。
 
 ## 测试
 
