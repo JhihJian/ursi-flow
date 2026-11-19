@@ -1,6 +1,8 @@
 /* 轨迹工作区的宿主布局：结构沿用上游展示站（viewer-demo.css 的 session workspace 段），
  * 颜色全部换成控制台 token，深色主题不需要第二套值。组件自身的样式仍在 reference/ 与 styles/。 */
 .trajectory-host {
+  display: flex;
+  flex-direction: column;
   --viewer-accent: rgb(var(--c-accent-2));
   --viewer-control-active-bg: rgb(var(--c-accent-dim));
   --viewer-control-active-border: rgb(var(--c-accent) / 0.35);

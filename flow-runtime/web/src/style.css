@@ -7,7 +7,7 @@
   html { @apply bg-background font-sans text-sm text-foreground antialiased; font-size:16px }
   body { @apply min-w-0 text-sm; }
   :focus-visible { outline:2px solid rgb(var(--ring));outline-offset:3px }
-  pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-base p-3 font-mono text-xs; }
+  pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-base p-3 font-mono text-xs leading-relaxed; }
   summary { @apply cursor-pointer text-sm text-txt2; }
 }
 
@@ -126,14 +126,6 @@
   .runflow-legend { @apply flex flex-wrap items-center gap-3 text-[11px] text-txt3 }
   .runflow-legend li { @apply flex items-center gap-1.5 }
   .runflow-legend-line { @apply inline-block h-0.5 w-4 rounded-full; background: rgb(var(--c-accent)) }
-
-  /* 节点执行记录：左列访问列表，右侧轨迹或执行证据。 */
-  .execution-grid { @apply grid min-w-0 items-start gap-4 xl:grid-cols-[19rem_minmax(0,1fr)] }
-  .execution-list { @apply max-h-[38rem] overflow-auto rounded-xl border border-line bg-surface }
-  .execution-row {
-    @apply flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-elevated;
-  }
-  .execution-row[data-active='true'] { @apply bg-accent-dim text-accent-2 }
 }
 
 /* Markdown 视图 */

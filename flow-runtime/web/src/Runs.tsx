@@ -8,6 +8,7 @@ import {
   ListOrdered,
   Network,
   RefreshCw,
+  SlidersHorizontal,
   Terminal,
 } from 'lucide-react'
 import { AsyncState, PageHeading, Refresh, Status, message, useLoad, type Loaded } from './main'
@@ -32,6 +33,7 @@ import {
   ItemDescription,
   ItemTitle,
   ItemGroup,
+  ItemMedia,
 } from './components/ui/item'
 import {
   Table,
@@ -167,7 +169,8 @@ function normalize(history: RunHistory): RunHistory {
   }
 }
 
-function Section({
+/** 详情页的区块标题：标题与说明放在内容上方，内容自己带边框，避免卡片套卡片。 */
+function Panel({
   title,
   meta,
   children,
@@ -177,15 +180,19 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <section className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="flex items-center gap-2 text-sm font-semibold [&_svg]:size-4 [&_svg]:text-muted-foreground">
+          {title}
+        </h2>
         {meta && <span className="text-xs text-muted-foreground">{meta}</span>}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+      </div>
+      {children}
+    </section>
   )
 }
+
+const mono = 'rounded bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-txt2'
 
 /** 运行详情：流转图与节点执行记录两类视图共用同一份事实。 */
 export function RunDetail({ source }: { source: Source }) {
@@ -199,6 +206,7 @@ export function RunDetail({ source }: { source: Source }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState(false)
+  const [paramsOpen, setParamsOpen] = useState(false)
   const { refresh: reloadJob } = job
   const { refresh: reloadHistory } = history
   const { refresh: reloadFlow } = flow
@@ -270,12 +278,12 @@ export function RunDetail({ source }: { source: Source }) {
   }, [facts, run, selectedId])
 
   const update = (next: { tab?: 'flow' | 'nodes'; node?: string }) => {
-    const params = new URLSearchParams()
+    const search = new URLSearchParams()
     const target = next.tab ?? (tab === 'nodes' ? 'nodes' : 'flow')
-    if (target === 'nodes') params.set('tab', 'nodes')
+    if (target === 'nodes') search.set('tab', 'nodes')
     const node = next.node ?? (target === 'nodes' ? selected?.id : undefined)
-    if (node) params.set('node', node)
-    setParams(params, { replace: true })
+    if (node) search.set('node', node)
+    setParams(search, { replace: true })
   }
   // 从图上点进节点：取该引用最近一次访问，回边场景下也落到刚跑过的那次。
   const openNode = (ref: string) => {
@@ -284,9 +292,12 @@ export function RunDetail({ source }: { source: Source }) {
     if (latest) update({ tab: 'nodes', node: latest.id })
   }
 
+  const startedAt = (run?.startedAt as string) || undefined
+  const completedAt = (run?.completedAt as string) || undefined
+
   return (
     <main className="space-y-4">
-      <Link className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2')} to="/runs">
+      <Link className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 w-fit')} to="/runs">
         <ArrowLeft />
         运行记录
       </Link>
@@ -294,25 +305,69 @@ export function RunDetail({ source }: { source: Source }) {
         <AsyncState state={job} />
       ) : (
         <>
-          <PageHeading
-            title={jobRow.id}
-            description={`Flow ${jobRow.flow} · 修订 ${jobRow.revision.slice(0, 8)} · ${when((run?.startedAt as string) || undefined)}`}
-            actions={
-              <>
-                <Status status={jobRow.status} />
-                <Button onClick={refreshAll} disabled={job.loading}>
+          <Card>
+            <CardHeader className="gap-3">
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h1 className="break-all font-mono text-lg font-semibold">{jobRow.id}</h1>
+                  <Status status={jobRow.status} />
+                  {run?.phase && run.phase !== jobRow.status && (
+                    <Badge variant="outline">{run.phase}</Badge>
+                  )}
+                </div>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span>
+                    Flow{' '}
+                    <Link
+                      className="text-foreground hover:underline"
+                      to={`/flows/${encodeURIComponent(jobRow.flow)}/edit`}
+                    >
+                      {jobRow.flow}
+                    </Link>
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>
+                    修订 <code className={mono}>{jobRow.revision.slice(0, 8)}</code>
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>开始 {when(startedAt)}</span>
+                  <span aria-hidden>·</span>
+                  <span>耗时 {duration(startedAt ?? '', completedAt)}</span>
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => setParamsOpen(true)}>
+                  <SlidersHorizontal />
+                  运行参数
+                </Button>
+                <Button variant="outline" onClick={refreshAll} disabled={job.loading}>
                   <RefreshCw />
                   刷新
                 </Button>
                 {jobRow.status === 'running' && (
-                  <Button disabled={busy} onClick={() => setConfirm(true)}>
+                  <Button variant="destructive" disabled={busy} onClick={() => setConfirm(true)}>
                     <CircleStop />
                     停止运行
                   </Button>
                 )}
-              </>
-            }
-          />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-4 border-t border-border pt-3 sm:grid-cols-4">
+                {[
+                  ['节点访问', `${facts?.nodeRuns.length ?? 0} 次`],
+                  ['路由判定', `${facts?.routeDecisions.length ?? 0} 次`],
+                  ['并行轮次', `${facts?.parallelRounds.length ?? 0} 轮`],
+                  ['恢复记录', `${facts?.recoveries.length ?? 0} 次`],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="mt-0.5 font-medium tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
           {error && (
             <Alert variant="error">
               <AlertDescription>{error}</AlertDescription>
@@ -333,7 +388,7 @@ export function RunDetail({ source }: { source: Source }) {
               </DialogHeader>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button>取消</Button>
+                  <Button variant="ghost">取消</Button>
                 </DialogClose>
                 <Button variant="destructive" onClick={stop}>
                   确认停止
@@ -341,29 +396,40 @@ export function RunDetail({ source }: { source: Source }) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <details className="rounded-xl border border-line bg-surface px-4 py-3">
-            <summary className="cursor-pointer text-sm text-txt2">运行参数与启动变量</summary>
-            <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {Object.entries({
-                状态: jobRow.status,
-                阶段: (run?.phase as string) || '·',
-                工作目录: jobRow.cwd,
-                修订: jobRow.revision,
-                并发上限: String(jobRow.config.maxConcurrent),
-                模型: jobRow.config.provider.model || '未配置',
-                服务地址: jobRow.config.provider.baseUrl || '未配置',
-              }).map(([key, value]) => (
-                <div key={key} className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">{key}</dt>
-                  <dd className="mt-0.5 break-all text-sm">{value}</dd>
-                </div>
-              ))}
-            </dl>
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm text-txt2">启动变量</summary>
-              <pre>{json(jobRow.variables)}</pre>
-            </details>
-          </details>
+          <Dialog open={paramsOpen} onOpenChange={setParamsOpen}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>运行参数</DialogTitle>
+                <DialogDescription>
+                  启动时固定下来的配置与变量，之后修改不影响这次运行。
+                </DialogDescription>
+              </DialogHeader>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                {[
+                  ['阶段', (run?.phase as string) || '·'],
+                  ['工作目录', jobRow.cwd],
+                  ['目录修订', jobRow.revision],
+                  ['并发上限', String(jobRow.config.maxConcurrent)],
+                  ['模型', jobRow.config.provider.model || '未配置'],
+                  ['服务地址', jobRow.config.provider.baseUrl || '未配置'],
+                ].map(([key, value]) => (
+                  <div key={key} className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">{key}</dt>
+                    <dd className="mt-0.5 break-words text-sm">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">启动变量</h3>
+                <pre className="max-h-72">{json(jobRow.variables)}</pre>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="ghost">关闭</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Tabs value={tab} onValueChange={(next) => update({ tab: next as 'flow' | 'nodes' })}>
             <TabsList>
               <TabsTrigger value="flow">
@@ -375,17 +441,17 @@ export function RunDetail({ source }: { source: Source }) {
                 节点执行
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="flow" className="space-y-4 pt-4">
+            <TabsContent value="flow" className="space-y-6 pt-4">
               <FlowPanel
                 flow={flow}
                 graph={graph}
                 state={state}
-                selectedRef={tab === 'nodes' ? selected?.nodeRef : undefined}
+                selectedRef={selected?.nodeRef}
                 onSelect={openNode}
                 facts={facts}
               />
               {children.length > 0 && (
-                <Section title="子 Run">
+                <Panel title="子 Run" meta={`${children.length} 个`}>
                   <ItemGroup>
                     {children.map((child) => (
                       <Item key={child.id} asChild>
@@ -403,37 +469,48 @@ export function RunDetail({ source }: { source: Source }) {
                       </Item>
                     ))}
                   </ItemGroup>
-                </Section>
+                </Panel>
               )}
               {facts && facts.parallelRounds.length > 0 && (
-                <Section title="并行轮次">
-                  <ul className="divide-y divide-border">
+                <Panel title="并行轮次" meta={`${facts.parallelRounds.length} 轮`}>
+                  <ItemGroup>
                     {facts.parallelRounds.map((round) => (
-                      <li key={round.id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                        <b className="text-foreground">{round.parallelRef}</b>
-                        <Status status={round.status} />
-                        <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-                          {Object.entries(round.branchStatuses)
-                            .map(([branch, status]) => `${branch}: ${status}`)
-                            .join(' · ')}
-                        </span>
-                      </li>
+                      <Item key={round.id}>
+                        <ItemMedia>
+                          <Network />
+                        </ItemMedia>
+                        <ItemContent>
+                          <ItemTitle>{round.parallelRef}</ItemTitle>
+                          <ItemDescription>
+                            {Object.entries(round.branchStatuses)
+                              .map(([branch, status]) => `${branch}: ${status}`)
+                              .join(' · ')}
+                          </ItemDescription>
+                        </ItemContent>
+                        <ItemActions>
+                          <Status status={round.status} />
+                        </ItemActions>
+                      </Item>
                     ))}
-                  </ul>
-                </Section>
+                  </ItemGroup>
+                </Panel>
               )}
               {facts && facts.recoveries.length > 0 && (
-                <Section title="恢复记录">
-                  <ul className="divide-y divide-border">
+                <Panel title="恢复记录" meta={`${facts.recoveries.length} 次`}>
+                  <ItemGroup>
                     {facts.recoveries.map((recovery) => (
-                      <li key={recovery.id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                        <Badge variant="outline">{recovery.strategy}</Badge>
-                        <span className="min-w-0 flex-1 text-sm">{recovery.summary}</span>
-                        <span className="text-xs text-muted-foreground">{when(recovery.resumedAt)}</span>
-                      </li>
+                      <Item key={recovery.id}>
+                        <ItemContent>
+                          <ItemTitle className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{recovery.strategy}</Badge>
+                            {recovery.summary}
+                          </ItemTitle>
+                          <ItemDescription>恢复于 {when(recovery.resumedAt)}</ItemDescription>
+                        </ItemContent>
+                      </Item>
                     ))}
-                  </ul>
-                </Section>
+                  </ItemGroup>
+                </Panel>
               )}
             </TabsContent>
             <TabsContent value="nodes" className="pt-4">
@@ -444,14 +521,19 @@ export function RunDetail({ source }: { source: Source }) {
                 selected={selected}
                 live={jobRow.status === 'running'}
                 onSelect={(node) => update({ tab: 'nodes', node: node.id })}
+                onShowFlow={() => update({ tab: 'flow' })}
               />
             </TabsContent>
           </Tabs>
           {facts && (
-            <details>
-              <summary className="cursor-pointer text-sm text-txt2">原始事实</summary>
-              <pre>{json({ ...facts, job: undefined })}</pre>
-            </details>
+            <Panel title="原始事实" meta="运行事实 JSON">
+              <div className="rounded-xl border border-border bg-card">
+                <details>
+                  <summary className="px-4 py-3 text-sm text-txt2">展开查看</summary>
+                  <pre className="max-h-96 rounded-t-none border-t border-border">{json({ ...facts, job: undefined })}</pre>
+                </details>
+              </div>
+            </Panel>
           )}
         </>
       )}
@@ -482,11 +564,19 @@ function FlowPanel({
   for (const node of graph?.graph.nodes ?? []) names[node.ref] = node.name
   return (
     <>
-      <Section title="流转图" meta={current ? `当前节点：${current}` : undefined}>
+      <Panel
+        title={
+          <>
+            <Network />
+            流转图
+          </>
+        }
+        meta={current ? `当前节点：${current}` : undefined}
+      >
         {flow.error ? (
           <Alert variant="error">
             <AlertDescription>
-              这次运行使用的流程修订已经不可读取（{flow.error}），因此没有流转图。节点执行记录与下方证据仍然完整。
+              这次运行使用的流程修订已经不可读取（{flow.error}），因此没有流转图。节点执行记录与下方记录仍然完整。
             </AlertDescription>
           </Alert>
         ) : !flow.value ? (
@@ -506,7 +596,7 @@ function FlowPanel({
             onSelect={onSelect}
           />
         )}
-      </Section>
+      </Panel>
       <RouteRecords facts={facts} names={names} onOpenNode={onSelect} />
     </>
   )
@@ -522,19 +612,13 @@ function RouteRecords({
   names: Record<string, string>
   onOpenNode: (ref: string) => void
 }) {
-  const records = useMemo(
-    () => (facts ? routeRecords(facts) : []),
-    [facts],
-  )
+  const records = useMemo(() => (facts ? routeRecords(facts) : []), [facts])
   const [openId, setOpenId] = useState('')
   const open = records.find((record) => record.id === openId)
   const nameOf = (ref: string) =>
-    names[ref] ??
-    facts?.nodeRuns.find((node) => node.nodeRef === ref)?.nodeName ??
-    ref
-  const decisions = facts?.routeDecisions.length ?? 0
+    names[ref] ?? facts?.nodeRuns.find((node) => node.nodeRef === ref)?.nodeName ?? ref
   return (
-    <Section
+    <Panel
       title={
         <>
           <ListOrdered />
@@ -543,39 +627,61 @@ function RouteRecords({
       }
       meta={
         facts
-          ? `${records.length} 条 · ${facts.nodeRuns.length} 次节点访问 · ${decisions} 次判定`
+          ? `${records.length} 条 · ${facts.nodeRuns.length} 次节点访问 · ${facts.routeDecisions.length} 次判定`
           : '读取中…'
       }
     >
       {!facts ? (
         <p className="text-sm text-muted-foreground">正在读取路由记录…</p>
       ) : !records.length ? (
-        <p className="text-sm text-muted-foreground">这次运行还没有节点开始或路由判定。</p>
+        <Empty>
+          <EmptyMedia>
+            <ListOrdered />
+          </EmptyMedia>
+          <EmptyTitle>这次运行还没有节点开始或路由判定</EmptyTitle>
+        </Empty>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              {['时间', '类型', '节点', '记录', ''].map((cell) => (
-                <TableHead key={cell}>{cell}</TableHead>
+              {['时间', '事件', '节点', '内容', ''].map((cell, index) => (
+                <TableHead
+                  key={cell || index}
+                  className={index === 0 ? 'w-24' : index === 4 ? 'w-14' : undefined}
+                >
+                  {cell}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {records.map((record) => (
-              <TableRow key={record.id}>
-                <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+              <TableRow key={record.id} className="group">
+                <TableCell className="whitespace-nowrap py-2.5 font-mono text-xs text-muted-foreground">
                   {clock(record.at)}
                 </TableCell>
-                <TableCell>
-                  <Badge variant="outline" data-kind={record.kind}>
+                <TableCell className="py-2.5">
+                  <Badge
+                    variant={
+                      record.kind === 'start'
+                        ? 'info'
+                        : record.kind === 'decision'
+                          ? 'outline'
+                          : record.nodeRun?.error
+                            ? 'err'
+                            : 'ok'
+                    }
+                  >
                     {record.kind === 'start' ? '开始' : record.kind === 'finish' ? '结束' : '判定'}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-2.5">
                   {record.nodeRun ? (
-                    <span className="flex min-w-0 flex-wrap items-baseline gap-2">
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                       <b className="font-medium text-foreground">{nodeLabel(record.nodeRun)}</b>
-                      <code className="text-[11px] text-muted-foreground">{record.nodeRun.nodeRef}</code>
+                      <code className="text-[11px] text-muted-foreground">
+                        {record.nodeRun.nodeRef}
+                      </code>
                     </span>
                   ) : record.decision ? (
                     <span className="text-muted-foreground">
@@ -583,7 +689,7 @@ function RouteRecords({
                     </span>
                   ) : null}
                 </TableCell>
-                <TableCell className="text-sm">
+                <TableCell className="py-2.5 text-sm">
                   {record.nodeRun ? (
                     record.kind === 'start' ? (
                       <span className="text-muted-foreground">{record.nodeRun.actionKind}</span>
@@ -594,9 +700,14 @@ function RouteRecords({
                     decisionSummary(record.decision, nameOf)
                   ) : null}
                 </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setOpenId(record.id)}>
-                    查看
+                <TableCell className="py-2.5 text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`查看${record.kind === 'start' ? '节点开始' : record.kind === 'finish' ? '节点结束' : '路由判定'}记录`}
+                    onClick={() => setOpenId(record.id)}
+                  >
+                    <ChevronRight />
                   </Button>
                 </TableCell>
               </TableRow>
@@ -605,7 +716,7 @@ function RouteRecords({
         </Table>
       )}
       <Dialog open={Boolean(open)} onOpenChange={(next) => !next && setOpenId('')}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           {open?.nodeRun && (
             <>
               <DialogHeader>
@@ -613,64 +724,72 @@ function RouteRecords({
                   {open.kind === 'start' ? '节点开始' : '节点结束'} · {nodeLabel(open.nodeRun)}
                 </DialogTitle>
                 <DialogDescription>
-                  <code>{open.nodeRun.nodeRef}</code> · {open.nodeRun.actionKind} ·{' '}
-                  {when(open.at)}
+                  <code>{open.nodeRun.nodeRef}</code> · {open.nodeRun.actionKind} · {when(open.at)}
                   {open.kind === 'finish' &&
                     ` · 耗时 ${duration(open.nodeRun.startedAt, open.nodeRun.completedAt)}`}
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <h3>{open.kind === 'start' ? '入参' : '提交的结果'}</h3>
-                  <pre>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {open.kind === 'start' ? '入参' : '提交的结果'}
+                  </h3>
+                  <pre className="m-0 max-h-72">
                     {open.kind === 'start'
                       ? json(open.nodeRun.input)
-                      : json(
-                          open.nodeRun.outcome ?? open.nodeRun.error ?? null,
-                        )}
+                      : json(open.nodeRun.outcome ?? open.nodeRun.error ?? null)}
                   </pre>
                 </div>
                 {open.kind === 'start' ? (
-                  <div className="space-y-4">
-                    <div>
-                      <h3>进入方式</h3>
-                      <p className="text-sm">
-                        {enteredFromLabel(open.nodeRun.enteredFrom)}
-                      </p>
-                      <pre>{json(open.nodeRun.enteredFrom)}</pre>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">进入方式</dt>
+                      <dd className="mt-0.5 text-sm">{enteredFromLabel(open.nodeRun.enteredFrom)}</dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">开始时间</dt>
+                      <dd className="mt-0.5 text-sm">{when(open.nodeRun.startedAt)}</dd>
                     </div>
                     {open.nodeRun.session && (
-                      <div>
-                        <h3>会话</h3>
-                        <pre>{json(open.nodeRun.session)}</pre>
+                      <div className="min-w-0 sm:col-span-2">
+                        <dt className="text-xs text-muted-foreground">Pi 会话</dt>
+                        <dd className="mt-0.5 break-words text-sm">
+                          {open.nodeRun.session.id}
+                          {open.nodeRun.session.sessionReference
+                            ? ` · ${open.nodeRun.session.sessionReference}`
+                            : ''}
+                        </dd>
                       </div>
                     )}
-                  </div>
+                  </dl>
                 ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <h3>状态</h3>
-                      <dl className="text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <dt className="text-muted-foreground">节点状态</dt>
-                          <dd>
-                            <Status status={open.nodeRun.status} />
-                          </dd>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                          <dt className="text-muted-foreground">开始</dt>
-                          <dd>{when(open.nodeRun.startedAt)}</dd>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                          <dt className="text-muted-foreground">完成</dt>
-                          <dd>{when(open.nodeRun.completedAt)}</dd>
-                        </div>
-                      </dl>
-                    </div>
-                    {open.nodeRun.commandResult && (
+                  <div className="space-y-3">
+                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
                       <div>
-                        <h3>命令输出</h3>
-                        <pre>{open.nodeRun.commandResult.stdout || '（无标准输出）'}</pre>
+                        <dt className="text-xs text-muted-foreground">节点状态</dt>
+                        <dd className="mt-0.5">
+                          <Status status={open.nodeRun.status} />
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">完成时间</dt>
+                        <dd className="mt-0.5 text-sm">{when(open.nodeRun.completedAt)}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">进入方式</dt>
+                        <dd className="mt-0.5 text-sm">
+                          {enteredFromLabel(open.nodeRun.enteredFrom)}
+                        </dd>
+                      </div>
+                    </dl>
+                    {open.nodeRun.commandResult && (
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-medium text-muted-foreground">
+                          命令输出 · 退出码 {open.nodeRun.commandResult.exitCode ?? '·'}
+                        </h3>
+                        <pre className="m-0 max-h-52">
+                          {open.nodeRun.commandResult.stdout || '（无标准输出）'}
+                        </pre>
                       </div>
                     )}
                   </div>
@@ -699,26 +818,26 @@ function RouteRecords({
                   来自 {refName(facts!, open.decision.sourceNodeRunId)} · {when(open.at)}
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <h3>判定</h3>
-                  <pre>{json(open.decision)}</pre>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">结果</dt>
+                  <dd className="mt-0.5 text-sm">{open.decision.result}</dd>
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <h3>去向</h3>
-                    <p className="text-sm">
-                      {open.decision.destination.kind === 'finish'
-                        ? '结束这次运行'
-                        : `${nameOf(open.decision.destination.ref)} · ${open.decision.destination.ref}`}
-                    </p>
-                  </div>
-                  <div>
-                    <h3>来源节点</h3>
-                    <p className="text-sm">{refName(facts!, open.decision.sourceNodeRunId)}</p>
-                  </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">去向</dt>
+                  <dd className="mt-0.5 text-sm">
+                    {open.decision.destination.kind === 'finish'
+                      ? '结束这次运行'
+                      : `${nameOf(open.decision.destination.ref)} · ${open.decision.destination.ref}`}
+                  </dd>
                 </div>
-              </div>
+                <div className="min-w-0 sm:col-span-2">
+                  <dt className="text-xs text-muted-foreground">判定记录</dt>
+                  <dd className="mt-1">
+                    <pre className="m-0 max-h-60">{json(open.decision)}</pre>
+                  </dd>
+                </div>
+              </dl>
               <DialogFooter>
                 <DialogClose asChild>
                   <Button variant="ghost">关闭</Button>
@@ -728,7 +847,7 @@ function RouteRecords({
           )}
         </DialogContent>
       </Dialog>
-    </Section>
+    </Panel>
   )
 }
 
@@ -739,6 +858,7 @@ function NodeExecutions({
   selected,
   live,
   onSelect,
+  onShowFlow,
 }: {
   source: Source
   runId: string
@@ -746,6 +866,7 @@ function NodeExecutions({
   selected?: NodeRun
   live: boolean
   onSelect: (node: NodeRun) => void
+  onShowFlow: () => void
 }) {
   if (!facts)
     return (
@@ -757,7 +878,14 @@ function NodeExecutions({
       </Empty>
     )
   if (!facts.nodeRuns.length)
-    return <p className="text-sm text-muted-foreground">还没有节点执行记录。</p>
+    return (
+      <Empty>
+        <EmptyMedia>
+          <Terminal />
+        </EmptyMedia>
+        <EmptyTitle>还没有节点执行记录</EmptyTitle>
+      </Empty>
+    )
   const rows = [...facts.nodeRuns].sort((left, right) => left.sequence - right.sequence)
   // 同一节点可能被多次访问，列表与详情都要能说清是第几次。
   const totals = new Map<string, number>()
@@ -771,46 +899,75 @@ function NodeExecutions({
   }
   const index = selected ? rows.findIndex((row) => row.id === selected.id) + 1 : 0
   return (
-    <div className="execution-grid">
-      <div className="execution-list" aria-label="节点执行记录">
-        {rows.map((node) => {
-          const visit = visits.get(node.id)!
-          return (
-            <button
-              key={node.id}
-              type="button"
-              className="execution-row"
-              data-active={selected?.id === node.id}
-              aria-current={selected?.id === node.id ? 'true' : undefined}
-              onClick={() => onSelect(node)}
-            >
-              <span className="w-6 shrink-0 font-mono text-[11px] text-txt3">{node.sequence}</span>
-              <span className="min-w-0 flex-1">
-                <b className="block truncate text-xs font-medium text-foreground">{nodeLabel(node)}</b>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {node.actionKind}
-                  {visit.total > 1 ? ` · 第 ${visit.ordinal} 次` : ''}
-                </span>
-              </span>
-              <Status status={node.status} />
-            </button>
-          )
-        })}
+    <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+      <Card className="min-w-0">
+        <CardHeader className="items-center gap-2 border-b border-border px-3 py-2.5">
+          <CardTitle className="text-sm">节点访问</CardTitle>
+          <span className="text-xs text-muted-foreground">{rows.length} 条</span>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="max-h-[calc(100vh-14rem)] overflow-auto">
+            {rows.map((node) => {
+              const visit = visits.get(node.id)!
+              const active = selected?.id === node.id
+              return (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-3 border-b border-border px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-elevated/60',
+                    active && 'bg-accent-dim hover:bg-accent-dim',
+                  )}
+                  data-active={active}
+                  aria-current={active ? 'true' : undefined}
+                  onClick={() => onSelect(node)}
+                >
+                  <span className="w-5 shrink-0 text-right font-mono text-[11px] text-txt3">
+                    {node.sequence}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        'block truncate text-[13px] font-medium leading-4',
+                        active ? 'text-accent-2' : 'text-foreground',
+                      )}
+                    >
+                      {nodeLabel(node)}
+                    </span>
+                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+                      {node.actionKind}
+                      {visit.total > 1 ? ` · 第 ${visit.ordinal} 次` : ''}
+                    </span>
+                  </span>
+                  <Status status={node.status} />
+                </button>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+      <div className="min-w-0">
+        {selected ? (
+          <NodeDetail
+            key={selected.id}
+            source={source}
+            runId={runId}
+            node={selected}
+            index={index}
+            total={rows.length}
+            visit={visits.get(selected.id)!}
+            live={live}
+            onShowFlow={onShowFlow}
+          />
+        ) : (
+          <Empty>
+            <EmptyMedia>
+              <History />
+            </EmptyMedia>
+            <EmptyTitle>从左侧选择一条节点执行记录</EmptyTitle>
+          </Empty>
+        )}
       </div>
-      {selected ? (
-        <NodeDetail
-          key={selected.id}
-          source={source}
-          runId={runId}
-          node={selected}
-          index={index}
-          total={rows.length}
-          visit={visits.get(selected.id)!}
-          live={live}
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground">从左侧选择一条节点执行记录。</p>
-      )}
     </div>
   )
 }
@@ -823,6 +980,7 @@ function NodeDetail({
   total,
   visit,
   live,
+  onShowFlow,
 }: {
   source: Source
   runId: string
@@ -831,14 +989,13 @@ function NodeDetail({
   total: number
   visit: { ordinal: number; total: number }
   live: boolean
+  onShowFlow: () => void
 }) {
   const session = node.session?.sessionReference
   const agent = isAgent(node)
   const trajectory = useLoad(
     (signal) =>
-      agent && session
-        ? source.trajectory(runId, node.id, signal)
-        : Promise.resolve(undefined),
+      agent && session ? source.trajectory(runId, node.id, signal) : Promise.resolve(undefined),
     [source, runId, node.id, session, agent],
   )
   const { refresh: reloadTrajectory } = trajectory
@@ -848,93 +1005,136 @@ function NodeDetail({
     return () => clearTimeout(timer)
   }, [live, agent, node.status, reloadTrajectory])
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="min-w-0 truncate text-base font-semibold">{nodeLabel(node)}</h2>
-        <code className="text-xs text-muted-foreground">{node.nodeRef}</code>
-        <Status status={node.status} />
-        <span className="text-xs text-muted-foreground">
-          第 {index} / 共 {total} 条 ·{' '}
-          {visit.total > 1 ? `第 ${visit.ordinal} 次访问 · ` : ''}
-          {duration(node.startedAt, node.completedAt)}
-        </span>
-      </div>
-      {node.error && (
-        <Alert variant="error">
-          <AlertDescription>{node.error.summary}</AlertDescription>
-        </Alert>
-      )}
-      {agent && !session && (
-        <Alert variant="error">
-          <AlertDescription>
-            这条记录没有 Pi 会话引用：旧运行或节点在建立会话前就结束了，因此没有轨迹可看。执行证据仍保留在下方。
-          </AlertDescription>
-        </Alert>
-      )}
-      {agent && session && (
-        <div className="min-w-0">
-          {trajectory.error ? (
-            <Alert variant="error">
-              <AlertDescription>{trajectory.error}</AlertDescription>
-            </Alert>
-          ) : !trajectory.value ? (
-            <p className="text-sm text-muted-foreground">正在读取会话轨迹…</p>
-          ) : trajectory.value.omitted ? (
-            <Alert variant="error">
-              <AlertDescription>
-                会话轨迹超过 {Math.round(trajectory.value.size / 1024 / 1024)} MiB，页面不加载。完整文件在
-                Runtime 的运行目录下。
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Suspense fallback={<p className="text-sm text-muted-foreground">正在加载轨迹视图…</p>}>
-              <RunTrajectory jsonl={trajectory.value.jsonl} />
-            </Suspense>
-          )}
-        </div>
-      )}
-      {node.commandResult && (
-        <Section title="命令输出" meta={`退出码 ${node.commandResult.exitCode ?? '·'}`}>
-          <pre>{node.commandResult.stdout || '（无标准输出）'}</pre>
-          {node.commandResult.stderr && <pre className="text-destructive">{node.commandResult.stderr}</pre>}
-        </Section>
-      )}
-      {node.childRunId && (
-        <Section title="子 Run">
-          <Link
-            className="text-sm text-accent-2 hover:underline"
-            to={`/runs/${encodeURIComponent(node.childRunId)}`}
-          >
-            {node.childRunId}
-          </Link>
-        </Section>
-      )}
-      <details className="rounded-xl border border-line bg-surface px-4 py-3">
-        <summary className="cursor-pointer text-sm text-txt2">执行证据</summary>
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
-          <div>
-            <h3>输入</h3>
-            <pre>{json(node.input)}</pre>
+    <Card>
+      <CardHeader className="gap-3 border-b border-border">
+        <div className="min-w-0 space-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="min-w-0 truncate text-base font-semibold">{nodeLabel(node)}</h2>
+            <code className={mono}>{node.nodeRef}</code>
+            <Status status={node.status} />
+            <Badge variant="outline">{node.actionKind}</Badge>
           </div>
-          {node.outcome && (
-            <div>
-              <h3>结果</h3>
-              <pre>{json(node.outcome)}</pre>
-            </div>
-          )}
-          {node.error && (
-            <div>
-              <h3>错误</h3>
-              <pre>{json(node.error)}</pre>
-            </div>
-          )}
-          <div>
-            <h3>来源</h3>
-            <pre>{json(node.enteredFrom)}</pre>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            第 {index} / 共 {total} 条{visit.total > 1 ? ` · 第 ${visit.ordinal} 次访问` : ''} · 耗时{' '}
+            {duration(node.startedAt, node.completedAt)}
+          </p>
         </div>
-        {node.retryOf && <p className="mt-2 text-xs text-muted-foreground">重试自 {node.retryOf}</p>}
-      </details>
-    </div>
+        <Button variant="outline" size="sm" onClick={onShowFlow}>
+          <Network />
+          在流转图中查看
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <div className="min-w-0">
+            <dt className="text-xs text-muted-foreground">开始</dt>
+            <dd className="mt-0.5 text-sm">{when(node.startedAt)}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs text-muted-foreground">完成</dt>
+            <dd className="mt-0.5 text-sm">{when(node.completedAt)}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs text-muted-foreground">进入方式</dt>
+            <dd className="mt-0.5 text-sm">{enteredFromLabel(node.enteredFrom)}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs text-muted-foreground">提交结果</dt>
+            <dd className="mt-0.5 text-sm">{node.outcome?.result ?? '·'}</dd>
+          </div>
+        </dl>
+        {node.error && (
+          <Alert variant="error">
+            <AlertDescription>{node.error.summary}</AlertDescription>
+          </Alert>
+        )}
+        {agent && !session && (
+          <Alert variant="warning">
+            <AlertDescription>
+              这条记录没有 Pi 会话引用：旧运行或节点在建立会话前就结束了，因此没有轨迹可看。执行证据仍保留在下方。
+            </AlertDescription>
+          </Alert>
+        )}
+        {agent && session && (
+          <div className="min-w-0">
+            {trajectory.error ? (
+              <Alert variant="error">
+                <AlertDescription>{trajectory.error}</AlertDescription>
+              </Alert>
+            ) : !trajectory.value ? (
+              <p className="text-sm text-muted-foreground">正在读取会话轨迹…</p>
+            ) : trajectory.value.omitted ? (
+              <Alert variant="error">
+                <AlertDescription>
+                  会话轨迹超过 {Math.round(trajectory.value.size / 1024 / 1024)}{' '}
+                  MiB，页面不加载。完整文件在 Runtime 的运行目录下。
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Suspense fallback={<p className="text-sm text-muted-foreground">正在加载轨迹视图…</p>}>
+                <RunTrajectory jsonl={trajectory.value.jsonl} />
+              </Suspense>
+            )}
+          </div>
+        )}
+        {node.commandResult && (
+          <div className="space-y-2">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              命令输出
+              <Badge variant={node.commandResult.exitCode === 0 ? 'ok' : 'err'}>
+                退出码 {node.commandResult.exitCode ?? '·'}
+              </Badge>
+            </h3>
+            <pre className="mt-0 max-h-72">{node.commandResult.stdout || '（无标准输出）'}</pre>
+            {node.commandResult.stderr && (
+              <pre className="mt-0 max-h-72 border border-err/30 bg-err/5 text-destructive">
+                {node.commandResult.stderr}
+              </pre>
+            )}
+          </div>
+        )}
+        {node.childRunId && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">子 Run</h3>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/runs/${encodeURIComponent(node.childRunId)}`}>
+                {node.childRunId}
+                <ChevronRight />
+              </Link>
+            </Button>
+          </div>
+        )}
+        <div className="rounded-xl border border-border">
+          <details>
+            <summary className="px-4 py-3 text-sm text-txt2">执行证据</summary>
+            <div className="grid gap-4 border-t border-border p-4 md:grid-cols-2">
+              <div className="min-w-0">
+                <h3 className="text-xs font-medium text-muted-foreground">输入</h3>
+                <pre className="mt-1 max-h-64">{json(node.input)}</pre>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-medium text-muted-foreground">结果</h3>
+                <pre className="mt-1 max-h-64">{json(node.outcome ?? null)}</pre>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-medium text-muted-foreground">来源</h3>
+                <pre className="mt-1 max-h-64">{json(node.enteredFrom)}</pre>
+              </div>
+              {node.error && (
+                <div className="min-w-0">
+                  <h3 className="text-xs font-medium text-muted-foreground">错误</h3>
+                  <pre className="mt-1 max-h-64">{json(node.error)}</pre>
+                </div>
+              )}
+            </div>
+            {node.retryOf && (
+              <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+                重试自 {node.retryOf}
+              </p>
+            )}
+          </details>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
