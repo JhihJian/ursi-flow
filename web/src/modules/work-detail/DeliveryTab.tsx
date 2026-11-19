@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router'
+import { errorMessage } from '@/shared/api'
 import { requestV2Text } from '@/shared/http/client'
 import { useResource } from '@/shared/hooks/use-resource'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -7,6 +8,22 @@ import { Button } from '@/shared/ui/button'
 import { attemptStatus, lastDelivery, locked, type WorkItem, type Delivery } from './model'
 
 type Decision = 'accept' | 'reject'
+type LoadedFile = { name: string; text?: string; error?: string }
+
+// 交付文件只应是纯文本。共享客户端负责按响应类型拒绝非文本，这里连同空响应一起按不可读处理。
+const htmlPage = (text: string) => /^<(?:!doctype\s+html|html[\s>])/iu.test(text.trim())
+
+async function readDeliveredFile(base: string, name: string, signal: AbortSignal): Promise<LoadedFile> {
+  try {
+    const text = await requestV2Text(`${base}/files/${encodeURIComponent(name)}`, { signal })
+    if (!text.trim()) return { name, error: '响应为空，未取得正文。' }
+    if (htmlPage(text)) return { name, error: '返回 HTML 页面，不是文件正文。' }
+    return { name, text }
+  } catch (cause) {
+    if (signal.aborted) throw cause
+    return { name, error: errorMessage(cause) }
+  }
+}
 type Props = {
   item: WorkItem; base: string; version?: string; busy: boolean; visible: boolean
   inspect: (id: string) => void
@@ -15,13 +32,19 @@ type Props = {
 }
 
 function VersionFiles({ path, delivery, children }: { path: string; delivery: Delivery; children: React.ReactNode }) {
-  const files = useResource(s => Promise.all(Object.keys(delivery.files).map(async name => ({
-    name, text: await requestV2Text(`${path}/files/${encodeURIComponent(name)}`, { signal: s }),
-  }))), [] as { name: string; text: string }[])
+  const names = Object.keys(delivery.files)
+  const files = useResource(s => Promise.all(names.map(name => readDeliveredFile(path, name, s))), [] as LoadedFile[])
+  const unreadable = files.data.filter(file => file.error)
+  const ready = !files.loading && !files.error && files.data.length === names.length && unreadable.length === 0
   return <section className="min-w-0 space-y-3"><h3 className="font-semibold">第 {delivery.version} 版交付文件</h3>
     <ResourceState loading={files.loading} error={files.error} onRetry={files.reload} />
-    {files.data.map(({ name, text }) => <div key={name}><h4 className="font-medium text-txt2">{name}</h4><pre className="max-h-96 whitespace-pre-wrap break-words border-l-2 border-line pl-3">{text}</pre></div>)}
-    {!files.loading && !files.error && files.data.length > 0 && children}
+    {files.data.map(file => <div key={file.name}><h4 className="font-medium text-txt2">{file.name}</h4>
+      {file.error
+        ? <p role="alert" className="text-err">文件「{file.name}」不可读：{file.error}</p>
+        : <pre className="max-h-96 whitespace-pre-wrap break-words border-l-2 border-line pl-3">{file.text}</pre>}
+    </div>)}
+    {unreadable.length > 0 && <div className="space-y-2 border-l-2 border-err pl-3"><p className="text-err">第 {delivery.version} 版有 {unreadable.length} 份文件未能读取，读完本版全部文件前不能验收。</p><Button size="sm" icon="refresh" onClick={files.reload}>重新读取文件</Button></div>}
+    {ready && children}
   </section>
 }
 
@@ -32,10 +55,13 @@ function Submission({ item, busy, inspect, deliver, writable, visible }: Pick<Pr
   const [files, setFiles] = useState(initialFiles)
   const [ids, setIds] = useState<string[]>([])
   const blockers = item.attempts.filter(locked)
+  const latest = lastDelivery(item)
+  const rejected = latest?.review?.decision === 'reject' ? latest : undefined
   const valid = files.length > 0 && files.every(f => validName(f.name) && f.text.trim()) && new Set(files.map(f => f.name)).size === files.length
   const change = (i: number, patch: Partial<DraftFile>) => setFiles(prev => prev.map((f, j) => j === i ? { ...f, ...patch } : f))
   if (!visible || (!writable && !files.some(f => f.text))) return null
   return <section className="space-y-3 border-t border-line pt-4"><h2 className="font-semibold">{writable ? '提交新版交付' : '未提交的交付草稿（只读）'}</h2>
+    {writable && rejected?.review && <aside className="border-l-2 border-warn pl-3"><strong>第 {rejected.version} 版被退回 · {rejected.review.reviewer}</strong><p className="whitespace-pre-wrap">{rejected.review.comment}</p><p className="text-txt2">按意见修改后再提交，下一版将成为第 {rejected.version + 1} 版。</p></aside>}
     {writable && blockers.length > 0 && <div className="border-l-2 border-warn pl-3"><p>以下尝试未结束或待核实，暂不能交付：</p>{blockers.map(a => <div key={a.id}><button className="text-accent-2 underline" onClick={() => inspect(a.id)}>{a.action} · {attemptStatus[a.status]} · {a.id}</button></div>)}</div>}
     <fieldset disabled={busy || !writable} className="space-y-3">
       {files.map((file, i) => <div key={i} className="space-y-1">

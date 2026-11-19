@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { setToken } from '@/shared/http/session'
 import { WorkDetail } from './WorkDetail'
@@ -45,7 +46,7 @@ it('来源办理单使用旧快照，只派发获准动作；轮询单项直到�
   expect(button('开始办理')).toBeDisabled()
   fill('经办人', '林'); click('开始办理')
   expect(within(await screen.findByRole('combobox', { name: '动作' })).getAllByRole('option').map(o => o.textContent)).toEqual(['分析'])
-  expect(screen.getByText('绑定执行器：排查助手 v2')).toBeVisible()
+  expect(screen.getByText('绑定执行器：排查助手 v2（本地 Agent）')).toBeVisible()
   vi.useFakeTimers()
   await act(async () => click('执行一次'))
   expect(queries).toBe(1)
@@ -140,7 +141,7 @@ it('切换深链时停止旧文件读取，新版文件加载失败前后都不�
   const next = await screen.findByRole('link', { name: '第 2 版（当前）' }); fireEvent.click(next)
   expect(await screen.findByRole('alert')).toHaveTextContent('503'); expect(screen.queryByRole('button', { name: '通过' })).toBeNull()
   expect(fetch.mock.calls.find(([p]) => p.includes('/1/files/'))?.[1].signal?.aborted).toBe(true)
-  fail = false; click('重新加载'); expect(await screen.findByText('第二版正文')).toBeVisible()
+  fail = false; click('重新读取文件'); expect(await screen.findByText('第二版正文')).toBeVisible()
   await act(async () => finish(new Response('迟到的旧版正文')))
   expect(screen.queryByText('迟到的旧版正文')).toBeNull(); expect(button('通过')).toBeDisabled()
 })
@@ -178,4 +179,146 @@ it('提交所有必需文件与选定尝试，退回后可同单再交，已通�
   expect(await screen.findByRole('link', { name: '第 2 版（已通过）' })).toBeVisible(); expect(screen.getByText('工作项状态：已交付')).toBeVisible()
   fireEvent.click(screen.getByRole('link', { name: '第 1 版' })); expect(await screen.findByText('初稿', { selector: 'pre' })).toBeVisible(); expect(within(screen.getByRole('tabpanel')).getByText('补充证据')).toBeVisible()
   expect(screen.queryByRole('button', { name: '退回' })).toBeNull()
+})
+
+it('待验收与已交付默认落位交付，返回清单保留状态筛选', async () => {
+  mount(p => {
+    if (p === base) return item({ status: 'delivered', acceptedVersion: 1, deliveries: [report(1, { reviewer: '陈', decision: 'accept', comment: '可以交付' })] })
+    if (p.includes('/files/')) return new Response('存档正文')
+  }, '/items/I?status=delivered')
+  expect(await screen.findByRole('tab', { name: '交付与验收' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items?status=delivered')
+  expect(screen.getByRole('link', { name: '第 1 版（已通过）' })).toBeVisible()
+  expect(await screen.findByText('存档正文', { selector: 'pre' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '通过' })).toBeNull()
+})
+
+it.each([
+  ['读取错误', () => Response.json({ message: '读取失败' }, { status: 500 })],
+  ['空响应', () => new Response('')],
+  ['HTML 页面', () => new Response('<!doctype html><title>登录</title>', { headers: { 'Content-Type': 'text/html' } })],
+])('第 2 版有一份文件%s时指出该文件并禁止通过', async (_, broken) => {
+  let failing = true
+  const delivery: Delivery = { version: 2, files: { 'report.txt': '第一份正文', '复核.txt': '第二份正文' }, attemptIds: [], review: null }
+  const fetch = mount(p => {
+    if (p === base) return item({ status: 'review', deliveries: [report(1), delivery] })
+    if (p.includes('/2/files/')) {
+      const name = decodeURIComponent(p.split('/files/')[1])
+      if (name === '复核.txt' && failing) return broken()
+      return new Response(name === '复核.txt' ? '第二份正文' : '第一份正文')
+    }
+    if (p.includes('/1/files/')) return new Response('第一版正文')
+  }, '/items/I/deliveries/2')
+  expect(await screen.findByText(/文件「复核\.txt」不可读/)).toBeVisible()
+  expect(screen.getByText('第一份正文', { selector: 'pre' })).toBeVisible()
+  expect(screen.getByText(/不能验收/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '通过' })).toBeNull()
+  expect(fetch.mock.calls.filter(([, o]) => o.method === 'POST')).toHaveLength(0)
+  failing = false
+  fireEvent.click(screen.getByRole('button', { name: '重新读取文件' }))
+  expect(await screen.findByText('第二份正文', { selector: 'pre' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '通过' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '退回' })).toBeDisabled()
+})
+
+it('版本深链刷新仍显示该版文件、意见与通过版本', async () => {
+  mount(p => {
+    if (p === base) return item({ status: 'delivered', acceptedVersion: 1, deliveries: [report(1, { reviewer: '陈', decision: 'accept', comment: '可以交付' }), report(2)] })
+    if (p.includes('/1/files/')) return new Response('第一版定稿')
+    if (p.includes('/2/files/')) return new Response('第二版草稿')
+  }, '/items/I/deliveries/1?status=delivered')
+  expect(await screen.findByText('第一版定稿', { selector: 'pre' })).toBeVisible()
+  expect(screen.getByText('可以交付')).toBeVisible()
+  expect(screen.getByRole('link', { name: '第 1 版（已通过）' })).toBeVisible()
+  expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items?status=delivered')
+  expect(screen.queryByRole('button', { name: '通过' })).toBeNull()
+  expect(screen.queryByText('第二版草稿')).toBeNull()
+})
+
+it('两标签页：B 已提交 v1 时 A 的提交收到 409，重读后保留草稿且不重发', async () => {
+  const user = userEvent.setup()
+  let latest = item()
+  let posts = 0
+  mount((p, o) => {
+    if (p === base) return latest
+    if (p.endsWith('/deliveries') && o.method === 'POST') {
+      posts += 1
+      latest = item({ status: 'review', deliveries: [{ version: 1, files: { 'report.txt': 'B 的正文' }, attemptIds: [], review: null }] })
+      return conflict()
+    }
+    if (p.includes('/files/')) return new Response('B 的正文')
+  })
+  await screen.findByRole('tablist')
+  await user.click(screen.getByRole('tab', { name: '交付与验收' }))
+  await user.type(screen.getByLabelText('文件正文：report.txt'), 'A 的旧稿')
+  expect(screen.queryByText('B 的正文')).toBeNull()
+  await user.click(screen.getByRole('button', { name: '提交交付' }))
+  expect(await screen.findByText(/状态冲突/)).toBeVisible()
+  expect(await screen.findByText('B 的正文', { selector: 'pre' })).toBeVisible()
+  expect(screen.getByText('工作项状态：待验收')).toBeVisible()
+  expect(screen.getByText('未提交的交付草稿（只读）')).toBeVisible()
+  expect(screen.getByLabelText('文件正文：report.txt')).toHaveValue('A 的旧稿')
+  expect(screen.getByLabelText('文件正文：report.txt')).toBeDisabled()
+  expect(posts).toBe(1)
+  expect(screen.queryByRole('button', { name: '提交交付' })).toBeNull()
+  // C 退回 v1 后工作项回到办理中；刷新后 A 的旧稿仍在，且在重新提交前能看到最新退回意见。
+  latest = item({ status: 'working', deliveries: [{ version: 1, files: { 'report.txt': 'B 的正文' }, attemptIds: [], review: { reviewer: '陈', decision: 'reject', comment: '请补复核结论' } }] })
+  fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+  expect(await screen.findByText('第 1 版被退回 · 陈')).toBeVisible()
+  const notice = screen.getByText('第 1 版被退回 · 陈').closest('aside')!
+  expect(within(notice).getByText('请补复核结论')).toBeVisible()
+  expect(screen.getByText('工作项状态：办理中')).toBeVisible()
+  expect(screen.getByLabelText('文件正文：report.txt')).toHaveValue('A 的旧稿')
+  expect(screen.getByLabelText('文件正文：report.txt')).toBeEnabled()
+  expect(posts).toBe(1)
+})
+
+it('竞态证据：B 的 v1 被退回后，A 的旧稿不经确认直接成为 v2', async () => {
+  const user = userEvent.setup()
+  let latest = item()
+  const bodies: unknown[] = []
+  mount((p, o) => {
+    if (p === base) return latest
+    if (p.endsWith('/deliveries') && o.method === 'POST') {
+      const body = JSON.parse(String(o.body)) as { files: Record<string, string> }
+      bodies.push(body)
+      // 服务端只校验当前状态为 working，不校验 A 起草时看到的最后交付版本。
+      if (latest.status !== 'working') return conflict()
+      latest = { ...latest, status: 'review', deliveries: [...latest.deliveries, { version: latest.deliveries.length + 1, files: body.files, attemptIds: [], review: null }] }
+      return latest
+    }
+    if (p.includes('/files/')) return new Response('A 的旧稿')
+  })
+  await screen.findByRole('tablist')
+  await user.click(screen.getByRole('tab', { name: '交付与验收' }))
+  await user.type(screen.getByLabelText('文件正文：report.txt'), 'A 的旧稿')
+  latest = item({ status: 'working', deliveries: [{ version: 1, files: { 'report.txt': 'B 的正文' }, attemptIds: [], review: { reviewer: '陈', decision: 'reject', comment: '请补复核结论' } }] })
+  expect(screen.queryByText('请补复核结论')).toBeNull()
+  await user.click(screen.getByRole('button', { name: '提交交付' }))
+  expect(await screen.findByRole('link', { name: '第 2 版（当前）' })).toBeVisible()
+  expect(bodies).toEqual([{ files: { 'report.txt': 'A 的旧稿' }, attemptIds: [] }])
+  expect(screen.queryByText('请补复核结论')).toBeNull()
+})
+
+it('执行记录分别呈现失败、Flow 与沙箱的后端信息', async () => {
+  const failed: Attempt = { id: 'f1', action: '分析', executor, status: 'failed', output: '进程退出码 1', workspace: 'default', backendRunId: 'f1' }
+  const flow: Attempt = { id: 'r1', action: '汇总', executor: { id: '汇总流程', revision: 3, kind: 'flow', flowId: 'daily', flowRevision: 'v3' }, status: 'succeeded', output: '流程输出', workspace: 'default', backendRunId: 'r1' }
+  const box: Attempt = { id: 's1', action: '复核', executor: { ...executor, environment: 'sandbox' }, status: 'succeeded', output: '沙箱输出', workspace: 'case-7', backendRunId: 'session-9' }
+  mount(p => {
+    if (p === base) return item({ attempts: [failed, flow, box] })
+    const found = [failed, flow, box].find(a => p.endsWith(`/attempts/${a.id}`))
+    if (found) return found
+  })
+  await screen.findByRole('tablist'); tab('执行记录')
+  expect(screen.getByText('执行失败')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /汇总/ }))
+  expect(await screen.findByText('流程输出')).toBeVisible()
+  expect(screen.getByRole('link', { name: /Run/ })).toHaveAttribute('href', '/runs/r1')
+  expect(screen.getByText('Flow · default')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /复核/ }))
+  expect(await screen.findByText('会话标识：session-9')).toBeVisible()
+  expect(screen.getByText('沙箱 · case-7')).toBeVisible()
+  expect(screen.queryByRole('link', { name: /Run/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /分析/ }))
+  expect(await screen.findByText('进程退出码 1')).toBeVisible()
 })
