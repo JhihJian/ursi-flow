@@ -2,13 +2,13 @@
 
 ## 交付边界
 
-镜像提供系统工具、Agent CLI、sshd、成熟监督器与 bootstrap。当前 `pi-execution` 镜像还包含未来能力所需的基础程序，但这不表示 IDE、CDP 或 noVNC 已实现或已开放。bundle 提供 session-service（含 CLI Adapter）、平台脚本、监督配置和能力清单。每种程序只有一处交付来源，监督器程序在镜像，监督配置在 bundle。
+镜像提供系统工具、Agent CLI、sshd、成熟监督器与 bootstrap。`runtime/image-browser` 在 `pi-execution` 基础镜像上交付真实 Chromium、CDP、Xvfb、x11vnc、websockify 和 code-server。bundle 提供 session-service（含 CLI Adapter）、平台脚本、监督配置和能力清单。每种程序只有一处交付来源，监督器程序在镜像，监督配置在 bundle。
 
 bundle 清单保留版本、内容校验值和最低镜像级别，并统一声明 `bundles`、`required_capabilities`、`services`、`endpoints`、`readiness`。`endpoints` 只含 `name`、`protocol`、`port`，不含 endpoint address、visibility 或 Gateway key。`bootstrap` `/ursi/bootstrap` 校验后装配服务，校验失败不启动业务进程。
 
 Gateway 信任管理员注册表中的 `image -> bundles` 映射，再把注册 bundle 的能力组合成该镜像允许的端点集合。未注册镜像不开放受管端点，用户不能通过 `SandboxSpec` 添加或改变端点。端点地址和 visibility 由 Gateway bridge 在运行实例中生成，所有容器端口只经 bridge 访问。运行时具备 bundle 装配能力，在线更换是否需要停止会话由更新操作明确约束，不能覆盖正在使用的程序。
 
-`pi-execution` 当前只提供 SSH/SFTP 与 ACP，交付入口见 [Runtime 使用说明](README.md)，执行协议见 [Agent 契约](AGENT-CONTRACT.md)。IDE、CDP、noVNC 是未来独立 bundle，不得当作当前实现。
+`pi-execution` 提供 SSH/SFTP 与 ACP。`runtime/image-browser` 配合 browser bundle 交付 code-server IDE、Chromium CDP 和 noVNC 桌面端点。未注册 browser 镜像不得生成这些端点。交付入口见 [Runtime 使用说明](README.md)，执行协议见 [Agent 契约](AGENT-CONTRACT.md)。
 
 ## 对端服务
 
@@ -17,7 +17,7 @@ Gateway 信任管理员注册表中的 `image -> bundles` 映射，再把注册 
 | `ssh` | SSH，2222 | sshd 管连接进程，调用方控制命令 |
 | `agent_session` | ACP over WebSocket，8765 | session-service 管会话和 CLI 子进程 |
 
-IDE、浏览器调试、桌面和应用预览不是当前 `pi-execution` 端点。未来 bundle 可以声明它们的能力，但必须提供对应服务、就绪条件和明确的依赖。
+IDE、浏览器调试和桌面端点只属于 browser bundle，必须提供对应服务、就绪条件和明确的依赖，并通过 Gateway 的受控浏览器适配器访问。通用 TCP bridge 和 Gateway key 不交给浏览器页面。
 
 bundle 只声明容器端口和协议。Gateway 根据管理员注册表与运行时状态返回逻辑端点，负责 bridge 到容器端口；地址、visibility 和公开策略不进入 bundle。所有容器端口都经 Gateway bridge，不能要求最终用户直接连接容器地址。多个通道可以共用一个端点。服务侧身份校验仍须执行。
 

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { WebSocketServer, WebSocket } from 'ws'
 
 const dist = new URL('./dist/', import.meta.url)
 const hash = (s) => createHash('sha256').update(s).digest()
@@ -38,7 +39,105 @@ export function createConsole(env) {
           key: readFileSync(env.URSI_WEB_TLS_KEY),
         })
       : http.createServer
-  return serve(async (req, res) => {
+  const sockets = new WebSocketServer({ noServer: true })
+  const allowed = (req) => {
+    const supplied = hash(req.headers.authorization || '')
+    return Boolean(
+      (adminAuth && timingSafeEqual(supplied, adminAuth)) ||
+      (auth && timingSafeEqual(supplied, auth)),
+    )
+  }
+  const proxyPattern = /^\/api\/v1\/sandboxes\/([a-f0-9]{32})\/proxy\/([A-Za-z0-9_-]+)(\/.*)?$/
+  const sameOrigin = (req) => {
+    const origin = req.headers.origin
+    if (!origin) return true
+    try {
+      return new URL(origin).host === req.headers.host
+    } catch {
+      return false
+    }
+  }
+  const gatewayWs = (id, endpoint) => {
+    const target = new URL(`/api/v1/sandboxes/${id}/connect/${endpoint}`, url)
+    target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:'
+    return target
+  }
+  const openUpstream = (match) =>
+    new WebSocket(gatewayWs(match[1], match[2]), 'ursi-tcp-v1', {
+      headers: { Authorization: `Bearer ${key}` },
+      maxPayload: 64 * 1024,
+    })
+  const proxyUpgrade = (req, socket, head, match) => {
+    if (!live || !allowed(req) || !sameOrigin(req)) return socket.destroy()
+    const upstream = openUpstream(match)
+    sockets.handleUpgrade(req, socket, head, (browser) => {
+      upstream.once('open', () => {
+        browser.on('message', (data) => {
+          if (upstream.readyState === WebSocket.OPEN) upstream.send(data)
+        })
+        browser.on('close', () => upstream.close())
+        upstream.on('message', (data) => {
+          if (browser.readyState === WebSocket.OPEN) browser.send(data)
+        })
+        upstream.on('close', () => browser.close())
+      })
+      upstream.on('error', () => browser.close())
+    })
+  }
+  const proxyHttp = (req, res, match) => {
+    const upstream = openUpstream(match)
+    const chunks = []
+    let size = 0
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      if (!chunks.length) return res.writeHead(502).end()
+      const raw = Buffer.concat(chunks)
+      const split = raw.indexOf(Buffer.from('\r\n\r\n'))
+      if (split < 0) return res.writeHead(502).end()
+      const head = raw.subarray(0, split).toString('latin1').split('\r\n')
+      const status = Number(head.shift()?.split(' ')[1]) || 502
+      const headers = {}
+      for (const line of head) {
+        const separator = line.indexOf(':')
+        if (separator < 1) continue
+        const name = line.slice(0, separator).toLowerCase()
+        if (!['connection', 'keep-alive', 'transfer-encoding', 'content-length', 'upgrade'].includes(name))
+          headers[name] = line.slice(separator + 1).trim()
+      }
+      let body = raw.subarray(split + 4)
+      if (headers['content-type']?.includes('text/html'))
+        body = Buffer.from(body.toString().replaceAll('href="/', 'href="./').replaceAll('src="/', 'src="./'))
+      res.writeHead(status, { ...headers, 'Content-Length': body.length })
+      res.end(body)
+    }
+    const timer = setTimeout(() => {
+      upstream.close()
+      finish()
+    }, 10000)
+    upstream.on('open', () => {
+      const requestPath = match[3] || '/'
+      upstream.send(Buffer.from(`GET ${requestPath} HTTP/1.1\r\nHost: sandbox-endpoint\r\nConnection: close\r\nAccept: */*\r\n\r\n`))
+      upstream.send('eof')
+    })
+    upstream.on('message', (data, isBinary) => {
+      if (!isBinary) return
+      const chunk = Buffer.from(data)
+      size += chunk.length
+      if (size > 16 * 1024 * 1024) return upstream.close()
+      chunks.push(chunk)
+    })
+    upstream.on('close', () => {
+      clearTimeout(timer)
+      finish()
+    })
+    upstream.on('error', () => {
+      clearTimeout(timer)
+      finish()
+    })
+  }
+  const server = serve(async (req, res) => {
     const send = (code, body, type = 'application/json') => {
       res.writeHead(code, {
         'Content-Type': type,
@@ -60,6 +159,7 @@ export function createConsole(env) {
       return send(401, '{}')
     }
     const path = req.url
+    const proxy = proxyPattern.exec(path)
     const write = req.method !== 'GET'
     if (!write && path === '/console-config.json')
       return send(
@@ -67,6 +167,13 @@ export function createConsole(env) {
         JSON.stringify(live ? { mode: 'gateway', manage } : { mode: 'demo' }),
       )
     const collection = '/api/v1/sandboxes'
+    if (proxy) {
+      if (!live || !allowed(req)) return send(401, '{}')
+      if (!sameOrigin(req)) return send(403, '{}')
+      if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, '{}')
+      return proxyHttp(req, res, proxy)
+    }
+    const registry = path === '/api/v1/registry'
     const create = req.method === 'POST' && path === collection
     const rebuild =
       req.method === 'POST' &&
@@ -77,6 +184,7 @@ export function createConsole(env) {
         !(
           create ||
           rebuild ||
+          (registry && req.method === 'PUT') ||
           (req.method === 'POST' &&
             /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/(start|stop)$/.test(path)) ||
           (req.method === 'DELETE' &&
@@ -95,6 +203,7 @@ export function createConsole(env) {
       live &&
       (write ||
         path === '/api/v1/capabilities' ||
+        registry ||
         /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
           path,
         ))
@@ -102,7 +211,7 @@ export function createConsole(env) {
       try {
         const headers = { Authorization: `Bearer ${key}` }
         let body
-        if (create || rebuild) {
+        if (create || rebuild || (registry && req.method === 'PUT')) {
           if (req.headers['content-type'] !== 'application/json')
             return send(415, '{}')
           const chunks = []
@@ -163,6 +272,12 @@ export function createConsole(env) {
       return send(404, '{}')
     }
   })
+  server.on('upgrade', (req, socket, head) => {
+    const match = proxyPattern.exec(req.url || '')
+    if (!match) return socket.destroy()
+    proxyUpgrade(req, socket, head, match)
+  })
+  return server
 }
 if (
   process.argv[1] &&

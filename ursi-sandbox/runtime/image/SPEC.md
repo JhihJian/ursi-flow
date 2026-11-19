@@ -10,7 +10,9 @@ references:
 
 ## 功能意图
 
-交付 `pi-execution` 环境 profile，提供 Pi Agent 执行、SSH exec/PTY/SFTP 与应用运行所需的基础工具。镜像提供 bootstrap 和成熟监督器程序，bundle 提供 session-service 与监督策略。IDE、CDP、noVNC 属于其他环境 profile。
+交付 `pi-execution` 环境 profile，提供 Pi Agent 执行、SSH exec/PTY/SFTP 与应用运行所需的基础工具。镜像提供 bootstrap 和成熟监督器程序，bundle 提供 session-service 与监督策略。
+
+`runtime/image-browser` 在此镜像上交付 `browser` 能力层，包含真实 Chromium、CDP、Xvfb、x11vnc、websockify 和 code-server。只有组合 browser bundle 并注册 `ursi-runtime-browser` 镜像时，IDE、CDP 和桌面端点才会生成。
 
 ## 关键功能与验收
 
@@ -45,3 +47,4 @@ references:
 - agent 可写工作区，不能读取 session token、读取或替换 `.ursi-state`。
 - 停止再启动后仓库与产物保留，既有 root 状态文件仍为 root 所有。
 - 镜像健康检查同时完成受限 probe key 的真实 SSH 登录和 session-service `/healthz` 请求。
+- browser 镜像额外检查 code-server、CDP 9222 和 noVNC 6080 的实际监听状态。

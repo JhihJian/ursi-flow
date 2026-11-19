@@ -1,3 +1,4 @@
+use crate::models::BundleRef;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -34,6 +35,9 @@ pub struct BundleDefinition {
     #[serde(default = "default_version")]
     pub version: String,
     pub endpoints: Vec<BundleEndpoint>,
+    /// 管理员批准的不可变 Runtime 包。创建请求不能覆盖该来源。
+    #[serde(default)]
+    pub runtime: Option<BundleRef>,
     #[serde(default)]
     pub requires: Vec<String>,
     #[serde(default)]
@@ -155,6 +159,9 @@ impl Registry {
                     key
                 )));
             }
+            if let Some(runtime) = &bundle.runtime {
+                validate_runtime(key, runtime)?;
+            }
             if bundle.services.iter().any(|service| !valid_id(service)) {
                 return Err(RegistryError::Invalid(format!(
                     "bundle {} 的 service 非法",
@@ -258,6 +265,49 @@ impl Registry {
 
     pub fn registered_bundles(&self, image: &str) -> Vec<String> {
         self.lookup_image(image).0
+    }
+
+    /// 返回镜像组合后的唯一管理员批准 Runtime 包。
+    pub fn runtime_for_image(&self, image: &str) -> Result<Option<BundleRef>> {
+        let bundles = self.lookup_image(image).0;
+        let mut expanded = Vec::new();
+        for id in bundles {
+            self.collect_runtime_bundles(&id, &mut expanded)?;
+        }
+        let mut selected = None;
+        for id in expanded {
+            let bundle = self
+                .bundles
+                .get(&id)
+                .ok_or_else(|| RegistryError::Invalid(format!("bundle 依赖缺失: {id}")))?;
+            if let Some(runtime) = &bundle.runtime {
+                if selected
+                    .as_ref()
+                    .is_some_and(|current: &BundleRef| current != runtime)
+                {
+                    return Err(RegistryError::Invalid(format!(
+                        "镜像 {} 的 bundle 使用了冲突 Runtime 包",
+                        image
+                    )));
+                }
+                selected = Some(runtime.clone());
+            }
+        }
+        Ok(selected)
+    }
+
+    fn collect_runtime_bundles(&self, id: &str, output: &mut Vec<String>) -> Result<()> {
+        let bundle = self
+            .bundles
+            .get(id)
+            .ok_or_else(|| RegistryError::Invalid(format!("bundle 依赖缺失: {id}")))?;
+        for required in &bundle.requires {
+            self.collect_runtime_bundles(required, output)?;
+        }
+        if !output.iter().any(|item| item == id) {
+            output.push(id.to_owned());
+        }
+        Ok(())
     }
 
     /// 展开镜像的所有注册 bundle，依赖先于直接注册项，端点按 name/protocol/port 去重。
@@ -379,6 +429,21 @@ fn validate_endpoints(bundle: &str, endpoints: &[BundleEndpoint]) -> Result<()> 
     Ok(())
 }
 
+fn validate_runtime(bundle: &str, runtime: &BundleRef) -> Result<()> {
+    if !(runtime.url.starts_with("https://") || runtime.url.starts_with("http://"))
+        || runtime.url.contains('@')
+        || runtime.sha256.len() != 64
+        || !runtime.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || runtime.min_image_level == 0
+    {
+        return Err(RegistryError::Invalid(format!(
+            "bundle {} 的 runtime 来源非法",
+            bundle
+        )));
+    }
+    Ok(())
+}
+
 fn default_version() -> String {
     "1".into()
 }
@@ -458,6 +523,35 @@ mod tests {
         let input = r#"{"bundles":{"ssh":{"endpoints":[],"conflicts":["browser"]},"browser":{"endpoints":[]}},"images":{"image:tag":["ssh","browser"]}}"#;
         let registry = Registry::from_json(input).unwrap();
         assert!(registry.expand_image("image:tag").is_err());
+    }
+
+    #[test]
+    fn runtime_source_is_admin_bound_and_inherited_by_image() {
+        let input = r#"{
+          "bundles": {
+            "base": {
+              "runtime": {"url":"https://example.invalid/base.tgz","sha256":"0000000000000000000000000000000000000000000000000000000000000000","min_image_level":1},
+              "endpoints": []
+            },
+            "browser": {"requires":["base"],"endpoints":[]}
+          },
+          "images": {"image:tag":["browser"]}
+        }"#;
+        let registry = Registry::from_json(input).unwrap();
+        assert_eq!(
+            registry
+                .runtime_for_image("image:tag")
+                .unwrap()
+                .unwrap()
+                .min_image_level,
+            1
+        );
+    }
+
+    #[test]
+    fn rejects_untrusted_runtime_source() {
+        let input = r#"{"bundles":{"ssh":{"runtime":{"url":"file:///tmp/bundle","sha256":"bad","min_image_level":1},"endpoints":[]}},"images":{}}"#;
+        assert!(Registry::from_json(input).is_err());
     }
 
     #[test]

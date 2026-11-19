@@ -54,9 +54,9 @@ curl -sS http://127.0.0.1:8899/api/v1/sandboxes \
 
 容器端口不发布到宿主机，受管端点只通过 Gateway bridge 访问。端点能力来自管理员 `image -> bundles` 注册表，未注册镜像没有受管端点。CDP/noVNC 只能走可信 Gateway 路径。受控网络隔离取决于部署网络配置，Docker 默认 bridge 不是沙箱间防火墙，也不是恶意代码的强安全边界。
 
-Gateway key 是管理权限凭据，持有者能管理该 Gateway 的全部沙箱。它不替代 SSH/ACP 等上层服务鉴权。服务当前为 HTTP，跨非可信网络部署需在前面终止 TLS 并限制访问来源。运行规格、命令、用户标签和 bundle URL 会存储，不要将凭据放进这些字段；本版通过管理员配置目录注入 Runtime 所需凭据，不提供持久化密钥管理或通用秘密注入 API。
+Gateway key 是管理权限凭据，持有者能管理该 Gateway 的全部沙箱。它不替代 SSH/ACP 等上层服务鉴权。服务当前为 HTTP，跨非可信网络部署需在前面终止 TLS 并限制访问来源。Runtime URL 和摘要只来自管理员注册表，公共 Sandbox DTO 不回显；不要将凭据放进运行规格或标签。本版通过管理员配置目录注入 Runtime 所需凭据，不提供持久化密钥管理或通用秘密注入 API。
 
-镜像可使用 Docker HEALTHCHECK 验证实际服务，声明 `ready:true` 的端点还需 TCP 可达。只声明进程而没有健康检查的镜像，只能证明进程在运行。可选 bundle 引用透传给镜像 bootstrap，Gateway 校验镜像级别，包完整性和服务装配由 Runtime 负责。bundle 能力必须同时出现在管理员注册表中，镜像或用户提交的 manifest 不会自动获得 Gateway 信任。注册表格式示例见 `gateway-registry.example.json`。
+镜像可使用 Docker HEALTHCHECK 验证实际服务，声明的每个端点还需 TCP readiness。只声明进程而没有健康检查的镜像，只能证明进程在运行。Runtime 包来源由管理员注册表绑定，Gateway 校验镜像级别，包完整性和服务装配由 Runtime 负责。bundle 能力必须同时出现在管理员注册表中，镜像或用户提交的 manifest 不会自动获得 Gateway 信任。注册表可通过 `GET/PUT /api/v1/registry` 管理，格式示例见 `gateway-registry.example.json`。
 
 ## 测试与独立验收
 

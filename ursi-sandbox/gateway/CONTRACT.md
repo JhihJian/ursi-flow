@@ -33,16 +33,15 @@
   "labels": {},
   "memory_mb": 256,
   "cpus": 1.0,
-  "bundle": null,
   "runtime_profile": null
 }
 ```
 
 `image` 必填，端点不由创建请求声明，而由 Gateway 注册表中的 `image -> bundles` 展开生成。未注册镜像没有受管端点。内存 16..65536 MiB，CPU 大于 0 且不超过 128。command 为空使用镜像默认命令。请求拒绝未知字段，因此 `ports`、`visibility`、host、address 和端点 URL 不能提交。
 
-`bundle` 仅用于管理员批准的 Runtime 包装配，不能定义端点能力。它可为 `{url, sha256, min_image_level}`：无凭据 HTTP(S) URL、64 位十六进制校验值及最低镜像级别。Docker 镜像必须声明 `io.ursi.image-level` 并满足要求。引用透传为 `URSI_BUNDLE_URL`、`URSI_BUNDLE_SHA256`、`URSI_BUNDLE_MIN_IMAGE_LEVEL`，bootstrap 负责下载、校验和装配。当前不提供通用 env、任意宿主挂载、密钥存储或模板 API。
+Runtime 包不属于创建请求。Gateway 在内部创建时从管理员注册表绑定注册项中的 `{url, sha256, min_image_level}`，并校验无凭据 HTTP(S) URL、64 位十六进制摘要和最低镜像级别。Docker 镜像必须声明 `io.ursi.image-level` 并满足要求。绑定引用透传为 `URSI_BUNDLE_URL`、`URSI_BUNDLE_SHA256`、`URSI_BUNDLE_MIN_IMAGE_LEVEL`，bootstrap 负责下载、校验和装配，公共 SandboxSpec 不回显来源。
 
-`runtime_profile` 可引用管理员 `URSI_GATEWAY_RUNTIME_PROFILES` 白名单中的名称，格式为 `{ "pi": { "config_dir": "/absolute/root-private-config" } }`。目录必须 root 所有、0700、非符号链接，固定只读挂载 `/run/ursi/config`；请求必须同时提供 bundle。未知引用在资源操作前拒绝。启用 profile 时仅增加固定 `CHOWN,DAC_OVERRIDE,FOWNER,SETUID,SETGID,SYS_CHROOT,KILL` 服务能力并采用 25 秒停止宽限。API/数据库只保存配置名称，不保存秘密内容；只读源配置由管理员维护。
+`runtime_profile` 可引用管理员 `URSI_GATEWAY_RUNTIME_PROFILES` 白名单中的名称，格式为 `{ "pi": { "config_dir": "/absolute/root-private-config" } }`。目录必须 root 所有、0700、非符号链接，固定只读挂载 `/run/ursi/config`；镜像注册项必须绑定对应 Runtime 包。未知引用在资源操作前拒绝。启用 profile 时仅增加固定 `CHOWN,DAC_OVERRIDE,FOWNER,SETUID,SETGID,SYS_CHROOT,KILL` 服务能力并采用 25 秒停止宽限。API/数据库只保存配置名称，不保存秘密内容；只读源配置由管理员维护。
 
 ## Sandbox 与操作意图
 
@@ -58,11 +57,11 @@ Endpoint 为 `{name,bundle,protocol,port,state,ready}` 逻辑对象，不包含 
 
 命名数据卷挂载 `/ursi/workspace`，驱动只处理具有匹配 scope、id 与代际标签的资源。真实 Docker 驱动固定本地 Unix socket，首版不支持远程 daemon。
 
-准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及 `ready:true` 的端点可连接。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。
+准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及每个声明端口的真实 TCP readiness 检查。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。创建时的端点快照不会因注册表更新而扩大。
 
 ## 可选 TCP over WebSocket
 
-`GET /api/v1/sandboxes/{id}/connect/{endpoint}`，子协议为 `ursi-tcp-v1`。这是本项目协议，帧行为参考 Grasp，未声明整个 Grasp API 兼容。端点参数为已声明端点名，不接受任意 host/URL。隧道关闭时返回 501。
+`GET /api/v1/registry` 返回管理员注册表，`PUT /api/v1/registry` 先完整校验并原子替换注册文件。既有沙箱端点快照不受更新影响。`GET /api/v1/sandboxes/{id}/connect/{endpoint}`，子协议为 `ursi-tcp-v1`。这是本项目协议，帧行为参考 Grasp，未声明整个 Grasp API 兼容。端点参数为已声明端点名，不接受任意 host/URL。隧道关闭时返回 501。
 
 升级前完成 Bearer 鉴权、子协议、目标身份和可达性校验。请求携带 Origin 或任何 query 被拒绝。直连和隧道使用相同 SSH/ACP/HTTP 等上层协议，Gateway 不解析这些业务内容。
 

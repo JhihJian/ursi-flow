@@ -4,7 +4,9 @@ pub mod store;
 use crate::{driver::Driver, models::*, registry::Registry};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
 use store::Store;
@@ -24,17 +26,28 @@ pub enum Action {
 pub struct Service {
     store: Arc<Store>,
     driver: Arc<dyn Driver>,
-    registry: Arc<Registry>,
+    registry: Arc<RwLock<Registry>>,
+    registry_path: Option<PathBuf>,
     locks: Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
     stopping: std::sync::atomic::AtomicBool,
 }
 
 impl Service {
     pub fn new(store: Arc<Store>, driver: Arc<dyn Driver>, registry: Arc<Registry>) -> Arc<Self> {
+        Self::with_registry(store, driver, registry, None)
+    }
+
+    pub fn with_registry(
+        store: Arc<Store>,
+        driver: Arc<dyn Driver>,
+        registry: Arc<Registry>,
+        registry_path: Option<PathBuf>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             store,
             driver,
-            registry,
+            registry: Arc::new(RwLock::new((*registry).clone())),
+            registry_path,
             locks: Mutex::new(HashMap::new()),
             stopping: std::sync::atomic::AtomicBool::new(false),
         })
@@ -42,6 +55,26 @@ impl Service {
     pub fn new_without_registry(store: Arc<Store>, driver: Arc<dyn Driver>) -> Arc<Self> {
         let registry = Registry::new(Default::default()).expect("empty registry is valid");
         Self::new(store, driver, Arc::new(registry))
+    }
+
+    pub fn registry(&self) -> Registry {
+        self.registry
+            .read()
+            .expect("registry lock poisoned")
+            .clone()
+    }
+
+    pub fn replace_registry(&self, registry: Registry) -> Result<()> {
+        if let Some(path) = &self.registry_path {
+            let temporary = path.with_extension("json.tmp");
+            let content = serde_json::to_vec_pretty(&registry)
+                .map_err(|error| Error::Internal(error.to_string()))?;
+            fs::write(&temporary, content)
+                .map_err(|error| Error::Unavailable(error.to_string()))?;
+            fs::rename(&temporary, path).map_err(|error| Error::Unavailable(error.to_string()))?;
+        }
+        *self.registry.write().expect("registry lock poisoned") = registry;
+        Ok(())
     }
     pub fn is_stopping(&self) -> bool {
         self.stopping.load(std::sync::atomic::Ordering::Acquire)
@@ -80,6 +113,8 @@ impl Service {
     }
     fn declared_endpoints(&self, image: &str) -> Result<Vec<Endpoint>> {
         self.registry
+            .read()
+            .expect("registry lock poisoned")
             .expand_image_with_bundles(image)
             .map_err(|error| Error::Invalid(format!("注册表展开失败: {error}")))
             .map(|endpoints| {
@@ -96,12 +131,17 @@ impl Service {
                     .collect()
             })
     }
-    fn refresh_declared_endpoints(&self, sandbox: &mut Sandbox) -> Result<()> {
-        sandbox.endpoints = self.declared_endpoints(&sandbox.spec.image)?;
-        Ok(())
-    }
-    pub async fn create(&self, spec: SandboxSpec, key: Option<String>) -> Result<Sandbox> {
+    pub async fn create(&self, mut spec: SandboxSpec, key: Option<String>) -> Result<Sandbox> {
         self.ensure_accepting()?;
+        // Runtime 包只能来自管理员注册表。请求体中的 bundle 即使被内部调用方
+        // 构造出来，也会在校验前覆盖，避免把可执行 root 代码交给创建者。
+        let runtime_bundle = self
+            .registry
+            .read()
+            .expect("registry lock poisoned")
+            .runtime_for_image(&spec.image)
+            .map_err(|error| Error::Invalid(format!("注册表展开失败: {error}")))?;
+        spec.bundle = runtime_bundle.clone();
         self.driver.validate_spec(&spec)?;
         if key.as_ref().is_some_and(|v| v.is_empty() || v.len() > 256) {
             return Err(Error::Invalid("幂等键无效".into()));
@@ -187,7 +227,6 @@ impl Service {
                 sandbox.status = Status::Preparing;
             }
         }
-        self.refresh_declared_endpoints(&mut sandbox)?;
         sandbox.error = None;
         self.store.update(&mut sandbox)?;
         Ok(sandbox)
@@ -282,9 +321,6 @@ impl Service {
         result
     }
     async fn advance(&self, sandbox: &mut Sandbox) -> Result<()> {
-        if !matches!(sandbox.operation, Some(Operation::Delete)) {
-            self.refresh_declared_endpoints(sandbox)?;
-        }
         match sandbox.operation.clone() {
             Some(Operation::Delete) => {
                 // 先停止/移除全部工作负载，再删除卷，兼容保数据重建中途被删除。

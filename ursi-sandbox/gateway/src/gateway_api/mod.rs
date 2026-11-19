@@ -25,6 +25,7 @@ use serde_json::json;
 use crate::{
     lifecycle::{Action, Service},
     models::{Error, Sandbox, SandboxSpec, valid_name},
+    registry::{Registry, RegistryConfig},
     tunnel::{self, ConnectError},
 };
 
@@ -43,6 +44,7 @@ pub fn router(service: Arc<Service>, api_key: String, tunnel_enabled: bool) -> R
     };
     Router::new()
         .route("/api/v1/capabilities", get(capabilities))
+        .route("/api/v1/registry", get(registry).put(replace_registry))
         .route("/api/v1/sandboxes", post(create).get(list))
         .route("/api/v1/sandboxes/{id}", get(get_sandbox).delete(delete))
         .route("/api/v1/sandboxes/{id}/start", post(start))
@@ -125,12 +127,30 @@ async fn capabilities(State(state): State<ApiState>) -> Json<serde_json::Value> 
     }))
 }
 
+async fn registry(State(state): State<ApiState>) -> Json<Registry> {
+    Json(state.service.registry())
+}
+
+async fn replace_registry(
+    State(state): State<ApiState>,
+    body: Result<Json<RegistryConfig>, JsonRejection>,
+) -> Result<Json<Registry>, ApiError> {
+    let Json(config) = body.map_err(|_| ApiError::invalid("Invalid registry JSON"))?;
+    let registry =
+        Registry::new(config).map_err(|_| ApiError::invalid("Registry validation failed"))?;
+    state.service.replace_registry(registry.clone())?;
+    Ok(Json(registry))
+}
+
 async fn create(
     State(state): State<ApiState>,
     headers: HeaderMap,
     body: Result<Json<SandboxSpec>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(spec) = body.map_err(|_| ApiError::invalid("Invalid sandbox JSON"))?;
+    if spec.bundle.is_some() {
+        return Err(ApiError::invalid("bundle 只能由管理员注册表决定"));
+    }
     spec.validate()?;
     let mut keys = headers.get_all("idempotency-key").iter();
     let key = keys
@@ -298,6 +318,8 @@ fn validate_connect(uri: &Uri, headers: &HeaderMap) -> Result<(), ApiError> {
 
 /// 持久化错误可以含驱动命令、地址或凭据，HTTP DTO 仅保留安全状态提示。
 fn public_sandbox(mut sandbox: Sandbox) -> Sandbox {
+    // Runtime 下载地址和摘要是管理员配置，不属于公共控制面 DTO。
+    sandbox.spec.bundle = None;
     if sandbox.error.is_some() {
         sandbox.error = Some("Sandbox operation failed".into());
     }

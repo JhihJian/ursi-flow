@@ -40,7 +40,7 @@ pub struct SandboxSpec {
     #[serde(default = "default_cpus")]
     pub cpus: f64,
     /// 不含凭据的运行包引用，供镜像 bootstrap 消费。
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle: Option<BundleRef>,
     /// 管理员白名单名称，不包含宿主路径或凭据。
     #[serde(default)]

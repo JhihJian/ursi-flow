@@ -22,6 +22,19 @@ export interface Sandbox {
   error: string | null
 }
 type Read<T> = T | Promise<T>
+export interface Registry {
+  bundles: Record<string, {
+    id?: string
+    version: string
+    runtime?: { url: string; sha256: string; min_image_level: number }
+    endpoints: { name: string; protocol: string; port: number }[]
+    requires?: string[]
+    conflicts?: string[]
+    services?: string[]
+    readiness?: Record<string, string>
+  }>
+  images: Record<string, string[]>
+}
 export interface Capabilities {
   rebuild_preserve_data: boolean
   rebuild_destroy_data: boolean
@@ -47,6 +60,8 @@ export interface Source {
   detail: (id: string, signal: AbortSignal) => Read<Sandbox>
   logs: (id: string, signal: AbortSignal) => Read<string>
   endpoints: (id: string, signal: AbortSignal) => Read<Sandbox['endpoints']>
+  registry?: (signal: AbortSignal) => Read<Registry>
+  replaceRegistry?: (registry: Registry) => Promise<Registry>
 }
 export class GatewayError extends Error {
   constructor(
@@ -151,6 +166,16 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
             body: JSON.stringify({ preserve_data: preserveData }),
           })
       : undefined,
+    registry: (s) => json<Registry>('./api/v1/registry', s),
+    replaceRegistry: (registry) =>
+      json<Registry>('./api/v1/registry', undefined, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Ursi-Action': 'manage',
+        },
+        body: JSON.stringify(registry),
+      }),
     list: async (s) =>
       (await json<{ sandboxes: Sandbox[] }>(base, s)).sandboxes,
     detail: (id, s) => json<Sandbox>(`${base}/${encodeURIComponent(id)}`, s),

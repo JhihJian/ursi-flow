@@ -52,6 +52,6 @@ references:
 
 #### 验收
 
-- 当前 `pi-execution` 只有 `ssh`（SSH exec、PTY、SFTP，共用 2222）和 `agent_session`（session-service ACP，内部监听 0.0.0.0:8765）两个端点。IDE、CDP、noVNC 仍是未来 bundle，不参与此 profile 的就绪判断，也不得在文档中视为已实现。
-- 健康检查覆盖真实 SSH 登录及 session-service `/healthz`，IDE/CDP/noVNC 不参与此 profile 的就绪判断。
+- 当前 `pi-execution` 只有 `ssh`（SSH exec、PTY、SFTP，共用 2222）和 `agent_session`（session-service ACP，内部监听 0.0.0.0:8765）两个端点。browser bundle 额外提供 IDE、CDP、noVNC，但必须使用 image-browser 镜像。
+- 健康检查覆盖真实 SSH 登录及 session-service `/healthz`；browser 镜像额外检查 IDE、CDP 和 noVNC 端口。
 - 构建产物和服务环境不包含配置凭据、bundle 下载 URL、端点 address、visibility 或 Gateway key。

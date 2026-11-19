@@ -205,15 +205,31 @@ def build(binary, output, definitions):
     with tempfile.TemporaryDirectory(prefix=".bundle-", dir=output) as temporary:
         stage = Path(temporary)
         payload = stage / "payload"
-        for path, source in {
+        files_to_copy = {
             "bin/ursi-session-service": binary,
             "supervisor/supervisord.conf": runtime / "bundle/process-supervisor/supervisord.conf",
             "supervisor/recovery.py": runtime / "bundle/process-supervisor/recovery.py",
-        }.items():
+        }
+        if "browser" in definitions["bundles"]:
+            files_to_copy.update({
+                "bin/browser-start.sh": runtime / "bundle/browser/start.sh",
+                "bin/ide-start.sh": runtime / "bundle/browser/ide-start.sh",
+                "supervisor/browser.conf": runtime / "bundle/browser/supervisord.conf",
+            })
+        for path, source in files_to_copy.items():
             target = payload / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
-            target.chmod(0o755 if path.startswith("bin/") else 0o644)
+            target.chmod(0o755 if path.startswith("bin/") or path.endswith(".sh") else 0o644)
+        if "browser" in definitions["bundles"]:
+            supervisor = payload / "supervisor/supervisord.conf"
+            supervisor.write_text(
+                supervisor.read_text(encoding="utf-8")
+                + "\n"
+                + (payload / "supervisor/browser.conf").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (payload / "supervisor/browser.conf").unlink()
         files = {
             str(path.relative_to(payload)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(payload.rglob("*"))

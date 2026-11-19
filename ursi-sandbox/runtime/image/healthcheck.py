@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Require an authenticated SSH exec and a successful session health response."""
+import socket
 import subprocess
 import sys
 import urllib.request
@@ -19,5 +20,9 @@ try:
     with opener.open("http://127.0.0.1:8765/healthz", timeout=2) as response:
         if response.status != 200:
             raise ValueError("session service not ready")
+    if __import__("os").environ.get("URSI_BROWSER_ENABLED") == "1":
+        for port in (8744, 9222, 6080):
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                pass
 except Exception:
     sys.exit(1)

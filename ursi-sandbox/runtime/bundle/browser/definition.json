@@ -1,0 +1,16 @@
+{
+  "bundles": ["browser"],
+  "required_capabilities": ["chromium", "xvfb", "x11vnc", "websockify"],
+  "services": ["browser-stack", "ide"],
+  "endpoints": [
+    {"name": "ide", "protocol": "http", "port": 8744},
+    {"name": "cdp", "protocol": "http", "port": 9222},
+    {"name": "desktop", "protocol": "websocket", "port": 6080}
+  ],
+  "readiness": {
+    "ide": "GET /healthz",
+    "cdp": "GET /json/version",
+    "desktop": "TCP connect"
+  },
+  "min_image_level": 2
+}

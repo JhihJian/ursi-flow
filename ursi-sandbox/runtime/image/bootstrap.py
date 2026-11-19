@@ -243,6 +243,7 @@ def main():
     bundle = install_bundle(os.environ.get("URSI_BUNDLE_URL", ""),
                             os.environ.get("URSI_BUNDLE_SHA256", ""), level,
                             Path("/opt/ursi/runtime"))
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
     Path("/run/ursi/recovery.started").unlink(missing_ok=True)
     # Only the explicit service contract reaches supervisord, not download URLs.
     env = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -250,6 +251,10 @@ def main():
            "URSI_SESSION_BIND": "0.0.0.0:8765", "URSI_SESSION_CONFIG_DIR": "/run/ursi/config",
            "URSI_WORKSPACE_ROOT": "/ursi/workspace",
            "URSI_SESSION_STATE_DIR": "/ursi/workspace/.ursi-state", "URSI_PI_BIN": "/usr/local/bin/pi"}
+    if "browser" in manifest.get("bundles", []):
+        env.update({"URSI_BROWSER_ENABLED": "1", "DISPLAY": ":99",
+                    "URSI_BROWSER_RUN_DIR": "/run/ursi/browser",
+                    "URSI_BROWSER_PROFILE_DIR": "/ursi/workspace/.browser-profile"})
     os.execve("/usr/bin/supervisord", ["supervisord", "-n", "-c", str(bundle / "supervisor/supervisord.conf")], env)
 
 

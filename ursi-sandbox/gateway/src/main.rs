@@ -66,7 +66,7 @@ async fn run() -> Result<()> {
         }
         Err(error) => return Err(Error::Invalid(format!("Gateway registry 无效: {error}"))),
     };
-    let service = Service::new(store, driver, Arc::new(registry));
+    let service = Service::with_registry(store, driver, Arc::new(registry), Some(registry_path));
     let tunnel = match env("URSI_GATEWAY_TUNNEL", "false").as_str() {
         "true" => true,
         "false" => false,

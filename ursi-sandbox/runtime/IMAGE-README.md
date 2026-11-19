@@ -1,6 +1,6 @@
 # Pi 执行环境镜像与 bundle
 
-`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。当前 runtime bundle 只组合 SSH 与 session-service ACP；IDE、CDP、noVNC 是未来独立 bundle，镜像中存在基础程序不代表这些端点已实现。
+`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。`runtime/image-browser` 在其上提供真实 Chromium、CDP、Xvfb、x11vnc、websockify 和 code-server，镜像级别为 2。browser bundle 组合后才开放 IDE、CDP 和桌面端点。
 
 ## 构建
 
@@ -11,10 +11,10 @@ docker build -t ursi-runtime-pi:local runtime/image
 runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle
 (cd /tmp/ursi-bundle && sha256sum -c runtime-bundle.sha256)
 
-# 组合额外 bundle 定义，端点名称和容器端口必须全局不重复
+# 组合 browser bundle，端点名称和容器端口必须全局不重复
+docker build -t ursi-runtime-browser:local runtime/image-browser
 runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle \
-  --manifest /private/runtime/base.json \
-  --bundles /private/runtime/extra.json
+  --bundles runtime/bundle/browser/definition.json
 ```
 
 镜像支持 amd64、arm64 的 Node 安装，bundle 中的服务二进制必须匹配镜像架构，glibc 要求不超过 2.39。可用 Docker build args `BASE_IMAGE`、`NODE_VERSION`、`NODE_DOWNLOAD_BASE`、`NPM_REGISTRY` 选择基础镜像和下载源。OpenSSH 源码阶段支持 `UBUNTU_SOURCE_MIRROR`，默认 Ubuntu 官方仓库，例如可指定 `--build-arg UBUNTU_SOURCE_MIRROR=http://mirrors.aliyun.com/ubuntu/`；APT 按 Ubuntu 签名元数据验证源码和软件包。Node 下载校验发行目录中的 SHA256，Pi 固定安装 `@earendil-works/pi-coding-agent@1.5.0`。

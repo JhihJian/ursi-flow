@@ -11,7 +11,9 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
+    net::TcpStream,
     process::Command,
+    time::timeout,
 };
 
 use super::Driver;
@@ -589,7 +591,24 @@ impl Driver for DockerDriver {
     }
 
     async fn observe(&self, sandbox: &Sandbox) -> Result<Observed> {
-        self.observed(sandbox, &self.container(sandbox).await?)
+        let mut observed = self.observed(sandbox, &self.container(sandbox).await?)?;
+        if observed.running {
+            for endpoint in &mut observed.endpoints {
+                let ready = timeout(
+                    Duration::from_millis(750),
+                    TcpStream::connect(&endpoint.address),
+                )
+                .await
+                .is_ok_and(|result| result.is_ok());
+                endpoint.ready = ready;
+                endpoint.state = if ready {
+                    crate::models::EndpointState::Ready
+                } else {
+                    crate::models::EndpointState::Unavailable
+                };
+            }
+        }
+        Ok(observed)
     }
 
     async fn logs(&self, sandbox: &Sandbox, tail: usize) -> Result<String> {

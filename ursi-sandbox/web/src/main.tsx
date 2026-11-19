@@ -9,6 +9,7 @@ import {
   CircleAlert,
   CircleStop,
   Cpu,
+  ExternalLink,
   Layers3,
   Network,
   RefreshCw,
@@ -24,7 +25,8 @@ import {
   useNavigate,
 } from 'react-router'
 import type { LucideIcon } from 'lucide-react'
-import { CreateSandbox, Actions, CliTools } from './Management'
+import RFB from '@novnc/novnc/lib/rfb.js'
+import { CreateSandbox, Actions, CliTools, RegistryAdmin } from './Management'
 import { Button } from './shared/ui/button'
 import { Badge as UiBadge } from './shared/ui/badge'
 import { Alert } from './shared/ui/alert'
@@ -123,6 +125,11 @@ function Header({ source }: { source?: Source }) {
         </Link>
         <span className="sep">/</span>
         <span className="crumb">资源控制台</span>
+        {source?.manage && (
+          <Link className="crumb" to="/registry">
+            能力注册表
+          </Link>
+        )}
         {source && (
           <span className="mode">
             <Server size={14} />
@@ -313,6 +320,54 @@ function Endpoints({ source, id }: { source: Source; id: string }) {
     </section>
   )
 }
+function DesktopPreview({ url }: { url: string }) {
+  const target = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!target.current) return
+    const socketUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${url}`
+    const rfb = new RFB(target.current, socketUrl)
+    rfb.scaleViewport = true
+    rfb.resizeSession = false
+    return () => rfb.disconnect()
+  }, [url])
+  return <div ref={target} className="min-h-80 overflow-hidden bg-black" />
+}
+function EndpointWorkbench({ row }: { row: Sandbox }) {
+  const browser = row.endpoints.filter((endpoint) =>
+    ['ide', 'cdp', 'desktop'].includes(endpoint.name),
+  )
+  if (!browser.length) return null
+  return (
+    <section>
+      <h2>
+        <ExternalLink />
+        端点工作台
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {browser.map((endpoint) => {
+          const url = `/api/v1/sandboxes/${row.id}/proxy/${encodeURIComponent(endpoint.name)}/`
+          return (
+            <article key={endpoint.name} className="border border-line p-4">
+              <strong>{endpoint.name === 'ide' ? 'IDE' : endpoint.name === 'cdp' ? 'CDP' : '桌面预览'}</strong>
+              <p className="muted text-sm">{endpoint.protocol} · {endpoint.port}</p>
+              {endpoint.ready ? (
+                endpoint.name === 'desktop' ? (
+                  <DesktopPreview url={url} />
+                ) : (
+                  <a className="text-accent-2 underline" href={url} target="_blank" rel="noreferrer">
+                    打开连接
+                  </a>
+                )
+              ) : (
+                <p className="muted">端点未就绪</p>
+              )}
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
 function Details({ source }: { source: Source }) {
   const id = useParams<'id'>().id!
   const navigate = useNavigate(),
@@ -409,6 +464,7 @@ function Details({ source }: { source: Source }) {
           </section>
           <Logs source={source} id={id} />
           <Endpoints source={source} id={id} />
+          <EndpointWorkbench row={r} />
           <CliTools />
         </>
       )}
@@ -426,6 +482,7 @@ function App() {
         <Routes>
           <Route index element={<List source={config.value} />} />
           <Route path="sandboxes" element={<List source={config.value} />} />
+          <Route path="registry" element={<RegistryAdmin source={config.value} />} />
           <Route
             path="sandboxes/:id"
             element={<Details source={config.value} />}

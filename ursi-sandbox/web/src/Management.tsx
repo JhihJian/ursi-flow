@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-react'
-import type { Sandbox, Source } from './data'
+import type { Registry, Sandbox, Source } from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
 import { Input } from './shared/ui/input'
@@ -63,6 +63,62 @@ function buildQuickSpec(
     cpus: cpuCount,
   }
 }
+export function RegistryAdmin({ source }: { source: Source }) {
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    const load = source.registry
+    if (!load) return () => controller.abort()
+    Promise.resolve(load(controller.signal)).then(
+      (registry) => setValue(JSON.stringify(registry, null, 2)),
+      (reason: unknown) => setError(reason instanceof Error ? reason.message : '读取注册表失败'),
+    )
+    return () => controller.abort()
+  }, [source])
+  async function save() {
+    if (!source.replaceRegistry || busy) return
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      const registry = JSON.parse(value) as Registry
+      await source.replaceRegistry(registry)
+      setValue(JSON.stringify(registry, null, 2))
+      setMessage('注册表已校验并原子生效')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '注册表保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <main>
+      <div className="heading">
+        <div>
+          <h1>能力注册表</h1>
+          <p>维护管理员批准的镜像、Bundle、Runtime 摘要和端点组合。</p>
+        </div>
+        <Button variant="primary" onClick={() => void save()} loading={busy} disabled={!source.manage}>
+          保存并生效
+        </Button>
+      </div>
+      {!source.manage && <Alert className="border-warn/30 bg-warn/10 text-warn">当前账户只读，不能修改注册表。</Alert>}
+      {message && <Alert>{message}</Alert>}
+      {error && <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>}
+      <Textarea
+        aria-label="Gateway registry JSON"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        disabled={busy || !source.manage}
+        className="min-h-[32rem] w-full resize-y font-mono text-xs leading-5"
+      />
+    </main>
+  )
+}
+
 export function CreateSandbox({ source }: { source: Source }) {
   const navigate = useNavigate(),
     [open, show] = useState(false),
