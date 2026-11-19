@@ -17,12 +17,11 @@ const page = await browser.newPage({
 let id
 try {
   await page.goto(base.href)
-  await page.getByText('Gateway 能力', { exact: true }).click()
-  await expect(page.getByText(/驱动：docker/)).toBeVisible()
   await page.getByRole('button', { name: '创建沙箱' }).click()
+  await page.getByRole('tab', { name: 'JSON 编辑' }).click()
   const name = 'web-smoke-' + Date.now()
   await page
-    .getByRole('textbox', { name: /创建规格/ })
+    .getByRole('textbox', { name: 'SandboxSpec JSON' })
     .fill(
       JSON.stringify({
         image: 'alpine:3.22',

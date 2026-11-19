@@ -4,6 +4,8 @@ import { Play, Plus, Square, Trash2 } from 'lucide-react'
 import type { Sandbox, Source } from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
+import { Input } from './shared/ui/input'
+import { Select } from './shared/ui/select'
 import { Label } from './shared/ui/label'
 import { Alert } from './shared/ui/alert'
 import {
@@ -36,19 +38,88 @@ const randomKey = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
     b.toString(16).padStart(2, '0'),
   ).join('')
+type CreateMode = 'quick' | 'json'
+type QuickPort = {
+  name: string
+  port: string
+  visibility: 'public' | 'internal'
+}
+const emptyPort = (): QuickPort => ({
+  name: '',
+  port: '',
+  visibility: 'public',
+})
+function buildQuickSpec(
+  image: string,
+  name: string,
+  command: string,
+  memory: string,
+  cpus: string,
+  ports: QuickPort[],
+) {
+  if (!image.trim()) throw Error('请输入镜像名')
+  const memoryMb = Number(memory)
+  const cpuCount = Number(cpus)
+  if (!Number.isInteger(memoryMb) || memoryMb < 16 || memoryMb > 65536)
+    throw Error('内存必须是 16 到 65536 MiB 之间的整数')
+  if (!Number.isFinite(cpuCount) || cpuCount <= 0 || cpuCount > 128)
+    throw Error('CPU 必须大于 0 且不超过 128')
+  const parsedPorts = ports.map((item) => {
+    const port = Number(item.port)
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(item.name.trim()))
+      throw Error('端点名称只能包含字母、数字、下划线和短横线')
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw Error('端口必须是 1 到 65535 之间的整数')
+    return {
+      name: item.name.trim(),
+      port,
+      visibility: item.visibility,
+      ready: false,
+    }
+  })
+  if (new Set(parsedPorts.map((item) => item.name)).size !== parsedPorts.length)
+    throw Error('端点名称不能重复')
+  if (new Set(parsedPorts.map((item) => item.port)).size !== parsedPorts.length)
+    throw Error('端口不能重复')
+  return {
+    image: image.trim(),
+    command: command
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    ports: parsedPorts,
+    labels: name.trim() ? { name: name.trim() } : {},
+    memory_mb: memoryMb,
+    cpus: cpuCount,
+  }
+}
 export function CreateSandbox({ source }: { source: Source }) {
   const navigate = useNavigate(),
     [open, show] = useState(false),
+    [mode, setMode] = useState<CreateMode>('quick'),
+    [image, setImage] = useState('alpine:3.22'),
+    [name, setName] = useState('my-sandbox'),
+    [command, setCommand] = useState('sleep\n3600'),
+    [memory, setMemory] = useState('256'),
+    [cpus, setCpus] = useState('1'),
+    [ports, setPorts] = useState<QuickPort[]>([]),
     [text, edit] = useState(template),
     [busy, wait] = useState(false),
     [error, fail] = useState('')
   const attempt = useRef({ body: '', key: '' })
+  function updateMode(next: CreateMode) {
+    setMode(next)
+    fail('')
+  }
   async function submit() {
     if (!source.create || busy) return
     wait(true)
     fail('')
     try {
-      const spec = JSON.parse(text)
+      const spec =
+        mode === 'quick'
+          ? buildQuickSpec(image, name, command, memory, cpus, ports)
+          : JSON.parse(text)
       if (!spec || typeof spec.image !== 'string' || !spec.image.trim())
         throw Error('规格必须包含 image 镜像名')
       const body = JSON.stringify(spec)
@@ -76,13 +147,37 @@ export function CreateSandbox({ source }: { source: Source }) {
           创建沙箱
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto">
         <DialogHeader className="pr-8">
           <DialogTitle>创建沙箱</DialogTitle>
           <DialogDescription>
-            填写 SandboxSpec JSON，提交后将进入沙箱详情页并开始创建。
+            快速填写常用配置，提交时自动生成符合 SandboxSpec 规范的 JSON。
           </DialogDescription>
         </DialogHeader>
+        <div
+          className="flex gap-1 rounded-lg bg-elevated p-1"
+          role="tablist"
+          aria-label="创建方式"
+        >
+          {(
+            [
+              ['quick', '快速创建'],
+              ['json', 'JSON 编辑'],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              variant={mode === value ? 'default' : 'ghost'}
+              role="tab"
+              aria-selected={mode === value}
+              onClick={() => updateMode(value)}
+              className="flex-1"
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         <form
           className="space-y-4"
           onSubmit={(event) => {
@@ -90,17 +185,176 @@ export function CreateSandbox({ source }: { source: Source }) {
             void submit()
           }}
         >
-          <div className="space-y-2">
-            <Label htmlFor="sandbox-spec">创建规格（SandboxSpec JSON）</Label>
-            <Textarea
-              id="sandbox-spec"
-              rows={14}
-              value={text}
-              disabled={busy}
-              onChange={(e) => edit(e.target.value)}
-              className="min-h-64 w-full resize-y font-mono text-xs leading-5"
-            />
-          </div>
+          {mode === 'quick' ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="sandbox-image">镜像</Label>
+                  <Input
+                    id="sandbox-image"
+                    value={image}
+                    disabled={busy}
+                    onChange={(e) => setImage(e.target.value)}
+                    placeholder="例如 alpine:3.22"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sandbox-name">名称（可选）</Label>
+                  <Input
+                    id="sandbox-name"
+                    value={name}
+                    disabled={busy}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="my-sandbox"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sandbox-memory">内存（MiB）</Label>
+                  <Input
+                    id="sandbox-memory"
+                    type="number"
+                    min="16"
+                    max="65536"
+                    step="1"
+                    value={memory}
+                    disabled={busy}
+                    onChange={(e) => setMemory(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sandbox-cpus">CPU</Label>
+                  <Input
+                    id="sandbox-cpus"
+                    type="number"
+                    min="0.1"
+                    max="128"
+                    step="0.1"
+                    value={cpus}
+                    disabled={busy}
+                    onChange={(e) => setCpus(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sandbox-command">
+                  命令参数（每行一个参数，可选）
+                </Label>
+                <Textarea
+                  id="sandbox-command"
+                  rows={3}
+                  value={command}
+                  disabled={busy}
+                  onChange={(e) => setCommand(e.target.value)}
+                  placeholder={'sleep\n3600'}
+                />
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>端口（可选）</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      setPorts((current) => [...current, emptyPort()])
+                    }
+                  >
+                    <Plus />
+                    添加端口
+                  </Button>
+                </div>
+                {ports.map((item, index) => (
+                  <div
+                    key={index}
+                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_auto]"
+                  >
+                    <Input
+                      aria-label={`端点 ${index + 1} 名称`}
+                      value={item.name}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setPorts((current) =>
+                          current.map((port, i) =>
+                            i === index
+                              ? { ...port, name: e.target.value }
+                              : port,
+                          ),
+                        )
+                      }
+                      placeholder="web"
+                    />
+                    <Input
+                      aria-label={`端点 ${index + 1} 端口`}
+                      type="number"
+                      min="1"
+                      max="65535"
+                      step="1"
+                      value={item.port}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setPorts((current) =>
+                          current.map((port, i) =>
+                            i === index
+                              ? { ...port, port: e.target.value }
+                              : port,
+                          ),
+                        )
+                      }
+                      placeholder="8080"
+                    />
+                    <Select
+                      aria-label={`端点 ${index + 1} 可见性`}
+                      value={item.visibility}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setPorts((current) =>
+                          current.map((port, i) =>
+                            i === index
+                              ? {
+                                  ...port,
+                                  visibility: e.target
+                                    .value as QuickPort['visibility'],
+                                }
+                              : port,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="public">公开</option>
+                      <option value="internal">内部</option>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`移除端点 ${index + 1}`}
+                      disabled={busy}
+                      onClick={() =>
+                        setPorts((current) =>
+                          current.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="sandbox-spec">SandboxSpec JSON</Label>
+              <Textarea
+                id="sandbox-spec"
+                rows={14}
+                value={text}
+                disabled={busy}
+                onChange={(e) => edit(e.target.value)}
+                className="min-h-64 w-full resize-y font-mono text-xs leading-5"
+              />
+            </div>
+          )}
           {!source.manage && (
             <Alert className="border-warn/30 bg-warn/10 text-warn">
               {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
