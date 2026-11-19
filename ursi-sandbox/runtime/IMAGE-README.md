@@ -12,12 +12,17 @@ runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bu
 (cd /tmp/ursi-bundle && sha256sum -c runtime-bundle.sha256)
 
 # 组合 browser bundle，端点名称和容器端口必须全局不重复
-docker build -t ursi-runtime-browser:local runtime/image-browser
+docker build \
+  --build-arg UBUNTU_APT_MIRROR=http://mirrors.aliyun.com/ubuntu \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+  -t ursi-runtime-browser:local runtime/image-browser
 runtime/scripts/build-bundle.sh /absolute/path/ursi-session-service /tmp/ursi-bundle \
   --bundles runtime/bundle/browser/definition.json
 ```
 
-镜像支持 amd64、arm64 的 Node 安装，bundle 中的服务二进制必须匹配镜像架构，glibc 要求不超过 2.39。可用 Docker build args `BASE_IMAGE`、`NODE_VERSION`、`NODE_DOWNLOAD_BASE`、`NPM_REGISTRY` 选择基础镜像和下载源。OpenSSH 源码阶段支持 `UBUNTU_SOURCE_MIRROR`，默认 Ubuntu 官方仓库，例如可指定 `--build-arg UBUNTU_SOURCE_MIRROR=http://mirrors.aliyun.com/ubuntu/`；APT 按 Ubuntu 签名元数据验证源码和软件包。Node 下载校验发行目录中的 SHA256，Pi 固定安装 `@earendil-works/pi-coding-agent@1.5.0`。
+browser 镜像当前已在 Linux amd64 验证，使用 Chrome for Testing 的 `linux64` 包。`UBUNTU_APT_MIRROR` 可覆盖阿里云 Ubuntu 源；`NPM_REGISTRY`、`NODE_MIRROR` 和 `CHROME_FOR_TESTING_MIRROR` 可分别覆盖 npm、Node.js 和浏览器归档的 npmmirror 下载地址。系统默认 Node.js 仍为 24.13.1，code-server 4.96.4 单独使用 `/opt/node20`（`NODE20_VERSION` 默认 20.20.2）。升级浏览器时须同时核对 Playwright 固定版本要求的 revision 和 Chrome 版本。
+
+基础镜像支持 amd64、arm64 的 Node 安装，bundle 中的服务二进制必须匹配镜像架构，glibc 要求不超过 2.39。可用 Docker build args `BASE_IMAGE`、`NODE_VERSION`、`NODE_DOWNLOAD_BASE`、`NPM_REGISTRY` 选择基础镜像和下载源。OpenSSH 源码阶段支持 `UBUNTU_SOURCE_MIRROR`，默认 Ubuntu 官方仓库，例如可指定 `--build-arg UBUNTU_SOURCE_MIRROR=http://mirrors.aliyun.com/ubuntu/`；APT 按 Ubuntu 签名元数据验证源码和软件包。Node 下载校验发行目录中的 SHA256，Pi 固定安装 `@earendil-works/pi-coding-agent@1.5.0`。
 
 Ubuntu 官方 sshd 的 Linux audit 集成会在缺少 `AUDIT_WRITE` 时拒绝 PTY 登录。镜像的独立构建阶段采用 Ubuntu 安全更新源的 OpenSSH 源码，保留发行版补丁，以 `--without-audit --without-pam` 编译 sshd。其余 SSH 工具仍使用发行版软件包，构建工具留在独立阶段。源码补丁版本记录在 `/etc/ursi-sshd-source-version`，SSH 登录 PATH 包含 `/usr/local/bin`，可直接使用 Node 和 Pi。运行所需 capabilities 保持七项。
 
