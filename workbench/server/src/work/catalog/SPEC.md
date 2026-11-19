@@ -2,7 +2,7 @@
 parent: ../../../SPEC.md
 references:
   - ../../../DESIGN-v2.md
-  - ../../../EXECUTOR-DESIGN.md
+  - ../../../../EXECUTOR-DESIGN.md
 ---
 
 # 工作定义目录

@@ -6,6 +6,7 @@ depends-on:
   - ../../../../../ursi-sandbox/client/SPEC.md
 references:
   - ../../../DESIGN-v2.md
+  - ../../../../EXECUTOR-DESIGN.md
   - API.md
   - SANDBOX.md
 ---
