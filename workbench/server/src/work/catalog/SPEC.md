@@ -29,8 +29,10 @@ references:
 | POST | `/{collection}/{id}/deactivate` | 停用整个 ID，下次派工及新引用返回 409，历史读取不变 |
 
 - 资源 `prompt`、`skill` 接受非空文本；`mcp` 只接受形如 `{"serverRef":"tools","credentialRef":"tools-auth"}` 的命名引用，`credentialRef` 可省略。连接参数和凭据由管理员管理。当前执行后端均不支持注入 MCP，绑定时拒绝发布。
-- `agent` 可用 `environment` 枚举绑定执行环境：省略或 `local` 使用本地 Pi，`sandbox` 仅使用管理员预配的 ACP 沙箱。显式字段冻结到动作快照；未声明环境的包保留原投影。`flow` 拒绝此字段。环境不可用时拒绝执行，不改变绑定。
-- `agent` 使用服务端配置的程序。`flow` 必须携带 `flowId` 和字符串 `flowRevision`，当前不支持注入资源。程序、命令、工作目录与环境变量均不属于发布字段。
+- 执行器是通用能力定义，只允许 `id`、`resources` 和可选的 `configSchema`。定义不接受 `kind`、`environment`、`flowId`、`flowRevision`、程序、路径、命令或环境变量字段。
+- `configSchema` 是字段名到受限字段定义的对象。字段类型仅支持 `string`、`url`、`secret`、`enum`、`integer`、`number`、`boolean`。字段定义只允许 `type`、类型对应的 `default`、`enum` 的 `values` 以及数值类型的 `minimum`、`maximum`。它不是任意 JSON Schema，不支持对象、数组、组合、表达式或执行配置。
+- `url` 默认值必须是无空白的绝对 URL；`enum` 必须有非空且不重复的字符串 `values`；`integer` 和 `number` 可声明有限的 `minimum`、`maximum`，且默认值必须在边界内。未声明 `default` 的字段没有默认值。
+- `secret` 只能使用 `"***"`、`{"redacted":true}` 或命名的内部引用 `{"ref":"secret://..."}` 表示。明文密钥、路径、命令和环境变量均拒绝，secret 值不进入普通响应。
 
 ### 引用校验与历史冻结
 
@@ -50,7 +52,7 @@ api=http://127.0.0.1:8080/api/v2
 auth="Authorization: Bearer $URSI_API_TOKEN"
 post() { curl -fsS -H "$auth" --json "$2" "$api/$1"; }
 post resources '{"id":"guide","kind":"skill","content":"列出材料及核查结果。"}'
-post executors '{"id":"assistant","kind":"agent","resources":[{"id":"guide","revision":1}]}'
+post executors '{"id":"assistant","resources":[{"id":"guide","revision":1}],"configSchema":{"mode":{"type":"enum","values":["fast","safe"],"default":"safe"}}}'
 post packages '{"id":"triage","sop":"按材料逐项核查。","acceptance":"结论有证据。","actions":{"analyze":{"executor":{"id":"assistant","revision":1}}}}'
 curl -fsS -H "$auth" "$api/packages/triage/revisions/1"
 curl -fsS -X POST -H "$auth" "$api/packages/triage/deactivate"

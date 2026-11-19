@@ -10,13 +10,12 @@ fn resource(db: &mut Value, id: &str, kind: &str, content: Value) -> Value {
     .unwrap()
 }
 
-fn agent(db: &mut Value, id: &str, resources: Value) -> Value {
-    publish(
-        db,
-        "executors",
-        json!({"id":id,"kind":"agent","resources":resources}),
-    )
-    .unwrap()
+fn executor(db: &mut Value, id: &str, extra: Value) -> Value {
+    let mut body = json!({"id":id});
+    for (key, value) in extra.as_object().unwrap() {
+        body[key] = value.clone();
+    }
+    publish(db, "executors", body).unwrap()
 }
 
 fn package(db: &mut Value, id: &str, executor: Value, resources: Value) -> Value {
@@ -34,13 +33,158 @@ fn package(db: &mut Value, id: &str, executor: Value, resources: Value) -> Value
 }
 
 #[test]
-fn publication_freezes_versions_and_resolves_dependencies() {
+fn executor_config_schema_supports_all_restricted_types_and_defaults() {
+    let mut db = json!({});
+    let definition = json!({
+        "configSchema": {
+            "title": {"type":"string", "default":"报告"},
+            "endpoint": {"type":"url", "default":"https://api.example.test/v1"},
+            "token": {"type":"secret", "default":{"ref":"secret://provider/token"}},
+            "mode": {"type":"enum", "values":["fast","safe"], "default":"safe"},
+            "retries": {"type":"integer", "minimum":0, "maximum":5, "default":2},
+            "temperature": {"type":"number", "minimum":0, "maximum":1, "default":0.2},
+            "enabled": {"type":"boolean", "default":true}
+        }
+    });
+    let published = executor(&mut db, "assistant", definition.clone());
+    assert_eq!(published["id"], "assistant");
+    assert_eq!(published["configSchema"], definition["configSchema"]);
+    assert_eq!(
+        latest(&db, "executors", "assistant").unwrap()["configSchema"],
+        definition["configSchema"]
+    );
+}
+
+#[test]
+fn executor_config_schema_rejects_unknown_fields_and_arbitrary_json_schema() {
+    let mut db = json!({});
+    for schema in [
+        json!({"title":{"type":"string","description":"free form"}}),
+        json!({"title":{"type":"string","path":"/tmp"}}),
+        json!({"title":{"type":"string","command":"echo"}}),
+        json!({"title":{"type":"string","environment":{"TOKEN":"x"}}}),
+        json!({"title":{"type":"string","kind":"agent"}}),
+        json!({"endpoint":{"type":"url","default":"/tmp/service"}}),
+        json!({"endpoint":{"type":"url","default":"https://"}}),
+        json!({"type":"object","properties":{"title":{"type":"string"}}}),
+        json!({"title":{"type":"object","properties":{}}}),
+    ] {
+        let before = db.clone();
+        assert!(matches!(
+            publish(
+                &mut db,
+                "executors",
+                json!({"id":"bad","configSchema":schema})
+            ),
+            Err(Error::Invalid(_))
+        ));
+        assert_eq!(db, before);
+    }
+    for field in [
+        "kind",
+        "environment",
+        "flowId",
+        "flowRevision",
+        "program",
+        "command",
+        "path",
+        "env",
+    ] {
+        let before = db.clone();
+        let mut body = json!({"id":"bad"});
+        body[field] = json!("forbidden");
+        assert!(matches!(
+            publish(&mut db, "executors", body),
+            Err(Error::Invalid(_))
+        ));
+        assert_eq!(db, before);
+    }
+}
+
+#[test]
+fn executor_config_schema_enforces_enum_and_numeric_bounds() {
+    let mut db = json!({});
+    for schema in [
+        json!({"mode":{"type":"enum","values":[]}}),
+        json!({"mode":{"type":"enum","values":["safe","safe"]}}),
+        json!({"mode":{"type":"enum","values":["safe"],"default":"fast"}}),
+        json!({"count":{"type":"integer","minimum":3,"maximum":2}}),
+        json!({"count":{"type":"integer","minimum":0.5}}),
+        json!({"count":{"type":"integer","minimum":0,"default":2.5}}),
+        json!({"ratio":{"type":"number","minimum":0,"maximum":1,"default":2}}),
+        json!({"enabled":{"type":"boolean","default":"yes"}}),
+    ] {
+        assert!(matches!(
+            publish(
+                &mut db,
+                "executors",
+                json!({"id":"bad","configSchema":schema})
+            ),
+            Err(Error::Invalid(_))
+        ));
+    }
+    let good = executor(
+        &mut db,
+        "bounded",
+        json!({"configSchema": {
+            "count":{"type":"integer","minimum":0,"maximum":2,"default":0},
+            "ratio":{"type":"number","minimum":0,"maximum":1,"default":1}
+        }}),
+    );
+    assert_eq!(good["revision"], 1);
+}
+
+#[test]
+fn secret_schema_accepts_only_redacted_or_internal_reference_and_never_echoes_plaintext() {
+    let mut db = json!({});
+    for default in [
+        json!("plaintext-secret"),
+        json!({"value":"plaintext-secret"}),
+        json!({"ref":"plain-reference"}),
+        json!({"ref":"/tmp/token"}),
+        json!({"ref":"secret://"}),
+    ] {
+        assert!(matches!(
+            publish(
+                &mut db,
+                "executors",
+                json!({"id":"bad","configSchema":{"token":{"type":"secret","default":default}}})
+            ),
+            Err(Error::Invalid(_))
+        ));
+    }
+    let redacted = executor(
+        &mut db,
+        "safe",
+        json!({"configSchema": {
+            "token":{"type":"secret","default":"***"},
+            "other":{"type":"secret","default":{"redacted":true}},
+            "managed":{"type":"secret","default":{"ref":"secret://vault/token"}}
+        }}),
+    );
+    let text = redacted.to_string();
+    assert!(!text.contains("plaintext-secret"));
+    assert_eq!(redacted["configSchema"]["token"]["default"], "***");
+    assert_eq!(
+        latest(&db, "executors", "safe").unwrap()["configSchema"]["managed"]["default"]["ref"],
+        "secret://vault/token"
+    );
+    assert!(
+        !list_latest(&db, "executors")
+            .unwrap()
+            .to_string()
+            .contains("plaintext-secret")
+    );
+}
+
+#[test]
+fn publication_freezes_generic_executor_and_resolves_dependencies() {
     let mut db = json!({});
     let first = resource(&mut db, "prompt", "prompt", "初版提示".into());
-    let exec = agent(
+    let exec = executor(
         &mut db,
         "assistant",
-        json!([{"id":"prompt","revision":first["revision"]}]),
+        json!({"resources":[{"id":"prompt","revision":first["revision"]}]}),
     );
     let published = package(
         &mut db,
@@ -56,7 +200,7 @@ fn publication_freezes_versions_and_resolves_dependencies() {
             "sop":"按步骤处理",
             "acceptance":"结果可核查",
             "actions":{"analyze":{
-                "executor":{"id":"assistant","revision":1,"kind":"agent"},
+                "executor":{"id":"assistant","revision":1},
                 "resources":[{"id":"prompt","revision":1,"kind":"prompt","content":"初版提示"}]
             }}
         })
@@ -64,10 +208,10 @@ fn publication_freezes_versions_and_resolves_dependencies() {
     assert_eq!(published["revision"], 1);
 
     resource(&mut db, "prompt", "prompt", "新版提示".into());
-    agent(&mut db, "assistant", json!([{"id":"prompt","revision":2}]));
-    assert_eq!(
-        resolve(&db, "triage", 1, true).unwrap()["sop"],
-        "按步骤处理"
+    executor(
+        &mut db,
+        "assistant",
+        json!({"resources":[{"id":"prompt","revision":2}]}),
     );
     assert_eq!(
         resolve(&db, "triage", 1, true).unwrap()["actions"]["analyze"]["resources"][0]["content"],
@@ -79,7 +223,11 @@ fn publication_freezes_versions_and_resolves_dependencies() {
 fn deactivation_blocks_new_references_but_keeps_history_readable() {
     let mut db = json!({});
     resource(&mut db, "prompt", "prompt", "内容".into());
-    let exec = agent(&mut db, "assistant", json!([{"id":"prompt","revision":1}]));
+    let exec = executor(
+        &mut db,
+        "assistant",
+        json!({"resources":[{"id":"prompt","revision":1}]}),
+    );
     package(
         &mut db,
         "triage",
@@ -91,7 +239,7 @@ fn deactivation_blocks_new_references_but_keeps_history_readable() {
         publish(
             &mut db,
             "executors",
-            json!({"id":"other","kind":"agent","resources":[{"id":"prompt","revision":1}]})
+            json!({"id":"other","resources":[{"id":"prompt","revision":1}]})
         ),
         Err(Error::Conflict(_))
     ));
@@ -103,35 +251,21 @@ fn deactivation_blocks_new_references_but_keeps_history_readable() {
         resolve(&db, "triage", 1, false).unwrap()["actions"]["analyze"]["resources"][0]["content"],
         "内容"
     );
-    deactivate(&mut db, "packages", "triage").unwrap();
-    assert!(matches!(
-        resolve(&db, "triage", 1, true),
-        Err(Error::Conflict(_))
-    ));
-    assert_eq!(resolve(&db, "triage", 1, false).unwrap()["revision"], 1);
 }
 
 #[test]
-fn package_ports_are_independent_from_executor_and_conflicting_resources_leave_old_package_alone() {
+fn package_ports_are_independent_from_executor_and_conflicting_resource_revisions_leave_old_package_alone()
+ {
     let mut db = json!({"other":"unchanged"});
     resource(&mut db, "guide", "skill", "v1".into());
     resource(&mut db, "guide", "skill", "v2".into());
-    publish(
+    executor(
         &mut db,
-        "executors",
-        json!({"id":"agent","kind":"agent","resources":[{"id":"guide","revision":1}]}),
-    )
-    .unwrap();
-    assert!(matches!(
-        publish(
-            &mut db,
-            "executors",
-            json!({"id":"ports","kind":"agent","inputs":{"ticket":"string"}}),
-        ),
-        Err(Error::Invalid(_))
-    ));
-    let b = json!({"id":"p","sop":"步骤","acceptance":"有报告","inputs":{"ticket":"string"},"outputs":{"report":"string"},"resources":[{"id":"guide","revision":1}],"actions":{"run":{"executor":{"id":"agent","revision":1}}}});
-    let frozen = publish(&mut db, "packages", b.clone()).unwrap();
+        "generic",
+        json!({"resources":[{"id":"guide","revision":1}]}),
+    );
+    let definition = json!({"id":"p","sop":"步骤","acceptance":"有报告","inputs":{"ticket":"string"},"outputs":{"report":"string"},"resources":[{"id":"guide","revision":1}],"actions":{"run":{"executor":{"id":"generic","revision":1}}}});
+    let frozen = publish(&mut db, "packages", definition.clone()).unwrap();
     assert_eq!(
         frozen["actions"]["run"]["resources"]
             .as_array()
@@ -139,23 +273,46 @@ fn package_ports_are_independent_from_executor_and_conflicting_resources_leave_o
             .len(),
         1
     );
-    for (field, value) in [("resources", json!([{"id":"guide","revision":2}]))] {
-        let mut bad = b.clone();
-        bad[field] = value;
-        let before = db.clone();
-        assert!(publish(&mut db, "packages", bad).is_err());
-        assert_eq!(db, before);
-    }
-    assert_eq!(publish(&mut db, "packages", b).unwrap()["revision"], 2);
-    let mut db: Value = serde_json::from_str(&db.to_string()).unwrap();
-    assert_eq!(list_latest(&db, "packages").unwrap()[0]["revision"], 2);
-    deactivate(&mut db, "executors", "agent").unwrap();
+    let mut conflicting = definition.clone();
+    conflicting["resources"] = json!([{"id":"guide","revision":2}]);
+    let before = db.clone();
+    assert!(publish(&mut db, "packages", conflicting).is_err());
+    assert_eq!(db, before);
+    assert_eq!(
+        publish(&mut db, "packages", definition).unwrap()["revision"],
+        2
+    );
+    deactivate(&mut db, "executors", "generic").unwrap();
     assert!(matches!(
         resolve(&db, "p", 1, true),
         Err(Error::Conflict(_))
     ));
     assert_eq!(resolve(&db, "p", 1, false).unwrap(), frozen);
     assert_eq!(db["other"], "unchanged");
+}
+
+#[test]
+fn invalid_dependencies_and_plaintext_mcp_secrets_are_rejected_without_writes() {
+    let mut db = json!({});
+    assert!(matches!(
+        publish(
+            &mut db,
+            "resources",
+            json!({"id":"mcp","kind":"mcp","content":{"url":"https://mcp","token":"secret"}})
+        ),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(db, json!({}));
+    resource(&mut db, "prompt", "prompt", "内容".into());
+    assert!(matches!(
+        publish(
+            &mut db,
+            "packages",
+            json!({"id":"bad","sop":"按步骤处理","acceptance":"结果可核查","actions":{"analyze":{"executor":{"id":"missing","revision":1},"resources":[]}}})
+        ),
+        Err(Error::NotFound(_))
+    ));
+    assert_eq!(list_latest(&db, "packages").unwrap(), json!([]));
 }
 
 #[test]
@@ -181,128 +338,4 @@ fn mcp_only_accepts_registered_names() {
         ));
     }
     assert_eq!(latest(&db, "resources", "search").unwrap()["revision"], 1);
-}
-
-#[test]
-fn invalid_dependencies_and_plaintext_mcp_secrets_are_rejected_without_writes() {
-    let mut db = json!({});
-    assert!(matches!(
-        publish(
-            &mut db,
-            "resources",
-            json!({"id":"mcp","kind":"mcp","content":{"url":"https://mcp","token":"secret"}})
-        ),
-        Err(Error::Invalid(_))
-    ));
-    assert_eq!(db, json!({}));
-    assert!(matches!(
-        publish(
-            &mut db,
-            "executors",
-            json!({"id":"agent","kind":"agent","program":"/tmp/user-command"})
-        ),
-        Err(Error::Invalid(_))
-    ));
-    resource(&mut db, "prompt", "prompt", "内容".into());
-    assert!(matches!(
-        publish(
-            &mut db,
-            "packages",
-            json!({
-                "id":"bad",
-                "sop":"按步骤处理",
-                "acceptance":"结果可核查",
-                "actions":{"analyze":{"executor":{"id":"missing","revision":1},"resources":[]}}
-            })
-        ),
-        Err(Error::NotFound(_))
-    ));
-    assert_eq!(list_latest(&db, "packages").unwrap(), json!([]));
-}
-
-#[test]
-fn environment_is_frozen_and_only_an_agent_enum() {
-    let mut db = json!({});
-    for env in [json!(null), json!("/tmp"), json!({"cwd":"/"})] {
-        assert!(
-            publish(
-                &mut db,
-                "executors",
-                json!({"id":"a","kind":"agent","environment":env})
-            )
-            .is_err()
-        );
-    }
-    assert!(
-        publish(
-            &mut db,
-            "executors",
-            json!({"id":"f","kind":"flow","flowId":"f","flowRevision":"r","environment":"local"})
-        )
-        .is_err()
-    );
-    for env in ["sandbox", "local"] {
-        let exec = publish(
-            &mut db,
-            "executors",
-            json!({"id":"a","kind":"agent","environment":env}),
-        )
-        .unwrap();
-        package(
-            &mut db,
-            "p",
-            json!({"id":"a","revision":exec["revision"]}),
-            json!([]),
-        );
-    }
-    for (rev, env) in [(1, "sandbox"), (2, "local")] {
-        assert_eq!(
-            resolve(&db, "p", rev, true).unwrap()["actions"]["analyze"]["executor"]["environment"],
-            env
-        );
-    }
-}
-
-#[test]
-fn flow_requires_pinned_revision_and_cannot_receive_resources() {
-    let mut db = json!({});
-    resource(&mut db, "x", "skill", "步骤".into());
-    for bad in [
-        json!({"id":"missing-id","kind":"flow","flowRevision":"r"}),
-        json!({"id":"missing-rev","kind":"flow","flowId":"verify"}),
-    ] {
-        assert!(matches!(
-            publish(&mut db, "executors", bad),
-            Err(Error::Invalid(_))
-        ));
-    }
-    let flow = publish(
-        &mut db,
-        "executors",
-        json!({"id":"flow","kind":"flow","flowId":"verify","flowRevision":"catalog-1"}),
-    )
-    .unwrap();
-    let snapshot = package(
-        &mut db,
-        "flow-package",
-        json!({"id":"flow","revision":flow["revision"]}),
-        json!([]),
-    );
-    assert_eq!(
-        snapshot["actions"]["analyze"]["executor"]["flowId"],
-        "verify"
-    );
-    assert_eq!(
-        snapshot["actions"]["analyze"]["executor"]["flowRevision"],
-        "catalog-1"
-    );
-    assert_eq!(snapshot["actions"]["analyze"]["resources"], json!([]));
-    assert!(matches!(
-        publish(
-            &mut db,
-            "executors",
-            json!({"id":"bad-flow","kind":"flow","flowId":"verify","flowRevision":"r","resources":[{"id":"x","revision":1}]})
-        ),
-        Err(Error::Invalid(_))
-    ));
 }

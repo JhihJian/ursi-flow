@@ -96,50 +96,226 @@ fn ports<'a>(b: &'a Value, k: &str) -> Result<Option<&'a Map<String, Value>>, Er
     }
     Ok(Some(map))
 }
-fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
-    fields(
-        b,
-        &[
-            "id",
-            "kind",
-            "resources",
-            "environment",
-            "flowId",
-            "flowRevision",
-        ],
-    )?;
-    let deps = array(b, "resources")?;
-    match text(b, "kind")? {
-        "agent" => {
-            if let Some(env) = b.get("environment") {
-                if !matches!(env.as_str(), Some("local" | "sandbox")) {
-                    return Err(Error::Invalid(
-                        "Agent environment 必须为 local 或 sandbox".into(),
-                    ));
+
+fn is_url(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once("://") else {
+        return false;
+    };
+    let valid_scheme = scheme
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    valid_scheme
+        && !authority.is_empty()
+        && !authority.starts_with([':', '@'])
+        && !authority
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control())
+        && !rest.chars().any(char::is_control)
+}
+
+fn number(v: &Value, field: &str) -> Result<f64, Error> {
+    v.as_f64()
+        .filter(|n| n.is_finite())
+        .ok_or_else(|| Error::Invalid(format!("{field} 必须是有限数字")))
+}
+
+fn integer(v: &Value, field: &str) -> Result<i128, Error> {
+    v.as_i64()
+        .map(i128::from)
+        .or_else(|| v.as_u64().map(i128::from))
+        .ok_or_else(|| Error::Invalid(format!("{field} 必须是整数")))
+}
+
+fn secret_reference(s: &str) -> bool {
+    let Some(reference) = s.strip_prefix("secret://") else {
+        return false;
+    };
+    !reference.is_empty()
+        && !reference.starts_with('/')
+        && !reference
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control())
+}
+
+fn validate_default(ty: &str, value: &Value, schema: &Map<String, Value>) -> Result<(), Error> {
+    let valid = match ty {
+        "string" => value.is_string(),
+        "url" => value.as_str().is_some_and(is_url),
+        "secret" => {
+            value == "***"
+                || value.as_object().is_some_and(|v| {
+                    v.len() == 1
+                        && v.get("ref")
+                            .and_then(Value::as_str)
+                            .is_some_and(secret_reference)
+                })
+                || value
+                    .as_object()
+                    .is_some_and(|v| v.len() == 1 && v.get("redacted") == Some(&Value::Bool(true)))
+        }
+        "enum" => schema["values"]
+            .as_array()
+            .is_some_and(|values| values.iter().any(|candidate| candidate == value)),
+        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        "number" => value.as_f64().is_some_and(f64::is_finite),
+        "boolean" => value.is_boolean(),
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::Invalid(format!("{ty} 的 default 类型无效")))
+    }
+}
+
+fn validate_config_schema(v: &Value) -> Result<Value, Error> {
+    let schema = v
+        .as_object()
+        .ok_or_else(|| Error::Invalid("configSchema 必须是字段定义对象".into()))?;
+    let mut normalized = Map::new();
+    for (field, definition) in schema {
+        name(field)?;
+        let definition = definition
+            .as_object()
+            .ok_or_else(|| Error::Invalid(format!("configSchema.{field} 必须是对象")))?;
+        fields(
+            &Value::Object(definition.clone()),
+            &["type", "default", "values", "minimum", "maximum"],
+        )?;
+        let ty = definition
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Invalid(format!("configSchema.{field}.type 无效")))?;
+        if !matches!(
+            ty,
+            "string" | "url" | "secret" | "enum" | "integer" | "number" | "boolean"
+        ) {
+            return Err(Error::Invalid(format!(
+                "configSchema.{field}.type 不受支持"
+            )));
+        }
+
+        let has_bounds = definition.contains_key("minimum") || definition.contains_key("maximum");
+        if ty != "integer" && ty != "number" && has_bounds {
+            return Err(Error::Invalid(format!("{ty} 不支持数值边界")));
+        }
+        let (minimum, maximum) = match ty {
+            "integer" => {
+                let minimum = definition
+                    .get("minimum")
+                    .map(|v| integer(v, "minimum"))
+                    .transpose()?;
+                let maximum = definition
+                    .get("maximum")
+                    .map(|v| integer(v, "maximum"))
+                    .transpose()?;
+                if let (Some(minimum), Some(maximum)) = (minimum, maximum) {
+                    if minimum > maximum {
+                        return Err(Error::Invalid(format!("configSchema.{field} 数值边界无效")));
+                    }
+                }
+                (None, None)
+            }
+            "number" => {
+                let minimum = definition
+                    .get("minimum")
+                    .map(|v| number(v, "minimum"))
+                    .transpose()?;
+                let maximum = definition
+                    .get("maximum")
+                    .map(|v| number(v, "maximum"))
+                    .transpose()?;
+                if let (Some(minimum), Some(maximum)) = (minimum, maximum) {
+                    if minimum > maximum {
+                        return Err(Error::Invalid(format!("configSchema.{field} 数值边界无效")));
+                    }
+                }
+                (minimum, maximum)
+            }
+            _ => (None, None),
+        };
+
+        if ty == "enum" {
+            let values = definition
+                .get("values")
+                .and_then(Value::as_array)
+                .filter(|values| !values.is_empty())
+                .ok_or_else(|| {
+                    Error::Invalid(format!("configSchema.{field}.values 必须是非空数组"))
+                })?;
+            let mut seen = BTreeMap::new();
+            for value in values {
+                let value = value
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        Error::Invalid(format!("configSchema.{field}.values 必须是字符串"))
+                    })?;
+                if seen.insert(value, ()).is_some() {
+                    return Err(Error::Invalid(format!(
+                        "configSchema.{field}.values 不能重复"
+                    )));
                 }
             }
-            if b.get("flowId").is_some() || b.get("flowRevision").is_some() {
-                return Err(Error::Invalid("Agent 不能绑定 Flow".into()));
+        } else if definition.contains_key("values") {
+            return Err(Error::Invalid(format!("{ty} 不支持 values")));
+        }
+
+        if let Some(default) = definition.get("default") {
+            validate_default(ty, default, definition)?;
+            let out_of_bounds = match ty {
+                "integer" => {
+                    let value = integer(default, "default")?;
+                    let minimum = definition
+                        .get("minimum")
+                        .map(|v| integer(v, "minimum"))
+                        .transpose()?;
+                    let maximum = definition
+                        .get("maximum")
+                        .map(|v| integer(v, "maximum"))
+                        .transpose()?;
+                    minimum.is_some_and(|bound| value < bound)
+                        || maximum.is_some_and(|bound| value > bound)
+                }
+                "number" => {
+                    let value = number(default, "default")?;
+                    minimum.is_some_and(|bound| value < bound)
+                        || maximum.is_some_and(|bound| value > bound)
+                }
+                _ => false,
+            };
+            if out_of_bounds {
+                return Err(Error::Invalid(format!(
+                    "configSchema.{field}.default 超出数值边界"
+                )));
             }
         }
-        "flow" => {
-            if b.get("environment").is_some() {
-                return Err(Error::Invalid("Flow 不接受 environment".into()));
-            }
-            name(text(b, "flowId")?)?;
-            text(b, "flowRevision")?;
-        }
-        _ => return Err(Error::Invalid("未知执行器 kind".into())),
+        normalized.insert(field.clone(), Value::Object(definition.clone()));
+    }
+    Ok(Value::Object(normalized))
+}
+
+fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
+    fields(b, &["id", "resources", "configSchema"])?;
+    let deps = array(b, "resources")?;
+    let mut value = b.clone();
+    if let Some(schema) = b.get("configSchema") {
+        value["configSchema"] = validate_config_schema(schema)?;
     }
     let mut budget = MAX_SNAPSHOT_BYTES;
-    resources(db, b["kind"].as_str().unwrap(), deps.iter(), &mut budget)?;
-    Ok(b.clone())
+    resources(db, deps.iter(), &mut budget)?;
+    Ok(value)
 }
+
 // Expanded references must not turn a tiny publish request into an unbounded snapshot.
 const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
 fn resources<'a>(
     db: &Value,
-    backend: &str,
     refs: impl Iterator<Item = &'a Value>,
     budget: &mut usize,
 ) -> Result<Vec<Value>, Error> {
@@ -155,8 +331,8 @@ fn resources<'a>(
         }
         require_active(db, "resources", id)?;
         let v = version(db, "resources", id, rev)?;
-        if backend == "flow" || v["kind"] == "mcp" {
-            return Err(Error::Invalid(format!("{backend} 暂不支持注入资源 {id}")));
+        if v["kind"] == "mcp" {
+            return Err(Error::Invalid(format!("执行器暂不支持注入 MCP 资源 {id}")));
         }
         let size = v["content"].as_str().ok_or_else(super::corrupt)?.len() + id.len() + 64;
         *budget = budget
@@ -204,14 +380,10 @@ fn package(db: &Value, b: &Value) -> Result<Value, Error> {
             .iter()
             .chain(array(binding, "resources")?)
             .chain(array(exec, "resources")?);
-        let deps = resources(db, text(exec, "kind")?, refs, &mut budget)?;
-        let mut target = json!({"id":id,"revision":rev,"kind":exec["kind"]});
-        if let Some(env) = exec.get("environment") {
-            target["environment"] = env.clone();
-        }
-        if exec["kind"] == "flow" {
-            target["flowId"] = exec["flowId"].clone();
-            target["flowRevision"] = exec["flowRevision"].clone();
+        let deps = resources(db, refs, &mut budget)?;
+        let mut target = json!({"id":id,"revision":rev});
+        if let Some(schema) = exec.get("configSchema") {
+            target["configSchema"] = schema.clone();
         }
         frozen.insert(action.clone(), json!({"executor":target,"resources":deps}));
     }
