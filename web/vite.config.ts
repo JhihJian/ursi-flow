@@ -15,7 +15,13 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: apiProxy(env.URSI_API_PROXY || 'http://127.0.0.1:8080'),
     },
-    preview: { host: '0.0.0.0', port: 4173, strictPort: true },
+    preview: {
+      host: '0.0.0.0',
+      port: 4173,
+      strictPort: true,
+      // 生产构建预览与开发服务器使用同一套同源代理，目标由 URSI_API_PROXY 决定。
+      proxy: apiProxy(env.URSI_API_PROXY || 'http://127.0.0.1:8080'),
+    },
     test: {
       environment: 'jsdom',
       include: ['src/**/*.test.{ts,tsx}'],
