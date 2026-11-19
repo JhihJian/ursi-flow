@@ -5,9 +5,10 @@ import { errorMessage } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { PageHeader } from '@/shared/ui/page-header'
-import { boundExecutors, list, publish, readVersion, revisionPath, titles, type Collection, type Latest } from './catalog'
+import { boundExecutors, environmentHints, environmentNames, list, publish, readVersion, revisionPath, titles, type Collection, type Latest } from './catalog'
 import { blankAction, initialDraft, publishBody, type ActionDraft, type Draft } from './draft'
-import { Choice, PortsEditor, RefPicker, ResourceRefs, TextField } from './Fields'
+import { clearDraft, draftKey, readDraft, writeDraft } from './draft-store'
+import { Choice, Hint, PortsEditor, RefPicker, ResourceRefs, TextField } from './Fields'
 
 type EditorProps = { k: Collection; id?: string; revision?: string }
 export function Editor({ k, id, revision }: EditorProps) {
@@ -23,75 +24,105 @@ export function Editor({ k, id, revision }: EditorProps) {
   }, null)
   if (result.loading || !result.data || result.error) return <ResourceState {...result} onRetry={result.reload} />
   const { source, draft, resources, executors } = result.data
-  if (source && !source.latest.active) return <p role="status">对象已停用，不能发布新版。 <Link to={revisionPath(k, source.version)}>返回版本详情</Link></p>
-  return <EditForm k={k} initial={draft} revision={source?.version.revision} resources={resources} executors={executors} />
+  if (source && !source.latest.active) return <p role="status">对象已停用，不能发布新版，也不再接受新派工和新引用。 <Link to={revisionPath(k, source.version)}>返回版本详情</Link></p>
+  return <EditForm k={k} initial={draft} revision={source?.version.revision} storageKey={draftKey(k, id, revision)} resources={resources} executors={executors} />
 }
-function EditForm({ k, initial, revision, resources, executors }: {
-  k: Collection; initial: Draft; revision?: number; resources: Latest[]; executors: Latest[]
+function EditForm({ k, initial, revision, storageKey, resources, executors }: {
+  k: Collection; initial: Draft; revision?: number; storageKey: string; resources: Latest[]; executors: Latest[]
 }) {
   const navigate = useNavigate()
-  const [d, setDraft] = useState(initial)
+  const [restored, setRestored] = useState<Draft | null>(() => readDraft(storageKey))
+  const [d, setDraft] = useState<Draft>(() => restored ?? initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const review = Boolean(revision && k === 'packages')
   const [reviewed, setReviewed] = useState(false)
   const mounted = useRef(false)
+  const published = useRef(false)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  // 与原文一致的草稿不算改动，只在本机保存真正填写过的内容，供补建依赖后回到本页继续。
+  useEffect(() => {
+    if (published.current) return
+    if (JSON.stringify(d) === JSON.stringify(initial)) clearDraft(storageKey)
+    else writeDraft(storageKey, d)
+  }, [d, initial, storageKey])
   const change = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(old => ({ ...old, [key]: value }))
   const action = (i: number, patch: Partial<ActionDraft>) => change('actions', d.actions.map((v, n) => n === i ? { ...v, ...patch } : v))
+  function discard() {
+    clearDraft(storageKey); setRestored(null); setDraft(initial); setError('')
+  }
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (busy || (review && !reviewed)) return
     setBusy(true); setError('')
+    let body: unknown
+    try { body = publishBody(k, d) } catch (err) { setError(errorMessage(err)); setBusy(false); return }
     try {
-      const v = await publish(k, publishBody(k, d))
+      const v = await publish(k, body)
+      published.current = true
+      clearDraft(storageKey)
       if (mounted.current) await navigate(revisionPath(k, v))
     } catch (err) { if (mounted.current) setError(errorMessage(err)) }
     finally { if (mounted.current) setBusy(false) }
   }
   const title = titles[k]
+  const noActiveExecutor = k === 'packages' && !executors.some(v => v.active)
   return <form className="page-stack max-w-4xl" onSubmit={submit}>
     <PageHeader title={`${revision ? '编辑' : '新建'}${title}`} description={revision ? `基于 ${initial.id} v${revision} 发布新版` : undefined} />
+    {restored && <div role="status" className="flex flex-wrap items-center gap-2 border-l-2 border-accent-2 pl-3">
+      <p className="text-sm">已恢复上次在本机保存的未发布草稿，草稿只存在当前浏览器，尚未提交。</p>
+      <Button onClick={discard}>放弃草稿并重新填写</Button>
+    </div>}
     <fieldset disabled={busy} className="min-w-0 space-y-5">
       <TextField label={`${title} ID`} value={d.id} change={v => change('id', v)} required readOnly={!!revision} />
       {k === 'resources' && <>
         <Choice label="资源类型" value={d.resourceKind} change={v => change('resourceKind', v)} options={[["skill", "Skill"], ["prompt", "提示词"], ["mcp", "MCP 引用"]]} />
         {d.resourceKind === 'mcp' ? <>
+          <Hint>MCP 只登记服务与凭据的命名引用，连接参数和凭据由管理员管理；本页不提供注入设置，当前执行后端也不支持运行时注入，因此不能绑定到执行器或工作包。</Hint>
           <TextField label="服务引用" value={d.serverRef} change={v => change('serverRef', v)} required />
           <TextField label="凭据引用（可选）" value={d.credentialRef} change={v => change('credentialRef', v)} />
         </> : <TextField label="资源内容" value={d.text} change={v => change('text', v)} multiline required />}
+        <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被 Agent 或工作包引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
       </>}
       {k === 'executors' && <>
         <Choice label="执行器类型" value={d.executorKind} change={v => change('executorKind', v)} options={[["agent", "Agent"], ["flow", "Agent Flow"]]} />
         {d.executorKind === 'agent' ? <>
-          <Choice label="执行环境" value={d.environment} change={v => change('environment', v)} options={[["", "默认（本地）"], ["local", "本地"], ["sandbox", "预配沙箱"]]} />
+          <Choice label="执行环境" value={d.environment} change={v => change('environment', v)} options={[["local", environmentNames.local], ["sandbox", environmentNames.sandbox]]} />
+          <Hint>{environmentHints[d.environment === 'sandbox' ? 'sandbox' : 'local']}</Hint>
           <ResourceRefs label="执行器资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
-        </> : <><TextField label="Flow ID" value={d.flowId} change={v => change('flowId', v)} required />
-          <TextField label="Flow 目录修订" value={d.flowRevision} change={v => change('flowRevision', v)} required /></>}
+          <Hint>Agent 使用服务端配置的程序，资源以固定版本冻结到快照。命令、工作目录、环境变量和程序路径由部署者管理，不在这里填写。</Hint>
+        </> : <>
+          <TextField label="Flow ID" value={d.flowId} change={v => change('flowId', v)} required />
+          <TextField label="Flow 目录修订" value={d.flowRevision} change={v => change('flowRevision', v)} required />
+          <Hint>Flow 执行器只固定 Flow ID 与字符串目录修订。当前不支持注入资源，也不设置执行环境。</Hint>
+        </>}
       </>}
       {k === 'packages' && <>
         <TextField label={d.structuredGoal ? '目标（结构化 JSON）' : '目标'} value={d.goal ?? ''} change={v => change('goal', v)} multiline={d.structuredGoal} />
         <TextField label="SOP" value={d.sop} change={v => change('sop', v)} required multiline />
         <TextField label="验收标准" value={d.acceptance} change={v => change('acceptance', v)} required multiline />
-        <TextField label="交付物文件名（每行一个）" value={d.deliverables ?? ''} change={v => change('deliverables', v)} multiline />
+        <TextField label="必交文件（每行一个文件名）" value={d.deliverables ?? ''} change={v => change('deliverables', v)} multiline />
         <ResourceRefs label="工作包资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
+        <Hint>工作包资源对该包所有动作生效，发布时与动作资源按固定版本合并。</Hint>
       </>}
       {k !== 'resources' && <div className="grid gap-4 md:grid-cols-2">
         <PortsEditor label="输入" value={d.inputs} change={v => change('inputs', v)} />
         <PortsEditor label="输出" value={d.outputs} change={v => change('outputs', v)} />
       </div>}
       {k === 'packages' && <section className="space-y-4"><h2 className="font-semibold">动作绑定</h2>
+        {noActiveExecutor && <Hint>还没有可用执行器，可以先到执行器目录补建依赖：<Link className="text-accent-2" to="/executors/new">补建执行器</Link>。已填写的内容保存在当前浏览器，回来后可用原草稿继续。</Hint>}
         {d.actions.map((a, i) => <fieldset className="min-w-0 space-y-3 border-t border-line pt-2" key={i}><legend>动作 {i + 1}</legend>
           <TextField label="动作名称" value={a.name} change={name => action(i, { name })} required />
           <RefPicker k="executors" choices={executors} value={a.executor} change={executor => action(i, { executor })} />
           <ResourceRefs label="动作资源" choices={resources} value={a.resources} change={value => action(i, { resources: value })} />
           <div className="grid gap-4 md:grid-cols-2"><PortsEditor label="动作输入" value={a.inputs} change={inputs => action(i, { inputs })} override />
             <PortsEditor label="动作输出" value={a.outputs} change={outputs => action(i, { outputs })} override /></div>
+          {review && <Hint>旧快照不含本动作原来的输入输出声明。下面默认继承工作包，如果原要求单独声明，请勾选后重填；资源也只保留能追溯到动作的部分。</Hint>}
           {d.actions.length > 1 && <Button onClick={() => change('actions', d.actions.filter((_, n) => n !== i))}>移除动作</Button>}
         </fieldset>)}<Button onClick={() => change('actions', [...d.actions, blankAction()])}>添加动作</Button>
       </section>}
       {review && <section className="space-y-2 border-l-2 border-warn pl-3"><h2 className="font-semibold">发布前核对动作</h2>
-        <p>旧版本只保留合并后的资源。草稿把包和执行器已提供的资源作为继承项，无法识别动作是否也重复引用。动作单独声明的输入输出未保存在快照中，当前默认继承包声明。请按原要求补全。</p>
+        <p>旧版本只保留合并后的资源。草稿把包和执行器已提供的资源作为继承项，无法识别同一版本是否也由动作重复引用。动作单独声明的输入输出未保存在快照中，当前按继承处理。请逐动作核对，发布时不会替你恢复这些信息。</p>
         <Link className="text-accent-2" to={revisionPath(k, { id: initial.id, revision: revision! })} target="_blank" rel="noreferrer">在新窗口查看原版本</Link>
         <label className="flex items-center gap-2"><input type="checkbox" required checked={reviewed} onChange={e => setReviewed(e.target.checked)} />我已核对动作资源和输入输出声明</label>
       </section>}
