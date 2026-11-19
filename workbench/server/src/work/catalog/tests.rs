@@ -134,6 +134,78 @@ fn secret_schema_accepts_only_redacted_or_internal_reference() {
 }
 
 #[test]
+fn action_config_package_is_validated_and_frozen_into_package_snapshot() {
+    let mut db = json!({
+        "configPatches": {
+            "shared": {"id":"shared", "directoryId":"directory-shared"}
+        }
+    });
+    let exec = executor(
+        &mut db,
+        "assistant",
+        json!({"configSchema":[{"key":"agentConfig","label":"执行配置","type":"configPackage"}]}),
+    );
+    let published = package_with_action(
+        &mut db,
+        "configured",
+        json!({"id":"assistant","revision":exec["revision"]}),
+        json!([]),
+        Some(json!({"id":"shared"})),
+    );
+    assert_eq!(
+        published["actions"]["analyze"]["configPackage"],
+        json!({"id":"shared"})
+    );
+    let before = db.clone();
+    let mut invalid = before.clone();
+    assert!(publish(
+        &mut invalid,
+        "packages",
+        json!({
+            "id":"invalid",
+            "sop":"按步骤处理",
+            "acceptance":"结果可核查",
+            "actions":{"analyze":{"executor":{"id":"assistant","revision":1},"configPackage":{"id":"missing"}}}
+        })
+    ).is_err());
+    assert!(publish(
+        &mut invalid,
+        "packages",
+        json!({
+            "id":"invalid-extra",
+            "sop":"按步骤处理",
+            "acceptance":"结果可核查",
+            "actions":{"analyze":{"executor":{"id":"assistant","revision":1},"configPackage":{"id":"shared","directoryId":"/host/path"}}}
+        })
+    ).is_err());
+    assert_eq!(invalid, before);
+}
+
+fn package_with_action(
+    db: &mut Value,
+    id: &str,
+    executor: Value,
+    resources: Value,
+    config_package: Option<Value>,
+) -> Value {
+    let mut action = json!({"executor":executor,"resources":resources});
+    if let Some(config_package) = config_package {
+        action["configPackage"] = config_package;
+    }
+    publish(
+        db,
+        "packages",
+        json!({
+            "id":id,
+            "sop":"按步骤处理",
+            "acceptance":"结果可核查",
+            "actions":{"analyze":action}
+        }),
+    )
+    .unwrap()
+}
+
+#[test]
 fn publication_freezes_generic_executor_and_resolves_dependencies() {
     let mut db = json!({});
     let first = resource(&mut db, "prompt", "prompt", "初版提示".into());

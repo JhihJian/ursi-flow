@@ -2,7 +2,7 @@ import { pinned, sameRef, type Collection, type Definition, type Executor, type 
 import { configDefaults, normalizeConfigSchema, type ConfigSchema, type ConfigValues } from './config'
 
 export type FieldRow = { name: string; type: string }
-export type ActionDraft = { name: string; executor: Ref; resources: Ref[]; inputs?: FieldRow[]; outputs?: FieldRow[] }
+export type ActionDraft = { name: string; executor: Ref; resources: Ref[]; configPackage?: string; inputs?: FieldRow[]; outputs?: FieldRow[] }
 export const blankRef = (): Ref => ({ id: '', revision: 0 })
 export const blankAction = (): ActionDraft => ({ name: '', executor: blankRef(), resources: [] })
 export type Draft = {
@@ -39,7 +39,7 @@ export function initialDraft(v?: Definition, executors: Executor[] = []): Draft 
       const exec = executors.find(e => sameRef(e, a.executor))
       if (!exec) throw new Error(`缺少执行器 ${a.executor.id} v${a.executor.revision}，无法还原动作。`)
       const inherited = [...d.resources, ...(exec.resources ?? [])]
-      return { name, executor: pinned(a.executor), resources: a.resources.filter(r => !inherited.some(i => sameRef(r, i))).map(pinned) }
+      return { name, executor: pinned(a.executor), resources: a.resources.filter(r => !inherited.some(i => sameRef(r, i))).map(pinned), configPackage: a.configPackage?.id }
     })
   } else {
     d.configSchema = normalizeConfigSchema(v.configSchema)
@@ -70,6 +70,6 @@ export function publishBody(k: Collection, d: Draft) {
   if (new Set(d.actions.map(a => a.name.trim())).size !== d.actions.length) throw new Error('动作名称不能重复，否则会覆盖先前的输入。')
   return { id, sop: d.sop, acceptance: d.acceptance, goal: d.structuredGoal ? JSON.parse(d.goal ?? '') : d.goal,
     deliverables: deliverableLines(d.deliverables), resources: d.resources.map(fixed), ...io,
-    actions: Object.fromEntries(d.actions.map(a => [a.name.trim(), { executor: fixed(a.executor), resources: a.resources.map(fixed), inputs: fields(a.inputs), outputs: fields(a.outputs) }])),
+    actions: Object.fromEntries(d.actions.map(a => [a.name.trim(), { executor: fixed(a.executor), resources: a.resources.map(fixed), ...(a.configPackage ? { configPackage: { id: a.configPackage } } : {}), inputs: fields(a.inputs), outputs: fields(a.outputs) }])),
   }
 }

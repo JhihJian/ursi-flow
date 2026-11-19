@@ -1,5 +1,5 @@
 use super::*;
-use crate::work::{catalog, directories, items};
+use crate::work::{catalog, directories, items, patches};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -15,6 +15,7 @@ impl Api {
         let app = catalog::routes(store.clone())
             .merge(items::routes(store.clone()))
             .merge(directories::routes(store.clone()).unwrap())
+            .merge(patches::routes(store.clone()))
             .merge(router(store, temp.0.clone(), Some(bin)));
 
         Self::serve(temp, app)
@@ -164,6 +165,69 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
             .to_string()
             .contains(temp.0.to_str().unwrap())
     );
+}
+
+#[tokio::test]
+async fn action_config_package_is_snapshotted_and_passed_to_agent() {
+    let temp = Temp::new();
+    let store = Store::open(temp.0.join("db")).unwrap();
+    let api = Api::new(
+        &temp,
+        store,
+        temp.script(
+            r#"test -d "$URSI_CONFIG_DIR"
+test -r "$URSI_CONFIG_DIR/AGENTS.md"
+printf config-ok"#,
+        ),
+    );
+    let config = api.post("patches/config", json!({"name":"执行配置"})).await;
+    api.post(
+        "executors",
+        json!({
+            "id":"configured-agent",
+            "configSchema":[{"key":"agentConfig","label":"执行配置","type":"configPackage","required":true}]
+        }),
+    )
+    .await;
+    api.post(
+        "packages",
+        json!({
+            "id":"configured-case",
+            "sop":"读取配置",
+            "acceptance":"完成",
+            "actions":{"work":{"executor":{"id":"configured-agent","revision":1},"configPackage":{"id":config["id"]}}}
+        }),
+    )
+    .await;
+    let item = api
+        .post(
+            "items",
+            json!({"package":"configured-case","revision":1,"requestId":"configured-1","input":{}}),
+        )
+        .await;
+    let item_path = format!("items/{}", item["id"].as_str().unwrap());
+    api.post(&format!("{item_path}/start"), json!({"assignee":"经办人"}))
+        .await;
+    let attempt = api
+        .post(&format!("{item_path}/attempts"), json!({"action":"work"}))
+        .await;
+    assert_eq!(attempt["configPackage"]["sourceRef"]["id"], config["id"]);
+    assert_eq!(attempt["configPackage"]["snapshotRef"]["state"], "frozen");
+    assert_ne!(attempt["configPackage"]["snapshotRef"]["id"], config["id"]);
+    let detail = format!("{item_path}/attempts/{}", attempt["id"].as_str().unwrap());
+    let finished = tokio::time::timeout(READY_LIMIT, async {
+        loop {
+            let value = api.request(&detail, None, 200).await;
+            if value["status"] != "running" {
+                break value;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(finished["status"], "succeeded");
+    assert_eq!(finished["output"], "config-ok");
 }
 
 #[tokio::test]

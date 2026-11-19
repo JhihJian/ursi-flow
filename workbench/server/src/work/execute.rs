@@ -221,7 +221,12 @@ fn freeze_secrets(value: Option<&Value>) -> Result<Value, Error> {
 
 /// Freeze only host-neutral configuration data. The mutable config package is
 /// represented by a new per-attempt snapshot and capability reference.
-fn freeze_config(item: &Value, binding: &Value, attempt: &str) -> Result<Value, Error> {
+fn freeze_config(
+    item: &Value,
+    binding: &Value,
+    attempt: &str,
+    snapshot: Option<&super::patches::ConfigPackageSnapshot>,
+) -> Result<Value, Error> {
     let package = binding
         .get("configPackage")
         .filter(|value| value.is_object())
@@ -242,12 +247,16 @@ fn freeze_config(item: &Value, binding: &Value, attempt: &str) -> Result<Value, 
         || item.get("configVersion").is_some()
         || item.get("configValues").is_some()
         || item.get("configSecrets").is_some();
-    let source_ref = config_ref(
-        package
-            .and_then(|value| value.get("sourceRef"))
-            .or_else(|| config.and_then(|value| value.get("sourceRef"))),
-        "configPackage.sourceRef",
-    )?;
+    let source_ref = if let Some(snapshot) = snapshot {
+        json!({"id": snapshot.source_package_id})
+    } else {
+        config_ref(
+            package
+                .and_then(|value| value.get("sourceRef"))
+                .or_else(|| config.and_then(|value| value.get("sourceRef"))),
+            "configPackage.sourceRef",
+        )?
+    };
     let values = package
         .and_then(|value| value.get("values"))
         .or_else(|| config.and_then(|value| value.get("values")))
@@ -272,11 +281,19 @@ fn freeze_config(item: &Value, binding: &Value, attempt: &str) -> Result<Value, 
         .cloned()
         .or_else(|| source_ref.get("revision").cloned())
         .unwrap_or(Value::Null);
-    let snapshot_ref = has_config
-        .then(|| json!({"id": Uuid::new_v4().to_string(), "revision": 1}))
+    let snapshot_ref = snapshot
+        .map(|snapshot| {
+            json!({
+                "id": snapshot.snapshot_directory_id,
+                "digest": snapshot.content_digest,
+                "state": "frozen"
+            })
+        })
+        .or_else(|| has_config.then(|| json!({"id": attempt, "revision": 1})))
         .unwrap_or(Value::Null);
-    let capability = has_config
-        .then(|| config_capability(attempt))
+    let capability = snapshot
+        .map(|snapshot| config_capability(&snapshot.snapshot_directory_id))
+        .or_else(|| has_config.then(|| config_capability(attempt)))
         .unwrap_or(Value::Null);
     Ok(json!({
         "version": version,
@@ -519,11 +536,26 @@ async fn start(
             let rt = rt.clone();
             let key = key.clone();
             tokio::task::spawn_blocking(move || {
+                // 配置包快照必须在 artifact 分配事务之外建立，避免在 Store 更新闭包中嵌套 Store 锁。
+                let config_package = rt.store.read(|db| {
+                    let item = db["items"]
+                        .get(&key.0)
+                        .ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
+                    plan::config_package(item, &action)
+                })?;
+                let config_snapshot = config_package
+                    .as_deref()
+                    .map(|package_id| {
+                        super::patches::snapshot_config_package(&rt.store, &key.1, package_id)
+                    })
+                    .transpose()?;
                 directories::allocate(
                     &rt.store,
                     directories::Rules::default(),
                     |_| Ok(()),
-                    |db, directory| reserve(&rt, db, directory, &key, &action),
+                    |db, directory| {
+                        reserve(&rt, db, directory, &key, &action, config_snapshot.as_ref())
+                    },
                 )
             })
             .await
@@ -553,6 +585,9 @@ async fn start(
                         return;
                     }
                 };
+                let config_directory = attempt["configPackage"]["snapshotRef"]["id"]
+                    .as_str()
+                    .map(str::to_owned);
                 let (cancel, mut rx) = watch::channel(false);
                 rt.agents.lock().unwrap().insert(key.1.clone(), cancel);
                 let worker_rt = rt.clone();
@@ -561,15 +596,25 @@ async fn start(
                     let _permit = permit;
                     let outcome = match directories::path(&worker_rt.store, &directory) {
                         Ok(artifact) => {
-                            agent::run(
-                                &bin,
-                                &worker_rt.workspace,
-                                &artifact,
-                                prompt,
-                                &mut rx,
-                                agent::DEADLINE,
-                            )
-                            .await
+                            let config = config_directory
+                                .as_deref()
+                                .map(|id| directories::path(&worker_rt.store, id))
+                                .transpose();
+                            match config {
+                                Ok(config) => {
+                                    agent::run(
+                                        &bin,
+                                        &worker_rt.workspace,
+                                        &artifact,
+                                        prompt,
+                                        config.as_deref(),
+                                        &mut rx,
+                                        agent::DEADLINE,
+                                    )
+                                    .await
+                                }
+                                Err(_) => Outcome::new("failed", "配置包快照不可用"),
+                            }
                         }
                         Err(_) => Outcome::new("failed", "制品目录不可用"),
                     };
@@ -595,12 +640,13 @@ fn reserve(
     directory: &str,
     key: &Key,
     action: &str,
+    config_snapshot: Option<&super::patches::ConfigPackageSnapshot>,
 ) -> Result<(Value, Dispatch), Error> {
     let item = db["items"]
         .get(&key.0)
         .ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
     let (plan, binding) = plan::resolve(item, action)?;
-    let config_package = freeze_config(item, &binding, &key.1)?;
+    let config_package = freeze_config(item, &binding, &key.1, config_snapshot)?;
     let instruction = plan.instruction();
     let (status, workspace, dispatch) = match plan {
         plan::Plan::Agent(prompt) => (

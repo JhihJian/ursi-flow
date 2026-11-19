@@ -36,14 +36,13 @@ Work Patch 是业务材料目录，不是执行器的配置，也不是执行器
 
 ### 执行器
 
-执行器是版本化的执行定义，声明：
+执行器是版本化的逻辑能力定义，声明：
 
-- 执行后端类型和适用的环境策略。
-- 接收 workspace 与 workInstruction 的方式。
+- 平台可识别的配置 schema。
 - 资源依赖及其固定版本。
-- 过程事件和结果的记录能力。
-- 输出 artifactDirectory 的规则和能力。
-- 可选的后端运行标识或过程日志引用能力。
+- 平台统一提供的 workspace、workInstruction 和 artifactDirectory 契约。
+
+具体的本地进程、Flow 适配器、沙箱服务、程序路径、命令、工作目录、环境变量和凭据均由服务端内部的执行器集成注册表管理，不进入公开执行器定义。
 
 执行器定义本身不持有某个工作包目录、某个制品目录、某个执行会话或某次日志。
 
@@ -224,16 +223,19 @@ type ExecutorOutput = {
 
 ### 公共定义
 
-发布请求定义一个执行能力，服务端成功发布后生成 `revision`，最新版详情另带 `active`：
+发布请求定义一个逻辑执行能力，服务端成功发布后生成 `revision`，最新版详情另带 `active`：
 
 ```json
 {
   "id": "排查助手",
-  "kind": "agent",
-  "environment": "local",
   "resources": [
     { "id": "排查规范", "revision": 3 }
-  ]
+  ],
+  "configSchema": {
+    "fields": [
+      { "key": "agentConfig", "label": "执行配置", "type": "configPackage" }
+    ]
+  }
 }
 ```
 
@@ -242,57 +244,46 @@ type ExecutorOutput = {
 - `id` 是执行器对象标识，不是目录路径。
 - `revision` 由服务端递增，发布请求不能指定。
 - `active` 表示对象是否接受新引用、新派工和新版发布。
-- `kind` 标识执行后端类型。
-- `environment` 是环境选择策略，`local` 使用服务端配置的本地执行环境，`sandbox` 使用管理员预配的独占沙箱。
 - `resources` 是可选的固定版本资源引用，当前用于 Skill 和提示词。
+- `configSchema` 只能使用平台规定的字段类型和约束，不能声明脚本、命令、路径或任意环境变量。
 - 平台为每次尝试统一保存平台记录日志、执行器记录日志和独立的 artifactDirectory；这些是尝试侧输出，不是执行器定义字段。
 
 执行器定义不保存 workspace、workInstruction、artifactDirectory、attemptId、日志正文或运行中的会话。
 
-### Agent
+### 内部执行器集成
 
-Agent 执行器使用管理员配置的 Agent 程序，把 workspace 和 workInstruction 交给一次受控调用，并把生成的文件写入 artifactDirectory。
+服务端通过私有集成注册表把逻辑能力绑定到本地 Agent、Flow Runtime、沙箱服务或其他实现。集成声明支持的配置 schema、健康状态、容量和优先级，平台按能力与配置兼容性筛选候选，并把最终选择冻结到尝试。程序路径、命令行、工作目录、环境变量、凭据和运行时协议不通过 `/executors` API 暴露。
 
-```json
-{
-  "id": "排查助手",
-  "kind": "agent",
-  "environment": "local",
-  "resources": [
-    { "id": "排查规范", "revision": 3 },
-    { "id": "报告格式", "revision": 1 }
-  ]
-}
-```
+当前仓库只启用受控的本地 Agent 适配器。Agent 适配器使用管理员配置的程序，把 workspace 和 workInstruction 交给一次受控调用，并通过私有能力映射提供 artifactDirectory；存在配置包时，同样映射本次尝试的只读快照目录。Flow 和沙箱仍属于后续内部适配器迁移范围。
 
-程序路径、命令行、模型、密钥、主机目录和并发限制由部署配置管理。浏览器只配置执行器类型、环境策略和固定资源引用。平台统一提供执行日志与制品目录管道。
+### 配置包绑定
 
-### Agent Flow
-
-Agent Flow 执行器引用固定的 Flow ID 和目录修订，由 Flow Runtime 接收 workspace 与 workInstruction，并将 Flow 产物收集到 artifactDirectory。
+动作可以绑定配置包引用：
 
 ```json
 {
-  "id": "复现验证",
-  "kind": "flow",
-  "flowId": "reproduce-fix",
-  "flowRevision": "2026-11-19.1"
+  "actions": {
+    "analyze": {
+      "executor": { "id": "排查助手", "revision": 3 },
+      "configPackage": { "id": "排查配置" }
+    }
+  }
 }
 ```
 
-Flow 执行器不能通过 `environment` 选择 Agent 环境，也不把 Flow 的最新目录当作固定修订。Flow 节点历史由 Runtime 产生，Workbench 保存关联引用并在执行详情中提供后端入口。
+发布时校验配置包存在。创建尝试时平台复制配置包目录，记录来源标识和内容摘要，立即冻结新目录，并只把尝试级只读能力交给执行器。重试必须重新生成快照，不能把可编辑源目录直接交给执行器。
 
 ## 版本、绑定与冻结
 
 执行器的生命周期如下：
 
 1. 在 `/executors/new` 填写一个新执行器定义。
-2. 服务端校验执行器类型、后端绑定和资源引用。
+2. 服务端校验配置 schema 和资源引用。
 3. 发布成功后生成不可变的 `revision`。
-4. 派工模板发布时，动作绑定一个已启用执行器的固定 `{id, revision}`。
-5. 发布派工模板时冻结执行器定义及资源依赖，并校验动作能生成所需的 `workInstruction`。
+4. 派工模板发布时，动作绑定一个已启用执行器的固定 `{id, revision}`，并可绑定配置包引用。
+5. 发布派工模板时冻结执行器定义、资源依赖和配置包引用，并校验动作能生成所需的 `workInstruction`。
 6. 创建工作项时保存派工模板版本和 Work Patch 目录引用。
-7. 启动尝试时创建独立 workspace、冻结 workInstruction、分配 artifactDirectory，并写入平台日志。
+7. 启动尝试时选择并冻结内部执行器集成，创建独立 workspace、冻结 workInstruction、快照并冻结配置包、分配 artifactDirectory，并写入平台日志。
 8. 执行器完成后，平台收集和校验 artifactDirectory，追加执行器日志和平台日志，最后冻结制品目录。
 9. 停用执行器对象后禁止新引用、新版发布和新派工，已发布版本、历史尝试和历史制品继续可读。
 
@@ -317,13 +308,13 @@ artifactDirectory 是执行产物集合，交付是业务模块对产物的选�
 ### 已实现（迁移切片）
 
 - 执行尝试记录 `workspace` 引用、冻结的 `workInstruction`、独占的 `artifactDirectory` 引用、平台记录日志、执行器记录日志和可选 `executorLogPage`。旧 `output` 字段保留，与制品目录并存。
-- 平台向本地 Agent 提供 `URSI_ARTIFACT_DIR` 制品目录能力；平台登记目录、提供清单并在尝试终态（含失败、取消、待核实）后冻结。当前内置 Pi 调用关闭工具和扩展，因此本切片只接通目录传递与收集管道，实际写入需要后续执行器能力或受控包装程序。重试使用新目录，历史制品不变。冻结目录拒绝写入、移动和删除，读取仍可用；工作包和配置包目录不冻结。
+- 平台向本地 Agent 适配器提供 `URSI_ARTIFACT_DIR` 制品目录能力，并在有配置包时提供尝试级只读配置目录能力。平台登记目录、提供清单并在尝试终态（含失败、取消、待核实）后冻结。当前内置 Pi 调用关闭工具和扩展，因此本切片只接通目录传递、配置包快照和收集管道，实际写入需要后续执行器能力或受控包装程序。重试使用新目录和新配置快照，历史制品不变。冻结目录拒绝写入、移动和删除，读取仍可用；工作包和源配置包目录不冻结。
 - 平台恢复提示与执行器 `output` 分开保存，重启、查询和人工核实都不会覆盖执行器输出。
 - 执行详情（仍在工作项「执行记录」内展开）依次提供「平台记录日志」「执行器记录日志」「制品目录」，日志查看器留空，`executorLogPage` 为 `null` 时不渲染任何跳转。
 
 ### 未实现（当前边界）
 
-- 派工模板仍以 `inputs`/`outputs` 端口声明字段，Agent 仍接收平台拼装的文本指令；当前内置 Pi 调用使用 `--no-tools` 等隔离参数，尚未让它直接写入制品目录；Flow 仍以工作项 `input` 作为变量。
+- Agent 仍接收平台拼装的文本指令；当前内置 Pi 调用使用 `--no-tools` 等隔离参数，尚未让它直接写入制品目录。配置 schema 和动作级配置包引用已接通，普通配置值与 secret 的完整持久化和内部集成选择仍在后续切片实现。
 - Flow 和沙箱当前只登记并冻结制品目录，尚未把后端产物收集到其中；交付接口仍接收文本文件对象，尚未从 artifactDirectory 选择文件、生成交付版本或冻结文件快照。
 - 平台日志和执行器日志只保存数据与条数，尚未实现查看器、实时刷新、筛选、折叠、高亮和 Flow 节点图；执行器自建静态日志页的路径模板、资源托管和跨源策略尚未定义，也没有任何跳转地址。
 - 执行器定义仍未声明日志页和制品规则字段。

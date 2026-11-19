@@ -53,6 +53,22 @@ fn unsupported_legacy_executor(executor: &Value) -> bool {
     })
 }
 
+pub(super) fn config_package(item: &Value, action: &str) -> Result<Option<String>, Error> {
+    let binding = item["packageSnapshot"]["actions"]
+        .get(action)
+        .ok_or_else(|| Error::Invalid("工作包没有此动作".into()))?;
+    let Some(reference) = binding.get("configPackage") else {
+        return Ok(None);
+    };
+    reference
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| Error::Invalid("configPackage.id 必须是非空字符串".into()))
+        .map(Some)
+}
+
 pub(super) fn resolve(item: &Value, action: &str) -> Result<(Plan, Value), Error> {
     if item["status"] != "working" {
         return Err(Error::Conflict("工作项必须处于 working 状态".into()));

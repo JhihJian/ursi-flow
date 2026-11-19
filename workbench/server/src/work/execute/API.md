@@ -19,11 +19,11 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 
 发布时，目录检查包和动作 `inputs`、`outputs` 的名称与类型格式，合并包、动作与执行器引用的 `resources`。执行器不声明业务端口。执行时使用工作项快照中的 `actions[action].executor`（固定版本的投影）和同级 `resources`（已展开的正文），不再解析发布请求中的引用或端口声明。
 
-如果工作项快照带有 `configPackage`，创建尝试时会在同一笔存储更新中冻结它。冻结结果只保存配置 `version`、普通 `values`、secret 的状态、`sourceRef` 和本次尝试新生成的 `snapshotRef`。secret 的值、provider locator 和配置目录路径不会写入尝试；带值的 secret 只记录 `{"state":"irreversible"}`，内部引用只记录 `{"state":"internalRef"}`。没有配置的旧结构使用空 values、空 secrets 和空 sourceRef。
+如果工作项快照动作带有 `configPackage`，创建尝试时会先读取并校验配置包，再在独立目录事务中创建本次尝试的快照。冻结结果只保存配置 `version`、普通 `values`、secret 的状态、`sourceRef` 和本次尝试新生成的 `snapshotRef`。secret 的值、provider locator 和配置目录路径不会写入尝试；带值的 secret 只记录 `{"state":"irreversible"}`，内部引用只记录 `{"state":"internalRef"}`。没有配置的旧结构使用空 values、空 secrets 和空 sourceRef。
 
-配置包交给执行器时使用尝试专属的能力引用：`{"id":"<attempt-capability>","access":"read-only","purpose":"executor-config"}`。该引用与 `snapshotRef` 均按尝试生成，重试不会复用。执行器请求边界只携带能力引用，不携带 `directoryId`、`cwd` 或任何宿主绝对路径。配置包不是通过执行器自行解析当前目录得到的。
+配置包交给执行器时使用尝试专属的冻结目录能力引用：`{"id":"<snapshot-directory>","access":"read-only","purpose":"executor-config"}`。该引用与 `snapshotRef` 均按尝试生成，重试不会复用。公开的尝试响应只携带能力引用，不携带 `cwd` 或任何宿主绝对路径。当前本地 Agent 适配器在受信进程边界内把冻结目录映射到 `URSI_CONFIG_DIR`，这是适配器私有实现细节，执行器定义和工作指令均不携带宿主路径。
 
-本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。平台通过 `URSI_ARTIFACT_DIR` 提供制品目录能力，该变量与工作目录一样不随尝试返回。当前内置 Pi 调用关闭工具和扩展，因此实际写入需要后续执行器能力或受控包装程序；本切片负责目录登记、清单和终态冻结。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
+本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。平台通过 `URSI_ARTIFACT_DIR` 提供制品目录能力，并在存在配置包时通过适配器私有的 `URSI_CONFIG_DIR` 提供只读配置目录；这些变量与工作目录一样不随尝试返回。当前内置 Pi 调用关闭工具和扩展，因此实际写入需要后续执行器能力或受控包装程序；本切片负责目录登记、配置包快照、清单和终态冻结。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
 
 ### 尝试对象与制品目录
 

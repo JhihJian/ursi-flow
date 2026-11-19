@@ -5,7 +5,7 @@ import { errorMessage } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { PageHeader } from '@/shared/ui/page-header'
-import { boundExecutors, list, publish, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Latest } from './catalog'
+import { boundExecutors, list, publish, readVersion, revisionPath, routePath, sameRef, sopLabel, titles, type Collection, type Latest } from './catalog'
 import { listConfigPackageChoices, type ConfigPackageChoice } from '@/modules/patches/api'
 import { blankAction, initialDraft, publishBody, type ActionDraft, type Draft } from './draft'
 import { clearDraft, draftKey, readDraft, writeDraft } from './draft-store'
@@ -37,7 +37,11 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
   const [d, setDraft] = useState<Draft>(() => restored ?? initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const needsConfigPackages = k === 'executors' && initial.configSchema.fields.some((field) => field.type === 'configPackage')
+  const needsConfigPackages = d.configSchema.fields.some(field => field.type === 'configPackage') || (k === 'packages' && d.actions.some(action => {
+    const executor = executors.find(candidate => sameRef(candidate, action.executor))
+    const schema = executor && !('content' in executor) && !('actions' in executor) ? executor.configSchema : undefined
+    return schema?.fields.some(field => field.type === 'configPackage') ?? false
+  }))
   const configPackages = useResource(signal => needsConfigPackages ? listConfigPackageChoices(signal) : Promise.resolve([] as ConfigPackageChoice[]), [] as ConfigPackageChoice[])
   const review = Boolean(revision && k === 'packages')
   const [reviewed, setReviewed] = useState(false)
@@ -114,10 +118,22 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
         <PortsEditor label="输出" value={d.outputs} change={v => change('outputs', v)} />
       </div>}
       {k === 'packages' && <section className="space-y-4"><h2 className="font-semibold">动作绑定</h2>
+        {needsConfigPackages && configPackages.loading && <p role="status" className="text-sm text-txt3">正在读取配置包…</p>}
+        {needsConfigPackages && configPackages.error && <p role="alert" className="text-sm text-err">配置包列表读取失败：{configPackages.error}</p>}
         {noActiveExecutor && <Hint>还没有可用执行器，可以先到执行器目录补建依赖：<Link className="text-accent-2" to="/executors/new">补建执行器</Link>。已填写的内容保存在当前浏览器，回来后可用原草稿继续。</Hint>}
         {d.actions.map((a, i) => <fieldset className="min-w-0 space-y-3 border-t border-line pt-2" key={i}><legend>动作 {i + 1}</legend>
           <TextField label="动作名称" value={a.name} change={name => action(i, { name })} required />
           <RefPicker k="executors" choices={executors} value={a.executor} change={executor => action(i, { executor })} />
+          {(() => {
+            const executor = executors.find(candidate => sameRef(candidate, a.executor))
+            const schema = executor && !('content' in executor) && !('actions' in executor) ? executor.configSchema : undefined
+            return schema?.fields.some(field => field.type === 'configPackage')
+          })() && <Choice
+            label="配置包"
+            value={a.configPackage ?? ''}
+            change={configPackage => action(i, { configPackage: configPackage || undefined })}
+            options={configPackages.data.map(packageChoice => [packageChoice.id, packageChoice.name] as [string, string])}
+          />}
           <ResourceRefs label="动作资源" choices={resources} value={a.resources} change={value => action(i, { resources: value })} />
           <div className="grid gap-4 md:grid-cols-2"><PortsEditor label="动作输入" value={a.inputs} change={inputs => action(i, { inputs })} override />
             <PortsEditor label="动作输出" value={a.outputs} change={outputs => action(i, { outputs })} override /></div>

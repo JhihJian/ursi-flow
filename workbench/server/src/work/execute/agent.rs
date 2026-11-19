@@ -9,7 +9,7 @@ use tokio::{
 const LIMIT: usize = 64 * 1024;
 pub(super) const DEADLINE: Duration = Duration::from_secs(300);
 
-fn command(bin: &Path, workspace: &Path, artifact: &Path) -> Command {
+fn command(bin: &Path, workspace: &Path, artifact: &Path, config: Option<&Path>) -> Command {
     let mut cmd = Command::new(bin);
     cmd.current_dir(workspace)
         .args([
@@ -32,6 +32,9 @@ fn command(bin: &Path, workspace: &Path, artifact: &Path) -> Command {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
+    if let Some(config) = config {
+        cmd.env("URSI_CONFIG_DIR", config);
+    }
     for name in [
         "PATH",
         "HOME",
@@ -86,13 +89,14 @@ pub(super) async fn run(
     workspace: &Path,
     artifact: &Path,
     prompt: String,
+    config: Option<&Path>,
     cancel: &mut watch::Receiver<bool>,
     deadline: Duration,
 ) -> Outcome {
     if *cancel.borrow() {
         return Outcome::new("cancelled", "执行前已取消");
     }
-    let mut child = match command(bin, workspace, artifact).spawn() {
+    let mut child = match command(bin, workspace, artifact, config).spawn() {
         Ok(child) => child,
         Err(e) => return Outcome::new("failed", format!("Agent 未能启动: {e}")),
     };

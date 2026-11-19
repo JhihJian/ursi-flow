@@ -422,7 +422,31 @@ fn package(db: &Value, b: &Value) -> Result<Value, Error> {
     let mut budget = MAX_SNAPSHOT_BYTES;
     for (action, binding) in actions {
         name(action)?;
-        fields(binding, &["executor", "resources", "inputs", "outputs"])?;
+        fields(
+            binding,
+            &[
+                "executor",
+                "resources",
+                "inputs",
+                "outputs",
+                "configPackage",
+            ],
+        )?;
+        if let Some(config_package) = binding.get("configPackage") {
+            fields(config_package, &["id"])?;
+            let package_id = config_package
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| name(id).is_ok())
+                .ok_or_else(|| Error::Invalid("configPackage.id 必须是有效标识".into()))?;
+            if db
+                .get("configPatches")
+                .and_then(|packages| packages.get(package_id))
+                .is_none()
+            {
+                return Err(Error::NotFound(format!("配置包 {package_id} 不存在")));
+            }
+        }
         ports(binding, "inputs")?;
         ports(binding, "outputs")?;
         let (id, rev) = reference(&binding["executor"])?;
@@ -437,7 +461,11 @@ fn package(db: &Value, b: &Value) -> Result<Value, Error> {
         if let Some(schema) = exec.get("configSchema") {
             target["configSchema"] = schema.clone();
         }
-        frozen.insert(action.clone(), json!({"executor":target,"resources":deps}));
+        let mut action_snapshot = json!({"executor":target,"resources":deps});
+        if let Some(config_package) = binding.get("configPackage") {
+            action_snapshot["configPackage"] = config_package.clone();
+        }
+        frozen.insert(action.clone(), action_snapshot);
     }
     let mut snapshot = b.clone();
     snapshot["actions"] = Value::Object(frozen);

@@ -13,7 +13,7 @@ export type Resource = Ref & { kind: ResourceKind; content: string | { serverRef
 export type Executor = Target
 export type Package = Ref & {
   goal?: unknown; sop: string; acceptance: string; deliverables?: string[]; resources?: Ref[]; inputs?: Ports; outputs?: Ports
-  actions: Record<string, { executor: Target; resources: Resource[] }>
+  actions: Record<string, { executor: Target; resources: Resource[]; configPackage?: { id: string } }>
 }
 export type Definition = Resource | Executor | Package
 export type Latest = Definition & { active: boolean }

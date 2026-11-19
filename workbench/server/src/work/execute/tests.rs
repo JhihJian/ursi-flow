@@ -89,8 +89,8 @@ fn attempt_freezes_host_neutral_config_and_redacts_secrets() {
         }
     });
     let binding = i["packageSnapshot"]["actions"]["analyze"].clone();
-    let first = freeze_config(&i, &binding, "attempt-one").unwrap();
-    let second = freeze_config(&i, &binding, "attempt-two").unwrap();
+    let first = freeze_config(&i, &binding, "attempt-one", None).unwrap();
+    let second = freeze_config(&i, &binding, "attempt-two", None).unwrap();
 
     assert_eq!(first["version"], "config-v3");
     assert_eq!(
@@ -127,7 +127,7 @@ fn config_reference_rejects_host_paths() {
         json!({"sourceRef":{"id":"/private/config","revision":1}});
     let binding = i["packageSnapshot"]["actions"]["analyze"].clone();
     assert!(matches!(
-        freeze_config(&i, &binding, "attempt").unwrap_err(),
+        freeze_config(&i, &binding, "attempt", None).unwrap_err(),
         Error::Invalid(_)
     ));
 }
@@ -219,6 +219,7 @@ cat"#,
         &temp.0,
         &artifacts,
         prompt.into(),
+        None,
         &mut rx,
         READY_LIMIT,
     )
@@ -242,7 +243,16 @@ async fn overflow_on_either_pipe_is_a_failure() {
         let bin = temp.script(&format!(
             "cat >/dev/null\nhead -c 65537 /dev/zero {redirection}"
         ));
-        let out = agent::run(&bin, &temp.0, &temp.0, "abc".into(), &mut rx, READY_LIMIT).await;
+        let out = agent::run(
+            &bin,
+            &temp.0,
+            &temp.0,
+            "abc".into(),
+            None,
+            &mut rx,
+            READY_LIMIT,
+        )
+        .await;
         assert_eq!(out.status, "failed");
         assert!(out.output.contains("64 KiB"), "{}", out.output);
     }
@@ -276,6 +286,7 @@ async fn loss_of_control_is_not_a_confirmed_stop_and_never_resends_prompt() {
             &temp.0,
             &temp.0,
             "once".into(),
+            None,
             &mut rx,
             READY_LIMIT + Duration::from_secs(10)
         ),
@@ -300,7 +311,7 @@ async fn timeout_and_cancel_stop_group_descendants() {
             Duration::from_millis(200)
         };
         let (out, ()) = tokio::join!(
-            agent::run(&bin, &temp.0, &temp.0, "abc".into(), &mut rx, timeout),
+            agent::run(&bin, &temp.0, &temp.0, "abc".into(), None, &mut rx, timeout),
             async {
                 if cancel {
                     wait_file(&temp.0.join("ready")).await;
