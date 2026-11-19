@@ -9,7 +9,7 @@ use tokio::{
 const LIMIT: usize = 64 * 1024;
 pub(super) const DEADLINE: Duration = Duration::from_secs(300);
 
-fn command(bin: &Path, workspace: &Path) -> Command {
+fn command(bin: &Path, workspace: &Path, artifact: &Path) -> Command {
     let mut cmd = Command::new(bin);
     cmd.current_dir(workspace)
         .args([
@@ -26,6 +26,7 @@ fn command(bin: &Path, workspace: &Path) -> Command {
             "--no-approve",
         ])
         .env_clear()
+        .env("URSI_ARTIFACT_DIR", artifact)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -83,6 +84,7 @@ async fn capture(pipe: impl AsyncRead + Unpin) -> io::Result<Vec<u8>> {
 pub(super) async fn run(
     bin: &Path,
     workspace: &Path,
+    artifact: &Path,
     prompt: String,
     cancel: &mut watch::Receiver<bool>,
     deadline: Duration,
@@ -90,7 +92,7 @@ pub(super) async fn run(
     if *cancel.borrow() {
         return Outcome::new("cancelled", "执行前已取消");
     }
-    let mut child = match command(bin, workspace).spawn() {
+    let mut child = match command(bin, workspace, artifact).spawn() {
         Ok(child) => child,
         Err(e) => return Outcome::new("failed", format!("Agent 未能启动: {e}")),
     };
@@ -111,7 +113,11 @@ pub(super) async fn run(
                 async { let code = child.wait().await?; group.stop()?; Ok(code) },
             )
         } => match result {
-            Ok(((), out, _, status)) if status.success() => Outcome::new("succeeded", String::from_utf8_lossy(&out)),
+            Ok(((), out, _, status)) if status.success() => {
+                // 标准输出是执行器自己的记录，同时保留为旧 output 字段。
+                let text = String::from_utf8_lossy(&out).into_owned();
+                Outcome::logged("succeeded", text.clone(), "agent", text)
+            }
             Ok(((), _, _, status)) => Outcome::new("failed", format!("Agent 退出: {status}")),
             Err(e) => Outcome::new("failed", format!("Agent I/O: {e}")),
         }

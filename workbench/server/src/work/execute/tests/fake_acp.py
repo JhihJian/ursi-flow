@@ -27,7 +27,7 @@ else:
         assert sys.argv[4:] == ['/dev/stdin']
         history = json.loads((root / 'db/work.json').read_text())['items']['i']['attempts']
         a = history[-1]
-        assert (a['backendRunId'], a['workspace'], a['status']) == (session, 'case-i', 'running')
+        assert (a['backendRunId'], a['workspace']['id'], a['status']) == (session, 'case-i', 'running')
         text = Path(sys.argv[4]).read_text()
         assert 'A-17' in text and '报告须有标题' in text
         with (root / 'count').open('a') as f:

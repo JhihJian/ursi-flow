@@ -6,7 +6,7 @@ mod sandbox;
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store};
+use super::{Error, Store, directories};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -18,6 +18,7 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
 use ursi_flow_client::FlowClient;
@@ -26,9 +27,15 @@ use uuid::Uuid;
 type Reply = Result<Json<Value>, Error>;
 type Key = (String, String);
 
+/// 平台分配给一次尝试的目录能力引用。标识不是宿主路径。
+const WORKSPACE_ACCESS: &str = "read-write";
+const WORKSPACE_PURPOSE: &str = "work-input";
+
 struct Runtime {
     store: Store,
     workspace: PathBuf,
+    /// 目录资源私有根的宿主路径，只用于从对外文本中剔除。
+    artifacts: Option<PathBuf>,
     bin: Option<PathBuf>,
     flow: Option<FlowClient>,
     sandbox: Option<sandbox::Config>,
@@ -56,9 +63,11 @@ fn router(
     sandbox: Option<sandbox::Config>,
 ) -> Router {
     let ready = store.update(recover).is_ok();
+    let artifacts = directories::fs::root(store.dir()).ok();
     let rt = Runtime {
         store,
         workspace,
+        artifacts,
         flow,
         bin,
         sandbox,
@@ -76,36 +85,122 @@ fn router(
 }
 
 fn recover(db: &mut Value) -> Result<(), Error> {
+    let mut freeze = Vec::new();
     if let Some(items) = db.get_mut("items").and_then(Value::as_object_mut) {
         for item in items.values_mut() {
             for attempt in history_mut(item)? {
-                // Item detail also exposes this history. Remove legacy cwd values at the source.
-                if let Some(path) = attempt["workspace"].as_str().filter(|p| p.starts_with('/')) {
-                    if let Some(text) = attempt["output"].as_str() {
-                        attempt["output"] = text.replace(path, "[workspace]").into();
-                    }
-                    attempt["workspace"] = "default".into();
-                }
+                migrate(attempt)?;
                 if matches!(attempt["status"].as_str(), Some("starting" | "running")) {
                     attempt["interruptedStatus"] = attempt["status"].clone();
                     attempt["status"] = "unverified".into();
-                    attempt["output"] = "服务已重启，执行可能已有副作用，请核实；不会重发".into();
+                    // 恢复提示单独存放，不得覆盖执行器留下的 output。
+                    attempt["recoveryNotice"] =
+                        "服务已重启，执行可能已有副作用，请核实；不会重发".into();
+                    push_log(
+                        attempt,
+                        "attempt_interrupted",
+                        "服务重启时尝试尚未结束，已转为待核实；不会重发",
+                    );
+                    let directory = attempt["artifactDirectory"]["id"]
+                        .as_str()
+                        .map(str::to_owned);
+                    if let Some(id) = directory {
+                        attempt["artifactDirectory"]["state"] = "frozen".into();
+                        freeze.push(id);
+                    }
                 }
             }
         }
     }
+    for id in freeze {
+        directories::freeze(db, &id)?;
+    }
     Ok(())
+}
+
+/// 旧记录只有工作区别名或宿主路径，缺少执行器契约字段。补成当前形状。
+fn migrate(attempt: &mut Value) -> Result<(), Error> {
+    let legacy = attempt["workspace"].as_str().map(str::to_owned);
+    if let Some(text) = legacy {
+        let id = if text.starts_with('/') {
+            // Item detail also exposes this history. Remove legacy host paths at the source.
+            if let Some(output) = attempt["output"].as_str() {
+                attempt["output"] = output.replace(&text, "[workspace]").into();
+            }
+            "default".to_owned()
+        } else {
+            text
+        };
+        attempt["workspace"] = workspace_ref(&id);
+    }
+    for (field, value) in [
+        ("workInstruction", Value::Null),
+        ("artifactDirectory", Value::Null),
+        ("executorLog", Value::Null),
+        ("executorLogPage", Value::Null),
+    ] {
+        if attempt.get(field).is_none() {
+            attempt[field] = value;
+        }
+    }
+    if !attempt["platformLog"].is_array() {
+        attempt["platformLog"] = json!([]);
+    }
+    Ok(())
+}
+
+fn workspace_ref(id: &str) -> Value {
+    json!({"id": id, "access": WORKSPACE_ACCESS, "purpose": WORKSPACE_PURPOSE})
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
+}
+
+/// 追加一条平台记录日志。平台日志只记事件和已脱敏的摘要。
+fn push_log(attempt: &mut Value, event: &str, message: &str) {
+    let mut entries = attempt["platformLog"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    entries.push(json!({
+        "sequence": entries.len() as u64 + 1,
+        "occurredAt": now(),
+        "source": "platform",
+        "event": event,
+        "message": message,
+        "attemptStatus": attempt["status"].clone(),
+    }));
+    attempt["platformLog"] = Value::Array(entries);
 }
 
 struct Outcome {
     status: &'static str,
     output: String,
+    /// 执行器自己产生的日志载荷。当前只承接 Agent 的标准输出。
+    executor_log: Option<(&'static str, String)>,
 }
 impl Outcome {
     fn new(status: &'static str, output: impl Into<String>) -> Self {
         Self {
             status,
             output: output.into(),
+            executor_log: None,
+        }
+    }
+    fn logged(
+        status: &'static str,
+        output: impl Into<String>,
+        source: &'static str,
+        text: impl Into<String>,
+    ) -> Self {
+        Self {
+            status,
+            output: output.into(),
+            executor_log: Some((source, text.into())),
         }
     }
 }
@@ -145,6 +240,11 @@ impl Runtime {
             .ok_or_else(|| Error::Unavailable("尝试恢复失败，请检查存储后重启".into()))
     }
     fn redact(&self, text: &str) -> String {
+        // 制品目录位于存储根之下，先剔除更长的前缀，避免只替换了工作区。
+        let text = match &self.artifacts {
+            Some(base) => text.replace(base.to_string_lossy().as_ref(), "[artifacts]"),
+            None => text.to_owned(),
+        };
         text.replace(self.workspace.to_string_lossy().as_ref(), "[workspace]")
     }
     fn load(&self, (item, id): &Key) -> Result<Value, Error> {
@@ -159,11 +259,45 @@ impl Runtime {
     }
     fn record(&self, (item, id): &Key, outcome: Outcome) -> Result<Value, Error> {
         self.store.update(|db| {
+            // Freeze first: the directory record and the attempt live in the same update.
+            let directory = {
+                let a = attempt_mut(db, item, id)?;
+                if terminal(a) {
+                    // A slow GET must never overwrite a confirmed terminal (including a concurrent stop).
+                    return Ok(a.clone());
+                }
+                a["artifactDirectory"]["id"].as_str().map(str::to_owned)
+            };
+            if let Some(directory) = &directory {
+                directories::freeze(db, directory)?;
+            }
             let a = attempt_mut(db, item, id)?;
-            // A slow GET must never overwrite a confirmed terminal (including a concurrent stop).
-            if !terminal(a) {
-                a["status"] = outcome.status.into();
-                a["output"] = self.redact(&outcome.output).into();
+            a["status"] = outcome.status.into();
+            a["output"] = self.redact(&outcome.output).into();
+            if let Some((source, text)) = &outcome.executor_log {
+                a["executorLog"] = json!({
+                    "source": source,
+                    "kind": "text",
+                    "entries": [{
+                        "sequence": 1,
+                        "occurredAt": now(),
+                        "stream": "stdout",
+                        "text": self.redact(text),
+                    }],
+                });
+            }
+            if a["artifactDirectory"]["id"].is_string() {
+                a["artifactDirectory"]["state"] = "frozen".into();
+            }
+            let message = match outcome.status {
+                "succeeded" => "执行结束：成功",
+                "failed" => "执行结束：失败",
+                "cancelled" => "执行结束：已取消",
+                _ => "执行结束：待核实",
+            };
+            push_log(a, "attempt_closed", message);
+            if directory.is_some() {
+                push_log(a, "artifact_directory_frozen", "制品目录已冻结");
             }
             Ok(a.clone())
         })
@@ -206,35 +340,48 @@ async fn start(
 ) -> Reply {
     rt.check()?;
     let key = (item, Uuid::new_v4().to_string());
-    let (attempt, dispatch) = rt.store.update(|db| {
-        let item = db["items"].get(&key.0).ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
-        let (plan, binding) = plan::resolve(item, &req.action)?;
-        let (status, dispatch) = match plan {
-            plan::Plan::Agent(prompt) => ("running", Dispatch::Agent(rt.binary()?.into(), prompt, slot(&rt.processes)?)),
-            plan::Plan::Sandbox(prompt) => {
-                rt.sandbox.as_ref().ok_or_else(|| Error::Unavailable("沙箱未配置".into()))?.reserve(db,&key.0)?;
-                ("starting",Dispatch::Sandbox(prompt))
-            }
-            plan::Plan::Flow { id, revision, variables } => ("starting", Dispatch::Flow(rt.sdk()?, flow::Call::Start { flow: id, revision, variables, cwd: rt.workspace.clone() }, slot(&rt.calls)?)),
-        };
-        let mut attempt = json!({"id":key.1, "itemId":key.0, "action": req.action, "status":status, "executor":binding["executor"],
-            "resources":binding["resources"], "workspace": "default", "backendRunId": key.1, "output":null});
-        if matches!(dispatch, Dispatch::Sandbox(_)) {
-            attempt["workspace"] = rt.sandbox.as_ref().unwrap().alias.clone().into();
-            attempt["backendRunId"] = Value::Null;
-        }
-        history_mut(&mut db["items"][&key.0])?.push(attempt.clone());
-        Ok((attempt, dispatch))
-    })?;
+    let action = req.action;
+    // 制品目录的磁盘创建与尝试追加同属一次登记：登记失败时不会留下孤立目录。
+    let (attempt, dispatch) = {
+        let rt = rt.clone();
+        let key = key.clone();
+        tokio::task::spawn_blocking(move || {
+            directories::allocate(
+                &rt.store,
+                directories::Rules::default(),
+                |_| Ok(()),
+                |db, directory| reserve(&rt, db, directory, &key, &action),
+            )
+        })
+        .await
+        .map_err(|_| Error::Internal("执行启动任务中断".into()))??
+    };
     // No await between the durable append and dispatch. Dropping the HTTP future does not replay or abort the backend call.
     match dispatch {
         dispatch @ (Dispatch::Agent(..) | Dispatch::Sandbox(..)) => {
+            let directory = attempt["artifactDirectory"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
             let (tx, mut rx) = watch::channel(false);
             rt.agents.lock().unwrap().insert(key.1.clone(), tx);
             tokio::spawn(async move {
                 let outcome = match dispatch {
                     Dispatch::Agent(bin, prompt, _permit) => {
-                        agent::run(&bin, &rt.workspace, prompt, &mut rx, agent::DEADLINE).await
+                        match directories::path(&rt.store, &directory) {
+                            Ok(artifact) => {
+                                agent::run(
+                                    &bin,
+                                    &rt.workspace,
+                                    &artifact,
+                                    prompt,
+                                    &mut rx,
+                                    agent::DEADLINE,
+                                )
+                                .await
+                            }
+                            Err(_) => Outcome::new("failed", "制品目录不可用"),
+                        }
                     }
                     Dispatch::Sandbox(prompt) => {
                         sandbox::run(&rt, &key, rt.sandbox.as_ref().unwrap(), prompt, &mut rx).await
@@ -268,6 +415,81 @@ async fn start(
         .await
         .map_err(|_| Error::Internal("Flow 启动任务异常".into()))?,
     }
+}
+
+/// 在同一笔存储更新中校验工作项状态、冻结输入与制品引用并追加尝试。
+fn reserve(
+    rt: &Runtime,
+    db: &mut Value,
+    directory: &str,
+    key: &Key,
+    action: &str,
+) -> Result<(Value, Dispatch), Error> {
+    let item = db["items"]
+        .get(&key.0)
+        .ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
+    let (plan, binding) = plan::resolve(item, action)?;
+    let instruction = plan.instruction();
+    let (status, workspace, dispatch) = match plan {
+        plan::Plan::Agent(prompt) => (
+            "running",
+            "default",
+            Dispatch::Agent(rt.binary()?.into(), prompt, slot(&rt.processes)?),
+        ),
+        plan::Plan::Sandbox(prompt) => {
+            let cfg = rt
+                .sandbox
+                .as_ref()
+                .ok_or_else(|| Error::Unavailable("沙箱未配置".into()))?;
+            cfg.reserve(db, &key.0)?;
+            ("starting", cfg.alias.as_str(), Dispatch::Sandbox(prompt))
+        }
+        plan::Plan::Flow {
+            id,
+            revision,
+            variables,
+        } => (
+            "starting",
+            "default",
+            Dispatch::Flow(
+                rt.sdk()?,
+                flow::Call::Start {
+                    flow: id,
+                    revision,
+                    variables,
+                    cwd: rt.workspace.clone(),
+                },
+                slot(&rt.calls)?,
+            ),
+        ),
+    };
+    let sandbox = matches!(dispatch, Dispatch::Sandbox(_));
+    let mut attempt = json!({
+        "id": key.1,
+        "itemId": key.0,
+        "action": action,
+        "status": status,
+        "executor": binding["executor"],
+        "resources": binding["resources"],
+        "workspace": workspace_ref(workspace),
+        "workInstruction": {"text": instruction, "encoding": "utf-8"},
+        "artifactDirectory": {"id": directory, "state": "writable"},
+        "platformLog": [],
+        "executorLog": Value::Null,
+        "executorLogPage": Value::Null,
+        "backendRunId": key.1,
+        "output": null,
+    });
+    if sandbox {
+        attempt["backendRunId"] = Value::Null;
+    }
+    push_log(
+        &mut attempt,
+        "attempt_created",
+        "已分配 workspace 与制品目录，并冻结工作指令",
+    );
+    history_mut(&mut db["items"][&key.0])?.push(attempt.clone());
+    Ok((attempt, dispatch))
 }
 
 async fn list(State(rt): State<Arc<Runtime>>, Path(item): Path<String>) -> Reply {
@@ -335,7 +557,7 @@ async fn verify(
             let cfg = rt
                 .sandbox
                 .as_ref()
-                .filter(|c| before["workspace"] == c.alias)
+                .filter(|c| before["workspace"]["id"] == c.alias)
                 .ok_or_else(|| Error::Conflict("不能核对原沙箱".into()))?;
             cfg.authorize(&key.0)?;
             if let Some(session) = before["backendRunId"].as_str() {
@@ -351,10 +573,17 @@ async fn verify(
         _ => return Err(Error::Conflict("无法核实未知执行器".into())),
     }
     rt.store.update(|db| {
-        let a = attempt_mut(db, &key.0, &key.1)?;
-        if *a != before {
-            return Err(Error::Conflict("尝试已变更，请重新查询".into()));
+        let directory = {
+            let a = attempt_mut(db, &key.0, &key.1)?;
+            if *a != before {
+                return Err(Error::Conflict("尝试已变更，请重新查询".into()));
+            }
+            a["artifactDirectory"]["id"].as_str().map(str::to_owned)
+        };
+        if let Some(directory) = directory {
+            directories::freeze(db, &directory)?;
         }
+        let a = attempt_mut(db, &key.0, &key.1)?;
         a["verification"] = json!({"previousStatus":a["status"], "status":req.status,
             "evidence":rt.redact(req.evidence.trim()), "reason":rt.redact(req.reason.trim())});
         if let Some(code) = daemon_evidence {
@@ -362,6 +591,10 @@ async fn verify(
                 "flowId":a["executor"]["flowId"], "flowRevision":a["executor"]["flowRevision"], "result":code});
         }
         a["status"] = json!(req.status);
+        if a["artifactDirectory"]["id"].is_string() {
+            a["artifactDirectory"]["state"] = "frozen".into();
+        }
+        push_log(a, "attempt_verified", "已记录人工核实结论，原制品目录保持冻结");
         Ok(Json(a.clone()))
     })
 }

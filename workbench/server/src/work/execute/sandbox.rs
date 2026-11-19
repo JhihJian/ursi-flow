@@ -74,7 +74,7 @@ impl Config {
         for (owner, i) in db["items"].as_object().ok_or_else(unavailable)? {
             for a in i["attempts"].as_array().ok_or_else(unavailable)? {
                 if a["executor"]["environment"] == "sandbox"
-                    && (!terminal(a) || (a["workspace"] == self.alias && owner != item))
+                    && (!terminal(a) || (a["workspace"]["id"] == self.alias && owner != item))
                 {
                     return Err(Error::Conflict(
                         "沙箱被其他尝试占用或已绑定其他工作项".into(),
@@ -260,7 +260,7 @@ pub(super) async fn run(
         .store
         .update(|db| {
             let a = attempt_mut(db, &key.0, &key.1)?;
-            if a["status"] != "starting" || a["workspace"] != c.alias {
+            if a["status"] != "starting" || a["workspace"]["id"] != c.alias {
                 return Err(Error::Conflict("尝试已变更".into()));
             }
             a["backendRunId"] = id.into();

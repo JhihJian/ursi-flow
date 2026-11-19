@@ -8,15 +8,43 @@ export interface Executor {
   flowId?: string
   flowRevision?: string
 }
+/** 平台分配的目录能力引用。`id` 是平台标识，不是宿主路径。 */
+export interface WorkspaceRef { id: string; access: 'read-write'; purpose: string }
+/** 启动时冻结的工作指令。旧尝试没有这一字段。 */
+export interface WorkInstruction { text: string; encoding: 'utf-8' }
+/** 一次尝试独占的制品目录；终态后冻结为只读。 */
+export interface ArtifactDirectory { id: string; state: 'writable' | 'frozen' }
+export interface PlatformLogEntry {
+  sequence: number
+  occurredAt: number
+  source: 'platform'
+  event: string
+  message: string
+  attemptStatus: Attempt['status']
+}
+/** 执行器自己产生的日志载荷。当前只承接 Agent 的原始文本。 */
+export interface ExecutorLog {
+  source: string
+  kind: 'text'
+  entries: { sequence: number; occurredAt: number; stream: string; text: string }[]
+}
 export interface Attempt {
   id: string
   action: string
   status: 'starting' | 'running' | 'unverified' | 'failed' | 'cancelled' | 'succeeded'
   executor: Executor
-  workspace: string
+  workspace: WorkspaceRef
+  workInstruction: WorkInstruction | null
+  artifactDirectory: ArtifactDirectory | null
+  platformLog: PlatformLogEntry[]
+  executorLog: ExecutorLog | null
+  /** 执行器自建静态日志页地址；当前不生成，为 null 时不渲染链接。 */
+  executorLogPage: string | null
   backendRunId: string | null
   output: string | null
   interruptedStatus?: string
+  /** 平台恢复提示。与执行器 output 分开保存，不互相覆盖。 */
+  recoveryNotice?: string
   verification?: { status: string; evidence: string; reason: string; daemonEvidence?: unknown }
 }
 export interface Delivery {

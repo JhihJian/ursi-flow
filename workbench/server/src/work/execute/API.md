@@ -19,13 +19,33 @@ curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 
 发布时，目录检查 `inputs`、`outputs` 的名称和类型兼容性，合并包、动作与执行器引用的 `resources`。执行时使用工作项快照中的 `actions[action].executor`（固定版本的投影）和同级 `resources`（已展开的正文），不再解析发布请求中的引用或端口声明。
 
-本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收动作、SOP、固定版本的 prompt/skill 正文和工作项输入。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。尝试中的 `workspace` 为 `default`；后端输出内的实际目录文本替换为 `[workspace]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
+本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。执行器把最终结果写入平台分配的制品目录，路径由 `URSI_ARTIFACT_DIR` 提供；该变量与工作目录一样不随尝试返回。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
+
+### 尝试对象与制品目录
+
+尝试除了 `id`、`itemId`、`action`、`status`、`executor`、`resources`、`backendRunId` 和旧 `output` 外，还包含：
+
+| 字段 | 含义 |
+| --- | --- |
+| `workspace` | `{id, access, purpose}` 目录能力引用。本地与 Flow 的 `id` 为 `default`，沙箱为环境别名。 |
+| `workInstruction` | 启动时冻结的 `{text, encoding}`。Flow 的 `text` 是工作项输入 JSON。 |
+| `artifactDirectory` | 本次尝试独占的 `{id, state}`，`state` 为 `writable` 或 `frozen`。 |
+| `platformLog` | 平台记录日志数组，每条含 `sequence`、`occurredAt`（Unix 秒）、`source`、`event`、`message`、`attemptStatus`。 |
+| `executorLog` | 执行器记录日志，当前为 `{source, kind:"text", entries:[{sequence, occurredAt, stream, text}]}`，未产生时为 `null`。 |
+| `executorLogPage` | 执行器自建静态日志页入口，当前恒为 `null`，平台不生成地址。 |
+| `recoveryNotice` | 重启恢复提示，与执行器 `output` 分开保存。 |
+
+制品文件清单读 `GET /api/v2/directories/{artifactDirectory.id}/tree`，返回 `{path,kind,size?}` 数组。尝试进入终态（含 `unverified`）时平台冻结目录：此后对该目录的 `PUT`、`/dir`、`/move` 和 `DELETE` 均返回 409，`GET` 与 `tree` 不变。重试创建新的尝试并获得新目录，旧目录保持可读。
+
+旧数据迁移：旧的 `workspace` 字符串（别名或宿主路径）在服务启动时改为上述引用，宿主路径同时从 `output` 中剔除；缺失的 `workInstruction`、`artifactDirectory`、`executorLog`、`executorLogPage` 补为 `null`，`platformLog` 补为空数组。重启前的未结束尝试仍转为 `unverified`，但恢复提示只写 `recoveryNotice` 和平台日志，不再覆盖 `output`。
 
 显式指定 `environment:"sandbox"` 的 Agent 使用独占的 ACP 沙箱。`starting` 时 `backendRunId` 为空，登记会话后它是真实 sessionId，`workspace` 是环境别名。配置、收尾和可选真实会话验收见 [预配 ACP 沙箱](SANDBOX.md)。
 
 Flow 仅支持固定 `flowId`、`flowRevision` 且 `resources` 为空的绑定。工作项 `input` 对象原样作为 Flow 变量。尝试 ID 就是 daemon run ID；详情与历史可经同一 daemon 的 CLI 查询。相同尝试只调用一次 `start_pinned`，并发 SDK 调用最多 8 个。Flow 修订冲突返回 409，记录失败尝试，不回退到无修订启动。
 
-`starting` 表示等待 daemon 受理。`running` 表示本地执行已交给 Agent 任务，或 daemon 报告运行中。`succeeded`、`failed`、`cancelled` 是确认的尝试结果。`unverified` 表示缺少完成证据，可能已有副作用。重启恢复只标记未结束尝试，重新查询 Flow 可取得 daemon 的后续证据。收到错误或断线时先查列表和详情；显式重新提交会创建独立的新尝试。
+`starting` 表示等待 daemon 受理。`running` 表示本地执行已交给 Agent 任务，或 daemon 报告运行中。`succeeded`、`failed`、`cancelled` 是确认的尝试结果。`unverified` 表示缺少完成证据，可能已有副作用。重启恢复只标记未结束尝试，重新查询 Flow 可取得 daemon 的后续证据。收到错误或断线时先查列表和详情；显式重新提交会创建独立的新尝试和新制品目录。
+
+本次迁移未包含的部分：端口声明与 `output` 文本仍并存，交付仍提交文本文件对象而不是从制品目录选择，Flow 的执行器日志和人工自定义日志页未接入。
 
 ### 人工核实待核实的尝试
 

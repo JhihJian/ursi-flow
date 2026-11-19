@@ -97,10 +97,53 @@ fn restart_marks_only_unfinished_attempts() {
     let attempts = history(&db, "a").unwrap();
     assert_eq!(attempts[0]["status"], "unverified");
     assert_eq!(attempts[1]["status"], "unverified");
-    assert_eq!(
-        attempts[2],
-        json!({"status":"succeeded","output":"evidence"})
+    assert_eq!(attempts[2]["status"], "succeeded");
+    assert_eq!(attempts[2]["output"], "evidence");
+    // 旧记录补齐执行器契约字段，没有制品目录时保持空引用。
+    assert_eq!(attempts[2]["artifactDirectory"], Value::Null);
+    assert_eq!(attempts[2]["platformLog"], json!([]));
+    assert_eq!(attempts[0]["platformLog"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn recovery_keeps_executor_output_and_records_a_platform_notice() {
+    let mut db = json!({"items":{"a":{"attempts":[
+        {"id":"old","status":"running","workspace":"/home/host/work","output":"报告草稿在 /home/host/work 下"},
+        {"id":"done","status":"succeeded","workspace":"default","output":"已生成报告"},
+        {"id":"waiting","status":"running","workspace":{"id":"default","access":"read-write","purpose":"work-input"},
+         "artifactDirectory":{"id":"d1","state":"writable"}}]}},
+        "directories":{"d1":{"id":"d1","rules":{"fixed":[],"json_objects":[]},"state":"writable"}}});
+    recover(&mut db).unwrap();
+    // 再次恢复不得追加事件或改变已核实过的形状。
+    recover(&mut db).unwrap();
+    let attempts = history(&db, "a").unwrap();
+    let interrupted = &attempts[0];
+    assert_eq!(interrupted["status"], "unverified");
+    assert_eq!(interrupted["interruptedStatus"], "running");
+    assert_eq!(interrupted["output"], "报告草稿在 [workspace] 下");
+    assert_ne!(
+        interrupted["output"],
+        Value::from("服务已重启，执行可能已有副作用，请核实；不会重发")
     );
+    assert_eq!(
+        interrupted["recoveryNotice"],
+        "服务已重启，执行可能已有副作用，请核实；不会重发"
+    );
+    assert_eq!(
+        interrupted["workspace"],
+        json!({"id":"default","access":"read-write","purpose":"work-input"})
+    );
+    let log = interrupted["platformLog"].as_array().unwrap();
+    assert_eq!(log.len(), 1);
+    assert_eq!(log[0]["event"], "attempt_interrupted");
+    assert_eq!(log[0]["source"], "platform");
+    assert_eq!(attempts[1]["output"], "已生成报告");
+    assert_eq!(attempts[1]["platformLog"], json!([]));
+    // 中断的尝试保留制品目录，并与目录记录一起冻结。
+    assert_eq!(attempts[2]["status"], "unverified");
+    assert_eq!(attempts[2]["artifactDirectory"]["state"], "frozen");
+    let db = &db;
+    assert_eq!(db["directories"]["d1"]["state"], "frozen");
 }
 
 #[test]
@@ -126,17 +169,37 @@ fn stop_needs_daemon_evidence_for_this_exact_run() {
 #[tokio::test]
 async fn pi_reads_one_prompt_in_admin_workspace_and_does_not_inherit_server_token() {
     let temp = Temp::new();
+    let artifacts = temp.0.join("artifacts");
+    fs::create_dir(&artifacts).unwrap();
     let bin = temp.script(
         r#"test "${URSI_API_TOKEN+x}" != x
+# 执行器只拿到平台分配的制品目录，它位于管理员工作区之下。
+test -d "$URSI_ARTIFACT_DIR"
+test "$(dirname "$URSI_ARTIFACT_DIR")" = "$PWD"
 test "$*" = '--print --mode text --no-session --no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve'
 pwd
 cat"#,
     );
     let (_tx, mut rx) = watch::channel(false);
     let prompt = "@not-a-path\n--not-an-argument\n$(printf no)";
-    let out = agent::run(&bin, &temp.0, prompt.into(), &mut rx, READY_LIMIT).await;
+    let out = agent::run(
+        &bin,
+        &temp.0,
+        &artifacts,
+        prompt.into(),
+        &mut rx,
+        READY_LIMIT,
+    )
+    .await;
     assert_eq!(out.status, "succeeded", "{}", out.output);
     assert_eq!(out.output, format!("{}\n{prompt}", temp.0.display()));
+    // 标准输出同时是执行器记录日志。
+    assert_eq!(
+        out.executor_log,
+        Some(("agent", out.output.clone())),
+        "{} expected stdout as executor log",
+        out.output
+    );
 }
 
 #[tokio::test]
@@ -147,7 +210,7 @@ async fn overflow_on_either_pipe_is_a_failure() {
         let bin = temp.script(&format!(
             "cat >/dev/null\nhead -c 65537 /dev/zero {redirection}"
         ));
-        let out = agent::run(&bin, &temp.0, "abc".into(), &mut rx, READY_LIMIT).await;
+        let out = agent::run(&bin, &temp.0, &temp.0, "abc".into(), &mut rx, READY_LIMIT).await;
         assert_eq!(out.status, "failed");
         assert!(out.output.contains("64 KiB"), "{}", out.output);
     }
@@ -179,6 +242,7 @@ async fn loss_of_control_is_not_a_confirmed_stop_and_never_resends_prompt() {
         agent::run(
             &bin,
             &temp.0,
+            &temp.0,
             "once".into(),
             &mut rx,
             READY_LIMIT + Duration::from_secs(10)
@@ -204,7 +268,7 @@ async fn timeout_and_cancel_stop_group_descendants() {
             Duration::from_millis(200)
         };
         let (out, ()) = tokio::join!(
-            agent::run(&bin, &temp.0, "abc".into(), &mut rx, timeout),
+            agent::run(&bin, &temp.0, &temp.0, "abc".into(), &mut rx, timeout),
             async {
                 if cancel {
                     wait_file(&temp.0.join("ready")).await;

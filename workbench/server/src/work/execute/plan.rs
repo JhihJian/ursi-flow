@@ -50,6 +50,16 @@ pub(super) enum Plan {
     },
 }
 
+impl Plan {
+    /// 本次尝试冻结后传给执行器的工作指令正文。
+    pub(super) fn instruction(&self) -> String {
+        match self {
+            Self::Agent(text) | Self::Sandbox(text) => text.clone(),
+            Self::Flow { variables, .. } => variables.to_string(),
+        }
+    }
+}
+
 pub(super) fn resolve(item: &Value, action: &str) -> Result<(Plan, Value), Error> {
     if item["status"] != "working" {
         return Err(Error::Conflict("工作项必须处于 working 状态".into()));

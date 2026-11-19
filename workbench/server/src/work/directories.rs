@@ -121,11 +121,30 @@ fn under(parent: &str, child: &str) -> bool {
         && child.as_bytes()[parent.len()] == b'/'
 }
 
+/// 目录的可写性。执行结束后，制品目录冻结为只读，禁止写入、移动和删除。
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Mode {
+    #[default]
+    Writable,
+    Frozen,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 struct Record {
     id: String,
     #[serde(default)]
     rules: Rules,
+    #[serde(default)]
+    state: Mode,
+}
+
+impl Record {
+    fn writable(&self) -> Result<(), Error> {
+        (self.state == Mode::Writable)
+            .then_some(())
+            .ok_or_else(|| Error::Conflict("目录已冻结，不能写入、移动或删除".into()))
+    }
 }
 
 pub(super) fn routes(store: Store) -> io::Result<Router> {
@@ -191,6 +210,23 @@ fn located(store: &Store, id: &str) -> Result<(Record, PathBuf), Error> {
     Ok((record, base(store)?.join(id)))
 }
 
+/// 目录根在磁盘上的位置，只用服务端生成的标识拼装。调用方不会把它返回给浏览器。
+pub(super) fn path(store: &Store, id: &str) -> Result<PathBuf, Error> {
+    Ok(base(store)?.join(id))
+}
+
+/// 冻结目录记录：只改元信息，不触碰磁盘内容。可与尝试记录在同一笔更新中完成。
+pub(super) fn freeze(db: &mut Value, id: &str) -> Result<(), Error> {
+    let record = records_mut(db)?
+        .get_mut(id)
+        .ok_or_else(|| Error::NotFound("目录不存在".into()))?;
+    if record["id"] != id {
+        return Err(corrupt());
+    }
+    record["state"] = json!(Mode::Frozen);
+    Ok(())
+}
+
 /// 先建目录并执行 seed，再在同一笔更新中登记目录元信息和调用方记录。
 /// 任一步失败都会删除磁盘目录，不留下未登记的半成品。
 pub(super) fn allocate<T>(
@@ -206,7 +242,7 @@ pub(super) fn allocate<T>(
     let result = (|| {
         fs::verify(&root)?;
         seed(&root)?;
-        let record = json!({"id": id, "rules": rules});
+        let record = json!({"id": id, "rules": rules, "state": Mode::Writable});
         store.update(|db| {
             records_mut(db)?.insert(id.clone(), record);
             register(db, &id)
@@ -307,6 +343,7 @@ async fn write(
 ) -> Result<StatusCode, Error> {
     let parts = fs::segments(&query.path, false)?;
     let (record, root) = located(&store, &id)?;
+    record.writable()?;
     // 约束校验先于写锁，坏正文不进入临界区。
     record.rules.check_write(&query.path, &body)?;
     let replace = query.replace.unwrap_or(false);
@@ -331,7 +368,8 @@ async fn mkdir(
     Json(body): Json<Mkdir>,
 ) -> Result<StatusCode, Error> {
     let parts = fs::segments(&body.path, false)?;
-    let (_, root) = located(&store, &id)?;
+    let (record, root) = located(&store, &id)?;
+    record.writable()?;
     tokio::task::spawn_blocking(move || store.read(|_| Ok(fs::mkdir(&root, &parts)?)))
         .await
         .map_err(|_| Error::Internal("目录创建任务中断".into()))??;
@@ -353,6 +391,7 @@ async fn relocate(
     let from = fs::segments(&body.from, false)?;
     let to = fs::segments(&body.to, false)?;
     let (record, root) = located(&store, &id)?;
+    record.writable()?;
     record.rules.check_move(&body.from, &body.to)?;
     let rules = record.rules;
     let target = body.to.clone();
@@ -383,6 +422,7 @@ async fn remove(
 ) -> Result<StatusCode, Error> {
     let parts = fs::segments(&query.path, false)?;
     let (record, root) = located(&store, &id)?;
+    record.writable()?;
     record.rules.check_remove(&query.path)?;
     tokio::task::spawn_blocking(move || store.read(|_| Ok(fs::remove(&root, &parts)?)))
         .await

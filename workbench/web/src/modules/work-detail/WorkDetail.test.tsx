@@ -7,7 +7,9 @@ import { WorkDetail } from './WorkDetail'
 import type { WorkItem, Attempt, Delivery } from './model'
 
 const executor = { id: '排查助手', revision: 2, kind: 'agent' } as const
-const attempt: Attempt = { id: 'a1', action: '分析', executor, status: 'running', output: null, workspace: 'default', backendRunId: 'a1' }
+const workspace = (id = 'default'): Attempt['workspace'] => ({ id, access: 'read-write', purpose: 'work-input' })
+const attempt: Attempt = { id: 'a1', action: '分析', executor, status: 'running', output: null, workspace: workspace(), backendRunId: 'a1',
+  workInstruction: null, artifactDirectory: null, platformLog: [], executorLog: null, executorLogPage: null }
 const report = (version: number, review: Delivery['review'] = null): Delivery => ({ version, review, files: { '报告 #1.txt': '文件接口单独读取' }, attemptIds: [] })
 const item = (patch: Partial<WorkItem> = {}): WorkItem => ({ id: 'I', package: '排查包', revision: 1, status: 'working', assignee: '林', input: { ticket: '101' }, source: { type: 'builtin' }, acceptedVersion: null,
   attempts: [], deliveries: [], packageSnapshot: { sop: '开单时的步骤', acceptance: '原版验收标准', deliverables: ['report.txt'], actions: { 分析: { executor, resources: [] }, 复核: { executor, resources: [] } } }, ...patch })
@@ -76,7 +78,7 @@ it('派发响应丢失只查历史和单项；取消显示服务器最终结果'
 })
 
 it('阻止待核实尝试交付，可定位对应记录并提交有效证据', async () => {
-  let result: Attempt = { ...attempt, status: 'unverified', executor: { ...executor, environment: 'sandbox' }, workspace: 'case-box', backendRunId: 'session-82' }
+  let result: Attempt = { ...attempt, status: 'unverified', executor: { ...executor, environment: 'sandbox' }, workspace: workspace('case-box'), backendRunId: 'session-82' }
   const fetch = mount((p, o) => {
     if (p === base) return item({ attempts: [result] })
     if (p.endsWith('/a1')) return result
@@ -301,9 +303,9 @@ it('竞态证据：B 的 v1 被退回后，A 的旧稿不经确认直接成为 v
 })
 
 it('执行记录分别呈现失败、Flow 与沙箱的后端信息', async () => {
-  const failed: Attempt = { id: 'f1', action: '分析', executor, status: 'failed', output: '进程退出码 1', workspace: 'default', backendRunId: 'f1' }
-  const flow: Attempt = { id: 'r1', action: '汇总', executor: { id: '汇总流程', revision: 3, kind: 'flow', flowId: 'daily', flowRevision: 'v3' }, status: 'succeeded', output: '流程输出', workspace: 'default', backendRunId: 'r1' }
-  const box: Attempt = { id: 's1', action: '复核', executor: { ...executor, environment: 'sandbox' }, status: 'succeeded', output: '沙箱输出', workspace: 'case-7', backendRunId: 'session-9' }
+  const failed: Attempt = { ...attempt, id: 'f1', status: 'failed', output: '进程退出码 1', backendRunId: 'f1' }
+  const flow: Attempt = { ...attempt, id: 'r1', action: '汇总', executor: { id: '汇总流程', revision: 3, kind: 'flow', flowId: 'daily', flowRevision: 'v3' }, status: 'succeeded', output: '流程输出', backendRunId: 'r1' }
+  const box: Attempt = { ...attempt, id: 's1', action: '复核', executor: { ...executor, environment: 'sandbox' }, status: 'succeeded', output: '沙箱输出', workspace: workspace('case-7'), backendRunId: 'session-9' }
   mount(p => {
     if (p === base) return item({ attempts: [failed, flow, box] })
     const found = [failed, flow, box].find(a => p.endsWith(`/attempts/${a.id}`))
@@ -321,4 +323,45 @@ it('执行记录分别呈现失败、Flow 与沙箱的后端信息', async () =>
   expect(screen.queryByRole('link', { name: /Run/ })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /分析/ }))
   expect(await screen.findByText('进程退出码 1')).toBeVisible()
+})
+
+it('执行详情依次展示平台日志、执行器日志与制品目录，且不伪造自定义日志链接', async () => {
+  const settled: Attempt = {
+    ...attempt, status: 'succeeded', output: '执行完成', artifactDirectory: { id: 'art-1', state: 'frozen' },
+    platformLog: [
+      { sequence: 1, occurredAt: 1, source: 'platform', event: 'attempt_created', message: '已分配', attemptStatus: 'running' },
+      { sequence: 2, occurredAt: 2, source: 'platform', event: 'attempt_closed', message: '执行结束：成功', attemptStatus: 'succeeded' },
+    ],
+    executorLog: { source: 'agent', kind: 'text', entries: [{ sequence: 1, occurredAt: 2, stream: 'stdout', text: '报告已生成' }] },
+    executorLogPage: null,
+  }
+  const bare: Attempt = { ...attempt, id: 'a2', action: '核查', status: 'succeeded', artifactDirectory: null }
+  const fetch = mount(p => {
+    if (p === base) return item({ attempts: [settled, bare] })
+    if (p.endsWith('/a1')) return settled
+    if (p.endsWith('/a2')) return bare
+    if (p === '/api/v2/directories/art-1/tree') return [{ path: '证据', kind: 'dir' }, { path: '报告.md', kind: 'file', size: 12 }]
+  })
+  await screen.findByRole('tablist'); tab('执行记录')
+  fireEvent.click(screen.getByRole('button', { name: /分析/ }))
+  expect(await screen.findByText('报告.md')).toBeVisible()
+  expect(screen.getByText('证据')).toBeVisible()
+  expect(screen.getByText('已记录 2 条，日志查看器待实现')).toBeVisible()
+  expect(screen.getByText('已记录 1 条，日志查看器待实现')).toBeVisible()
+  const headings = screen.getAllByRole('heading').map(node => node.textContent)
+  expect(headings.indexOf('平台记录日志')).toBeGreaterThan(-1)
+  expect(headings.indexOf('平台记录日志')).toBeLessThan(headings.indexOf('执行器记录日志'))
+  expect(headings.indexOf('执行器记录日志')).toBeLessThan(headings.indexOf('制品目录'))
+  // 没有真实的自定义日志页地址时不渲染链接。
+  expect(screen.queryByRole('link', { name: /日志/ })).toBeNull()
+  expect(fetch.mock.calls.filter(([p]) => p.includes('/directories/art-1/tree'))).toHaveLength(1)
+
+  fireEvent.click(screen.getByRole('button', { name: /核查/ }))
+  expect(screen.getByText('无制品目录')).toBeVisible()
+  expect(screen.getByRole('heading', { name: '平台记录日志' })).toBeVisible()
+  expect(screen.getByText('暂无平台记录')).toBeVisible()
+  expect(screen.getByText('暂无执行器记录')).toBeVisible()
+  // 没有制品目录时不会去读取目录清单。
+  expect(fetch.mock.calls.some(([p]) => p.includes('/directories/'))).toBe(true)
+  expect(screen.queryByRole('link', { name: /日志/ })).toBeNull()
 })
