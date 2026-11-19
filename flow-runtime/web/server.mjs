@@ -348,11 +348,12 @@ async function readBody(req) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT || 4181)
   const console_ = await createConsole(process.env)
-  const host = process.env.URSI_FLOW_WEB_TLS_CERT
-    ? '0.0.0.0'
-    : process.env.URSI_FLOW_WEB_TOKEN
+  // 默认只在本机提供带令牌的服务；显式 HOST 或配置 TLS 时才对外监听。
+  const host =
+    process.env.HOST ||
+    (process.env.URSI_FLOW_WEB_TOKEN && !process.env.URSI_FLOW_WEB_TLS_CERT
       ? '127.0.0.1'
-      : '0.0.0.0'
+      : '0.0.0.0')
   console_.listen(port, host, () =>
     console.log(
       `Ursi Flow 控制台: ${process.env.URSI_FLOW_WEB_TLS_CERT ? 'https' : 'http'}://${host}:${port}/#/flows`,

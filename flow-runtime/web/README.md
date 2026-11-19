@@ -28,7 +28,7 @@ npm start
 URSI_FLOW_WEB_TOKEN='请替换为长令牌' URSI_FLOW_WORKDIR="$PWD" npm start
 ```
 
-`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。令牌只保存在标签页的 `sessionStorage`。配置令牌但未配置 TLS 时只监听 `127.0.0.1`；直接对局域网提供服务需要 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY`，此时监听 `0.0.0.0` 并用 HTTPS。daemon 故障返回 503 或 504，页面显示错误，不会退回演示数据。
+`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。令牌只保存在标签页的 `sessionStorage`。配置令牌但未配置 TLS 时默认只监听 `127.0.0.1`。要对局域网提供服务，设置 `HOST=0.0.0.0`；此时令牌以明文传输，只应在可信网段使用。配置 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY` 后自动监听 `0.0.0.0` 并使用 HTTPS。daemon 故障返回 503 或 504，页面显示错误，不会退回演示数据。
 
 运行中的 Run 使用同一份历史：控制台和 `ursi-flow run history` 查询到的节点、路由和命令输出一致。
 
