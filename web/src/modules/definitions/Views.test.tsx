@@ -47,10 +47,10 @@ it('历史包按阅读版本跳转，从目录读取启停状态并确认停用�
   })
   expect(await screen.findByRole('link', { name: '发起工作' })).toHaveAttribute('href', '/items/new?package=triage&revision=1')
   expect(screen.getByRole('link', { name: 'pi v1' })).toHaveAttribute('href', '/executors/pi/revisions/1')
-  expect(screen.getByRole('link', { name: 'guide v2' })).toHaveAttribute('href', '/resources/guide/revisions/2')
+  expect(screen.getAllByRole('link', { name: 'guide v2' })[0]).toHaveAttribute('href', '/resources/guide/revisions/2')
   await userEvent.click(screen.getByRole('button', { name: '停用工作包' })); expect(active).toBe(true)
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认停用' }))
-  await screen.findByText('对象已停用 · 最新 v3'); expect(screen.queryByRole('link', { name: '发起工作' })).toBeNull()
+  await screen.findByText('正在阅读 v1 · 最新 v3 · 对象已停用'); expect(screen.queryByRole('link', { name: '发起工作' })).toBeNull()
   expect(screen.getByText('原 SOP')).toBeVisible()
 })
 

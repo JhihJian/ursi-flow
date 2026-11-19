@@ -16,6 +16,12 @@ export type Package = Ref & {
 export type Definition = Resource | Executor | Package
 export type Latest = Definition & { active: boolean }
 export const kindNames = { skill: 'Skill', prompt: '提示词', mcp: 'MCP 引用', agent: 'Agent', flow: 'Agent Flow' }
+export const environmentNames = { local: '本地 Pi Agent', sandbox: '预配沙箱 Agent' } as const
+export const environmentHints = {
+  local: '在服务端所在机器上用服务端配置的 Agent 程序运行。',
+  sandbox: '使用管理员预配的 ACP 沙箱。沙箱不可用时执行被拒绝，已发布的绑定不改变。',
+} as const
+export function environmentName(value?: string) { return environmentNames[value === 'sandbox' ? 'sandbox' : 'local'] }
 export const objectPath = (k: Collection, id: string) => `/${k}/${encodeURIComponent(id)}`
 export const revisionPath = (k: Collection, r: Ref) => `${objectPath(k, r.id)}/revisions/${r.revision}`
 export const list = (k: Collection, signal: AbortSignal) => requestV2<Latest[]>(`/${k}`, { signal })

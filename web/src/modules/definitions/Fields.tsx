@@ -1,4 +1,4 @@
-import { cloneElement, useId, type ReactElement } from 'react'
+import { cloneElement, useId, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
@@ -8,6 +8,9 @@ import { blankRef, type FieldRow } from './draft'
 function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) {
   const id = useId()
   return <div className="field"><label className="field-label" htmlFor={id}>{label}</label>{cloneElement(children, { id })}</div>
+}
+export function Hint({ children }: { children: ReactNode }) {
+  return <p className="text-sm leading-6 text-txt3">{children}</p>
 }
 export function TextField({ label, value, change, multiline, required, readOnly }: {
   label: string; value: string; change: (v: string) => void; multiline?: boolean; required?: boolean; readOnly?: boolean
@@ -41,10 +44,12 @@ type RefKind = 'resources' | 'executors'
 function RevisionChoice({ k, value, change }: { k: RefKind; value: Ref; change: (v: Ref) => void }) {
   const result = useResource(signal => history(k, value.id, signal), [])
   const name = titles[k]
+  const hasMcp = result.data.some(v => 'kind' in v && v.kind === 'mcp')
   return <div className="min-w-0"><Field label={`${name}版本`}><select className="select" required value={value.revision || ''} onChange={e => change({ ...value, revision: Number(e.target.value) })}>
     <option value="">{result.loading ? '读取版本中…' : '选择固定版本'}</option>
     {result.data.map(v => <option key={v.revision} value={v.revision} disabled={'kind' in v && v.kind === 'mcp'}>v{v.revision}{'kind' in v ? ` · ${kindNames[v.kind]}` : ''}</option>)}
-  </select></Field>{result.error && <p role="alert">{result.error} <Button onClick={result.reload}>重试</Button></p>}</div>
+  </select></Field>{result.error && <p role="alert">{result.error} <Button onClick={result.reload}>重试</Button></p>}
+    {hasMcp && <p className="mt-1 text-xs text-txt3">MCP 引用版本不可选为执行依赖。</p>}</div>
 }
 export function RefPicker({ k, choices, value, change }: { k: RefKind; choices: Latest[]; value: Ref; change: (v: Ref) => void }) {
   const name = titles[k]
