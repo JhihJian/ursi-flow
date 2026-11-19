@@ -90,6 +90,62 @@ fn resolve_only_the_frozen_action_and_supported_capabilities() {
 }
 
 #[test]
+fn attempt_freezes_host_neutral_config_and_redacts_secrets() {
+    let mut i = item();
+    i["packageSnapshot"]["configPackage"] = json!({
+        "sourceRef": {"id":"assistant-config","revision":3},
+        "version": "config-v3",
+        "values": {"model":"deepseek-flash","temperature":0.2},
+        "secrets": {
+            "apiKey": {"value":"private-canary"},
+            "gateway": {"state":"internal-reference","ref":"vault:gateway"}
+        }
+    });
+    let binding = i["packageSnapshot"]["actions"]["analyze"].clone();
+    let first = freeze_config(&i, &binding, "attempt-one").unwrap();
+    let second = freeze_config(&i, &binding, "attempt-two").unwrap();
+
+    assert_eq!(first["version"], "config-v3");
+    assert_eq!(
+        first["sourceRef"],
+        json!({"id":"assistant-config","revision":3})
+    );
+    assert_eq!(
+        first["values"],
+        json!({"model":"deepseek-flash","temperature":0.2})
+    );
+    assert_eq!(
+        first["secrets"],
+        json!({
+            "apiKey":{"state":"irreversible"},
+            "gateway":{"state":"internalRef"}
+        })
+    );
+    assert!(!first.to_string().contains("private-canary"));
+    assert_eq!(
+        first["capability"],
+        json!({"id":"attempt-one","access":"read-only","purpose":"executor-config"})
+    );
+    assert_ne!(first["snapshotRef"]["id"], second["snapshotRef"]["id"]);
+    assert_ne!(first["capability"]["id"], second["capability"]["id"]);
+
+    i["packageSnapshot"]["configPackage"]["values"]["model"] = "changed".into();
+    assert_eq!(first["values"]["model"], "deepseek-flash");
+}
+
+#[test]
+fn config_reference_rejects_host_paths() {
+    let mut i = item();
+    i["packageSnapshot"]["configPackage"] =
+        json!({"sourceRef":{"id":"/private/config","revision":1}});
+    let binding = i["packageSnapshot"]["actions"]["analyze"].clone();
+    assert!(matches!(
+        freeze_config(&i, &binding, "attempt").unwrap_err(),
+        Error::Invalid(_)
+    ));
+}
+
+#[test]
 fn restart_marks_only_unfinished_attempts() {
     let mut db = json!({"items":{"a":{"attempts":[{"status":"starting"},{"status":"running"},{"status":"succeeded","output":"evidence"}]}}});
     recover(&mut db).unwrap();

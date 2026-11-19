@@ -216,6 +216,61 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
 }
 
 #[tokio::test]
+async fn attempt_route_persists_a_new_config_snapshot_for_each_retry() {
+    let temp = Temp::new();
+    let store = Store::open(temp.0.join("db")).unwrap();
+    let mut i = item();
+    i["packageSnapshot"]["configPackage"] = json!({
+        "sourceRef": {"id":"assistant-config","revision":3},
+        "version": 3,
+        "values": {"model":"deepseek-flash"},
+        "secrets": {"token":{"value":"private-canary"}}
+    });
+    store
+        .update(|db| {
+            db["items"]["i"] = i;
+            Ok(())
+        })
+        .unwrap();
+    let api = Api::new(&temp, store, temp.script("cat >/dev/null"));
+    let first = api
+        .post("items/i/attempts", json!({"action":"analyze"}))
+        .await;
+    let second = api
+        .post("items/i/attempts", json!({"action":"analyze"}))
+        .await;
+
+    for attempt in [&first, &second] {
+        assert_eq!(
+            attempt["configPackage"]["sourceRef"],
+            json!({"id":"assistant-config","revision":3})
+        );
+        assert_eq!(
+            attempt["configPackage"]["values"]["model"],
+            "deepseek-flash"
+        );
+        assert_eq!(
+            attempt["configPackage"]["secrets"],
+            json!({"token":{"state":"irreversible"}})
+        );
+        assert_eq!(
+            attempt["configPackage"]["capability"]["purpose"],
+            "executor-config"
+        );
+        assert!(!attempt.to_string().contains("private-canary"));
+        assert!(!attempt.to_string().contains(temp.0.to_str().unwrap()));
+    }
+    assert_ne!(
+        first["configPackage"]["snapshotRef"]["id"],
+        second["configPackage"]["snapshotRef"]["id"]
+    );
+    assert_ne!(
+        first["configPackage"]["capability"]["id"],
+        second["configPackage"]["capability"]["id"]
+    );
+}
+
+#[tokio::test]
 async fn recovered_local_attempt_needs_one_evidenced_decision_before_delivery() {
     let temp = Temp::new();
     let store = Store::open(temp.0.join("db")).unwrap();

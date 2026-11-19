@@ -29,17 +29,19 @@ references:
 - Agent 仅通过管理员配置的可执行文件和工作区调用 Pi。SOP、输入、skill 和 prompt 正文经标准输入传入。执行时间、输出和并发有上限，取消或退出时清理本次进程组。
 - Flow 使用尝试 ID 和固定修订调用同步 SDK，在阻塞线程执行。查询和取消以 daemon 对相同运行及修订的实际响应更新尝试。
 - 尝试的 `workspace` 是平台分配的目录能力引用 `{id, access, purpose}`，不是宿主路径。本地 Agent 和 Flow 的 `id` 为 `default`，沙箱为环境别名。后端输出或诊断中的工作区、制品目录宿主路径不随尝试返回。
+- 创建尝试时冻结配置边界：配置版本、普通配置值、secret 的 `irreversible` 或 `internalRef` 状态，以及 `configPackage.sourceRef`。平台为每次尝试生成新的 `configPackage.snapshotRef` 和只读 `configPackage.capability`，重试不得复用；secret 值、locator、`directoryId` 和宿主路径不进入尝试或执行器请求。缺少配置的旧结构使用兼容的空配置。
 
 ### 尝试记录、制品目录与两类日志
 
 #### 验收
 
-- 启动时在同一次存储更新中校验工作项状态、绑定动作、冻结 `workInstruction`、分配 `artifactDirectory` 并追加尝试。尝试记录 `id`、动作、状态、执行器、资源、`workspace`、`workInstruction`、`artifactDirectory`、`platformLog`、`executorLog`、`executorLogPage` 和旧 `output` 字段。
+- 启动时在同一次存储更新中校验工作项状态、绑定动作、冻结 `workInstruction` 和 `configPackage`、分配 `artifactDirectory` 并追加尝试。尝试记录 `id`、动作、状态、执行器、资源、`workspace`、`workInstruction`、`configPackage`、`artifactDirectory`、`platformLog`、`executorLog`、`executorLogPage` 和旧 `output` 字段。
 - 制品目录登记在虚拟目录模块中，平台通过 `URSI_ARTIFACT_DIR` 向执行器提供写入能力。当前内置 Pi 调用使用 `--no-tools` 等隔离参数，实际制品写入能力尚待后续执行器切片；平台只把目录标识和清单对外公布，不公布宿主路径；清单经 `/v2/directories/{id}/tree` 读取。
 - 每次尝试独占新的制品目录，重试不覆盖历史制品。尝试结束（成功、失败、取消、待核实）后目录与其记录一起冻结，此后写入、建目录、移动和删除返回 409，读取和清单仍可用。
 - 平台记录日志按序追加尝试创建、尝试结束、制品目录冻结、人工核实和重启恢复等事件，每条含序号、时间、事件类型、摘要和当时状态。执行器记录日志暂只承接 Agent 标准输出，按来源和顺序保存；恢复、核实和查询都不会覆盖它或旧 `output`。
 - 服务重启把未结束的尝试转为 `unverified` 时，恢复提示写入 `recoveryNotice` 和新平台日志事件，不覆盖执行器留下的 `output`；已中断尝试的制品目录同时冻结。
 - Flow 和沙箱当前只登记并冻结独立制品目录，尚未收集后端产物；`executorLogPage` 是执行器自建静态日志页的预留入口，当前恒为 `null`，平台不生成任何跳转地址。
+- 配置包执行请求只允许传递尝试专属的能力引用，适配器不得把配置包目录解析为宿主路径。配置快照只在创建尝试时生成，查询、恢复和重试不会修改旧尝试。
 
 ### 显式绑定的独占沙箱
 

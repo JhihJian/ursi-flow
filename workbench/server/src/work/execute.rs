@@ -141,6 +141,7 @@ fn migrate(attempt: &mut Value) -> Result<(), Error> {
         ("artifactDirectory", Value::Null),
         ("executorLog", Value::Null),
         ("executorLogPage", Value::Null),
+        ("configPackage", Value::Null),
     ] {
         if attempt.get(field).is_none() {
             attempt[field] = value;
@@ -154,6 +155,153 @@ fn migrate(attempt: &mut Value) -> Result<(), Error> {
 
 fn workspace_ref(id: &str) -> Value {
     json!({"id": id, "access": WORKSPACE_ACCESS, "purpose": WORKSPACE_PURPOSE})
+}
+
+const CONFIG_ACCESS: &str = "read-only";
+const CONFIG_PURPOSE: &str = "executor-config";
+
+fn config_capability(id: &str) -> Value {
+    json!({"id": id, "access": CONFIG_ACCESS, "purpose": CONFIG_PURPOSE})
+}
+
+fn config_ref(value: Option<&Value>, field: &str) -> Result<Value, Error> {
+    let Some(value) = value else {
+        return Ok(Value::Null);
+    };
+    if value.is_null() {
+        return Ok(Value::Null);
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| Error::Invalid(format!("{field} 必须是配置引用对象")))?;
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "id" | "revision"))
+    {
+        return Err(Error::Invalid(format!(
+            "{field} 不能包含目录路径或其他宿主字段"
+        )));
+    }
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty() && !id.starts_with('/') && !id.contains(['\\', '/']))
+        .ok_or_else(|| Error::Invalid(format!("{field}.id 必须是宿主无关的标识")))?;
+    let revision = object
+        .get("revision")
+        .and_then(Value::as_u64)
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| Error::Invalid(format!("{field}.revision 必须是正整数")))?;
+    Ok(json!({"id": id, "revision": revision}))
+}
+
+fn freeze_secrets(value: Option<&Value>) -> Result<Value, Error> {
+    let Some(value) = value else {
+        return Ok(json!({}));
+    };
+    let secrets = value
+        .as_object()
+        .ok_or_else(|| Error::Invalid("配置 secrets 必须是对象".into()))?;
+    let mut frozen = serde_json::Map::new();
+    for (name, secret) in secrets {
+        let state = secret
+            .as_object()
+            .and_then(|object| object.get("state"))
+            .and_then(Value::as_str);
+        let state = match state {
+            Some("internalRef" | "internal-reference" | "internal_reference") => "internalRef",
+            Some("irreversible" | "redacted") => "irreversible",
+            Some(_) => return Err(Error::Invalid(format!("配置 secret {name} 状态无效"))),
+            // A provider may supply a value only before the attempt boundary.
+            // The attempt keeps the irreversible state and never the value.
+            None if secret.is_string()
+                || secret
+                    .as_object()
+                    .is_some_and(|object| object.contains_key("value")) =>
+            {
+                "irreversible"
+            }
+            None if secret
+                .as_object()
+                .is_some_and(|object| object.contains_key("ref")) =>
+            {
+                "internalRef"
+            }
+            None => return Err(Error::Invalid(format!("配置 secret {name} 缺少状态"))),
+        };
+        // Never persist a value, locator, or provider-specific secret payload.
+        frozen.insert(name.clone(), json!({"state": state}));
+    }
+    Ok(Value::Object(frozen))
+}
+
+/// Freeze only host-neutral configuration data. The mutable config package is
+/// represented by a new per-attempt snapshot and capability reference.
+fn freeze_config(item: &Value, binding: &Value, attempt: &str) -> Result<Value, Error> {
+    let package = binding
+        .get("configPackage")
+        .filter(|value| value.is_object())
+        .or_else(|| {
+            item["packageSnapshot"]
+                .get("configPackage")
+                .filter(|value| value.is_object())
+        })
+        .or_else(|| item.get("configPackage").filter(|value| value.is_object()));
+    let config = binding
+        .get("config")
+        .filter(|value| value.is_object())
+        .or_else(|| item["packageSnapshot"].get("config"))
+        .filter(|value| value.is_object())
+        .or_else(|| item.get("config").filter(|value| value.is_object()));
+    let has_config = package.is_some()
+        || config.is_some()
+        || item.get("configVersion").is_some()
+        || item.get("configValues").is_some()
+        || item.get("configSecrets").is_some();
+    let source_ref = config_ref(
+        package
+            .and_then(|value| value.get("sourceRef"))
+            .or_else(|| config.and_then(|value| value.get("sourceRef"))),
+        "configPackage.sourceRef",
+    )?;
+    let values = package
+        .and_then(|value| value.get("values"))
+        .or_else(|| config.and_then(|value| value.get("values")))
+        .or_else(|| item.get("configValues"))
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    if !values.is_object() {
+        return Err(Error::Invalid("配置 values 必须是对象".into()));
+    }
+    let secrets = freeze_secrets(
+        package
+            .and_then(|value| value.get("secrets"))
+            .or_else(|| config.and_then(|value| value.get("secrets")))
+            .or_else(|| item.get("configSecrets")),
+    )?;
+    let version = package
+        .and_then(|value| value.get("version").or_else(|| value.get("configVersion")))
+        .or_else(|| {
+            config.and_then(|value| value.get("version").or_else(|| value.get("configVersion")))
+        })
+        .or_else(|| item.get("configVersion"))
+        .cloned()
+        .or_else(|| source_ref.get("revision").cloned())
+        .unwrap_or(Value::Null);
+    let snapshot_ref = has_config
+        .then(|| json!({"id": Uuid::new_v4().to_string(), "revision": 1}))
+        .unwrap_or(Value::Null);
+    let capability = has_config
+        .then(|| config_capability(attempt))
+        .unwrap_or(Value::Null);
+    Ok(json!({
+        "version": version,
+        "values": values,
+        "secrets": secrets,
+        "sourceRef": source_ref,
+        "snapshotRef": snapshot_ref,
+        "capability": capability,
+    }))
 }
 
 fn now() -> u64 {
@@ -480,6 +628,7 @@ fn reserve(
         .get(&key.0)
         .ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
     let (plan, binding) = plan::resolve(item, action)?;
+    let config_package = freeze_config(item, &binding, &key.1)?;
     let instruction = plan.instruction();
     let (status, workspace, dispatch) = match plan {
         plan::Plan::Agent(prompt) => (
@@ -524,6 +673,7 @@ fn reserve(
         "resources": binding["resources"],
         "workspace": workspace_ref(workspace),
         "workInstruction": {"text": instruction, "encoding": "utf-8"},
+        "configPackage": config_package,
         "artifactDirectory": {"id": directory, "state": "writable"},
         "platformLog": [],
         "executorLog": Value::Null,

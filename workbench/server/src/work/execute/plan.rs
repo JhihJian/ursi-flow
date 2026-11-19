@@ -9,6 +9,11 @@ use serde_json::Value;
 struct Binding {
     executor: Executor,
     resources: Vec<Resource>,
+    // Configuration is consumed by execute when an attempt is reserved. Keep
+    // it optional so catalog's older projection remains valid.
+    #[serde(rename = "configPackage")]
+    _config_package: Option<Value>,
+    _config: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +79,7 @@ pub(super) fn resolve(item: &Value, action: &str) -> Result<(Plan, Value), Error
     let Binding {
         executor,
         resources,
+        ..
     } = serde_json::from_value(binding.clone())
         .map_err(|e| Error::Invalid(format!("不支持的动作绑定: {e}")))?;
     if executor.id.trim().is_empty() || executor.revision == 0 || !item["input"].is_object() {
