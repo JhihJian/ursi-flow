@@ -2,6 +2,7 @@
 parent: ../SPEC.md
 depends-on:
   - ../server/SPEC.md
+  - ./acceptance/SPEC.md
 references:
   - DESIGN.md
   - DESIGN-v2.md

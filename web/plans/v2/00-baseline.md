@@ -23,3 +23,9 @@
 | 06 联合验收 | `web-v2/06-acceptance` | 在各包合并后从 `main` 起 |
 
 各工作目录通过符号链接共用主工作树的 `web/node_modules`，不重复安装依赖。所有包均从同一次基线提交起，合并顺序为 01 → 02 → 03 → 04 → 05 → 06。
+
+## 合并结果
+
+六个工作包依次以 `--no-ff` 合并到 `main`，合并完成后 `e31dcde` 为当前交付点。合并后补了三处收尾：把 `acceptance/` 纳入 `tsconfig.json` 的类型检查范围、给办理页动作下拉补 `aria-label="动作"`、按改名后的可访问名称收紧验收脚本的选择器。
+
+合并后整站复跑：`npm run lint`、`npx tsc --noEmit`、`npm run test`（19 个文件 130 个用例）、`npm run build`、`npx playwright test`（20 个用例）、`npm run test:acceptance`（真实 Server 三个场景）全部通过。

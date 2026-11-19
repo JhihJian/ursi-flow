@@ -30,7 +30,7 @@ export function Handling({ item, busy, visible, start, execute }: {
     {item.status === 'pending' && <form className="flex max-w-xl flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); if (assignee.trim()) start(assignee.trim()) }}>
       <label className="field flex-1">经办人<input required className="input" value={assignee} onChange={e => setAssignee(e.target.value)} /></label>
       <Button type="submit" variant="primary" disabled={busy || !assignee.trim()}>开始办理</Button></form>}
-    {item.status === 'working' && <div className="max-w-xl space-y-2"><label className="field">动作<select className="select" value={action ?? ''} disabled={busy || bindings.length < 2} onChange={e => setChoice(e.target.value)}>{bindings.map(([name]) => <option key={name}>{name}</option>)}</select></label>
+    {item.status === 'working' && <div className="max-w-xl space-y-2"><label className="field">动作<select className="select" aria-label="动作" value={action ?? ''} disabled={busy || bindings.length < 2} onChange={e => setChoice(e.target.value)}>{bindings.map(([name]) => <option key={name}>{name}</option>)}</select></label>
       {action && <p>绑定执行器：{executorLabel(snap.actions[action].executor)}</p>}
       <Button variant="primary" disabled={busy || !action} onClick={() => action && execute(action)}>执行一次</Button></div>}
   </div>

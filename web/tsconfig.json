@@ -19,5 +19,13 @@
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "e2e/**/*.ts", "playwright.config.ts", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "e2e/**/*.ts",
+    "acceptance/**/*.ts",
+    "playwright.config.ts",
+    "playwright.acceptance.config.ts",
+    "vite.config.ts"
+  ]
 }

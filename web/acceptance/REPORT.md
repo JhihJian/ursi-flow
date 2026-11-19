@@ -35,7 +35,7 @@
 | `npx playwright test --config playwright.acceptance.config.ts --project sources` | JSON 来源派工 |
 | `npx playwright test --config playwright.acceptance.config.ts --project mobile` | 移动视口 |
 | `npm run lint` | ESLint，含新增验收资产 |
-| `npx tsc --noEmit` | 应用侧类型检查（`tsconfig` 只含 `src`、`e2e` 与两个配置文件） |
+| `npx tsc --noEmit` | 类型检查，范围含 `src`、`e2e`、`acceptance` 与两个 Playwright 配置 |
 | `npm run test` | Vitest 单测 |
 | `npm run build` | 类型检查 + 生产构建 |
 | `npx playwright test` | 旧 Flow 与对话回归（桌面 + 移动，接口拦截版） |
@@ -136,7 +136,7 @@
 | 命令 | 结果 |
 | --- | --- |
 | `npm run lint` | 通过（0 warning，0 error） |
-| `npx tsc --noEmit` | 通过（范围是 `src`、`e2e` 与两个配置文件；`acceptance/` 由 ESLint 与运行验证） |
+| `npx tsc --noEmit` | 通过（范围含 `acceptance/`，已在合并时把验收资产纳入 `tsconfig.json`） |
 | `npm run test` | 19 个文件 130 个用例全部通过 |
 | `npm run build` | 通过 |
 | `npx playwright test` | 20 个用例全部通过（桌面 + 移动，旧 Flow 与对话，接口拦截版） |
@@ -145,7 +145,7 @@
 
 ## 失败与未测项
 
-- 本工作包内没有遗留的断言失败。过程中修掉的都是验收脚本自身的问题：单号解析把 `/items/new` 当成单号、`动作` 下拉的可访问名称包含选项文案、移动端交付深链会沿用 `?status=review`。这些是脚本问题，不是页面缺陷。
+- 本工作包内没有遗留的断言失败。过程中修掉的都是验收脚本自身的问题：单号解析把 `/items/new` 当成单号、`动作` 下拉的可访问名称包含选项文案、移动端交付深链会沿用 `?status=review`。这些是脚本问题，不是页面缺陷。合并时已补上 `aria-label="动作"`，脚本改为按名称精确选择后仍通过。
 - 未验证：Firefox 与 Safari；真实沙箱（ACP）执行；真实第三方平台在线同步；服务端崩溃后再恢复的浏览器表现；两个标签页同时办理同一张单的竞态（见下节）。这些不在本包范围或缺少环境。
 
 ## 已知跨端风险
@@ -156,5 +156,4 @@
 
 本次验收未发现阻断主场景的页面缺陷，也没有需要 01 至 05 修改的问题。两处可继续打磨的体验点（不阻断交付，不由本包修改）：
 
-- `web/src/modules/work-detail/Handling.tsx` 的动作下拉用可见文案包裹 `select`，可访问名称会带上选项文本，自动化与读屏者更依赖 `aria-label`。建议由 05 补 `aria-label="动作"`。
-- 来源条目详情的动作下拉已有 `aria-label`，与上一处风格不一致，可随 04 一并统一。
+- `web/src/modules/work-detail/Handling.tsx` 的动作下拉用可见文案包裹 `select`，可访问名称会带上选项文本。合并时已补 `aria-label="动作"`，与来源条目详情的下拉风格一致。

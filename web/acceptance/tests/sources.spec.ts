@@ -65,8 +65,7 @@ test.describe('JSON 来源派工', () => {
     await page.getByLabel('经办人', { exact: true }).fill('Lin')
     await page.getByRole('button', { name: '开始办理' }).click()
     await expect(page.getByText('工作项状态：办理中')).toBeVisible()
-    // 动作下拉的 label 包着 select，可见文案还会带上选项名，用前缀匹配。
-    const chosen = page.getByLabel(/^动作/)
+    const chosen = page.getByLabel('动作', { exact: true })
     await expect(chosen.locator('option')).toHaveCount(1)
     await expect(chosen).toHaveValue('inspect')
     await expect(chosen).toBeDisabled()
