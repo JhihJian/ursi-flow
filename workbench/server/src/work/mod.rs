@@ -3,6 +3,7 @@ mod catalog;
 mod echo;
 mod execute;
 mod items;
+mod patches;
 mod preparation;
 mod sources;
 mod store;
@@ -51,6 +52,7 @@ pub(crate) fn routes(
         .merge(items::routes(store.clone()))
         .merge(workspace_sop::routes(store.clone()))
         .merge(preparation::routes(store.clone()))
+        .merge(patches::routes(store.clone())?)
         .merge(echo::routes(store.clone()))
         .merge(external)
         .merge(execute::routes(store, workspace, flow)))

@@ -3,6 +3,7 @@ parent: ../SPEC.md
 references:
   - README.md
   - WORK-DOMAINS.md
+  - PATCH-STUDIO.md
 ---
 
 # 工作台
@@ -13,7 +14,13 @@ references:
 
 ## 关键功能与验收
 
-### 独立准备与执行
+### 工作包与配置包目录
+
+#### 验收
+
+- 输入包名可创建独立目录；工作包自由管理文件，配置包分别维护提示词、技能与 MCP。读写无需 Flow、SOP 或执行环境。
+
+### Echo 工作区准备与执行
 
 #### 验收
 

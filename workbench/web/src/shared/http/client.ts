@@ -45,6 +45,13 @@ export function requestV2<T>(path: string, options: RequestInit = {}): Promise<T
   return json<T>('v2', path, options)
 }
 
+/** 目录中的文件保留原始字节，也允许空文件。 */
+export async function requestV2File(path: string, options: RequestInit = {}): Promise<Blob> {
+  const response = await request('v2', path, 'application/octet-stream', options)
+  if (response.headers.get('content-type')?.split(';')[0] !== 'application/octet-stream') throw new Error('服务未返回文件内容。')
+  return response.blob()
+}
+
 /**
  * 读取交付正文。只有 `text/plain` 且非空的响应才算成功：
  * 代理首页（`text/html`）、空正文和 `204` 都按读取失败报告，避免把非交付内容当成验收材料。

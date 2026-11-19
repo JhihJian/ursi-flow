@@ -113,7 +113,8 @@ test('只有集合 404 收起入口，空集合仍保留入口', async ({ page }
   const nav = page.getByRole('navigation', { name: '主导航' })
   await expect(nav.getByRole('link', { name: '外部来源' })).toHaveCount(0)
   await expect(nav.getByRole('link', { name: 'Flow 包' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: '工作包' })).toHaveAttribute('href', '/workspaces')
+  await expect(nav.getByRole('link', { name: '工作包' })).toHaveAttribute('href', '/work-patches')
+  await expect(nav.getByRole('link', { name: '配置包' })).toHaveAttribute('href', '/config-patches')
   await expect(nav.getByRole('link', { name: '派工模板' })).toHaveAttribute('href', '/templates')
 
   // 来源未启用时直接打开该模块仍能回到清单。

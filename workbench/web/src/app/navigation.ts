@@ -8,10 +8,12 @@ export interface NavGroup { title: string; items: NavItem[] }
 export const navigationGroups: NavGroup[] = [
   { title: '日常工作', items: [
     { path: '/items', title: '工作清单', icon: 'board' },
-    { path: '/workspaces', title: '工作包', icon: 'folder' },
+    { path: '/work-patches', title: '工作包', icon: 'folder' },
+    { path: '/workspaces', title: 'Echo 工作区', icon: 'doc' },
     { path: '/sources', title: '外部来源', icon: 'connector', capability: 'sources' },
   ] },
   { title: '工作定义', items: [
+    { path: '/config-patches', title: '配置包', icon: 'settings' },
     { path: '/sops', title: 'SOP', icon: 'form' },
     { path: '/templates', title: '派工模板', icon: 'doc' },
     { path: '/resources', title: '资源库', icon: 'layers' },
