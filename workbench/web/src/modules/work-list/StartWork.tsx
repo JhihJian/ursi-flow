@@ -38,25 +38,25 @@ export function StartWork() {
   }
 
   return <div className="page-stack break-words">
-    <PageHeader title="发起工作" description="选择已发布的工作包版本，按声明填写材料后创建一张待办理工作项"
+    <PageHeader title="发起工作" description="选择已发布的派工模板版本，按声明填写材料后创建一张待办理工作项"
       actions={<Button asChild><Link to="/items">返回工作清单</Link></Button>} />
     <ResourceState loading={catalog.loading && catalog.data.length === 0} error={catalog.error}
       empty={!catalog.loading && !catalog.error && dispatchable.length === 0 && !blocked}
-      title={catalog.error ? undefined : '暂无可用工作包'}
-      description={catalog.error ? undefined : '先发布一个启用中的工作包版本，再从这里发起工作。'}
+      title={catalog.error ? undefined : '暂无可用派工模板'}
+      description={catalog.error ? undefined : '先发布一个启用中的派工模板版本，再从这里发起工作。'}
       onRetry={catalog.reload}>
-      <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
+      <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
     </ResourceState>
     {blocked && <section className="panel space-y-3 p-4 sm:p-5" role="alert">
       <h2 className="font-semibold text-txt">无法从该版本发起工作</h2>
-      <p className="break-words text-sm text-txt2">工作包 {requested} {blocked}，不能用于新的派工。已发出的工作项仍可在清单里查看。</p>
-      <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
+      <p className="break-words text-sm text-txt2">派工模板 {requested} {blocked}，不能用于新的派工。已发出的工作项仍可在清单里查看。</p>
+      <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
     </section>}
     {dispatchable.length > 0 && <section className="panel space-y-4 p-4 sm:p-5">
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-        <label className="field"><span className="field-label">工作包</span>
-          <Select aria-label="工作包" value={selected?.id ?? ''} onChange={event => choose(event.target.value)}>
-            {!selected && <option value="">选择其他工作包</option>}
+        <label className="field"><span className="field-label">派工模板</span>
+          <Select aria-label="派工模板" value={selected?.id ?? ''} onChange={event => choose(event.target.value)}>
+            {!selected && <option value="">选择其他派工模板</option>}
             {dispatchable.map(item => <option key={item.id} value={item.id}>{item.id} · 最新 v{item.revision}</option>)}
           </Select>
         </label>
@@ -79,9 +79,9 @@ function VersionPicker({ packageId, requestedRevision, onRevision }: {
   const current = versions.find(item => item.revision === revision)
   if (revisions.error) return <ResourceState error={revisions.error} onRetry={revisions.reload} />
   if (revisions.loading) return <ResourceState loading />
-  if (!current || !revision) return <ResourceState empty title="该工作包没有可派工的版本"
-    description="工作包还没有发布修订，请到目录里发布后再发起。">
-    <Button asChild><Link to="/packages">进入工作包目录</Link></Button>
+  if (!current || !revision) return <ResourceState empty title="该派工模板没有可派工的版本"
+    description="派工模板还没有发布修订，请到目录里发布后再发起。">
+    <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
   </ResourceState>
   return <PackageForm key={`${packageId}:${revision}`} packageId={packageId} pkg={current} revision={revision}
     versions={versions.map(item => item.revision)} onRevision={onRevision} />

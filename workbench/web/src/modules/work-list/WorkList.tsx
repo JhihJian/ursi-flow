@@ -52,13 +52,13 @@ function ItemsTable({ items, status }: { items: ItemSummary[]; status: ItemStatu
   const query = status ? `?status=${encodeURIComponent(status)}` : ''
   return <div className="border-y border-line">
     <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] gap-4 border-b border-line px-4 py-2 text-xs text-txt3 sm:grid">
-      <span>工作包</span><span>单号</span><span>来源</span><span>经办人</span><span>状态</span>
+      <span>派工模板</span><span>单号</span><span>来源</span><span>经办人</span><span>状态</span>
     </div>
     <ul className="divide-y divide-line">
       {items.map(item => <li key={item.id}>
         <Link to={`${itemPath(item.id)}${query}`}
           className="grid gap-2 px-4 py-3 hover:bg-elevated sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] sm:items-center sm:gap-4">
-          <Cell label="工作包"><strong className="break-all font-medium">{item.package}</strong> <span className="text-txt3">v{item.revision}</span></Cell>
+          <Cell label="派工模板"><strong className="break-all font-medium">{item.package}</strong> <span className="text-txt3">v{item.revision}</span></Cell>
           <Cell label="单号"><span className="break-all font-mono text-xs text-txt2">{item.id}</span></Cell>
           <Cell label="来源"><span className="break-words text-sm text-txt2">{sourceLabel(item.source)}</span></Cell>
           <Cell label="经办人"><span className="text-sm text-txt2">{item.assignee || '未指定'}</span></Cell>

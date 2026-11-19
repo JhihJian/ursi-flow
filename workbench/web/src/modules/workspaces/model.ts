@@ -1,9 +1,9 @@
 import { requestV2, requestV2Text } from '@/shared/http/client'
 
 export interface WorkspaceRole { id: string; label: string }
-export interface WorkspaceSop {
-  id: string
-  revision: number
+/** 类型目录里的 SOP 推荐引用，只指向已发布版本。 */
+export interface WorkspaceSopRef { id: string; revision: number }
+export interface WorkspaceSop extends WorkspaceSopRef {
   executor?: string
   config?: { title?: string }
 }
@@ -11,7 +11,7 @@ export interface WorkspaceType {
   id: string
   name: string
   roles: WorkspaceRole[]
-  sop: WorkspaceSop
+  sop: WorkspaceSopRef
 }
 export interface WorkspaceMaterial { role: string; name: string; size: number }
 export type WorkspaceAttemptStatus = 'succeeded' | 'failed'
@@ -19,6 +19,8 @@ export interface WorkspaceAttempt {
   id: string
   status: WorkspaceAttemptStatus
   error?: string
+  /** 每次尝试固定保存当时使用的完整 SOP，重跑换版不改变旧尝试。 */
+  sop: WorkspaceSop
 }
 export interface WorkspaceDetail {
   id: string
@@ -26,7 +28,6 @@ export interface WorkspaceDetail {
   requirement: string
   frozen: boolean
   roles: WorkspaceRole[]
-  sop: WorkspaceSop
   materials: WorkspaceMaterial[]
   attempts: WorkspaceAttempt[]
 }
@@ -35,6 +36,9 @@ export const attemptStatus: Record<WorkspaceAttemptStatus, string> = {
   succeeded: '已执行',
   failed: '失败',
 }
+
+export const sopKey = (sop: WorkspaceSopRef) => `${sop.id}@${sop.revision}`
+export const sopTitle = (sop: WorkspaceSop) => sop.config?.title || sop.id
 
 const workspaceBase = (id: string) => `/workspaces/${encodeURIComponent(id)}`
 export const workspacePath = workspaceBase
@@ -46,12 +50,17 @@ const receiptPath = (id: string, attempt: string) =>
 export function listTypes(signal: AbortSignal) {
   return requestV2<WorkspaceType[]>('/workspace-types', { signal })
 }
+/** 返回全部已发布的 SOP 版本，执行前由经办人显式选择。 */
+export function listSops(signal: AbortSignal) {
+  return requestV2<WorkspaceSop[]>('/sops', { signal })
+}
 export function listWorkspaces(signal: AbortSignal) {
   return requestV2<WorkspaceDetail[]>('/workspaces', { signal })
 }
 export function readWorkspace(id: string, signal: AbortSignal) {
   return requestV2<WorkspaceDetail>(workspaceBase(id), { signal })
 }
+/** 创建不绑定 SOP，执行时才选择版本。 */
 export function createWorkspace(body: { typeId: string; requirement: string }) {
   return requestV2<WorkspaceDetail>('/workspaces', {
     method: 'POST',
@@ -71,10 +80,17 @@ export function uploadMaterial(id: string, role: string, name: string, file: Blo
     { method: 'PUT', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
   )
 }
-export function runAttempt(id: string) {
+/** 撤回某个角色的材料，服务端同时释放正文；首次执行前才允许，成功后该角色可重新上传。 */
+export function removeMaterial(id: string, role: string) {
+  return requestV2<WorkspaceDetail>(
+    `${workspaceBase(id)}/materials/${encodeURIComponent(role)}`,
+    { method: 'DELETE' },
+  )
+}
+export function runAttempt(id: string, sop: WorkspaceSopRef) {
   return requestV2<WorkspaceDetail>(`${workspaceBase(id)}/attempts`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify({ sop: { id: sop.id, revision: sop.revision } }),
   })
 }
 export function readReceipt(id: string, attempt: string, signal: AbortSignal) {

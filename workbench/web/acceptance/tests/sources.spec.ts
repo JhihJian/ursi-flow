@@ -2,7 +2,7 @@
  * 来源专项：另起一台配置 json-file 来源的真实 Server。
  * 证明来源列表派工进入同一工作清单，且页面只提供获准动作。
  *
- * 来源配置与工作包由管理员准备（真实 HTTP 接口，同一令牌），
+ * 来源配置与派工模板由管理员准备（真实 HTTP 接口，同一令牌），
  * 派工与办理在浏览器完成；没有 page.route 替身。
  */
 import { test, expect } from '@playwright/test'
@@ -19,7 +19,7 @@ test.describe('JSON 来源派工', () => {
     const runtime = readRuntime()
     const api = sourcesApi()
 
-    // 管理员准备：包有两个动作，来源配置只开放 inspect。
+    // 管理员准备：派工模板有两个动作，来源配置只开放 inspect。
     await api.publish('executors', { id: 'source-agent', kind: 'agent', environment: 'local' })
     await api.publish('packages', {
       id: PACKAGE, sop: 'SOURCE-SOP-核对来源材料', acceptance: 'SOURCE-ACCEPTANCE-核对条目材料',

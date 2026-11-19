@@ -7,7 +7,7 @@ import { Modal } from '@/shared/ui/modal'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Choice } from './Fields'
-import { deactivate, environmentHints, environmentName, history, kindNames, list, objectPath, readVersion, revisionPath, titles, type Collection, type Definition, type Ports, type Ref, type Target } from './catalog'
+import { deactivate, environmentHints, environmentName, history, kindNames, list, objectPath, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Definition, type Ports, type Ref, type Target } from './catalog'
 
 function VersionLink({ k, v }: { k: Collection; v: Ref }) {
   return <Link className="break-all font-medium text-accent-2 hover:underline" to={revisionPath(k, v)}>{v.id} v{v.revision}</Link>
@@ -17,7 +17,7 @@ export function Directory({ k }: { k: Collection }) {
   const result = useResource(signal => list(k, signal), [])
   const [filter, setFilter] = useState('')
   const items = result.data.filter(v => !filter || ('kind' in v && v.kind === filter))
-  return <section className="page-stack"><PageHeader title={k === 'resources' ? '资源库' : name} actions={<Button variant="primary" asChild><Link to={`/${k}/new`}>新建{name}</Link></Button>} />
+  return <section className="page-stack"><PageHeader title={k === 'resources' ? '资源库' : name} actions={<Button variant="primary" asChild><Link to={`${routePath(k)}/new`}>新建{name}</Link></Button>} />
     {k === 'resources' && <div className="max-w-xs"><Choice label="资源类型筛选" value={filter} change={setFilter} options={[["", "全部"], ["skill", "Skill"], ["prompt", "提示词"], ["mcp", "MCP 引用"]]} /></div>}
     {result.loading || result.error || !items.length ? <ResourceState loading={result.loading} error={result.error} empty title={result.error ? undefined : `暂无${name}`} onRetry={result.reload} /> :
       <ul className="divide-y divide-line border-y border-line">{items.map(v => <li key={v.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
@@ -58,10 +58,10 @@ function VersionBody({ v }: { v: Definition }) {
   if ('kind' in v) return <dl className="space-y-4"><Fact label="类型">{kindNames[v.kind]}</Fact><ExecutionTarget target={v} />
     <Fact label="资源依赖">{v.kind === 'flow' ? 'Flow 执行器当前不支持注入资源' : <Resources refs={v.resources} />}</Fact>
     <Ports label="输入声明" value={v.inputs} inherited="未声明" /><Ports label="输出声明" value={v.outputs} inherited="未声明" /></dl>
-  return <><dl className="space-y-4"><Fact label="目标">{show(v.goal)}</Fact><Fact label="SOP">{v.sop}</Fact>
+  return <><dl className="space-y-4"><Fact label="目标">{show(v.goal)}</Fact><Fact label={sopLabel}>{v.sop}</Fact>
     <Fact label="验收标准">{v.acceptance}</Fact><Fact label="必交文件">{v.deliverables?.length ? <ul>{v.deliverables.map(f => <li key={f}>{f}</li>)}</ul> : '未声明'}</Fact>
     <Ports label="输入声明" value={v.inputs} inherited="未声明" /><Ports label="输出声明" value={v.outputs} inherited="未声明" />
-    <Fact label="工作包资源"><Resources refs={v.resources} /></Fact></dl>
+    <Fact label="派工模板资源"><Resources refs={v.resources} /></Fact></dl>
     <section><h2 className="mb-2 font-semibold">动作绑定</h2>
       <p className="mb-2 text-sm text-txt3">每个动作绑定固定执行器版本，并展示该版本可追溯的资源。</p>
       {Object.entries(v.actions).map(([name, a]) => <div key={name} className="space-y-2 border-t border-line py-3">
@@ -81,7 +81,7 @@ export function History({ k, id }: { k: Collection; id: string }) {
   const { latest, versions } = result.data
   return <section className="page-stack"><PageHeader title="历史版本" /><p>{id} · 对象{latest.active ? '已启用' : '已停用'} · 最新 v{latest.revision}</p>
     <ol className="divide-y divide-line">{versions.slice().reverse().map(v => <li className="py-2" key={v.revision}><VersionLink k={k} v={v} /> {v.revision === latest.revision && '（最新）'}</li>)}</ol>
-    <Link className="text-accent-2" to={`/${k}`}>返回{titles[k]}目录</Link></section>
+    <Link className="text-accent-2" to={routePath(k)}>返回{titles[k]}目录</Link></section>
 }
 export function Detail({ k, id, revision }: { k: Collection; id: string; revision?: string }) {
   const result = useResource(signal => readVersion(k, id, revision, signal), null)
@@ -106,11 +106,11 @@ export function Detail({ k, id, revision }: { k: Collection; id: string; revisio
     <nav className="flex flex-wrap gap-2" aria-label="定义操作">
       {latest.active && k === 'packages' && <Button asChild variant="primary"><Link to={`/items/new?${new URLSearchParams({ package: id, revision: String(v.revision) })}`}>发起工作</Link></Button>}
       {latest.active && <Button asChild><Link to={`${path}/edit`}>编辑并发布新版</Link></Button>}
-      <Button asChild><Link to={`${objectPath(k, id)}/revisions`}>历史版本</Link></Button><Button asChild><Link to={`/${k}`}>返回目录</Link></Button>
+      <Button asChild><Link to={`${objectPath(k, id)}/revisions`}>历史版本</Link></Button><Button asChild><Link to={routePath(k)}>返回目录</Link></Button>
       {latest.active && <Button variant="danger" onClick={() => { setError(''); setConfirm(true) }}>停用{titles[k]}</Button>}
     </nav><VersionBody v={v} />
     <Modal open={confirm} title={`停用${titles[k]} ${id}？`} onClose={() => { if (!busy) setConfirm(false) }}>
-      <p>停用作用于整个 ID：用它的新派工和新引用会失败，也不再发布新版。已发布的历史版本、已有单据及其包快照不受影响，仍可查看。</p>
+      <p>停用作用于整个 ID：用它的新派工和新引用会失败，也不再发布新版。已发布的历史版本、已有单据及其派工快照不受影响，仍可查看。</p>
       {error && <p className="text-err" role="alert">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-2"><Button disabled={busy} onClick={() => setConfirm(false)}>取消</Button><Button loading={busy} variant="danger" onClick={disable}>确认停用</Button></div>
     </Modal></article>

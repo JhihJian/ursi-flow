@@ -5,7 +5,7 @@ import { errorMessage } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { PageHeader } from '@/shared/ui/page-header'
-import { boundExecutors, environmentHints, environmentNames, list, publish, readVersion, revisionPath, titles, type Collection, type Latest } from './catalog'
+import { boundExecutors, environmentHints, environmentNames, list, publish, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Latest } from './catalog'
 import { blankAction, initialDraft, publishBody, type ActionDraft, type Draft } from './draft'
 import { clearDraft, draftKey, readDraft, writeDraft } from './draft-store'
 import { Choice, Hint, PortsEditor, RefPicker, ResourceRefs, TextField } from './Fields'
@@ -78,11 +78,11 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
       {k === 'resources' && <>
         <Choice label="资源类型" value={d.resourceKind} change={v => change('resourceKind', v)} options={[["skill", "Skill"], ["prompt", "提示词"], ["mcp", "MCP 引用"]]} />
         {d.resourceKind === 'mcp' ? <>
-          <Hint>MCP 只登记服务与凭据的命名引用，连接参数和凭据由管理员管理；本页不提供注入设置，当前执行后端也不支持运行时注入，因此不能绑定到执行器或工作包。</Hint>
+          <Hint>MCP 只登记服务与凭据的命名引用，连接参数和凭据由管理员管理；本页不提供注入设置，当前执行后端也不支持运行时注入，因此不能绑定到执行器或派工模板。</Hint>
           <TextField label="服务引用" value={d.serverRef} change={v => change('serverRef', v)} required />
           <TextField label="凭据引用（可选）" value={d.credentialRef} change={v => change('credentialRef', v)} />
         </> : <TextField label="资源内容" value={d.text} change={v => change('text', v)} multiline required />}
-        <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被 Agent 或工作包引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
+        <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被 Agent 或派工模板引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
       </>}
       {k === 'executors' && <>
         <Choice label="执行器类型" value={d.executorKind} change={v => change('executorKind', v)} options={[["agent", "Agent"], ["flow", "Agent Flow"]]} />
@@ -99,11 +99,11 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
       </>}
       {k === 'packages' && <>
         <TextField label={d.structuredGoal ? '目标（结构化 JSON）' : '目标'} value={d.goal ?? ''} change={v => change('goal', v)} multiline={d.structuredGoal} />
-        <TextField label="SOP" value={d.sop} change={v => change('sop', v)} required multiline />
+        <TextField label={sopLabel} value={d.sop} change={v => change('sop', v)} required multiline />
         <TextField label="验收标准" value={d.acceptance} change={v => change('acceptance', v)} required multiline />
         <TextField label="必交文件（每行一个文件名）" value={d.deliverables ?? ''} change={v => change('deliverables', v)} multiline />
-        <ResourceRefs label="工作包资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
-        <Hint>工作包资源对该包所有动作生效，发布时与动作资源按固定版本合并。</Hint>
+        <ResourceRefs label="派工模板资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
+        <Hint>派工模板资源对该模板所有动作生效，发布时与动作资源按固定版本合并。</Hint>
       </>}
       {k !== 'resources' && <div className="grid gap-4 md:grid-cols-2">
         <PortsEditor label="输入" value={d.inputs} change={v => change('inputs', v)} />
@@ -117,7 +117,7 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
           <ResourceRefs label="动作资源" choices={resources} value={a.resources} change={value => action(i, { resources: value })} />
           <div className="grid gap-4 md:grid-cols-2"><PortsEditor label="动作输入" value={a.inputs} change={inputs => action(i, { inputs })} override />
             <PortsEditor label="动作输出" value={a.outputs} change={outputs => action(i, { outputs })} override /></div>
-          {review && <Hint>旧快照不含本动作原来的输入输出声明。下面默认继承工作包，如果原要求单独声明，请勾选后重填；资源也只保留能追溯到动作的部分。</Hint>}
+          {review && <Hint>旧快照不含本动作原来的输入输出声明。下面默认继承派工模板，如果原要求单独声明，请勾选后重填；资源也只保留能追溯到动作的部分。</Hint>}
           {d.actions.length > 1 && <Button onClick={() => change('actions', d.actions.filter((_, n) => n !== i))}>移除动作</Button>}
         </fieldset>)}<Button onClick={() => change('actions', [...d.actions, blankAction()])}>添加动作</Button>
       </section>}
@@ -129,6 +129,6 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
     </fieldset>
     {error && <p role="alert" className="text-err">{error}</p>}
     <div className="flex flex-wrap gap-2"><Button type="submit" variant="primary" loading={busy} disabled={review && !reviewed}>发布{revision ? '新版' : title}</Button>
-      <Button asChild><Link to={revision ? revisionPath(k, { id: initial.id, revision }) : `/${k}`}>取消</Link></Button></div>
+      <Button asChild><Link to={revision ? revisionPath(k, { id: initial.id, revision }) : routePath(k)}>取消</Link></Button></div>
   </form>
 }

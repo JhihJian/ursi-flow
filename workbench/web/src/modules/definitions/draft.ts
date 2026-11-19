@@ -62,8 +62,8 @@ export function publishBody(k: Collection, d: Draft) {
   if (k === 'executors') return d.executorKind === 'flow'
     ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision, ...io }
     : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed), ...io }
-  if (!id.trim()) throw new Error('请填写工作包 ID。')
-  if (!d.sop.trim() || !d.acceptance.trim()) throw new Error('请填写 SOP 和验收标准。')
+  if (!id.trim()) throw new Error('请填写派工模板 ID。')
+  if (!d.sop.trim() || !d.acceptance.trim()) throw new Error('请填写办理说明和验收标准。')
   if (!d.actions.length || d.actions.some(a => !a.name.trim())) throw new Error('至少需要一个具名动作。')
   if (new Set(d.actions.map(a => a.name.trim())).size !== d.actions.length) throw new Error('动作名称不能重复，否则会覆盖先前的输入。')
   return { id, sop: d.sop, acceptance: d.acceptance, goal: d.structuredGoal ? JSON.parse(d.goal ?? '') : d.goal,

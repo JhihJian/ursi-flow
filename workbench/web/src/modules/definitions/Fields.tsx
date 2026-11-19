@@ -2,7 +2,7 @@ import { cloneElement, useId, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
-import { history, kindNames, titles, type Latest, type Ref } from './catalog'
+import { history, kindNames, routePath, titles, type Latest, type Ref } from './catalog'
 import { blankRef, type FieldRow } from './draft'
 
 function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) {
@@ -32,7 +32,7 @@ export function PortsEditor({ label, value, change, override }: {
   const rows = value ?? []
   const update = (i: number, patch: Partial<FieldRow>) => change(rows.map((v, n) => n === i ? { ...v, ...patch } : v))
   return <fieldset className="min-w-0 space-y-2"><legend className="font-medium">{label}声明</legend>
-    {override && <label className="flex items-center gap-2"><input type="checkbox" checked={value !== undefined} onChange={e => change(e.target.checked ? [] : undefined)} />单独声明{label}（覆盖工作包）</label>}
+    {override && <label className="flex items-center gap-2"><input type="checkbox" checked={value !== undefined} onChange={e => change(e.target.checked ? [] : undefined)} />单独声明{label}（覆盖派工模板）</label>}
     {(!override || value) && <>{rows.map((p, i) => <div key={i} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
       <TextField label={`${label}字段名`} required value={p.name} change={name => update(i, { name })} />
       <Choice label={`${label}类型`} value={p.type} change={type => update(i, { type })} options={['string', 'number', 'integer', 'boolean', 'object', 'array'].map(t => [t, t])} />
@@ -58,7 +58,7 @@ export function RefPicker({ k, choices, value, change }: { k: RefKind; choices: 
       <option value="">选择{name}</option>
       {choices.filter(v => v.active || v.id === value.id).map(v => <option key={v.id} value={v.id} disabled={!v.active}>{v.id}{!v.active ? '（已停用）' : ''}</option>)}
     </select></Field>
-    {value.id ? <RevisionChoice key={value.id} k={k} value={value} change={change} /> : !choices.some(v => v.active) && <Link className="self-end text-accent-2" to={`/${k}/new`}>新建{name}</Link>}
+    {value.id ? <RevisionChoice key={value.id} k={k} value={value} change={change} /> : !choices.some(v => v.active) && <Link className="self-end text-accent-2" to={`${routePath(k)}/new`}>新建{name}</Link>}
   </div>
 }
 export function ResourceRefs({ label, choices, value, change }: { label: string; choices: Latest[]; value: Ref[]; change: (v: Ref[]) => void }) {

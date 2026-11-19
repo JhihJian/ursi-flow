@@ -40,12 +40,23 @@ fn sample(requirement: &str, materials: Value) -> Value {
         "id": "w1",
         "typeId": "finding-report",
         "requirement": requirement,
+        "ready": false,
         "frozen": false,
         "roles": [{"id":"finding","label":"Finding"},{"id":"source","label":"源码包"}],
-        "sop": {"id":"receipt","revision":1,"executor":"echo","config":{"title":"材料接收回执"}},
         "materials": materials,
         "attempts": [],
     })
+}
+
+fn default_sop() -> Value {
+    json!({"id":"receipt","revision":1,"executor":"echo","config":{"title":"材料接收回执"}})
+}
+
+fn reference(id: &str, revision: u64) -> workspace_sop::Reference {
+    workspace_sop::Reference {
+        id: id.into(),
+        revision,
+    }
 }
 
 fn material(role: &str, blob: Option<&str>, name: &str) -> Value {
@@ -71,6 +82,17 @@ fn insert(store: &Store, detail: Value) {
         .unwrap();
 }
 
+fn publish_sop(store: &Store, definition: Value) {
+    store
+        .update(|db| {
+            let revision = definition["revision"].as_u64().unwrap().to_string();
+            let id = definition["id"].as_str().unwrap().to_owned();
+            db["workspaceSops"][id][revision] = definition.clone();
+            Ok(())
+        })
+        .unwrap();
+}
+
 fn detail(store: &Store) -> Value {
     store.read(|db| workspace(db, "w1").cloned()).unwrap()
 }
@@ -91,7 +113,13 @@ fn last_attempt(detail: &Value) -> Value {
 }
 
 fn run_ok(temp: &Temp, store: &Store) -> Value {
-    store.update(|db| run(db, temp.0.as_path(), "w1")).unwrap()
+    store
+        .update(|db| run(db, temp.0.as_path(), "w1", Request::default()))
+        .unwrap()
+}
+
+fn run_with(temp: &Temp, store: &Store, sop: workspace_sop::Reference) -> Result<Value, Error> {
+    store.update(|db| run(db, temp.0.as_path(), "w1", Request { sop: Some(sop) }))
 }
 
 #[test]
@@ -123,7 +151,8 @@ fn receipt_hashes_actual_file_bytes_with_labeled_fnv1a64() {
     assert_eq!(receipt["attemptId"], attempt["id"]);
     assert_eq!(receipt["typeId"], "finding-report");
     assert_eq!(receipt["title"], "材料接收回执");
-    assert_eq!(receipt["sop"]["revision"], 1);
+    assert_eq!(receipt["sop"], default_sop());
+    assert_eq!(attempt["sop"], default_sop());
     assert_eq!(
         receipt["materials"][0],
         json!({"role":"finding","label":"Finding","name":"线索.md","size":5,
@@ -141,27 +170,98 @@ fn receipt_hashes_actual_file_bytes_with_labeled_fnv1a64() {
 }
 
 #[test]
-fn any_echo_sop_revision_runs_with_its_own_title() {
+fn explicit_sop_revision_runs_with_its_own_title_and_is_frozen_into_the_attempt() {
     let temp = Temp::new();
     let store = temp.store();
-    let mut doc = sample("核实", both());
-    doc["sop"] =
-        json!({"id":"receipt","revision":2,"executor":"echo","config":{"title":"交接记录"}});
-    insert(&store, doc);
+    insert(&store, sample("核实", both()));
+    publish_sop(
+        &store,
+        json!({"id":"receipt","revision":2,"executor":"echo","config":{"title":"交接记录"}}),
+    );
     temp.write("workspace-files/w1/finding", b"hello");
     temp.write("workspace-files/w1/source", b"world");
-    let done = run_ok(&temp, &store);
-    let receipts = receipts(&store);
-    let receipt = &receipts[last_attempt(&done)["id"].as_str().unwrap()];
-    assert_eq!(receipt["title"], "交接记录");
-    assert!(receipt["text"].as_str().unwrap().contains("# 交接记录"));
 
-    let mut doc = sample("核实", both());
-    doc["sop"] = json!({"id":"receipt","revision":1,"executor":"shell","config":{"title":"外部"}});
-    insert(&store, doc);
-    let result = store.update(|db| run(db, temp.0.as_path(), "w1"));
+    let done = run_with(&temp, &store, reference("receipt", 2)).unwrap();
+    let attempt = last_attempt(&done);
+    assert_eq!(
+        attempt["sop"],
+        json!({"id":"receipt","revision":2,"executor":"echo","config":{"title":"交接记录"}})
+    );
+    let receipts = receipts(&store);
+    let receipt = &receipts[attempt["id"].as_str().unwrap()];
+    assert_eq!(receipt["title"], "交接记录");
+    assert_eq!(receipt["sop"], attempt["sop"]);
+    assert!(receipt["text"].as_str().unwrap().contains("# 交接记录"));
+}
+
+#[test]
+fn published_revision_with_another_executor_is_rejected_without_freezing() {
+    let temp = Temp::new();
+    let store = temp.store();
+    insert(&store, sample("核实", both()));
+    publish_sop(
+        &store,
+        json!({"id":"receipt","revision":2,"executor":"shell","config":{"title":"外部"}}),
+    );
+    let result = run_with(&temp, &store, reference("receipt", 2));
     assert!(matches!(result, Err(Error::Internal(_))));
     assert_eq!(detail(&store)["frozen"], false);
+    assert_eq!(detail(&store)["attempts"], json!([]));
+}
+
+#[test]
+fn switching_versions_keeps_earlier_attempts_and_receipts_unchanged() {
+    let temp = Temp::new();
+    let store = temp.store();
+    insert(&store, sample("核实", both()));
+    publish_sop(
+        &store,
+        json!({"id":"receipt","revision":2,"executor":"echo","config":{"title":"交接记录"}}),
+    );
+    temp.write("workspace-files/w1/finding", b"hello");
+    temp.write("workspace-files/w1/source", b"world");
+
+    let first = run_ok(&temp, &store);
+    let first_id = last_attempt(&first)["id"].as_str().unwrap().to_owned();
+    let second = run_with(&temp, &store, reference("receipt", 2)).unwrap();
+    let second_id = last_attempt(&second)["id"].as_str().unwrap().to_owned();
+    let third = run_ok(&temp, &store);
+    let third_id = last_attempt(&third)["id"].as_str().unwrap().to_owned();
+
+    assert_eq!(third["attempts"].as_array().unwrap().len(), 3);
+    let revisions = third["attempts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["sop"]["revision"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(revisions, vec![1, 2, 1]);
+
+    let receipts = receipts(&store);
+    assert_eq!(receipts.as_object().unwrap().len(), 3);
+    assert_eq!(receipts[&first_id]["sop"]["revision"], 1);
+    assert_eq!(receipts[&first_id]["title"], "材料接收回执");
+    assert_eq!(receipts[&second_id]["sop"]["revision"], 2);
+    assert_eq!(receipts[&second_id]["title"], "交接记录");
+    assert_eq!(receipts[&third_id]["sop"]["revision"], 1);
+}
+
+#[test]
+fn unknown_sop_version_is_rejected_without_freezing() {
+    let temp = Temp::new();
+    let store = temp.store();
+    insert(&store, sample("核实", both()));
+    temp.write("workspace-files/w1/finding", b"hello");
+    temp.write("workspace-files/w1/source", b"world");
+
+    for requested in [reference("receipt", 9), reference("missing", 1)] {
+        let result = run_with(&temp, &store, requested);
+        assert!(matches!(result, Err(Error::NotFound(_))));
+    }
+    let detail = detail(&store);
+    assert_eq!(detail["frozen"], false);
+    assert_eq!(detail["attempts"], json!([]));
+    assert_eq!(receipts(&store), Value::Null);
 }
 
 #[test]
@@ -206,7 +306,7 @@ fn missing_role_material_rejects_before_freezing() {
     );
     temp.write("workspace-files/w1/finding", b"hello");
 
-    let result = store.update(|db| run(db, temp.0.as_path(), "w1"));
+    let result = store.update(|db| run(db, temp.0.as_path(), "w1", Request::default()));
     assert!(matches!(&result, Err(Error::Invalid(m)) if m.contains("源码包")));
     let detail = detail(&store);
     assert_eq!(detail["frozen"], false);
@@ -220,7 +320,7 @@ fn blank_requirement_rejects_before_freezing() {
     let store = temp.store();
     insert(&store, sample("   \n", both()).clone());
 
-    let result = store.update(|db| run(db, temp.0.as_path(), "w1"));
+    let result = store.update(|db| run(db, temp.0.as_path(), "w1", Request::default()));
     assert!(matches!(&result, Err(Error::Invalid(m)) if m.contains("需求")));
     let detail = detail(&store);
     assert_eq!(detail["requirement"], "   \n");
@@ -238,6 +338,7 @@ fn unreadable_material_is_recorded_as_failed_attempt_without_paths() {
     assert_eq!(detail["frozen"], true);
     let attempt = last_attempt(&detail);
     assert_eq!(attempt["status"], "failed");
+    assert_eq!(attempt["sop"], default_sop());
     let error = attempt["error"].as_str().unwrap();
     assert!(!error.contains(temp.0.to_str().unwrap()));
     assert_eq!(receipts(&store), Value::Null);
@@ -284,7 +385,7 @@ fn unsafe_blob_rejects_instead_of_escaping_the_files_directory() {
             ]),
         ),
     );
-    let result = store.update(|db| run(db, temp.0.as_path(), "w1"));
+    let result = store.update(|db| run(db, temp.0.as_path(), "w1", Request::default()));
     assert!(matches!(result, Err(Error::Internal(_))));
     assert_eq!(detail(&store)["frozen"], false);
 }
@@ -343,23 +444,81 @@ fn receipt_lookup_requires_the_owning_workspace_and_a_successful_attempt() {
         .unwrap();
 }
 
-async fn serve(router: Router, dir: &Path) -> PathBuf {
+async fn serve(router: Router, dir: &Path) -> (PathBuf, tokio::task::JoinHandle<()>) {
     let socket = dir.join(format!("api-{}", Uuid::new_v4()));
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
-    socket
+    (socket, task)
 }
 
-async fn request(socket: &Path, path: &str) -> (String, String) {
+/// 停掉本轮测试的服务器，避免工作存储句柄随临时目录一起被删除后占用 inode。
+async fn stop(task: tokio::task::JoinHandle<()>) {
+    task.abort();
+    let _ = task.await;
+}
+
+async fn request(socket: &Path, method: &str, path: &str, body: &str) -> (String, String) {
     let mut conn = tokio::net::UnixStream::connect(socket).await.unwrap();
-    let request = format!("GET {path} HTTP/1.0\r\n\r\n");
+    let request = format!(
+        "{method} {path} HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
     conn.write_all(request.as_bytes()).await.unwrap();
     let mut reply = String::new();
     conn.read_to_string(&mut reply).await.unwrap();
     let (head, body) = reply.split_once("\r\n\r\n").unwrap();
     (head.to_ascii_lowercase(), body.to_owned())
+}
+
+#[tokio::test]
+async fn attempts_endpoint_selects_a_version_per_run_and_rejects_unknown_ones() {
+    let temp = Temp::new();
+    let store = temp.store();
+    insert(&store, sample("核实", both()));
+    publish_sop(
+        &store,
+        json!({"id":"receipt","revision":2,"executor":"echo","config":{"title":"交接记录"}}),
+    );
+    temp.write("workspace-files/w1/finding", b"hello");
+    temp.write("workspace-files/w1/source", b"world");
+    let (socket, server) = serve(routes(store), temp.0.as_path()).await;
+
+    let (head, body) = request(&socket, "POST", "/v2/workspaces/w1/attempts", "{}").await;
+    assert!(head.contains("200 ok"), "{head}");
+    let defaulted: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(last_attempt(&defaulted)["sop"], default_sop());
+
+    let (head, body) = request(
+        &socket,
+        "POST",
+        "/v2/workspaces/w1/attempts",
+        "{\"sop\":{\"id\":\"receipt\",\"revision\":2}}",
+    )
+    .await;
+    assert!(head.contains("200 ok"), "{head}");
+    let switched: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(last_attempt(&switched)["sop"]["revision"], 2);
+    assert_eq!(switched["attempts"].as_array().unwrap().len(), 2);
+
+    let (head, _) = request(
+        &socket,
+        "POST",
+        "/v2/workspaces/w1/attempts",
+        "{\"sop\":{\"id\":\"receipt\",\"revision\":9}}",
+    )
+    .await;
+    assert!(head.contains("404"), "{head}");
+    let (head, _) = request(
+        &socket,
+        "POST",
+        "/v2/workspaces/w1/attempts",
+        "{\"sop\":{\"id\":\"receipt\",\"revision\":9,\"extra\":1}}",
+    )
+    .await;
+    assert!(head.contains("422"), "{head}");
+    stop(server).await;
 }
 
 #[tokio::test]
@@ -374,9 +533,15 @@ async fn receipt_is_plain_text_and_downloadable_as_attachment() {
         .as_str()
         .unwrap()
         .to_owned();
-    let socket = serve(routes(store), temp.0.as_path()).await;
+    let (socket, server) = serve(routes(store), temp.0.as_path()).await;
 
-    let (head, body) = request(&socket, &format!("/v2/workspaces/w1/attempts/{id}/receipt")).await;
+    let (head, body) = request(
+        &socket,
+        "GET",
+        &format!("/v2/workspaces/w1/attempts/{id}/receipt"),
+        "",
+    )
+    .await;
     assert!(head.contains("200 ok"), "{head}");
     assert!(head.contains("content-type: text/plain; charset=utf-8"));
     assert!(!head.contains("content-disposition"));
@@ -384,13 +549,22 @@ async fn receipt_is_plain_text_and_downloadable_as_attachment() {
 
     let (head, body) = request(
         &socket,
+        "GET",
         &format!("/v2/workspaces/w1/attempts/{id}/receipt?download=true"),
+        "",
     )
     .await;
     assert!(head.contains("200 ok"), "{head}");
     assert!(head.contains("content-disposition: attachment; filename=\"receipt.md\""));
     assert!(body.contains("FNV-1a64"));
 
-    let (head, _) = request(&socket, "/v2/workspaces/w1/attempts/missing/receipt").await;
+    let (head, _) = request(
+        &socket,
+        "GET",
+        "/v2/workspaces/w1/attempts/missing/receipt",
+        "",
+    )
+    .await;
     assert!(head.contains("404"), "{head}");
+    stop(server).await;
 }

@@ -7,15 +7,17 @@
 
 桌面（Chromium）与窄屏（Pixel 7）各跑一遍同一业务链路：
 
-1. 从旧 `/items` 工作清单进入 `/workspaces`。
-2. 新建两张需求不同的工作单，上传**同名不同内容**的材料（`Finding` 与 `源码包`）。
-3. 冻结前修改需求；执行后页面与服务端都禁止再改需求和材料。
-4. 预览回执与页面下载的 `receipt.md` 逐字节相同；服务端 `?download=true` 返回同一正文和附件头。
-5. 甲单重跑，两次尝试都成功，第二次回执可读。
-6. 两张单的同名材料摘要不同，回执正文不串单。
-7. 同目录重启真实 Server 后，工作单、材料、尝试和同一尝试的回执仍可查。
+1. 从旧 `/packages/new` 入口进入新建工作包，真实组件地址是 `/workspaces/new`；表单只有类型和需求，没有 SOP 输入或选择。
+2. 新建工作包、修订需求并上传**同名不同内容**的材料（`Finding` 与 `源码包`）。服务端详情没有顶层 `sop`，`ready` 与 `frozen` 分别表示材料齐备和已执行冻结。
+3. 第一次执行使用内置默认 `receipt@1`，回执标题为「材料接收回执」。
+4. 在 `/sops/new` 用真实表单独立发布同名 SOP 新修订，并指定回执标题；发布前后工作包本身不变。
+5. 回到同一包的结果页选择新修订再执行；新尝试保存新 `sop`，回执标题随之改变，旧尝试的 `sop` 与旧回执逐字节不变。
+6. 预览回执与页面下载的 `receipt.md` 逐字节相同；服务端 `?download=true` 返回同一正文和附件头。
+7. 乙单上传同名材料，两张单的材料摘要不同，回执正文不串单。
+8. 同目录重启真实 Server 后，工作包、材料、各次尝试的 SOP 绑定、已发布 SOP 和旧回执仍可查。
+9. 窄屏下新建、准备、结果与 SOP 页面都不出现横向溢出。
 
-辅助 HTTP 校验只用来读取服务端事实（类型、详情、回执正文和附件头、材料落盘路径），主路径全部由浏览器完成。
+辅助 HTTP 校验只用来读取服务端事实（类型、详情、SOP 修订、回执正文和附件头、材料落盘路径），主路径全部由浏览器完成。
 
 ## 前置条件
 
@@ -72,7 +74,7 @@ URSI_ECHO_SKIP_BUILD=1 npx playwright test --config echo-acceptance/playwright.c
 
 ## 证据
 
-- `echo-acceptance/evidence/workspace-desktop.json`、`workspace-mobile.json`：工作单、尝试、材料大小、回执摘要、下载是否等于预览、重启后是否仍可查、页面 JS 错误。
+- `echo-acceptance/evidence/workspace-desktop.json`、`workspace-mobile.json`：工作包、`ready`/`frozen`、材料大小、各次尝试的 SOP 版本、回执标题与摘要、旧回执是否不变、下载是否等于预览、发布 SOP 是否触碰工作包、重启后是否仍可查、页面 JS 错误。
 - `echo-acceptance/evidence/playwright-report.json`：Playwright 报告。
 - `.run/artifacts/`：失败时的截图、追踪和视频。
 

@@ -3,21 +3,29 @@ import type { Runtime } from './runtime'
 
 export interface Role { id: string; label: string }
 export interface Material { role: string; name: string; size: number }
-export interface Attempt { id: string; status: 'succeeded' | 'failed'; error?: string }
-export interface Sop { id: string; revision: number; executor: string; config: { title: string } }
+export interface SopRef { id: string; revision: number }
+export interface Sop extends SopRef { executor: string; config: { title: string } }
+export interface Attempt {
+  id: string
+  status: 'succeeded' | 'failed'
+  error?: string
+  /** 每次尝试在服务端固定保存当时采用的完整 SOP 版本。 */
+  sop: Sop
+}
 export interface WorkspaceType {
   id: string
   name: string
   roles: Role[]
-  sop: { id: string; revision: number }
+  /** 类型只推荐默认执行版本，草稿本身不绑定 SOP。 */
+  sop: SopRef
 }
 export interface WorkspaceDetail {
   id: string
   typeId: string
   requirement: string
+  ready: boolean
   frozen: boolean
   roles: Role[]
-  sop: Sop
   materials: Material[]
   attempts: Attempt[]
 }
@@ -54,8 +62,34 @@ export class WorkApi {
     return this.json<WorkspaceType[]>('/api/v2/workspace-types')
   }
 
-  create(body: { typeId: string; requirement: string; sop?: { id: string; revision: number } }) {
+  sops() {
+    return this.json<Sop[]>('/api/v2/sops')
+  }
+
+  sop(id: string, revision: number) {
+    return this.json<Sop>(`/api/v2/sops/${encodeURIComponent(id)}/revisions/${revision}`)
+  }
+
+  publishSop(body: { id: string; executor: 'echo'; config: { title: string } }) {
+    return this.json<Sop>('/api/v2/sops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  /** 创建请求只含类型和需求；服务端拒绝包级 SOP 字段。 */
+  create(body: { typeId: string; requirement: string }) {
     return this.json<WorkspaceDetail>('/api/v2/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  /** 用于核对非法创建被拒，不把响应解析成工作包。 */
+  attemptCreate(body: Record<string, unknown>) {
+    return this.request('/api/v2/workspaces', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -97,11 +131,11 @@ export class WorkApi {
     return response.json() as Promise<WorkspaceDetail>
   }
 
-  run(id: string) {
+  run(id: string, sop?: SopRef) {
     return this.json<WorkspaceDetail>(`/api/v2/workspaces/${encodeURIComponent(id)}/attempts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify(sop ? { sop } : {}),
     })
   }
 

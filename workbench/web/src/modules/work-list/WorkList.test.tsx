@@ -33,7 +33,7 @@ function mount(handler: (path: string, options: RequestInit) => unknown, url = '
       <Route path="/items" element={<WorkList />} />
       <Route path="/items/new" element={<p>发起工作页</p>} />
       <Route path="/items/:id" element={<Detail />} />
-      <Route path="/packages" element={<p>工作包目录页</p>} />
+      <Route path="/templates" element={<p>派工模板目录页</p>} />
     </Routes>
   </MemoryRouter>)
   return fetchMock
@@ -115,7 +115,7 @@ it('筛选后的空态按状态命名', async () => {
 it('桌面表头与移动逐项标签都覆盖五个字段', async () => {
   mount(() => [item({ assignee: null, source: { type: 'connector', provider: '工单来源', itemId: '101', action: '分析' } })])
   const row = await screen.findByRole('link', { name: /triage/ })
-  for (const label of ['工作包', '单号', '来源', '经办人', '状态']) {
+  for (const label of ['派工模板', '单号', '来源', '经办人', '状态']) {
     expect(within(row).getByText(label)).toBeInTheDocument()
   }
   expect(row).toHaveTextContent('工单来源 · 101 · 分析')

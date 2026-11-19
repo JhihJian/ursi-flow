@@ -24,7 +24,7 @@ export function Handling({ item, busy, visible, start, execute }: {
         {source.itemId && <li>条目：{source.itemId}</li>}
         {source.action && <li>获准动作：{source.action}</li>}
       </ul>}</div></section>
-    <section><h2 className="font-semibold">开单时的 SOP</h2><p className="whitespace-pre-wrap">{snap.sop}</p></section>
+    <section><h2 className="font-semibold">开单时的办理说明</h2><p className="whitespace-pre-wrap">{snap.sop}</p></section>
     <section><h2 className="font-semibold">交付要求</h2><p>{snap.deliverables?.join('、') || '至少一个文本文件'}</p><p className="whitespace-pre-wrap">{snap.acceptance}</p></section>
     <section><h2 className="font-semibold">固定动作与执行器</h2>{bindings.length === 0 ? <p>本单来源未获准任何动作。</p> : <ul>{bindings.map(([name, { executor, resources }]) => <li key={name}>{name} → {executorLabel(executor)}{resources.map(r => ` · ${r.id} v${r.revision}`).join('')}</li>)}</ul>}</section>
     {item.status === 'pending' && <form className="flex max-w-xl flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); if (assignee.trim()) start(assignee.trim()) }}>

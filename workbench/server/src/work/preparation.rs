@@ -35,7 +35,9 @@ pub(super) fn routes(store: Store) -> Router {
         .route("/v2/workspaces/{id}", get(detail).patch(edit))
         .route(
             "/v2/workspaces/{id}/materials/{role}",
-            put(upload).layer(DefaultBodyLimit::max(MATERIAL_LIMIT as usize + 1)),
+            put(upload)
+                .delete(withdraw)
+                .layer(DefaultBodyLimit::max(MATERIAL_LIMIT as usize + 1)),
         )
         .with_state(store)
 }
@@ -116,6 +118,85 @@ async fn upload(
         let _ = fs::remove_file(&staged);
     }
     result.map(Json)
+}
+
+/// 撤回材料：首次执行前可以把某个角色空出来重新上传。冻结或已有尝试时拒绝。
+async fn withdraw(State(store): State<Store>, Path((id, role)): Path<(String, String)>) -> Reply {
+    if !model::plain_name(&role) {
+        return Err(Error::Invalid("材料角色无效".into()));
+    }
+    let (doc, dir) = store.update(|db| {
+        let doc = model::workspace_mut(db, &id)?;
+        withdrawable(doc, &role)?;
+        let workspace = Uuid::parse_str(
+            doc["id"]
+                .as_str()
+                .ok_or_else(|| Error::Internal("无效的工作区记录：标识".into()))?,
+        )
+        .map_err(|_| Error::Internal("无效的工作区记录：标识".into()))?;
+        let materials = doc["materials"]
+            .as_array_mut()
+            .ok_or_else(|| Error::Internal("无效的工作区记录：材料记录".into()))?;
+        let index = materials
+            .iter()
+            .position(|m| m["role"] == role)
+            .ok_or_else(|| Error::NotFound(format!("工作区 {id} 没有材料角色 {role}")))?;
+        materials.remove(index);
+        doc["ready"] = model::readiness(doc).into();
+        let dir = store
+            .dir()
+            .join("workspace-files")
+            .join(workspace.to_string());
+        Ok((doc.clone(), dir))
+    })?;
+    // 元数据先落盘；再在一次不写库的更新里（持有同一把锁）确认没有新引用后删旧文件。
+    store.update(|db| {
+        discard(db, &id, &role, &dir);
+        Ok(())
+    })?;
+    Ok(Json(doc))
+}
+
+/// 撤回前的业务检查：冻结或有执行尝试的工作区不再接受材料变化。
+fn withdrawable(doc: &Value, role: &str) -> Result<(), Error> {
+    match doc["frozen"].as_bool() {
+        Some(false) => {}
+        Some(true) => return Err(Error::Conflict("工作区已冻结，不能再撤回材料".into())),
+        None => return Err(Error::Internal("无效的工作区记录：冻结标记".into())),
+    }
+    let attempts = doc["attempts"]
+        .as_array()
+        .ok_or_else(|| Error::Internal("无效的工作区记录：执行记录".into()))?;
+    if !attempts.is_empty() {
+        return Err(Error::Conflict("工作区已执行，不能再撤回材料".into()));
+    }
+    let roles = doc["roles"]
+        .as_array()
+        .ok_or_else(|| Error::Internal("无效的工作区记录：材料角色定义".into()))?;
+    if !roles.iter().any(|r| r["id"] == role) {
+        return Err(Error::Invalid(format!("未知材料角色：{role}")));
+    }
+    Ok(())
+}
+
+fn has_material(doc: &Value, role: &str) -> bool {
+    doc["materials"]
+        .as_array()
+        .is_some_and(|materials| materials.iter().any(|m| m["role"] == role))
+}
+
+/// 撤回提交后清理旧文件。当前记录仍引用该角色时说明并发重传已经落盘，保留新文件。
+fn discard(db: &Value, id: &str, role: &str, dir: &FsPath) {
+    if model::workspace(db, id).is_ok_and(|doc| has_material(doc, role)) {
+        return;
+    }
+    let cleanup = fs::remove_file(dir.join(role)).and_then(|()| File::open(dir)?.sync_all());
+    match cleanup {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            eprintln!("材料撤回：元数据已撤回，但旧文件清理失败：{e}");
+        }
+        _ => {}
+    }
 }
 
 fn private_dir(dir: &FsPath) -> io::Result<()> {

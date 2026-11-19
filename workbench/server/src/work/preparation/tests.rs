@@ -36,21 +36,19 @@ fn edit(requirement: &str) -> model::Edit {
 }
 
 #[test]
-fn create_pins_type_roles_and_type_sop() {
+fn create_pins_type_roles_and_leaves_sop_to_execution() {
     let mut db = json!({});
     let workspace = model::create(&mut db, default_draft("分析线索 42")).unwrap();
     let id = workspace["id"].as_str().unwrap();
     assert_eq!(workspace["typeId"], "finding-report");
     assert_eq!(workspace["requirement"], "分析线索 42");
+    assert_eq!(workspace["ready"], false);
     assert_eq!(workspace["frozen"], false);
     assert_eq!(
         workspace["roles"],
         json!([{"id":"finding","label":"Finding"},{"id":"source","label":"源码包"}])
     );
-    assert_eq!(
-        workspace["sop"],
-        json!({"id":"receipt","revision":1,"executor":"echo","config":{"title":"材料接收回执"}})
-    );
+    assert!(workspace.get("sop").is_none());
     assert_eq!(workspace["materials"], json!([]));
     assert_eq!(workspace["attempts"], json!([]));
     assert_eq!(db["workspaces"][id], workspace);
@@ -58,7 +56,7 @@ fn create_pins_type_roles_and_type_sop() {
 }
 
 #[test]
-fn create_rejects_blank_requirement_and_unknown_definitions_without_writing() {
+fn create_rejects_blank_requirements_sop_and_unknown_types_without_writing() {
     let mut db = json!({});
     assert!(matches!(
         model::create(&mut db, default_draft("  \n ")),
@@ -68,26 +66,46 @@ fn create_rejects_blank_requirement_and_unknown_definitions_without_writing() {
         model::create(&mut db, draft(json!({"typeId":"other","requirement":"x"}))),
         Err(Error::NotFound(_))
     ));
-    assert!(matches!(
-        model::create(
-            &mut db,
-            draft(json!({"typeId":"finding-report","requirement":"x",
-                "sop":{"id":"receipt","revision":9}}))
-        ),
-        Err(Error::NotFound(_))
-    ));
+    assert!(
+        serde_json::from_value::<model::Draft>(json!({"typeId":"finding-report","requirement":"x",
+            "sop":{"id":"receipt","revision":1}}))
+        .is_err()
+    );
     assert_eq!(db, json!({}));
 }
 
 #[test]
-fn create_accepts_an_explicit_sop_revision() {
+fn readiness_requires_a_requirement_and_every_material_role() {
     let mut db = json!({});
-    let workspace = model::create(
-        &mut db,
-        draft(json!({"typeId":"finding-report","requirement":"x","sop":{"id":"receipt","revision":1}})),
+    let workspace = model::create(&mut db, default_draft("核实线索")).unwrap();
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    assert_eq!(workspace["ready"], false);
+
+    let doc = model::add_material(
+        model::workspace_mut(&mut db, &id).unwrap(),
+        "finding",
+        "线索.md",
+        1,
     )
     .unwrap();
-    assert_eq!(workspace["sop"]["revision"], 1);
+    assert_eq!(doc["ready"], false);
+    let doc = model::add_material(
+        model::workspace_mut(&mut db, &id).unwrap(),
+        "source",
+        "src.zip",
+        1,
+    )
+    .unwrap();
+    assert_eq!(doc["ready"], true);
+    assert!(model::readiness(&doc));
+
+    let doc = model::workspace_mut(&mut db, &id).unwrap();
+    let doc = model::edit(doc, edit("补齐来源")).unwrap();
+    assert_eq!(doc["ready"], true);
+
+    // 就绪只是准备结束的标志，执行前仍可继续修改。
+    assert_eq!(doc["frozen"], false);
+    assert_eq!(doc["attempts"], json!([]));
 }
 
 #[test]
@@ -243,6 +261,18 @@ async fn draft_lifecycle_is_served_over_http() {
     let api = Api::new(&temp, temp.store());
     let workspace = api.create("分析线索 42").await;
     let id = workspace["id"].as_str().unwrap().to_owned();
+    assert_eq!(workspace["ready"], false);
+    assert!(workspace.get("sop").is_none());
+
+    let (status, _) = api
+        .json(
+            "POST",
+            "/workspaces",
+            json!({"typeId":"finding-report","requirement":"x",
+                "sop":{"id":"receipt","revision":1}}),
+        )
+        .await;
+    assert_eq!(status, 422);
 
     let (status, body) = api
         .json("GET", &format!("/workspaces/{id}"), json!(null))
@@ -308,6 +338,7 @@ async fn material_upload_keeps_metadata_and_file_in_step() {
         workspace["materials"],
         json!([{"role":"source","name":"来源.zip","size":payload.len()}])
     );
+    assert_eq!(workspace["ready"], false);
 
     let dir = temp.0.join("workspace-files").join(&id);
     let stored = dir.join("source");
@@ -409,4 +440,174 @@ async fn frozen_workspace_refuses_edits_and_uploads() {
     assert_eq!(detail["materials"], json!([]));
     assert_eq!(detail["frozen"], true);
     api.stop().await;
+}
+
+#[tokio::test]
+async fn withdraw_frees_one_role_and_keeps_other_files() {
+    let temp = Temp::new();
+    let store = temp.store();
+    let api = Api::new(&temp, store.clone());
+    let workspace = api.create("复核 42").await;
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    let other = api.create("另一单").await;
+    let other_id = other["id"].as_str().unwrap().to_owned();
+
+    for (target, role, name, payload) in [
+        (&id, "finding", "finding.zip", b"finding body".as_slice()),
+        (&id, "source", "source.zip", b"source body".as_slice()),
+        (
+            &other_id,
+            "finding",
+            "finding.zip",
+            b"other body".as_slice(),
+        ),
+    ] {
+        let path = format!("/workspaces/{target}/materials/{role}?name={name}");
+        let (status, _) = api
+            .call("PUT", &path, "application/octet-stream", payload)
+            .await;
+        assert_eq!(status, 200, "{path}");
+    }
+
+    let dir = temp.0.join("workspace-files").join(&id);
+    let (status, body) = api
+        .call(
+            "DELETE",
+            &format!("/workspaces/{id}/materials/finding"),
+            "application/octet-stream",
+            b"",
+        )
+        .await;
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    let withdrawn: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        withdrawn["materials"],
+        json!([{"role":"source","name":"source.zip","size":11}])
+    );
+    assert_eq!(withdrawn["ready"], false);
+    assert!(!dir.join("finding").exists());
+    assert_eq!(fs::read(dir.join("source")).unwrap(), b"source body");
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+    assert_eq!(
+        fs::read(
+            temp.0
+                .join("workspace-files")
+                .join(&other_id)
+                .join("finding")
+        )
+        .unwrap(),
+        b"other body"
+    );
+
+    // 撤回后可再次上传同一角色，按新文件名和新内容收存。
+    let path = format!("/workspaces/{id}/materials/finding?name=fixed.zip");
+    let (status, body) = api
+        .call("PUT", &path, "application/octet-stream", b"fixed")
+        .await;
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    let uploaded: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        uploaded["materials"],
+        json!([{"role":"source","name":"source.zip","size":11},
+            {"role":"finding","name":"fixed.zip","size":5}])
+    );
+    assert_eq!(uploaded["ready"], true);
+    assert_eq!(fs::read(dir.join("finding")).unwrap(), b"fixed");
+
+    // 撤回结果与重新上传结果都要落到磁盘。
+    api.stop().await;
+    drop(store);
+    let reopened = temp.store();
+    let detail = reopened
+        .read(|db| model::workspace(db, &id).cloned())
+        .unwrap();
+    assert_eq!(detail, uploaded);
+}
+
+#[tokio::test]
+async fn withdraw_is_refused_after_freeze_or_any_attempt() {
+    let temp = Temp::new();
+    let store = temp.store();
+    let api = Api::new(&temp, store.clone());
+    let frozen = api.create("已冻结").await;
+    let frozen_id = frozen["id"].as_str().unwrap().to_owned();
+    let attempted = api.create("已执行").await;
+    let attempted_id = attempted["id"].as_str().unwrap().to_owned();
+
+    for (id, role) in [(&frozen_id, "finding"), (&attempted_id, "source")] {
+        let path = format!("/workspaces/{id}/materials/{role}?name=x.md");
+        let (status, _) = api
+            .call("PUT", &path, "application/octet-stream", b"kept")
+            .await;
+        assert_eq!(status, 200);
+    }
+    store
+        .update(|db| {
+            model::workspace_mut(db, &frozen_id).unwrap()["frozen"] = true.into();
+            model::workspace_mut(db, &attempted_id).unwrap()["attempts"] =
+                json!([{"id":"a","status":"failed","sop":{"id":"receipt","revision":1}}]);
+            Ok(())
+        })
+        .unwrap();
+
+    for (id, role) in [(&frozen_id, "finding"), (&attempted_id, "source")] {
+        let path = format!("/workspaces/{id}/materials/{role}");
+        let (status, body) = api
+            .call("DELETE", &path, "application/octet-stream", b"")
+            .await;
+        assert_eq!(status, 409, "{}", String::from_utf8_lossy(&body));
+        let dir = temp.0.join("workspace-files").join(id);
+        assert_eq!(fs::read(dir.join(role)).unwrap(), b"kept");
+        let detail = store.read(|db| model::workspace(db, id).cloned()).unwrap();
+        assert_eq!(detail["materials"].as_array().unwrap().len(), 1);
+    }
+    api.stop().await;
+}
+
+#[tokio::test]
+async fn withdraw_rejects_unknown_roles_and_empty_slots() {
+    let temp = Temp::new();
+    let store = temp.store();
+    let api = Api::new(&temp, store.clone());
+    let workspace = api.create("复核 42").await;
+    let id = workspace["id"].as_str().unwrap().to_owned();
+
+    for (role, status) in [("..%2Fetc", 400), ("report", 400), ("finding", 404)] {
+        let path = format!("/workspaces/{id}/materials/{role}");
+        let (got, body) = api
+            .call("DELETE", &path, "application/octet-stream", b"")
+            .await;
+        assert_eq!(got, status, "{path}: {}", String::from_utf8_lossy(&body));
+    }
+    let detail = store.read(|db| model::workspace(db, &id).cloned()).unwrap();
+    assert_eq!(detail["materials"], json!([]));
+    assert_eq!(detail["frozen"], false);
+    api.stop().await;
+}
+
+#[test]
+fn discard_keeps_a_file_that_the_record_still_references() {
+    let temp = Temp::new();
+    let mut db = json!({});
+    let workspace = model::create(&mut db, default_draft("x")).unwrap();
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    let dir = temp.0.join("workspace-files").join(&id);
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .unwrap();
+    fs::write(dir.join("source"), b"new upload").unwrap();
+
+    let doc = model::workspace_mut(&mut db, &id).unwrap();
+    model::add_material(doc, "source", "source.zip", 10).unwrap();
+    // 记录仍引用该角色：说明并发的重新上传已经提交，不能删它的文件。
+    discard(&db, &id, "source", &dir);
+    assert_eq!(fs::read(dir.join("source")).unwrap(), b"new upload");
+
+    model::workspace_mut(&mut db, &id).unwrap()["materials"] = json!([]);
+    discard(&db, &id, "source", &dir);
+    assert!(!dir.join("source").exists());
+    // 文件已经不在时重复清理不报错。
+    discard(&db, &id, "source", &dir);
 }

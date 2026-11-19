@@ -4,6 +4,7 @@ import { workListRoutes } from '@/modules/work-list/routes'
 import { workspaceRoutes } from '@/modules/workspaces/routes'
 import { sourceRoutes } from '@/modules/sources/routes'
 import { definitionRoutes } from '@/modules/definitions/routes'
+import { sopRoutes } from '@/modules/sops/routes'
 import AppShell from './AppShell'
 import { LoginGate } from './LoginGate'
 import NotFoundView from './NotFoundView'
@@ -17,6 +18,7 @@ const protectedRoutes: RouteObject[] = [
   { path: 'items/:id/deliveries/:version', handle: { title: '交付与验收' }, lazy: workDetail },
   ...sourceRoutes,
   ...definitionRoutes,
+  ...sopRoutes,
   { path: 'flows', handle: { title: 'Flow 包' }, lazy: async () => ({ Component: (await import('@/modules/flows/Flows')).Flows }) },
   { path: 'flows/new', handle: { title: '创建 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },
   { path: 'flows/:id/edit', handle: { title: '编辑 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },

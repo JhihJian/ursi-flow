@@ -136,7 +136,7 @@ function SourceItemPanel({ provider, id }: { provider: string; id: string }) {
           <Button variant="primary" loading={busy} disabled={!selected} onClick={() => void dispatch()}>派工</Button>
         </div>}
       {notice && <p role="alert" className="break-words text-sm text-err">{notice}</p>}
-      <p className="text-xs text-txt3">派工按管理员配置的工作包与动作创建待办理单据，包、版本和执行器不在页面选择。</p>
+      <p className="text-xs text-txt3">派工按管理员配置的派工模板与动作创建待办理单据，模板、版本和执行器不在页面选择。</p>
     </article>
   </div>
 }

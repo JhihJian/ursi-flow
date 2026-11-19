@@ -1,13 +1,13 @@
-//! 内置 Echo SOP 执行器。执行开始时校验需求与全部材料角色，在同一次更新中冻结工作区并
-//! 记录尝试；回执只依据材料文件的实际二进制内容生成。
+//! 内置 Echo SOP 执行器。每次执行解析本次 SOP 版本，校验需求与全部材料角色，在同一次
+//! 更新中冻结工作区并把完整 SOP 定义随尝试记录；回执只依据材料文件的实际二进制内容生成。
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store};
+use super::{Error, Store, workspace_sop};
 use axum::{
     Router,
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Json, Path, Query, State},
     http::{HeaderValue, header},
     response::Response,
     routing::{get, post},
@@ -42,11 +42,23 @@ pub fn routes(store: Store) -> Router {
         .with_state(store)
 }
 
-async fn execute(State(store): State<Store>, Path(id): Path<String>) -> Reply {
-    tokio::task::spawn_blocking(move || store.update(|db| run(db, store.dir(), &id)))
+async fn execute(
+    State(store): State<Store>,
+    Path(id): Path<String>,
+    Json(request): Json<Request>,
+) -> Reply {
+    tokio::task::spawn_blocking(move || store.update(|db| run(db, store.dir(), &id, request)))
         .await
         .map_err(|_| Error::Internal("SOP 执行任务中断".into()))?
         .map(axum::Json)
+}
+
+/// 每次执行可以显式指定 SOP 版本；省略时使用工作包类型的推荐默认版本。
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct Request {
+    #[serde(default)]
+    sop: Option<workspace_sop::Reference>,
 }
 
 #[derive(Deserialize)]
@@ -144,19 +156,20 @@ struct Material {
 
 struct Plan {
     title: String,
-    sop: Value,
     materials: Vec<Material>,
 }
 
-fn plan(workspace: &Value) -> Result<Plan, Error> {
+fn plan(workspace: &Value, sop: &Value) -> Result<Plan, Error> {
     let requirement = workspace["requirement"]
         .as_str()
         .ok_or_else(|| corrupt("requirement"))?;
     if requirement.trim().is_empty() {
         return Err(Error::Invalid("需求不能为空，无法开始执行".into()));
     }
-    // 工作区保存的是创建时解析好的 SOP 修订快照，这里只核对执行器归属。
-    let sop = workspace.get("sop").ok_or_else(|| corrupt("sop"))?;
+    // 本次执行选定的 SOP 修订在解析后立即校验，并随尝试一起冻结。
+    if sop["id"].as_str().is_none_or(str::is_empty) {
+        return Err(corrupt("sop.id"));
+    }
     if sop["executor"].as_str() != Some(ECHO_EXECUTOR) {
         return Err(Error::Internal("SOP 与 Echo 执行器不匹配".into()));
     }
@@ -231,11 +244,7 @@ fn plan(workspace: &Value) -> Result<Plan, Error> {
                 .ok_or_else(|| Error::Invalid(format!("尚未收到「{label}」材料")))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Plan {
-        title,
-        sop: sop.clone(),
-        materials,
-    })
+    Ok(Plan { title, materials })
 }
 
 fn safe_dir(path: &FsPath) -> io::Result<()> {
@@ -377,7 +386,7 @@ fn render(
     text
 }
 
-fn outcome(root: &FsPath, workspace: &Value, plan: &Plan) -> Result<Value, String> {
+fn outcome(root: &FsPath, workspace: &Value, sop: &Value, plan: &Plan) -> Result<Value, String> {
     let requirement = workspace["requirement"].as_str().unwrap_or_default();
     let type_id = workspace["typeId"].as_str().unwrap_or_default();
     let materials = collect(root, plan)?;
@@ -385,18 +394,38 @@ fn outcome(root: &FsPath, workspace: &Value, plan: &Plan) -> Result<Value, Strin
         "typeId": type_id,
         "title": plan.title,
         "requirement": requirement,
-        "sop": plan.sop,
+        "sop": sop,
         "generatedAt": now(),
         "materials": materials,
-        "text": render(&plan.title, type_id, requirement, &plan.sop, &materials),
+        "text": render(&plan.title, type_id, requirement, sop, &materials),
     }))
 }
 
+/// 解析本次执行的 SOP 修订：显式引用优先，否则使用类型的推荐默认版本。
+fn select(
+    db: &Value,
+    workspace: &Value,
+    requested: Option<workspace_sop::Reference>,
+) -> Result<Value, Error> {
+    let reference = match requested {
+        Some(reference) => reference,
+        None => {
+            let type_id = workspace["typeId"]
+                .as_str()
+                .ok_or_else(|| corrupt("typeId"))?;
+            workspace_sop::default_reference(type_id).map_err(|_| corrupt("typeId"))?
+        }
+    };
+    workspace_sop::resolve(db, &reference.id, reference.revision)
+}
+
 /// 校验、冻结、执行和记录在同一笔更新里完成。执行失败同样留下已冻结的失败尝试。
-fn run(db: &mut Value, root: &FsPath, id: &str) -> Result<Value, Error> {
+fn run(db: &mut Value, root: &FsPath, id: &str, request: Request) -> Result<Value, Error> {
     let snapshot = workspace(db, id)?.clone();
-    let plan = plan(&snapshot)?;
-    let receipt = outcome(root, &snapshot, &plan);
+    // 版本解析失败时不写库：工作区保持未冻结，也不新增尝试。
+    let sop = select(db, &snapshot, request.sop)?;
+    let plan = plan(&snapshot, &sop)?;
+    let receipt = outcome(root, &snapshot, &sop, &plan);
     let attempt = Uuid::new_v4().to_string();
     let failure = receipt.as_ref().err().cloned();
     let detail = {
@@ -407,8 +436,8 @@ fn run(db: &mut Value, root: &FsPath, id: &str) -> Result<Value, Error> {
             .and_then(Value::as_array_mut)
             .ok_or_else(|| corrupt("attempts"))?
             .push(match failure {
-                None => json!({"id":attempt,"status":"succeeded"}),
-                Some(error) => json!({"id":attempt,"status":"failed","error":error}),
+                None => json!({"id":attempt,"status":"succeeded","sop":sop}),
+                Some(error) => json!({"id":attempt,"status":"failed","sop":sop,"error":error}),
             });
         entry.clone()
     };

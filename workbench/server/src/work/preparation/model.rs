@@ -8,20 +8,12 @@ use uuid::Uuid;
 /// 材料名称与角色的长度上限。两者都只作为记录展示或单级路径段。
 const NAME_LIMIT: usize = 255;
 
+/// 创建工作包只接受类型和需求。执行时选择的 SOP 版本不属于草稿。
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Draft {
     type_id: String,
     requirement: String,
-    #[serde(default)]
-    sop: Option<SopRef>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct SopRef {
-    id: String,
-    revision: u64,
 }
 
 #[derive(Deserialize)]
@@ -39,7 +31,6 @@ pub(super) struct Role {
 #[derive(Deserialize)]
 struct Type {
     roles: Vec<Role>,
-    sop: SopRef,
 }
 
 /// 上传文件名只用于展示，不允许任何可改变路径的字符。
@@ -100,14 +91,10 @@ pub(super) fn create(db: &mut Value, req: Draft) -> Result<Value, Error> {
             return Err(internal("材料角色"));
         }
     }
-    let sop = req.sop.unwrap_or(ty.sop);
-    let sop = workspace_sop::resolve(db, &sop.id, sop.revision)?;
-    if !sop.is_object() {
-        return Err(internal("SOP 定义"));
-    }
     let id = Uuid::new_v4().to_string();
-    let doc = json!({"id":id,"typeId":req.type_id,"requirement":req.requirement,"frozen":false,
-        "roles":ty.roles,"sop":sop,"materials":[],"attempts":[]});
+    let mut doc = json!({"id":id,"typeId":req.type_id,"requirement":req.requirement,"ready":false,
+        "frozen":false,"roles":ty.roles,"materials":[],"attempts":[]});
+    sync_ready(&mut doc);
     db["workspaces"][&id] = doc.clone();
     Ok(doc)
 }
@@ -120,10 +107,33 @@ fn editable(doc: &Value) -> Result<(), Error> {
     }
 }
 
+/// 就绪只看需求非空和材料角色齐全。它不代表执行尝试、回执或验收结论。
+pub(super) fn readiness(doc: &Value) -> bool {
+    let requirement = doc["requirement"]
+        .as_str()
+        .is_some_and(|text| !text.trim().is_empty());
+    let (Some(roles), Some(materials)) = (doc["roles"].as_array(), doc["materials"].as_array())
+    else {
+        return false;
+    };
+    requirement
+        && roles.iter().all(|role| {
+            role["id"]
+                .as_str()
+                .is_some_and(|id| materials.iter().any(|m| m["role"].as_str() == Some(id)))
+        })
+}
+
+fn sync_ready(doc: &mut Value) {
+    let ready = readiness(doc);
+    doc["ready"] = ready.into();
+}
+
 pub(super) fn edit(doc: &mut Value, req: Edit) -> Result<Value, Error> {
     editable(doc)?;
     requirement(&req.requirement)?;
     doc["requirement"] = req.requirement.into();
+    sync_ready(doc);
     Ok(doc.clone())
 }
 
@@ -155,5 +165,6 @@ pub(super) fn add_material(
         .as_array_mut()
         .ok_or_else(|| internal("材料记录"))?;
     materials.push(json!({"role":role,"name":name,"size":size}));
+    sync_ready(doc);
     Ok(doc.clone())
 }

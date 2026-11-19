@@ -15,19 +15,19 @@ export function WorkspaceList() {
   const firstLoad = workspaces.loading && workspaces.data.length === 0
 
   return <div className="page-stack break-words">
-    <PageHeader title="线索报告工作区" description="按需求准备材料、执行 SOP 并读取回执"
+    <PageHeader title="工作包" description="按需求准备材料、选择 SOP 版本执行并读取回执"
       actions={<>
         <Button icon="refresh" onClick={workspaces.reload} disabled={workspaces.loading}>刷新</Button>
-        <Button variant="primary" asChild><Link to={newWorkspacePath}>新建工作区</Link></Button>
+        <Button variant="primary" asChild><Link to={newWorkspacePath}>新建工作包</Link></Button>
       </>} />
     <ResourceState
       loading={firstLoad}
       error={workspaces.error}
       empty={!workspaces.loading && !workspaces.error && workspaces.data.length === 0}
-      title={workspaces.error ? undefined : '暂无工作区'}
-      description={workspaces.error ? undefined : '新建一个工作区后，它会出现在这里。'}
+      title={workspaces.error ? undefined : '暂无工作包'}
+      description={workspaces.error ? undefined : '新建一个工作包后，它会出现在这里。'}
       onRetry={workspaces.reload}>
-      <Button variant="primary" asChild><Link to={newWorkspacePath}>新建工作区</Link></Button>
+      <Button variant="primary" asChild><Link to={newWorkspacePath}>新建工作包</Link></Button>
     </ResourceState>
     {!workspaces.error && workspaces.data.length > 0 && <ul className="divide-y divide-line border-y border-line">
       {workspaces.data.map(workspace => <li key={workspace.id}>

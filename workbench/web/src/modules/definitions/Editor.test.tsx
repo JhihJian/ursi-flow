@@ -16,7 +16,7 @@ function start(fake: ReturnType<typeof createFakeCatalog>, path: string) {
 }
 afterEach(() => { cleanup(); sessionStorage.clear() })
 
-/** 用页面表单依次发布提示词 r1、引用它的执行器 r1 和工作包 r1。 */
+/** 用页面表单依次发布提示词 r1、引用它的执行器 r1 和派工模板 r1。 */
 async function publishChain(fake: ReturnType<typeof createFakeCatalog>) {
   const router = start(fake, '/resources/new')
 
@@ -37,9 +37,9 @@ async function publishChain(fake: ReturnType<typeof createFakeCatalog>) {
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/executors/assistant/revisions/1'))
 
-  await router.navigate('/packages/new')
-  await userEvent.type(await screen.findByLabelText('工作包 ID', { exact: true }), 'triage')
-  await userEvent.type(screen.getByLabelText('SOP'), '按材料逐项核查')
+  await router.navigate('/templates/new')
+  await userEvent.type(await screen.findByLabelText('派工模板 ID', { exact: true }), 'triage')
+  await userEvent.type(screen.getByLabelText('办理说明'), '按材料逐项核查')
   await userEvent.type(screen.getByLabelText('验收标准'), '结论有证据')
   await userEvent.type(screen.getByLabelText('必交文件（每行一个文件名）'), '核查报告.txt\n\n证据清单.txt')
   await userEvent.click(screen.getByRole('button', { name: '添加输入字段' }))
@@ -47,8 +47,8 @@ async function publishChain(fake: ReturnType<typeof createFakeCatalog>) {
   await userEvent.type(screen.getByLabelText('动作名称'), 'inspect')
   await userEvent.selectOptions(screen.getByLabelText('执行器 ID', { exact: true }), 'assistant')
   await userEvent.selectOptions(await screen.findByLabelText('执行器版本', { exact: true }), '1')
-  await userEvent.click(screen.getByRole('button', { name: '发布工作包' }))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/packages/triage/revisions/1'))
+  await userEvent.click(screen.getByRole('button', { name: '发布派工模板' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/1'))
   return router
 }
 
@@ -76,14 +76,14 @@ it('只用表单发布提示词 r1、引用它的 Agent r1 与包 r1，详情追
 
   // 发布包新版后，从旧版本点击派工仍携带 r1。
   await userEvent.click(screen.getByRole('link', { name: '编辑并发布新版' }))
-  const sop = await screen.findByLabelText('SOP')
+  const sop = await screen.findByLabelText('办理说明')
   await userEvent.clear(sop)
   await userEvent.type(sop, '新版 SOP')
   await userEvent.click(screen.getByLabelText('我已核对动作资源和输入输出声明'))
   await userEvent.click(screen.getByRole('button', { name: '发布新版' }))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/packages/triage/revisions/2'))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/2'))
 
-  await router.navigate('/packages/triage/revisions/1')
+  await router.navigate('/templates/triage/revisions/1')
   await waitFor(() => expect(screen.getByRole('link', { name: '发起工作' })).toHaveAttribute('href', '/items/new?package=triage&revision=1'))
   expect(screen.getByText('按材料逐项核查')).toBeVisible()
   expect(screen.getByText('这是冻结的历史版本，只读；发布新版会创建新的修订号。')).toBeVisible()
@@ -100,7 +100,7 @@ it('编辑历史包须先核对不可还原部分，停用提示说明对新派�
   fake.seed('packages', { id: 'triage', sop: '旧 SOP', acceptance: '旧标准', inputs: { ticket: 'string' }, resources: [{ id: 'guide', revision: 1 }],
     actions: { inspect: { executor: { id: 'assistant', revision: 1 }, inputs: { ticket: 'string' } } } })
   fake.seed('resources', { id: 'guide', kind: 'prompt', content: '新提示词' })
-  const router = start(fake, '/packages/triage/revisions/1/edit')
+  const router = start(fake, '/templates/triage/revisions/1/edit')
 
   const publish = await screen.findByRole('button', { name: '发布新版' })
   expect(publish).toBeDisabled()
@@ -111,11 +111,11 @@ it('编辑历史包须先核对不可还原部分，停用提示说明对新派�
   expect(revisions).toHaveLength(1)
   await waitFor(() => expect(revisions[0]).toHaveValue('1'))
   expect(screen.getAllByLabelText('资源 ID', { exact: true })).toHaveLength(1)
-  expect(screen.getByLabelText('SOP')).toHaveValue('旧 SOP')
+  expect(screen.getByLabelText('办理说明')).toHaveValue('旧 SOP')
   expect(screen.getByLabelText('输入字段名')).toHaveValue('ticket')
   // 快照不含动作级声明，草稿不把它悄悄改成包级声明，而是要求勾选确认后才发布。
-  expect(screen.getByLabelText('单独声明动作输入（覆盖工作包）')).not.toBeChecked()
-  expect(screen.getByLabelText('单独声明动作输出（覆盖工作包）')).not.toBeChecked()
+  expect(screen.getByLabelText('单独声明动作输入（覆盖派工模板）')).not.toBeChecked()
+  expect(screen.getByLabelText('单独声明动作输出（覆盖派工模板）')).not.toBeChecked()
 
   await userEvent.click(screen.getByLabelText('我已核对动作资源和输入输出声明'))
   expect(publish).not.toBeDisabled()
@@ -124,7 +124,7 @@ it('编辑历史包须先核对不可还原部分，停用提示说明对新派�
   expect(fake.latest('executors', 'assistant')).toMatchObject({ resources: [{ id: 'guide', revision: 1 }] })
 
   await userEvent.click(publish)
-  await waitFor(() => expect(router.state.location.pathname).toBe('/packages/triage/revisions/2'))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/2'))
   // 包级输入原样保留，动作级声明无法从快照还原，发布时不会凭空改写，只在核对后才允许发布。
   expect(fake.posts('packages')[0]).toMatchObject({ resources: [{ id: 'guide', revision: 1 }], inputs: { ticket: 'string' },
     actions: { inspect: { executor: { id: 'assistant', revision: 1 } } } })
@@ -135,13 +135,13 @@ it('编辑历史包须先核对不可还原部分，停用提示说明对新派�
   await router.navigate('/resources/guide')
   await waitFor(() => expect(screen.getByText('新提示词')).toBeVisible())
 
-  await router.navigate('/packages/triage/revisions/1')
+  await router.navigate('/templates/triage/revisions/1')
   await waitFor(() => expect(screen.getByText('旧 SOP')).toBeVisible())
 
-  await userEvent.click(screen.getByRole('button', { name: '停用工作包' }))
+  await userEvent.click(screen.getByRole('button', { name: '停用派工模板' }))
   const dialog = within(await screen.findByRole('dialog'))
   expect(dialog.getByText(/新派工和新引用会失败/)).toBeVisible()
-  expect(dialog.getByText(/已有单据及其包快照不受影响/)).toBeVisible()
+  expect(dialog.getByText(/已有单据及其派工快照不受影响/)).toBeVisible()
   await userEvent.click(dialog.getByRole('button', { name: '确认停用' }))
   expect(await screen.findByText('正在阅读 v1 · 最新 v2 · 对象已停用')).toBeVisible()
   expect(screen.queryByRole('link', { name: '发起工作' })).toBeNull()
@@ -150,10 +150,10 @@ it('编辑历史包须先核对不可还原部分，停用提示说明对新派�
 
 it('缺少可用执行器时先写包，去补建依赖后回来继续原草稿，校验失败保留输入', async () => {
   const fake = createFakeCatalog()
-  const router = start(fake, '/packages/new')
+  const router = start(fake, '/templates/new')
 
-  await userEvent.type(await screen.findByLabelText('工作包 ID', { exact: true }), 'triage')
-  await userEvent.type(screen.getByLabelText('SOP'), '先核查再结论')
+  await userEvent.type(await screen.findByLabelText('派工模板 ID', { exact: true }), 'triage')
+  await userEvent.type(screen.getByLabelText('办理说明'), '先核查再结论')
   await userEvent.type(screen.getByLabelText('验收标准'), '结论有证据')
   await userEvent.type(screen.getByLabelText('动作名称'), 'inspect')
   expect(screen.getByText(/还没有可用执行器/)).toBeVisible()
@@ -164,10 +164,10 @@ it('缺少可用执行器时先写包，去补建依赖后回来继续原草稿�
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/executors/assistant/revisions/1'))
 
-  await router.navigate('/packages/new')
+  await router.navigate('/templates/new')
   expect(await screen.findByText(/已恢复上次在本机保存的未发布草稿/)).toBeVisible()
-  expect(screen.getByLabelText('工作包 ID', { exact: true })).toHaveValue('triage')
-  expect(screen.getByLabelText('SOP')).toHaveValue('先核查再结论')
+  expect(screen.getByLabelText('派工模板 ID', { exact: true })).toHaveValue('triage')
+  expect(screen.getByLabelText('办理说明')).toHaveValue('先核查再结论')
   expect(screen.getByLabelText('验收标准')).toHaveValue('结论有证据')
   expect(screen.getByLabelText('动作名称')).toHaveValue('inspect')
 
@@ -175,14 +175,14 @@ it('缺少可用执行器时先写包，去补建依赖后回来继续原草稿�
   await userEvent.selectOptions(await screen.findByLabelText('执行器版本', { exact: true }), '1')
   // 发布失败要显示服务错误并保留已填内容。
   fake.failNext('版本冲突，请重试')
-  await userEvent.click(screen.getByRole('button', { name: '发布工作包' }))
+  await userEvent.click(screen.getByRole('button', { name: '发布派工模板' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('版本冲突，请重试')
-  expect(screen.getByLabelText('SOP')).toHaveValue('先核查再结论')
+  expect(screen.getByLabelText('办理说明')).toHaveValue('先核查再结论')
   expect(screen.getByLabelText('动作名称')).toHaveValue('inspect')
   expect(screen.getByText(/已恢复上次在本机保存的未发布草稿/)).toBeVisible()
 
-  await userEvent.click(screen.getByRole('button', { name: '发布工作包' }))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/packages/triage/revisions/1'))
+  await userEvent.click(screen.getByRole('button', { name: '发布派工模板' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/1'))
   // 发布成功后清掉本机草稿，再进来不会出现已发布内容的残留。
   expect(sessionStorage.getItem(`ursi-flow.definitions.draft:packages:new:draft`)).toBeNull()
 })

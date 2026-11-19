@@ -7,17 +7,18 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import {
   attemptStatus, downloadReceipt, formatSize, materialOf, readReceipt, readWorkspace,
-  runAttempt, workspacePath, type WorkspaceDetail,
+  runAttempt, sopTitle, workspacePath, type WorkspaceDetail, type WorkspaceSopRef,
 } from './model'
+import { RunControl } from './RunControl'
 
 export function WorkspaceResult() {
   const { id = '' } = useParams()
   const result = useResource(signal => readWorkspace(id, signal), null)
   return <div className="page-stack break-words">
-    <PageHeader title="执行结果" description={id}
+    <PageHeader title="执行结果" description={result.data ? `${result.data.typeId} · ${id}` : id}
       actions={<>
-        <Button asChild><Link to="/workspaces">返回工作区</Link></Button>
-        <Button asChild><Link to={workspacePath(id)}>准备工作区</Link></Button>
+        <Button asChild><Link to="/workspaces">返回工作包</Link></Button>
+        <Button asChild><Link to={workspacePath(id)}>准备工作包</Link></Button>
         <Button icon="refresh" onClick={result.reload} disabled={result.loading}>刷新</Button>
       </>} />
     {result.data
@@ -49,12 +50,12 @@ function ResultPanel({ initial }: { initial: WorkspaceDetail }) {
     return () => controller.abort()
   }, [workspace.id, latest])
 
-  async function run() {
+  async function run(sop: WorkspaceSopRef) {
     if (running) return
     setRunning(true)
     setRunError('')
     try {
-      const next = await runAttempt(workspace.id)
+      const next = await runAttempt(workspace.id, sop)
       setWorkspace(next)
       setReceipt(null)
       setReceiptError(null)
@@ -102,20 +103,13 @@ function ResultPanel({ initial }: { initial: WorkspaceDetail }) {
   return <>
     <section className="panel space-y-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="break-words text-lg font-semibold">{workspace.sop.config?.title || workspace.sop.id}</h2>
-          <p className="mt-1 break-all text-sm text-txt3">
-            {workspace.typeId} · {workspace.sop.id} v{workspace.sop.revision}
-            {workspace.sop.executor ? ` · 执行器 ${workspace.sop.executor}` : ''}
-          </p>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">需求</h2>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm">{workspace.requirement}</p>
         </div>
         <span className={workspace.frozen ? 'status-pill status-neutral' : 'status-pill status-ok'}>
           {workspace.frozen ? '已冻结' : '可编辑'}
         </span>
-      </div>
-      <div>
-        <h3 className="field-label">需求</h3>
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm">{workspace.requirement}</p>
       </div>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-sm text-txt2">
         {workspace.roles.map(role => {
@@ -126,7 +120,7 @@ function ResultPanel({ initial }: { initial: WorkspaceDetail }) {
         })}
       </ul>
       {!workspace.frozen && <p className="text-xs text-txt3">
-        需要修改需求或材料时回到<Link className="ml-1 text-accent-2 underline" to={workspacePath(workspace.id)}>准备工作区</Link>。
+        需要修改需求或材料时回到<Link className="ml-1 text-accent-2 underline" to={workspacePath(workspace.id)}>准备工作包</Link>。
       </p>}
     </section>
 
@@ -140,10 +134,8 @@ function ResultPanel({ initial }: { initial: WorkspaceDetail }) {
               : `${workspace.attempts.length} 次执行 · 最近${attemptStatus[latest!.status]}`}
           </p>
         </div>
-        <Button variant="primary" loading={running} disabled={running || !workspace.frozen} onClick={() => void run()}>
-          再执行一次
-        </Button>
       </div>
+      <RunControl typeId={workspace.typeId} action="再执行一次" running={running} onRun={run} />
       {runError && <p role="alert" className="break-words border-l-2 border-err pl-3 text-sm text-err">{runError}</p>}
       {workspace.attempts.length === 0
         ? <p className="text-sm text-txt2">执行后会在这里留下成功或失败的尝试记录，并生成回执。</p>
@@ -154,6 +146,10 @@ function ResultPanel({ initial }: { initial: WorkspaceDetail }) {
                 {attemptStatus[attempt.status]}
               </span>
               <span className="break-all font-mono text-xs text-txt3">{attempt.id}</span>
+              <span className="break-words text-sm text-txt2">
+                {sopTitle(attempt.sop)} · {attempt.sop.id} v{attempt.sop.revision}
+                {attempt.sop.executor ? ` · 执行器 ${attempt.sop.executor}` : ''}
+              </span>
               {attempt.status === 'succeeded' && <span className="ml-auto flex flex-wrap gap-2">
                 <Button size="sm" loading={receiptBusy === attempt.id && !receiptError}
                   disabled={receiptBusy !== '' && receiptBusy !== attempt.id}

@@ -82,11 +82,11 @@ export function createFakeCatalog() {
       resources: bindable(body.resources, '执行器资源'), ...io }
   }
   function pkg(id: string, body: Body): Package {
-    const sop = text(body.sop, 'SOP')
+    const sop = text(body.sop, '办理说明')
     const acceptance = text(body.acceptance, '验收标准')
     const actions = body.actions as Record<string, { executor?: unknown; resources?: unknown; inputs?: unknown; outputs?: unknown }> | undefined
     if (!actions || typeof actions !== 'object' || !Object.keys(actions).length) throw new Error('至少需要一个具名动作')
-    const own = bindable(body.resources, '工作包资源')
+    const own = bindable(body.resources, '派工模板资源')
     const built: Package['actions'] = {}
     for (const [name, action] of Object.entries(actions)) {
       const target = pin('executors', action.executor, `动作 ${name} 的执行器`)

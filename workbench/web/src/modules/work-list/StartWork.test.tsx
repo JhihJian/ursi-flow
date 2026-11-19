@@ -41,7 +41,7 @@ function mount(handler: (path: string, options: RequestInit) => unknown, url: st
       <Route path="/items/new" element={<StartWork />} />
       <Route path="/items/:id" element={<Detail />} />
       <Route path="/items" element={<p>工作清单页</p>} />
-      <Route path="/packages" element={<p>工作包目录页</p>} />
+      <Route path="/templates" element={<p>派工模板目录页</p>} />
     </Routes>
   </MemoryRouter>)
   return fetchMock
@@ -196,7 +196,7 @@ it('修改材料后按新参数生成新的请求标识', async () => {
   expect(posts(fetchMock).map(([, options]) => sent(options).input.ticket)).toEqual(['A-5', 'A-6'])
 })
 
-it('工作包目录加载失败给重试，重试成功后出表单', async () => {
+it('派工模板目录加载失败给重试，重试成功后出表单', async () => {
   const user = userEvent.setup()
   let fail = true
   mount(path => {
@@ -213,16 +213,16 @@ it('工作包目录加载失败给重试，重试成功后出表单', async () =
   expect(screen.getByLabelText('修订版本')).toHaveValue('1')
 })
 
-it('没有可派工版本时给工作包目录入口', async () => {
+it('没有可派工版本时给派工模板目录入口', async () => {
   mount(path => {
     if (path === '/api/v2/packages') return []
   }, '/items/new')
-  expect(await screen.findByText('暂无可用工作包')).toBeVisible()
-  expect(screen.getByRole('link', { name: '进入工作包目录' })).toHaveAttribute('href', '/packages')
+  expect(await screen.findByText('暂无可用派工模板')).toBeVisible()
+  expect(screen.getByRole('link', { name: '进入派工模板目录' })).toHaveAttribute('href', '/templates')
   expect(screen.queryByLabelText('ticket')).toBeNull()
 })
 
-it('深链指向停用的包时拒绝派工，可改选其他包或进目录', async () => {
+it('深链指向停用的派工模板时拒绝派工，可改选其他模板或进目录', async () => {
   const user = userEvent.setup()
   const other: WorkPackage = { ...plainV2, id: 'review', sop: '复核包 SOP。', acceptance: '复核包验收。' }
   const fetchMock = mount(path => {
@@ -231,11 +231,11 @@ it('深链指向停用的包时拒绝派工，可改选其他包或进目录', a
     if (path === '/api/v2/packages/review/revisions') return [other]
   }, '/items/new?package=triage&revision=1')
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('工作包 triage 停用')
-  expect(screen.getByRole('link', { name: '进入工作包目录' })).toHaveAttribute('href', '/packages')
+  expect(await screen.findByRole('alert')).toHaveTextContent('派工模板 triage 停用')
+  expect(screen.getByRole('link', { name: '进入派工模板目录' })).toHaveAttribute('href', '/templates')
   expect(screen.queryByLabelText('ticket')).toBeNull()
   expect(posts(fetchMock)).toHaveLength(0)
 
-  await user.selectOptions(screen.getByLabelText('工作包'), 'review')
+  await user.selectOptions(screen.getByLabelText('派工模板'), 'review')
   expect(await screen.findByText('复核包 SOP。')).toBeVisible()
 })

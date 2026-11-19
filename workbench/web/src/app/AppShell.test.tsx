@@ -37,7 +37,7 @@ describe('应用壳', () => {
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
-    for (const [name, href] of [['工作清单', '/items'], ['外部来源', '/sources'], ['工作包', '/packages'], ['资源库', '/resources'], ['执行器', '/executors']]) {
+    for (const [name, href] of [['工作清单', '/items'], ['工作包', '/workspaces'], ['外部来源', '/sources'], ['SOP', '/sops'], ['派工模板', '/templates'], ['资源库', '/resources'], ['执行器', '/executors']]) {
       expect(within(mainNav).getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
@@ -101,7 +101,7 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(expect.arrayContaining(['工作清单', '外部来源', '工作包', '资源库', '执行器', 'Flow 包', '运行记录', '运行配置', '对话']))
+    expect(desktopEntries.map(([title]) => title)).toEqual(expect.arrayContaining(['工作清单', '工作包', '外部来源', 'SOP', '派工模板', '资源库', '执行器', 'Flow 包', '运行记录', '运行配置', '对话']))
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })

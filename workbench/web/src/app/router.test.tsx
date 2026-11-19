@@ -48,6 +48,29 @@ it('根地址和未知页均可到达工作清单', async () => {
   expect(fetch).not.toHaveBeenCalled()
 })
 
+it('/packages 与 /packages/new 进入真正的工作包入口，旧定义改在 /templates', async () => {
+  setToken('redirect-token')
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json([])))
+  const list = createMemoryRouter(createAppRoutes(), { initialEntries: ['/packages'] })
+  render(<RouterProvider router={list} />)
+  await waitFor(() => expect(list.state.location.pathname).toBe('/workspaces'))
+  cleanup()
+
+  const create = createMemoryRouter(createAppRoutes(), { initialEntries: ['/packages/new'] })
+  render(<RouterProvider router={create} />)
+  await waitFor(() => expect(create.state.location.pathname).toBe('/workspaces/new'))
+  cleanup()
+
+  const templates = createMemoryRouter(createAppRoutes(), { initialEntries: ['/templates'] })
+  render(<RouterProvider router={templates} />)
+  expect(await screen.findByRole('heading', { level: 1, name: '派工模板' })).toBeInTheDocument()
+  cleanup()
+
+  const editor = createMemoryRouter(createAppRoutes(), { initialEntries: ['/templates/new'] })
+  render(<RouterProvider router={editor} />)
+  expect(await screen.findByRole('heading', { level: 1, name: '新建派工模板' })).toBeInTheDocument()
+})
+
 it.each(['/items/abc', '/items/abc/deliveries/2'])('办理和交付深链在原位置登录：%s', async path => {
   vi.stubGlobal('fetch', vi.fn())
   const router = createMemoryRouter(createAppRoutes(), { initialEntries: [`${path}?status=review#report`] })
