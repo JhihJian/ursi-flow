@@ -6,7 +6,7 @@ import { setToken } from '@/shared/http/session'
 import { WorkDetail } from './WorkDetail'
 import type { WorkItem, Attempt, Delivery } from './model'
 
-const executor = { id: '排查助手', revision: 2, kind: 'agent' } as const
+const executor = { id: '排查助手', revision: 2 } as const
 const workspace = (id = 'default'): Attempt['workspace'] => ({ id, access: 'read-write', purpose: 'work-input' })
 const attempt: Attempt = { id: 'a1', action: '分析', executor, status: 'running', output: null, workspace: workspace(), backendRunId: 'a1',
   workInstruction: null, artifactDirectory: null, platformLog: [], executorLog: null, executorLogPage: null }
@@ -48,7 +48,7 @@ it('来源办理单使用旧快照，只派发获准动作；轮询单项直到�
   expect(button('开始办理')).toBeDisabled()
   fill('经办人', '林'); click('开始办理')
   expect(within(await screen.findByRole('combobox', { name: '动作' })).getAllByRole('option').map(o => o.textContent)).toEqual(['分析'])
-  expect(screen.getByText('绑定执行器：排查助手 v2（本地 Agent）')).toBeVisible()
+  expect(screen.getByText('绑定执行器：排查助手 v2')).toBeVisible()
   vi.useFakeTimers()
   await act(async () => click('执行一次'))
   expect(queries).toBe(1)
@@ -78,7 +78,7 @@ it('派发响应丢失只查历史和单项；取消显示服务器最终结果'
 })
 
 it('阻止待核实尝试交付，可定位对应记录并提交有效证据', async () => {
-  let result: Attempt = { ...attempt, status: 'unverified', executor: { ...executor, environment: 'sandbox' }, workspace: workspace('case-box'), backendRunId: 'session-82' }
+  let result: Attempt = { ...attempt, status: 'unverified', executor, workspace: workspace('case-box'), backendRunId: 'session-82' }
   const fetch = mount((p, o) => {
     if (p === base) return item({ attempts: [result] })
     if (p.endsWith('/a1')) return result
@@ -89,7 +89,7 @@ it('阻止待核实尝试交付，可定位对应记录并提交有效证据', a
   })
   await screen.findByRole('tablist'); tab('交付与验收'); fill('文件正文：report.txt', '已核对')
   expect(button('提交交付')).toBeDisabled(); click('分析 · 待核实 · a1')
-  expect(await screen.findByText('会话标识：session-82')).toBeVisible()
+  expect(await screen.findByText('后端会话标识：session-82')).toBeVisible()
   expect(screen.queryByRole('link', { name: /Run/ })).toBeNull()
   expect(button('提交核实')).toBeDisabled()
   expect(within(screen.getByLabelText('核实结论')).getAllByRole('option').map(o => o.textContent)).toEqual(['失败', '取消'])
@@ -302,25 +302,24 @@ it('竞态证据：B 的 v1 被退回后，A 的旧稿不经确认直接成为 v
   expect(screen.queryByText('请补复核结论')).toBeNull()
 })
 
-it('执行记录分别呈现失败、Flow 与沙箱的后端信息', async () => {
+it('执行记录展示通用执行器、工作区和后端会话信息', async () => {
   const failed: Attempt = { ...attempt, id: 'f1', status: 'failed', output: '进程退出码 1', backendRunId: 'f1' }
-  const flow: Attempt = { ...attempt, id: 'r1', action: '汇总', executor: { id: '汇总流程', revision: 3, kind: 'flow', flowId: 'daily', flowRevision: 'v3' }, status: 'succeeded', output: '流程输出', backendRunId: 'r1' }
-  const box: Attempt = { ...attempt, id: 's1', action: '复核', executor: { ...executor, environment: 'sandbox' }, status: 'succeeded', output: '沙箱输出', workspace: workspace('case-7'), backendRunId: 'session-9' }
+  const configured: Attempt = { ...attempt, id: 'r1', action: '汇总', executor: { id: '汇总执行器', revision: 3 }, status: 'succeeded', output: '执行器输出', backendRunId: 'r1' }
+  const other: Attempt = { ...attempt, id: 's1', action: '复核', status: 'succeeded', output: '复核输出', workspace: workspace('case-7'), backendRunId: 'session-9' }
   mount(p => {
-    if (p === base) return item({ attempts: [failed, flow, box] })
-    const found = [failed, flow, box].find(a => p.endsWith(`/attempts/${a.id}`))
+    if (p === base) return item({ attempts: [failed, configured, other] })
+    const found = [failed, configured, other].find(a => p.endsWith(`/attempts/${a.id}`))
     if (found) return found
   })
   await screen.findByRole('tablist'); tab('执行记录')
   expect(screen.getByText('执行失败')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: /汇总/ }))
-  expect(await screen.findByText('流程输出')).toBeVisible()
-  expect(screen.getByRole('link', { name: /Run/ })).toHaveAttribute('href', '/runs/r1')
-  expect(screen.getByText('Flow · default')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: /复核/ }))
-  expect(await screen.findByText('会话标识：session-9')).toBeVisible()
-  expect(screen.getByText('沙箱 · case-7')).toBeVisible()
+  expect(await screen.findByText('执行器输出')).toBeVisible()
+  expect(screen.getByText('后端会话标识：r1')).toBeVisible()
   expect(screen.queryByRole('link', { name: /Run/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /复核/ }))
+  expect(await screen.findByText('后端会话标识：session-9')).toBeVisible()
+  expect(screen.getByText('执行器 · case-7')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: /分析/ }))
   expect(await screen.findByText('进程退出码 1')).toBeVisible()
 })

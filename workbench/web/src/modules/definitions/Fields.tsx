@@ -2,7 +2,7 @@ import { cloneElement, useId, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
-import { history, kindNames, routePath, titles, type Latest, type Ref } from './catalog'
+import { history, resourceKindNames, routePath, titles, type Latest, type Ref } from './catalog'
 import { blankRef, type FieldRow } from './draft'
 
 function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) {
@@ -47,7 +47,7 @@ function RevisionChoice({ k, value, change }: { k: RefKind; value: Ref; change: 
   const hasMcp = result.data.some(v => 'kind' in v && v.kind === 'mcp')
   return <div className="min-w-0"><Field label={`${name}版本`}><select className="select" required value={value.revision || ''} onChange={e => change({ ...value, revision: Number(e.target.value) })}>
     <option value="">{result.loading ? '读取版本中…' : '选择固定版本'}</option>
-    {result.data.map(v => <option key={v.revision} value={v.revision} disabled={'kind' in v && v.kind === 'mcp'}>v{v.revision}{'kind' in v ? ` · ${kindNames[v.kind]}` : ''}</option>)}
+    {result.data.map(v => <option key={v.revision} value={v.revision} disabled={'kind' in v && v.kind === 'mcp'}>v{v.revision}{'kind' in v ? ` · ${resourceKindNames[v.kind]}` : ''}</option>)}
   </select></Field>{result.error && <p role="alert">{result.error} <Button onClick={result.reload}>重试</Button></p>}
     {hasMcp && <p className="mt-1 text-xs text-txt3">MCP 引用版本不可选为执行依赖。</p>}</div>
 }

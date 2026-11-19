@@ -20,6 +20,7 @@ export type ConfigFieldsProps = {
   secretConfigured?: SecretConfigured
   onValueChange: (key: string, value: ConfigValues[string] | undefined) => void
   onSecretChange?: (key: string, value: string) => void
+  readOnly?: boolean
   packageChoices?: ConfigPackageChoice[]
   packageLoading?: boolean
   packageError?: string
@@ -37,21 +38,21 @@ function FieldLabel({ field, id }: { field: ConfigField; id: string }) {
     {field.type === 'secret' && <span className="text-xs text-txt3">不会回显</span>}</div>
 }
 
-function ConfigFieldControl({ field, values, secrets, secretConfigured, packageChoices, onValueChange, onSecretChange }: Pick<ConfigFieldsProps, 'values' | 'secrets' | 'secretConfigured' | 'packageChoices' | 'onValueChange' | 'onSecretChange'> & { field: ConfigField }) {
+function ConfigFieldControl({ field, values, secrets, secretConfigured, packageChoices, onValueChange, onSecretChange, readOnly }: Pick<ConfigFieldsProps, 'values' | 'secrets' | 'secretConfigured' | 'packageChoices' | 'onValueChange' | 'onSecretChange' | 'readOnly'> & { field: ConfigField }) {
   const id = useId()
   const value = values[field.key]
   const describedBy = field.description ? `${field.key}-description` : undefined
-  if (field.type === 'boolean') return <div className="flex items-center gap-2"><input id={id} type="checkbox" checked={value === true} onChange={(event) => onValueChange(field.key, event.target.checked)} />
+  if (field.type === 'boolean') return <div className="flex items-center gap-2"><input id={id} type="checkbox" checked={value === true} disabled={readOnly} onChange={(event) => onValueChange(field.key, event.target.checked)} />
     <FieldLabel field={field} id={id} /></div>
-  if (field.type === 'enum') return <><FieldLabel field={field} id={id} /><select id={id} className="select" value={typeof value === 'string' ? value : ''} onChange={(event) => onValueChange(field.key, event.target.value || undefined)} aria-describedby={describedBy}>
+  if (field.type === 'enum') return <><FieldLabel field={field} id={id} /><select id={id} className="select" disabled={readOnly} value={typeof value === 'string' ? value : ''} onChange={(event) => onValueChange(field.key, event.target.value || undefined)} aria-describedby={describedBy}>
     <option value="">请选择</option>{(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
   </select></>
-  if (field.type === 'configPackage') return <><FieldLabel field={field} id={id} /><select id={id} className="select" value={typeof value === 'string' ? value : ''} onChange={(event) => onValueChange(field.key, event.target.value || undefined)} aria-describedby={describedBy}>
+  if (field.type === 'configPackage') return <><FieldLabel field={field} id={id} /><select id={id} className="select" disabled={readOnly} value={typeof value === 'string' ? value : ''} onChange={(event) => onValueChange(field.key, event.target.value || undefined)} aria-describedby={describedBy}>
     <option value="">{packageChoices?.length ? '请选择配置包' : '暂无可用配置包'}</option>{packageChoices?.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
   </select></>
-  if (field.type === 'secret') return <><FieldLabel field={field} id={id} /><input id={id} className="input" type="password" autoComplete="new-password" value={secrets?.[field.key] ?? ''} placeholder={secretConfigured?.[field.key] ? '已配置，重新填写以替换' : undefined} onChange={(event) => onSecretChange?.(field.key, event.target.value)} aria-describedby={describedBy} /></>
+  if (field.type === 'secret') return <><FieldLabel field={field} id={id} /><input id={id} className="input" type="password" disabled={readOnly} autoComplete="new-password" value={secrets?.[field.key] ?? ''} placeholder={secretConfigured?.[field.key] ? '已配置，重新填写以替换' : '由服务端管理'} onChange={(event) => onSecretChange?.(field.key, event.target.value)} aria-describedby={describedBy} /></>
   const type = field.type === 'integer' || field.type === 'number' ? 'number' : 'text'
-  return <><FieldLabel field={field} id={id} /><input id={id} className="input" type={type} inputMode={type === 'number' ? 'decimal' : undefined} step={field.type === 'integer' ? 1 : field.type === 'number' ? 'any' : undefined} min={field.min} max={field.max} value={value === undefined ? '' : String(value)} onChange={(event) => {
+  return <><FieldLabel field={field} id={id} /><input id={id} className="input" type={type} disabled={readOnly} inputMode={type === 'number' ? 'decimal' : undefined} step={field.type === 'integer' ? 1 : field.type === 'number' ? 'any' : undefined} min={field.min} max={field.max} value={value === undefined ? '' : String(value)} onChange={(event) => {
     const raw = event.target.value
     if (!raw) return onValueChange(field.key, undefined)
     if (field.type === 'integer') return onValueChange(field.key, Number.isInteger(Number(raw)) ? Number(raw) : raw)

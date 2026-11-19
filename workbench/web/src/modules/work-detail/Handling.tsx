@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { lastDelivery, type Executor, type WorkItem } from './model'
 
-const executorLabel = (executor: Executor) => `${executor.id} v${executor.revision}（${executor.kind === 'flow' ? 'Flow' : executor.environment === 'sandbox' ? '沙箱' : '本地 Agent'}）`
+const executorLabel = (executor: Executor) => `${executor.id} v${executor.revision}`
 
 export function Handling({ item, busy, visible, start, execute }: {
   item: WorkItem; busy: boolean; visible: boolean; start: (assignee: string) => void; execute: (action: string) => void

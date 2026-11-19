@@ -1,5 +1,5 @@
 import { requestV2 } from '@/shared/http/client'
-import type { ConfigSchema, ConfigValues, SecretConfigured } from './config'
+import type { ConfigSchema } from './config'
 
 export const titles = { packages: '派工模板', executors: '执行器', resources: '资源' } as const
 /** 派工模板里的旧 SOP 文本叫办理说明，与独立可执行的 SOP 区分。 */
@@ -8,30 +8,16 @@ export type Collection = keyof typeof titles
 export type Ref = { id: string; revision: number }
 export type Ports = Record<string, string>
 export type ResourceKind = 'skill' | 'prompt' | 'mcp'
-export type ExecutorKind = 'agent' | 'flow'
-export type Target = Ref & { kind: ExecutorKind; environment?: 'local' | 'sandbox'; flowId?: string; flowRevision?: string }
+export type Target = Ref & { resources?: Ref[]; configSchema?: ConfigSchema }
 export type Resource = Ref & { kind: ResourceKind; content: string | { serverRef: string; credentialRef?: string } }
-export type Executor = Target & {
-  resources?: Ref[]
-  /** 服务端可选返回的动态配置描述。schema 不作为发布字段。 */
-  configSchema?: ConfigSchema
-  /** 只返回非敏感配置值；secret 仅返回是否已配置。 */
-  config?: ConfigValues
-  secretConfigured?: SecretConfigured
-}
+export type Executor = Target
 export type Package = Ref & {
   goal?: unknown; sop: string; acceptance: string; deliverables?: string[]; resources?: Ref[]; inputs?: Ports; outputs?: Ports
   actions: Record<string, { executor: Target; resources: Resource[] }>
 }
 export type Definition = Resource | Executor | Package
 export type Latest = Definition & { active: boolean }
-export const kindNames = { skill: 'Skill', prompt: '提示词', mcp: 'MCP 引用', agent: 'Agent', flow: 'Agent Flow' }
-export const environmentNames = { local: '本地 Pi Agent', sandbox: '预配沙箱 Agent' } as const
-export const environmentHints = {
-  local: '在服务端所在机器上用服务端配置的 Agent 程序运行。',
-  sandbox: '使用管理员预配的 ACP 沙箱。沙箱不可用时执行被拒绝，已发布的绑定不改变。',
-} as const
-export function environmentName(value?: string) { return environmentNames[value === 'sandbox' ? 'sandbox' : 'local'] }
+export const resourceKindNames = { skill: 'Skill', prompt: '提示词', mcp: 'MCP 引用' } as const
 
 /** 旧定义现在叫派工模板，页面归到 /templates；读取和发布仍用 `/api/v2/packages`。 */
 export const routeBase = { packages: 'templates', resources: 'resources', executors: 'executors' } as const

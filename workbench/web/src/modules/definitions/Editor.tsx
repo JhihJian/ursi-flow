@@ -5,13 +5,12 @@ import { errorMessage } from '@/shared/api'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { PageHeader } from '@/shared/ui/page-header'
-import { boundExecutors, environmentHints, environmentNames, list, publish, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Latest } from './catalog'
+import { boundExecutors, list, publish, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Latest } from './catalog'
 import { listConfigPackageChoices, type ConfigPackageChoice } from '@/modules/patches/api'
 import { blankAction, initialDraft, publishBody, type ActionDraft, type Draft } from './draft'
 import { clearDraft, draftKey, readDraft, writeDraft } from './draft-store'
 import { Choice, Hint, PortsEditor, RefPicker, ResourceRefs, TextField } from './Fields'
 import { ConfigFields } from './ConfigFields'
-import type { SecretValues } from './config'
 
 type EditorProps = { k: Collection; id?: string; revision?: string }
 export function Editor({ k, id, revision }: EditorProps) {
@@ -23,23 +22,21 @@ export function Editor({ k, id, revision }: EditorProps) {
     ])
     const v = source?.version
     const bindings = v && 'actions' in v ? await boundExecutors(v, signal) : []
-    const secretConfigured = v && 'configSchema' in v ? v.secretConfigured ?? {} : {}
-    return { source, resources, executors, draft: initialDraft(v, bindings), secretConfigured }
+    return { source, resources, executors, draft: initialDraft(v, bindings) }
   }, null)
   if (result.loading || !result.data || result.error) return <ResourceState {...result} onRetry={result.reload} />
-  const { source, draft, resources, executors, secretConfigured } = result.data
+  const { source, draft, resources, executors } = result.data
   if (source && !source.latest.active) return <p role="status">对象已停用，不能发布新版，也不再接受新派工和新引用。 <Link to={revisionPath(k, source.version)}>返回版本详情</Link></p>
-  return <EditForm k={k} initial={draft} initialSecretConfigured={secretConfigured} revision={source?.version.revision} storageKey={draftKey(k, id, revision)} resources={resources} executors={executors} />
+  return <EditForm k={k} initial={draft} revision={source?.version.revision} storageKey={draftKey(k, id, revision)} resources={resources} executors={executors} />
 }
-function EditForm({ k, initial, initialSecretConfigured, revision, storageKey, resources, executors }: {
-  k: Collection; initial: Draft; initialSecretConfigured: Record<string, boolean>; revision?: number; storageKey: string; resources: Latest[]; executors: Latest[]
+function EditForm({ k, initial, revision, storageKey, resources, executors }: {
+  k: Collection; initial: Draft; revision?: number; storageKey: string; resources: Latest[]; executors: Latest[]
 }) {
   const navigate = useNavigate()
   const [restored, setRestored] = useState<Draft | null>(() => readDraft(storageKey))
   const [d, setDraft] = useState<Draft>(() => restored ?? initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [secrets, setSecrets] = useState<SecretValues>({})
   const needsConfigPackages = k === 'executors' && initial.configSchema.fields.some((field) => field.type === 'configPackage')
   const configPackages = useResource(signal => needsConfigPackages ? listConfigPackageChoices(signal) : Promise.resolve([] as ConfigPackageChoice[]), [] as ConfigPackageChoice[])
   const review = Boolean(revision && k === 'packages')
@@ -63,7 +60,7 @@ function EditForm({ k, initial, initialSecretConfigured, revision, storageKey, r
     if (busy || (review && !reviewed)) return
     setBusy(true); setError('')
     let body: unknown
-    try { body = publishBody(k, d, secrets, initialSecretConfigured, configPackages.data.map((item) => item.id)) } catch (err) { setError(errorMessage(err)); setBusy(false); return }
+    try { body = publishBody(k, d) } catch (err) { setError(errorMessage(err)); setBusy(false); return }
     try {
       const v = await publish(k, body)
       published.current = true
@@ -98,21 +95,11 @@ function EditForm({ k, initial, initialSecretConfigured, revision, storageKey, r
           <p className="font-mono text-sm">workspace + workInstruction → artifactDirectory</p>
           <p className="text-sm text-txt3">平台记录日志和执行器记录日志都会保存在执行详情中，日志查看器暂未实现。</p>
         </section>
-        <Choice label="执行器类型" value={d.executorKind} change={v => change('executorKind', v)} options={[["agent", "Agent"], ["flow", "Agent Flow"]]} />
-        {d.executorKind === 'agent' ? <>
-          <Choice label="执行环境" value={d.environment} change={v => change('environment', v)} options={[["local", environmentNames.local], ["sandbox", environmentNames.sandbox]]} />
-          <Hint>{environmentHints[d.environment === 'sandbox' ? 'sandbox' : 'local']}</Hint>
-          <ResourceRefs label="执行器资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
-          <Hint>Agent 使用服务端配置的程序，资源以固定版本冻结到快照。命令、工作目录、环境变量和程序路径由部署者管理，不在这里填写。</Hint>
-        </> : <>
-          <TextField label="Flow ID" value={d.flowId} change={v => change('flowId', v)} required />
-          <TextField label="Flow 目录修订" value={d.flowRevision} change={v => change('flowRevision', v)} required />
-          <Hint>Flow 执行器只固定 Flow ID 与字符串目录修订。当前不支持注入资源，也不设置执行环境。</Hint>
-        </>}
-        {d.configSchema.fields.length > 0 && <ConfigFields schema={d.configSchema} values={d.config} secrets={secrets} secretConfigured={initialSecretConfigured}
-          packageChoices={configPackages.data} packageLoading={needsConfigPackages && configPackages.loading} packageError={needsConfigPackages ? configPackages.error : ''} onReloadPackages={configPackages.reload}
-          onValueChange={(key, value) => setDraft(old => ({ ...old, config: { ...old.config, ...(value === undefined ? (() => { const next = { ...old.config }; delete next[key]; return next })() : { [key]: value }) } }))}
-          onSecretChange={(key, value) => setSecrets(old => ({ ...old, [key]: value }))} />}
+        <ResourceRefs label="执行器资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
+        <Hint>资源按固定版本冻结到派工快照。执行程序、工作目录、环境变量和命令由服务端管理。</Hint>
+        {d.configSchema.fields.length > 0 && <ConfigFields schema={d.configSchema} values={d.config} packageChoices={configPackages.data}
+          packageLoading={needsConfigPackages && configPackages.loading} packageError={needsConfigPackages ? configPackages.error : ''} onReloadPackages={configPackages.reload}
+          onValueChange={() => {}} readOnly />}
       </>}
       {k === 'packages' && <>
         <TextField label={d.structuredGoal ? '目标（结构化 JSON）' : '目标'} value={d.goal ?? ''} change={v => change('goal', v)} multiline={d.structuredGoal} />

@@ -7,7 +7,7 @@ import { definitionRoutes } from './routes'
 import type { Package } from './catalog'
 
 const pkg: Package = { id: 'triage', revision: 1, sop: '原 SOP', acceptance: '有证据', actions: { inspect: {
-  executor: { id: 'pi', kind: 'agent', revision: 1 }, resources: [{ id: 'guide', revision: 2, kind: 'skill', content: '指南' }],
+  executor: { id: 'pi', revision: 1 }, resources: [{ id: 'guide', revision: 2, kind: 'skill', content: '指南' }],
 } } }
 const exec = { ...pkg.actions.inspect.executor, resources: [{ id: 'guide', revision: 2 }] }
 function start(path: string, serve: (path: string, options: RequestInit) => Response) {
@@ -28,7 +28,6 @@ it('通过表单引用旧资源版本，MCP 版本不可绑定，即使同一 ID
     return Response.json({ ...exec, active: true })
   })
   await userEvent.type(await screen.findByLabelText('执行器 ID', { exact: true }), 'pi')
-  await userEvent.selectOptions(screen.getByLabelText('执行环境'), 'sandbox')
   await userEvent.click(screen.getByRole('button', { name: '添加执行器资源' }))
   await userEvent.selectOptions(screen.getByLabelText('资源 ID', { exact: true }), 'guide')
   expect(await screen.findByRole('option', { name: 'v2 · MCP 引用' })).toBeDisabled()
@@ -36,7 +35,7 @@ it('通过表单引用旧资源版本，MCP 版本不可绑定，即使同一 ID
   expect(screen.getByText('workspace + workInstruction → artifactDirectory')).toBeVisible()
   expect(screen.queryByRole('button', { name: '添加输入字段' })).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
-  await waitFor(() => expect(sent).toEqual({ id: 'pi', kind: 'agent', environment: 'sandbox', resources: [{ id: 'guide', revision: 1 }] }))
+  await waitFor(() => expect(sent).toEqual({ id: 'pi', resources: [{ id: 'guide', revision: 1 }] }))
 })
 
 it('历史包按阅读版本跳转，从目录读取启停状态并确认停用整个 ID', async () => {
@@ -67,14 +66,14 @@ it('编辑旧包须明确核对不可还原字段，发布失败保留草稿，�
   })
   const button = await screen.findByRole('button', { name: '发布新版' }); expect(button).toBeDisabled()
   await userEvent.type(screen.getByLabelText('办理说明'), ' 已更新')
-  await screen.findByRole('option', { name: 'v1 · Agent' }); await userEvent.click(screen.getByLabelText('我已核对动作资源和输入输出声明'))
+  await userEvent.click(screen.getByLabelText('我已核对动作资源和输入输出声明'))
   await userEvent.click(button); expect(await screen.findByRole('alert')).toHaveTextContent('版本冲突'); expect(screen.getByLabelText('办理说明')).toHaveValue('原 SOP 已更新')
   expect(sent).toMatchObject({ actions: { inspect: { executor: { id: 'pi', revision: 1 }, resources: [] } } }); expect(sent).not.toHaveProperty('revision')
   accept = true; await userEvent.click(button); await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/4'))
 })
 
-it('执行器目录展示通用契约与后端目标，详情不再把输入输出当作执行器字段', async () => {
-  const executor = { id: 'assistant', revision: 2, kind: 'agent', environment: 'local', resources: [{ id: 'guide', revision: 1 }] }
+it('执行器目录展示通用契约与资源，详情不再把输入输出当作执行器字段', async () => {
+  const executor = { id: 'assistant', revision: 2, resources: [{ id: 'guide', revision: 1 }] }
   const router = start('/executors', url => {
     if (url === '/executors') return Response.json([{ ...executor, active: true }])
     if (url === '/executors/assistant') return Response.json({ ...executor, active: true })
@@ -83,7 +82,6 @@ it('执行器目录展示通用契约与后端目标，详情不再把输入输�
     return Response.json({ error: 'not found' }, { status: 404 })
   })
   expect(await screen.findByText('workspace + workInstruction → artifactDirectory')).toBeVisible()
-  expect(screen.getByText('本地 Pi Agent')).toBeVisible()
   expect(screen.getByText('1 个固定资源')).toBeVisible()
   await userEvent.click(screen.getByRole('link', { name: 'assistant v2' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/executors/assistant/revisions/2'))

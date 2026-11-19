@@ -7,22 +7,20 @@ import { Modal } from '@/shared/ui/modal'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Choice } from './Fields'
-import { deactivate, environmentHints, environmentName, history, kindNames, list, objectPath, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Definition, type Latest, type Ports, type Ref, type Target } from './catalog'
+import { ConfigFields } from './ConfigFields'
+import { configDefaults } from './config'
+import { deactivate, history, resourceKindNames, list, objectPath, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Definition, type Latest, type Ports, type Ref, type Target } from './catalog'
 
 function VersionLink({ k, v }: { k: Collection; v: Ref }) {
   return <Link className="break-all font-medium text-accent-2 hover:underline" to={revisionPath(k, v)}>{v.id} v{v.revision}</Link>
 }
-function executorTarget(v: Extract<Latest, { kind: 'agent' | 'flow' }>) {
-  if (v.kind === 'flow') return <><span>Flow</span><span className="text-txt3">{v.flowId} @ {v.flowRevision}</span></>
-  return <><span>{environmentName(v.environment)}</span><span className="text-txt3">{v.resources?.length ?? 0} 个固定资源</span></>
-}
 function ExecutorDirectory({ items }: { items: Latest[] }) {
   return <ul className="divide-y divide-line border-y border-line" aria-label="执行器列表">
     {items.map(v => {
-      if (!('kind' in v) || (v.kind !== 'agent' && v.kind !== 'flow')) return null
+      if ('content' in v || 'actions' in v) return null
       return <li key={v.id} className="grid gap-2 py-3 md:grid-cols-[minmax(12rem,1.2fr)_minmax(12rem,1fr)_auto] md:items-center">
         <div className="min-w-0"><VersionLink k="executors" v={v} /><p className="mt-1 text-xs text-txt3">workspace + workInstruction → artifactDirectory</p></div>
-        <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-sm">{executorTarget(v)}</div>
+        <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-sm"><span>{v.resources?.length ?? 0} 个固定资源</span><span className="text-txt3">{v.configSchema?.fields.length ?? 0} 个配置字段</span></div>
         <span className="text-sm text-txt3 md:text-right">v{v.revision} · 对象{v.active ? '已启用' : '已停用'}</span>
       </li>
     })}
@@ -38,7 +36,7 @@ export function Directory({ k }: { k: Collection }) {
     {k === 'resources' && <div className="max-w-xs"><Choice label="资源类型筛选" value={filter} change={setFilter} options={[["", "全部"], ["skill", "Skill"], ["prompt", "提示词"], ["mcp", "MCP 引用"]]} /></div>}
     {result.loading || result.error || !items.length ? <ResourceState loading={result.loading} error={result.error} empty title={result.error ? undefined : `暂无${name}`} onRetry={result.reload} /> :
       k === 'executors' ? <ExecutorDirectory items={items} /> : <ul className="divide-y divide-line border-y border-line">{items.map(v => <li key={v.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
-        <VersionLink k={k} v={v} />{'kind' in v && <span>{kindNames[v.kind]}</span>}
+        <VersionLink k={k} v={v} />{'kind' in v && <span>{resourceKindNames[v.kind]}</span>}
         <span className="ml-auto text-txt3">对象{v.active ? '已启用' : '已停用'}</span>
       </li>)}</ul>}
   </section>
@@ -55,17 +53,9 @@ function Ports({ label, value, inherited }: { label: string; value?: Ports; inhe
     ? <ul>{entries.map(([name, type]) => <li key={name}><span className="font-medium">{name}</span>：{type}</li>)}</ul> : '未声明'}</Fact>
 }
 function show(v: unknown) { return typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? '未声明' }
-function ExecutionTarget({ target }: { target: Target }) {
-  if (target.kind === 'flow') return <>
-    <Fact label="Flow ID"><Link className="text-accent-2" to={`/flows/${encodeURIComponent(target.flowId!)}/edit`}>{target.flowId}</Link></Fact>
-    <Fact label="固定目录修订">{target.flowRevision}</Fact>
-    <Fact label="执行边界">只按固定目录修订运行 Flow，不注入资源，也不使用执行环境设置。</Fact>
-  </>
-  const environment = target.environment === 'sandbox' ? 'sandbox' : 'local'
-  return <>
-    <Fact label="执行环境">{environmentName(target.environment)}</Fact>
-    <Fact label="执行边界">{environmentHints[environment]}</Fact>
-  </>
+function ConfigSchemaForm({ schema }: { schema?: Target['configSchema'] }) {
+  if (!schema?.fields.length) return null
+  return <ConfigFields schema={schema} values={configDefaults(schema)} onValueChange={() => {}} readOnly />
 }
 function ExecutorContract() {
   return <section className="space-y-3 border-y border-line py-4" aria-labelledby="executor-contract-detail">
@@ -77,12 +67,11 @@ function ExecutorContract() {
   </section>
 }
 function VersionBody({ v }: { v: Definition }) {
-  if ('content' in v) return <dl className="space-y-4"><Fact label="类型">{kindNames[v.kind]}</Fact>{typeof v.content === 'string'
+  if ('content' in v) return <dl className="space-y-4"><Fact label="类型">{resourceKindNames[v.kind]}</Fact>{typeof v.content === 'string'
     ? <><Fact label="资源内容">{v.content}</Fact></>
     : <><Fact label="服务引用">{v.content.serverRef}</Fact><Fact label="凭据引用">{v.content.credentialRef || '无'}</Fact>
       <Fact label="执行边界">只登记服务与凭据的命名引用；连接参数由管理员管理，当前执行后端不支持注入 MCP，所以它不能作为执行依赖。</Fact></>}</dl>
-  if ('kind' in v) return <><ExecutorContract /><dl className="space-y-4"><Fact label="类型">{kindNames[v.kind]}</Fact><ExecutionTarget target={v} />
-    <Fact label="资源依赖">{v.kind === 'flow' ? 'Flow 执行器当前不支持注入资源' : <Resources refs={v.resources} />}</Fact></dl></>
+  if (!('actions' in v)) return <><ExecutorContract /><dl className="space-y-4"><Fact label="资源依赖"><Resources refs={v.resources} /></Fact></dl><ConfigSchemaForm schema={v.configSchema} /></>
   return <><dl className="space-y-4"><Fact label="目标">{show(v.goal)}</Fact><Fact label={sopLabel}>{v.sop}</Fact>
     <Fact label="验收标准">{v.acceptance}</Fact><Fact label="必交文件">{v.deliverables?.length ? <ul>{v.deliverables.map(f => <li key={f}>{f}</li>)}</ul> : '未声明'}</Fact>
     <Ports label="输入声明" value={v.inputs} inherited="未声明" /><Ports label="输出声明" value={v.outputs} inherited="未声明" />
@@ -92,9 +81,10 @@ function VersionBody({ v }: { v: Definition }) {
       {Object.entries(v.actions).map(([name, a]) => <div key={name} className="space-y-2 border-t border-line py-3">
         <h3 className="break-words">{name} → <VersionLink k="executors" v={a.executor} /> → {a.resources.length
           ? a.resources.map((r, n) => <span key={r.id}>{n > 0 && '、'}<VersionLink k="resources" v={r} /></span>) : '无动作级资源'}</h3>
-        <dl className="grid gap-2 sm:grid-cols-2"><ExecutionTarget target={a.executor} />
+        <dl className="grid gap-2 sm:grid-cols-2"><Fact label="执行器契约">workspace + workInstruction → artifactDirectory</Fact>
           <Fact label="动作固定资源"><Resources refs={a.resources} /></Fact>
           <Fact label="动作级声明">发布快照只保留合并后的执行器与资源，动作级输入输出声明没有写入快照，编辑历史版本时需要维护人重新核对。</Fact></dl>
+        <ConfigSchemaForm schema={a.executor.configSchema} />
       </div>)}</section></>
 }
 export function History({ k, id }: { k: Collection; id: string }) {

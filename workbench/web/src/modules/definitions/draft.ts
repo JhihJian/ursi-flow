@@ -1,5 +1,5 @@
-import { pinned, sameRef, type Collection, type Definition, type Executor, type ExecutorKind, type Ports, type Ref, type ResourceKind } from './catalog'
-import { configValuesForPublish, normalizeConfigSchema, sanitizeConfigValues, validateConfig, type ConfigSchema, type ConfigValues, type SecretConfigured, type SecretValues } from './config'
+import { pinned, sameRef, type Collection, type Definition, type Executor, type Ports, type Ref, type ResourceKind } from './catalog'
+import { configDefaults, normalizeConfigSchema, type ConfigSchema, type ConfigValues } from './config'
 
 export type FieldRow = { name: string; type: string }
 export type ActionDraft = { name: string; executor: Ref; resources: Ref[]; inputs?: FieldRow[]; outputs?: FieldRow[] }
@@ -7,7 +7,6 @@ export const blankRef = (): Ref => ({ id: '', revision: 0 })
 export const blankAction = (): ActionDraft => ({ name: '', executor: blankRef(), resources: [] })
 export type Draft = {
   id: string; resourceKind: ResourceKind; text: string; serverRef: string; credentialRef: string
-  executorKind: ExecutorKind; environment: string; flowId: string; flowRevision: string
   resources: Ref[]; inputs?: FieldRow[]; outputs?: FieldRow[]
   configSchema: ConfigSchema; config: ConfigValues
   sop: string; acceptance: string; goal?: string; structuredGoal: boolean; deliverables?: string; actions: ActionDraft[]
@@ -20,8 +19,7 @@ export function deliverableLines(text?: string) {
 export function initialDraft(v?: Definition, executors: Executor[] = []): Draft {
   const d: Draft = {
     id: v?.id ?? '', resourceKind: 'skill', text: '', serverRef: '', credentialRef: '',
-    executorKind: 'agent', environment: 'local', flowId: '', flowRevision: '', resources: [],
-    configSchema: { fields: [] }, config: {},
+    resources: [], configSchema: { fields: [] }, config: {},
     sop: '', acceptance: '', structuredGoal: false, actions: [blankAction()],
   }
   if (!v) return d
@@ -44,10 +42,8 @@ export function initialDraft(v?: Definition, executors: Executor[] = []): Draft 
       return { name, executor: pinned(a.executor), resources: a.resources.filter(r => !inherited.some(i => sameRef(r, i))).map(pinned) }
     })
   } else {
-    d.executorKind = v.kind; d.environment = v.environment === 'sandbox' ? 'sandbox' : 'local'
-    d.flowId = v.flowId ?? ''; d.flowRevision = v.flowRevision ?? ''
     d.configSchema = normalizeConfigSchema(v.configSchema)
-    d.config = sanitizeConfigValues(d.configSchema, v.config)
+    d.config = configDefaults(d.configSchema)
   }
   return d
 }
@@ -60,18 +56,12 @@ function fixed(ref: Ref) {
   if (!ref.id || !Number.isSafeInteger(ref.revision) || ref.revision < 1) throw new Error('请选择固定的引用版本。')
   return pinned(ref)
 }
-export function publishBody(k: Collection, d: Draft, secrets: SecretValues = {}, secretConfigured: SecretConfigured = {}, packageIds: readonly string[] = []) {
+export function publishBody(k: Collection, d: Draft) {
   const id = d.id
   if (k === 'resources') return { id, kind: d.resourceKind, content: d.resourceKind === 'mcp'
     ? { serverRef: d.serverRef, credentialRef: d.credentialRef || undefined } : d.text }
   if (k === 'executors') {
-    const errors = validateConfig(d.configSchema, d.config, secrets, secretConfigured, packageIds)
-    if (errors.length) throw new Error(errors[0])
-    const config = configValuesForPublish(d.configSchema, d.config, secrets, secretConfigured)
-    const base = d.executorKind === 'flow'
-      ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision }
-      : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed) }
-    return Object.keys(config).length ? { ...base, config } : base
+    return { id, resources: d.resources.map(fixed), ...(d.configSchema.fields.length ? { configSchema: d.configSchema } : {}) }
   }
   if (!id.trim()) throw new Error('请填写派工模板 ID。')
   const io = { inputs: fields(d.inputs), outputs: fields(d.outputs) }

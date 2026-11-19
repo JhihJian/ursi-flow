@@ -8,6 +8,7 @@ export type ConfigField = {
   type: ConfigFieldType
   description?: string
   required?: boolean
+  default?: ConfigValue | string | { redacted: true } | { ref: string }
   options?: ConfigOption[]
   min?: number
   max?: number
@@ -35,16 +36,18 @@ function field(key: string, value: unknown): ConfigField | null {
   if (!obj) return null
   const type = obj.type ?? obj.kind
   if (typeof type !== 'string' || !(configFieldTypes as readonly string[]).includes(type)) return null
-  const options = Array.isArray(obj.options) ? obj.options.map(option).filter((v): v is ConfigOption => v !== null) : undefined
+  const rawOptions = Array.isArray(obj.options) ? obj.options : Array.isArray(obj.values) ? obj.values : undefined
+  const options = rawOptions?.map(option).filter((v): v is ConfigOption => v !== null)
   return {
     key,
     label: typeof obj.label === 'string' && obj.label ? obj.label : key,
     type: type as ConfigFieldType,
     ...(typeof obj.description === 'string' ? { description: obj.description } : {}),
     ...(obj.required === true ? { required: true } : {}),
+    ...('default' in obj && (typeof obj.default === 'string' || typeof obj.default === 'number' || typeof obj.default === 'boolean' || obj.default === '***' || (obj.default && typeof obj.default === 'object' && !Array.isArray(obj.default))) ? { default: obj.default as ConfigField['default'] } : {}),
     ...(options?.length ? { options } : {}),
-    ...(typeof obj.min === 'number' ? { min: obj.min } : {}),
-    ...(typeof obj.max === 'number' ? { max: obj.max } : {}),
+    ...(typeof obj.min === 'number' ? { min: obj.min } : typeof obj.minimum === 'number' ? { min: obj.minimum } : {}),
+    ...(typeof obj.max === 'number' ? { max: obj.max } : typeof obj.maximum === 'number' ? { max: obj.maximum } : {}),
   }
 }
 
@@ -77,10 +80,18 @@ export function nonSecretFields(schema: ConfigSchema) {
 
 export function sanitizeConfigValues(schema: ConfigSchema, values: unknown): ConfigValues {
   const source = record(values)
-  if (!source) return {}
+  const result = configDefaults(schema)
+  for (const item of nonSecretFields(schema)) {
+    const value = source?.[item.key]
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') result[item.key] = value
+  }
+  return result
+}
+
+export function configDefaults(schema: ConfigSchema): ConfigValues {
   const result: ConfigValues = {}
   for (const item of nonSecretFields(schema)) {
-    const value = source[item.key]
+    const value = item.default
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') result[item.key] = value
   }
   return result

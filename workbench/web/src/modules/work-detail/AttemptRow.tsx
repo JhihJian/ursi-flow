@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
 import { requestV2 } from '@/shared/http/client'
 import { Button } from '@/shared/ui/button'
 import { errorMessage } from '@/shared/api'
@@ -74,8 +73,6 @@ export function AttemptRow({ base, attempt, open, toggle, busy, visible, write, 
   }, [path, busy, observe, retry, update])
   if (!visible) return null
   const executor = attempt.executor
-  const sandbox = executor.environment === 'sandbox'
-  const environment = executor.kind === 'flow' ? 'Flow' : sandbox ? '沙箱' : '本地 Agent'
   const verify = () => write(async () => update(await post<Attempt>(`${path}/verify`, { status, evidence, reason })))
   const logPage = (() => {
     if (!attempt.executorLogPage) return null
@@ -89,13 +86,12 @@ export function AttemptRow({ base, attempt, open, toggle, busy, visible, write, 
   return <article className="min-w-0 border-b border-line py-3">
     <button className="grid w-full gap-1 text-left sm:grid-cols-[2fr_2fr_1fr_1fr]" aria-expanded={open} onClick={toggle}>
       <strong>{attempt.action}</strong><span>{executor.id} v{executor.revision}</span>
-      <span>{environment} · {attempt.workspace?.id ?? '未记录'}</span><span>{attemptStatus[attempt.status]}</span>
+      <span>执行器 · {attempt.workspace?.id ?? '未记录'}</span><span>{attemptStatus[attempt.status]}</span>
       <small className="break-all text-txt3 sm:col-span-4">{attempt.id}</small>
     </button>
     {error && <p role="alert" className="text-err">查询执行记录失败：{error} <Button onClick={() => setRetry(n => n + 1)}>重新查询</Button></p>}
     {open && <div className="mt-3 space-y-3 border-l-2 border-line pl-3">
-      {executor.kind === 'flow' && <p>{executor.flowId} @ {executor.flowRevision} <Link className="text-accent-2 underline" to={`/runs/${encodeURIComponent(attempt.id)}`}>查看 Run 节点历史</Link></p>}
-      {sandbox && attempt.backendRunId && <p>会话标识：{attempt.backendRunId}</p>}
+      {attempt.backendRunId && <p>后端会话标识：{attempt.backendRunId}</p>}
       <section aria-label="平台记录日志">
         <h3 className="font-medium">平台记录日志</h3>
         <p>{attempt.platformLog.length === 0 ? '暂无平台记录' : `已记录 ${attempt.platformLog.length} 条，日志查看器待实现`}</p>

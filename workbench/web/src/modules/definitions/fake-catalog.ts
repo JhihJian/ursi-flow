@@ -70,21 +70,10 @@ export function createFakeCatalog() {
     return { id, revision: 0, kind, content: text(body.content, '资源内容') }
   }
   function executor(id: string, body: Body): Executor {
-    if (body.kind === 'flow') {
-      if (body.environment !== undefined) throw new Error('Flow 执行器不接受执行环境')
-      if (body.resources !== undefined && (body.resources as unknown[]).length) throw new Error('Flow 执行器不支持注入资源')
-      return { id, revision: 0, kind: 'flow', flowId: text(body.flowId, 'Flow ID'), flowRevision: text(body.flowRevision, 'Flow 目录修订'),
-        ...(body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? { config: body.config as Executor['config'] } : {}),
-        ...(body.configSchema && typeof body.configSchema === 'object' && !Array.isArray(body.configSchema) ? { configSchema: body.configSchema as Executor['configSchema'] } : {}),
-        ...(body.secretConfigured && typeof body.secretConfigured === 'object' && !Array.isArray(body.secretConfigured) ? { secretConfigured: body.secretConfigured as Executor['secretConfigured'] } : {}) }
-    }
-    if (body.kind !== 'agent') throw new Error('执行器类型无效')
-    if (body.environment !== undefined && body.environment !== 'local' && body.environment !== 'sandbox') throw new Error('执行环境无效')
-    return { id, revision: 0, kind: 'agent', environment: body.environment as 'local' | 'sandbox' | undefined,
-      resources: bindable(body.resources, '执行器资源'),
-      ...(body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? { config: body.config as Executor['config'] } : {}),
-      ...(body.configSchema && typeof body.configSchema === 'object' && !Array.isArray(body.configSchema) ? { configSchema: body.configSchema as Executor['configSchema'] } : {}),
-      ...(body.secretConfigured && typeof body.secretConfigured === 'object' && !Array.isArray(body.secretConfigured) ? { secretConfigured: body.secretConfigured as Executor['secretConfigured'] } : {}) }
+    const schema = body.configSchema
+    if (schema !== undefined && (!schema || typeof schema !== 'object')) throw new Error('configSchema 必须是对象或数组')
+    return { id, revision: 0, resources: bindable(body.resources, '执行器资源'),
+      ...(schema !== undefined ? { configSchema: schema as Executor['configSchema'] } : {}) }
   }
   function pkg(id: string, body: Body): Package {
     const sop = text(body.sop, '办理说明')
@@ -96,11 +85,8 @@ export function createFakeCatalog() {
     for (const [name, action] of Object.entries(actions)) {
       const target = pin('executors', action.executor, `动作 ${name} 的执行器`)
       const bound = find<Executor>('executors', target)
-      const pinnedTarget: Target = bound.kind === 'flow'
-        ? { id: bound.id, revision: bound.revision, kind: 'flow', flowId: bound.flowId, flowRevision: bound.flowRevision }
-        : { id: bound.id, revision: bound.revision, kind: 'agent', environment: bound.environment }
+      const pinnedTarget: Target = { id: bound.id, revision: bound.revision, ...(bound.configSchema ? { configSchema: bound.configSchema } : {}) }
       const ownResources = bindable(action.resources, `动作 ${name} 资源`)
-      if (bound.kind === 'flow' && ownResources.length) throw new Error('Flow 执行器不接受动作资源')
       const merged: Ref[] = []
       for (const ref of [...own, ...(bound.resources ?? []), ...ownResources]) {
         const previous = merged.find(v => v.id === ref.id)

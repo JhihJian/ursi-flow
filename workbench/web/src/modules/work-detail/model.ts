@@ -1,12 +1,11 @@
 import { requestV2 } from '@/shared/http/client'
+import type { ConfigSchema } from '@/modules/definitions/config'
 
 export interface Executor {
   id: string
   revision: number
-  kind: 'agent' | 'flow'
-  environment?: 'local' | 'sandbox'
-  flowId?: string
-  flowRevision?: string
+  resources?: { id: string; revision: number }[]
+  configSchema?: ConfigSchema
 }
 /** 平台分配的目录能力引用。`id` 是平台标识，不是宿主路径。 */
 export interface WorkspaceRef { id: string; access: 'read-write'; purpose: string }
