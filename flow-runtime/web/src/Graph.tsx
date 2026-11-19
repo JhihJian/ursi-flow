@@ -43,7 +43,8 @@ import { Input } from './components/ui/input'
 import { Label } from './components/ui/label'
 import { Select } from './components/ui/select'
 import { Textarea } from './components/ui/textarea'
-import { layoutGraph, nodeSize, pointAtDistance, roundedPath, type Point } from './flow/layout'
+import { layoutGraph, nodeSize, type Point } from './flow/layout'
+import { edgeGeometry } from './flow/edge'
 import { fixedOutgoing } from './flow/edit'
 import { actionOf, type FlowSection } from './flow/doc'
 import {
@@ -193,25 +194,6 @@ const ResultEdge = memo(function ResultEdge(props: EdgeProps) {
     </>
   )
 })
-
-/** 连线走线：从出口经 dagre 折点到入口，回边的折点已由布局铺在图形下方。 */
-function edgeGeometry(props: EdgeProps, route: Point[]) {
-  // dagre 的首末折点可能落在卡片内部，去掉它们避免连线先往里折。
-  const middle = [...route]
-  while (middle.length && middle[0].x < props.sourceX - 1) middle.shift()
-  while (middle.length && middle[middle.length - 1].x > props.targetX + 1) middle.pop()
-  const points: Point[] = [
-    { x: props.sourceX, y: props.sourceY },
-    ...middle,
-    { x: props.targetX, y: props.targetY },
-  ]
-  // 去掉重复折点，圆角才会正常生成。
-  const clean = points.filter(
-    (point, index) => index === 0 || Math.hypot(point.x - points[index - 1].x, point.y - points[index - 1].y) > 1,
-  )
-  // 结果名贴近出口摆放，读起来像出口的标签，也不会压到其他卡片。
-  return { path: roundedPath(clean, 12), label: pointAtDistance(clean, 34) }
-}
 
 const nodeTypes = { work: WorkNode, start: TerminalNode, finish: TerminalNode, parallel: ParallelNode }
 const edgeTypes = { result: ResultEdge }

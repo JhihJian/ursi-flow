@@ -11,6 +11,7 @@ import {
 import { createExtensionRuntime } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
+import { NodeTrajectoryRecorder } from "./trajectory.ts";
 import type {
 	AgentOpenRequest,
 	AgentHarnessExtensions,
@@ -150,18 +151,29 @@ interface SessionState {
 	cwd?: string;
 	/** 本次节点执行是否已经通过结果工具提交。 */
 	submitted: boolean;
+	/** 模型反复提交非法结果时记录的失败原因。 */
+	failure?: string;
+	/** 本轮非法提交次数。 */
+	invalid: number;
+}
+
+export interface PiSdkHarnessOptions {
+	/** 每个 Agent 节点执行的会话轨迹目录；缺省不落盘。 */
+	trajectoryDir?: string;
 }
 
 export class PiSdkHarness implements FlowAgentHarness {
 	private readonly sessions = new Map<string, SessionState>();
 	private readonly modelRuntime: Promise<Awaited<ReturnType<typeof createModel>>>;
 	private readonly config: PiProviderConfig;
+	private readonly trajectoryDir?: string;
 	readonly extensions: AgentHarnessExtensions = {
 		continuity: {
 			rebind: async (agent, bridge) => {
 				const state = this.state(agent);
 				state.bridge = bridge;
 				state.submitted = false;
+				state.failure = undefined;
 			},
 			restore: async () => {
 				throw new Error("Pi SDK 执行器暂不支持接管已有会话");
@@ -172,9 +184,10 @@ export class PiSdkHarness implements FlowAgentHarness {
 		},
 	};
 
-	constructor(config: PiProviderConfig) {
+	constructor(config: PiProviderConfig, options: PiSdkHarnessOptions = {}) {
 		validateProviderConfig(config);
 		this.config = config;
+		this.trajectoryDir = options.trajectoryDir;
 		this.modelRuntime = createModel(config);
 	}
 
@@ -191,6 +204,8 @@ export class PiSdkHarness implements FlowAgentHarness {
 			bridge: request.runtimeTools,
 			cwd: request.cwd,
 			submitted: false,
+			failure: undefined,
+			invalid: 0,
 		};
 		const { runtime, model } = await this.modelRuntime;
 		this.sessions.set(id, state);
@@ -240,10 +255,19 @@ export class PiSdkHarness implements FlowAgentHarness {
 				);
 				const allowed = outcomeNames(definition?.inputSchema);
 				const outcome = (params as Record<string, unknown>).outcome;
-				if (allowed.length && !allowed.includes(String(outcome)))
-					throw new Error(
-						`节点不允许结果: ${String(outcome)}。可选结果: ${allowed.join("、")}`,
-					);
+				if (allowed.length && !allowed.includes(String(outcome))) {
+					const message = `节点不允许结果: ${String(outcome)}。可选结果: ${allowed.join("、")}`;
+					state.failure = message;
+					state.invalid++;
+					// 模型连续提交非法结果时结束本轮，避免无限重试。
+					if (state.invalid >= 3)
+						return {
+							content: [{ type: "text", text: `${message}。已停止本节点执行。` }],
+							details: { rejected: true },
+							terminate: true,
+						};
+					throw new Error(message);
+				}
 				const result = await state.bridge.invoke({
 					toolName: OUTCOME_TOOL,
 					arguments: params as Record<string, unknown>,
@@ -261,6 +285,26 @@ export class PiSdkHarness implements FlowAgentHarness {
 	async run(agent: AgentHandle, request: { executionId: string; prompt: string }) {
 		const state = this.state(agent);
 		state.submitted = false;
+		state.failure = undefined;
+		state.invalid = 0;
+		let recorder = this.trajectoryDir
+			? new NodeTrajectoryRecorder({
+					dir: this.trajectoryDir,
+					source: state.session.sessionManager,
+					start: {
+						executionId: request.executionId,
+						...(state.cwd ? { cwd: state.cwd } : {}),
+						model: this.config.model,
+					},
+				})
+			: undefined;
+		try {
+			await recorder?.start();
+		} catch (error) {
+			// 建不了文件就放弃这份轨迹，避免写出没有会话头的半份 JSONL。
+			console.error("无法建立节点会话轨迹", request.executionId, error);
+			recorder = undefined;
+		}
 		try {
 			await state.session.prompt(request.prompt);
 		} catch (error) {
@@ -271,13 +315,16 @@ export class PiSdkHarness implements FlowAgentHarness {
 					summary: error instanceof Error ? error.message : String(error),
 				},
 			};
+		} finally {
+			await recorder?.stop();
 		}
 		if (!state.submitted)
 			return {
 				status: "failed" as const,
 				error: {
 					category: "agent_execution",
-					summary: "Agent 结束前没有通过结果工具提交结果",
+					summary:
+						state.failure ?? "Agent 结束前没有通过结果工具提交结果",
 				},
 			};
 		return {

@@ -168,6 +168,19 @@ function route(method, path, body, context) {
     }
     if (method === 'DELETE') return { op: 'flow.delete', args: { id } }
   }
+  if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)\/flow$/)) && method === 'GET')
+    return { op: 'run.flow', args: { id: requireId(safeDecode(match[1])) } }
+  if (
+    (match = path.match(/^\/api\/v1\/runs\/([^/]+)\/nodes\/([^/]+)\/trajectory$/)) &&
+    method === 'GET'
+  )
+    return {
+      op: 'run.trajectory',
+      args: {
+        id: requireId(safeDecode(match[1])),
+        node: requireId(safeDecode(match[2])),
+      },
+    }
   if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)(\/history|\/stop)?$/))) {
     const id = requireId(safeDecode(match[1]))
     if (!match[2] && method === 'GET') return { op: 'run.get', args: { id } }
@@ -234,9 +247,9 @@ export async function createConsole(env) {
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
-        // 画布与图表用行内样式定位节点，脚本仍然只允许同源资源。
+        // 画布与图表用行内样式定位节点，轨迹里的图片块是 data: URI，脚本仍然只允许同源资源。
         'Content-Security-Policy':
-          "default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+          "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
       })
       res.end(body)
     }

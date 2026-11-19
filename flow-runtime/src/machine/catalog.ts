@@ -111,6 +111,20 @@ export class Catalog {
 			files: await filesAt(join(this.root(revision), name)),
 		};
 	}
+	// 运行持有启动时的目录修订；历史包只能按该修订读取，不能回落到当前修订。
+	async at(name: string, revision: string) {
+		id(name);
+		if (!validId(revision)) throw new BusinessError("not_found", "运行修订不可用");
+		const root = this.root(revision);
+		const names = await optional(readdir(root), []);
+		if (!names.includes(name))
+			throw new BusinessError("not_found", "运行使用的 Flow 修订已不可用");
+		return {
+			id: name,
+			revision,
+			files: await filesAt(join(root, name)),
+		};
+	}
 	// Only the daemon's serialized request handler publishes catalog generations.
 	async change(op: string, name: string, files: unknown, expected?: string) {
 		id(name);

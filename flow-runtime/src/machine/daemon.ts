@@ -130,6 +130,10 @@ async function dispatch(request: unknown) {
 			return runs.get(a.id);
 		case "run.history":
 			return runs.history(a.id);
+		case "run.flow":
+			return runs.flow(a.id);
+		case "run.trajectory":
+			return runs.trajectory(a.id, a.node);
 		case "run.list":
 			return runs.list();
 		default:

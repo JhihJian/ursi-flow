@@ -49,7 +49,26 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 {"mode":"live","apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
 ```
 
-嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
+嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
+
+## 运行详情
+
+运行记录详情分两类记录，共用同一份运行事实：
+
+- **Flow 流转**：按运行启动时固定的目录修订读取 `FLOW.md`，画出节点卡片与结果边。未到达、运行中、已完成、失败与中断的节点用不同状态标记，当前节点带呼吸环；实际走过的结果边实线高亮，没走过的边淡显。点节点跳到该节点最近一次执行记录，「路由证据」「并行轮次」「恢复记录」「子 Run」也在这一页。
+- **节点执行**：列出每次节点访问。Agent 节点直接渲染 [pi-agent-trajectory-viewer](https://github.com/JhihJian/pi-agent-trajectory-viewer) 的轨迹工作区，可看消息、思考、工具调用、结果、搜索与时间线；命令节点展示标准输出与标准错误；执行Flow 节点给出子 Run 入口。运行中的节点每 5 秒重取一次轨迹，完成后停止轮询。
+
+选中节点写在地址栏（例如 `#/runs/review-001?tab=nodes&node=nr-review-1`），刷新后停在同一条记录。
+
+轨迹来自 daemon 按节点执行保存的 Pi 会话 JSONL 切片（`~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`），`server.mjs` 只做转发。旧运行或命令节点没有切片时页面说明原因，不影响其他证据。切片超过 8 MiB 时 daemon 只返回大小，页面提示不加载。
+
+轨迹界面是上游项目的源码快照，放在 `src/trajectory/components` 与 `src/trajectory/lib`，不在本目录就地修改：
+
+```sh
+npm run sync:trajectory
+```
+
+脚本默认从 `/data/dev/pi-agent-trajectory-viewer` 复制，可用 `TRAJECTORY_VIEWER` 指向其他检出；它同时把参考样式里的 `body`、`:root`、滚动条与焦点选择器收进 `.trajectory-host`，并把来源提交写入 `src/trajectory/VENDOR.json`。表面、文字与描边由 `src/trajectory/theme-bridge.css` 映射到控制台主题，深色主题跟随 `data-theme`。
 
 ## 图形视图
 
@@ -75,6 +94,6 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm test` 用临时目录里的假 daemon 覆盖协议映射、认证、错误码、请求上限和静态路径。`npm run test:e2e` 先构建 Runtime，再用真实 daemon 完成建包、校验、运行、停止、配置与冲突的闭环，并覆盖子目录静态演示与窄屏布局。`dist/`、`node_modules/` 与端到端临时目录不在版本库中。
+`npm test` 用临时目录里的假 daemon 覆盖协议映射、认证、错误码、请求上限和静态路径，并用纯函数测试覆盖运行事实到流转图的映射。`npm run test:e2e` 先构建 Runtime，再用真实 daemon 完成建包、校验、运行、停止、配置与冲突的闭环；`e2e/model-fixture.mjs` 提供本地 OpenAI 兼容模型，用来验收 Agent 节点的会话轨迹，测试还覆盖子目录静态演示、演示轨迹与窄屏布局。`dist/`、`node_modules/` 与端到端临时目录不在版本库中。
 
 `flow-runtime` 的 npm 包只包含引擎（`dist/`、`docs/`、`examples/`），不含本目录。

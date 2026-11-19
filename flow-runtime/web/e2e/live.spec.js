@@ -344,6 +344,60 @@ test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) 
   await expect(page.getByRole('button', { name: '保存' })).toBeEnabled()
 })
 
+const agentFlow = `---
+name: 会话轨迹验收
+description: 新建 Agent 后复用同一会话完成任务。
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> analyze[分析任务]
+  analyze -->|已分析| finishNode[完成任务]
+  finishNode -->|已完成| finish((结束))
+\`\`\`
+
+## 分析任务
+
+\`\`\`新建Agent
+分析任务，然后通过结果工具提交「已分析」。
+\`\`\`
+
+### 已分析
+
+已给出分析结论。
+
+## 完成任务
+
+\`\`\`复用Agent
+根据上一节点结论完成任务，然后提交「已完成」。
+\`\`\`
+
+### 已完成
+
+任务已结束。
+`
+
+test('Agent 节点的会话轨迹与流转图', async ({ page }) => {
+  await seed(page, 'e2e-agent', { 'FLOW.md': agentFlow })
+  await openFlow(page, 'e2e-agent')
+  await page.getByRole('button', { name: '启动运行' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Run ID（可选）').fill('e2e-agent-run')
+  await dialog.getByRole('button', { name: '启动运行' }).click()
+  await expect(page).toHaveURL(/\/#\/runs\/e2e-agent-run$/)
+  // 流转图按事实标记节点状态，点节点可以跳到对应的执行记录。
+  await expect(page.locator('.runflow .cnode')).toHaveCount(2)
+  await expect(page.locator('.rnode[data-run-status="completed"]').first()).toBeVisible({ timeout: 20000 })
+  await page.getByRole('tab', { name: '节点执行' }).click()
+  await page.getByRole('button', { name: /分析任务/ }).first().click()
+  await expect(page.locator('.trajectory-host')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('[data-kind="user"]').first()).toBeVisible()
+  await expect(page.locator('[data-kind="tool"]').first()).toBeVisible()
+  // 第二次节点执行是同一会话的切片，轨迹同样可读。
+  await page.getByRole('button', { name: /完成任务/ }).first().click()
+  await expect(page.locator('.trajectory-host')).toBeVisible({ timeout: 15000 })
+})
+
 test('停止运行与运行配置', async ({ page }) => {
   await seed(page, 'e2e-slow', { 'FLOW.md': slow })
   await openFlow(page, 'e2e-slow')
@@ -353,6 +407,8 @@ test('停止运行与运行配置', async ({ page }) => {
   await dialog.getByRole('button', { name: '启动运行' }).click()
   await expect(page).toHaveURL(/\/#\/runs\/e2e-slow-run$/)
   await expect(page.locator('[data-status="running"]')).toBeVisible()
+  // 流转图标出当前正在执行的节点。
+  await expect(page.locator('.rnode.is-current')).toBeVisible()
   await page.getByRole('button', { name: '停止运行' }).click()
   await page.getByRole('button', { name: '确认停止' }).click()
   await expect(page.locator('[data-status="stopped"]')).toBeVisible({ timeout: 15000 })
@@ -360,7 +416,7 @@ test('停止运行与运行配置', async ({ page }) => {
   // 运行配置覆盖模型 provider 与并发；密钥不回显，留空表示沿用。
   await page.getByLabel('主导航').getByRole('link', { name: '运行配置' }).click()
   await expect(page.getByLabel('密钥')).toHaveAttribute('placeholder', '已配置，留空则不修改')
-  await expect(page.getByLabel('服务地址')).toHaveValue('http://127.0.0.1:1/v1')
+  await expect(page.getByLabel('服务地址')).toHaveValue('http://127.0.0.1:14485/v1')
   await page.getByLabel('服务地址').fill('https://api.example.com/v1')
   await page.getByLabel('模型标识').fill('example-model')
   await page.getByLabel('密钥').fill('sk-new')

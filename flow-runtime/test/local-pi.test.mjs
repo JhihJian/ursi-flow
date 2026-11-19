@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:http';
@@ -66,6 +66,8 @@ test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
       dir,
       '--history',
       history,
+      '--trajectories',
+      join(dir, 'trajectories'),
       '--base-url',
       baseUrl,
       '--api-key',
@@ -86,6 +88,22 @@ test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
   const outcome = requests[0].tools.find((tool) => tool.function.name === 'submit_flow_outcome');
   assert.ok(outcome.function.parameters.properties.outcome, JSON.stringify(outcome.function.parameters));
   assert.ok(requests[1].messages.some((message) => message.role === 'tool'));
+  // 每个 Agent 节点执行留一份可被轨迹查看器解析的 JSONL 切片。
+  const files = (await readdir(join(dir, 'trajectories'))).filter((name) => name.endsWith('.jsonl'));
+  assert.ok(files.length >= 2, `应至少记录两次节点执行：${files.join(',')}`);
+  for (const name of files) {
+    const rows = (await readFile(join(dir, 'trajectories', name), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(rows[0].type, 'session', `${name} 缺少会话头`);
+    assert.ok(rows.length > 1, `${name} 没有会话条目`);
+    assert.equal(rows[0].id, name.replace(/\.jsonl$/, ''));
+    assert.ok(
+      rows.some((row) => row.type === 'message' && row.message?.role === 'user'),
+      `${name} 没有用户消息`,
+    );
+  }
 });
 
 test('provider 配置不完整时给出可操作的错误', async () => {

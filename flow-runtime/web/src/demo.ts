@@ -1,5 +1,6 @@
 // 演示数据：只在静态交付或未配置 Runtime 时使用，不连接 daemon，也不执行命令。
-import { ApiError, type FlowConfig, type FlowFiles, type FlowPackage, type Run, type RunHistory, type Source } from './data'
+import { ApiError, type FlowConfig, type FlowFiles, type FlowPackage, type RouteDecision, type Run, type RunHistory, type Source } from './data'
+import { demoSessions } from './demo-trajectory'
 
 const ordinary: FlowFiles = {
   'FLOW.md': `---
@@ -172,6 +173,7 @@ const nodeRuns = [
     input: { 任务: '评审首页改动' },
     outcome: { result: '已分析', variables: { 分析结论: '需要补充错误态说明' } },
     enteredFrom: { kind: 'start' },
+    session: { id: 'nr-review-1', sessionReference: 'pi-demo-review' },
   },
   {
     ...common,
@@ -186,10 +188,11 @@ const nodeRuns = [
     input: { 分析结论: '需要补充错误态说明' },
     outcome: { result: '已完成' },
     enteredFrom: { kind: 'route', routeDecisionId: 'rd-1', sourceNodeRunId: 'nr-review-1' },
+    session: { id: 'nr-review-2', sessionReference: 'pi-demo-review' },
   },
 ]
 
-const routeDecisions = [
+const routeDecisions: RouteDecision[] = [
   {
     id: 'rd-1',
     runId: 'review-001',
@@ -286,6 +289,7 @@ const histories: Record<string, RunHistory> = {
         phase: 'executing_node',
         sequence: 2,
         startedAt: at(20),
+        currentNodeRef: 'verify',
         currentNodeRunId: 'nr-release-1',
       },
     ],
@@ -364,6 +368,17 @@ export const demoSource: Source = {
     const found = histories[id]
     if (!found) throw new ApiError(404, 'not_found', 'Run 历史不存在')
     return found
+  },
+  runFlow: async (id) => {
+    const job = runs.find((run) => run.id === id)
+    const found = job && packages[job.flow]
+    if (!found) throw new ApiError(404, 'not_found', '运行使用的 Flow 不存在')
+    return found
+  },
+  trajectory: async (_id, node) => {
+    const jsonl = demoSessions[node]
+    if (!jsonl) throw new ApiError(404, 'not_found', '该节点还没有会话轨迹')
+    return { node, size: jsonl.length, jsonl }
   },
   stop: readOnly,
   config: async () => config,

@@ -392,3 +392,57 @@ flowchart TD
   assert.deepEqual(analysis.params.map((param) => param.name), ['任务'])
   assert.deepEqual(analysis.internal.map((item) => item.name), ['评审记录'])
 })
+
+test('运行事实映射到流转图的节点状态与实际走过的边', async () => {
+  const { parseGraph } = await flow('graph.ts')
+  const { runFlowState } = await flow('run-state.ts')
+  const graph = parseGraph(`
+flowchart TD
+  start((开始)) --> plan[确认计划]
+  plan -->|通过| merge[汇合结果]
+  plan -->|返工| plan
+  merge -->|已执行| finish((结束))
+`)
+  const nodeRun = (id, ref, sequence, status, extra = {}) => ({
+    id,
+    runId: 'run-1',
+    sequence,
+    nodeRef: ref,
+    actionKind: '执行自定义命令',
+    input: {},
+    status,
+    startedAt: '2025-01-08T09:00:00.000Z',
+    enteredFrom: { kind: 'start' },
+    ...extra,
+  })
+  const facts = {
+    job: {},
+    runs: [{ id: 'run-1', status: 'running', currentNodeRef: 'merge' }],
+    nodeRuns: [
+      nodeRun('n1', 'plan', 2, 'completed', { outcome: { result: '通过' } }),
+      nodeRun('n2', 'merge', 4, 'running'),
+    ],
+    routeDecisions: [
+      {
+        id: 'r1',
+        runId: 'run-1',
+        sequence: 3,
+        sourceNodeRunId: 'n1',
+        result: '通过',
+        destination: { kind: 'node', ref: 'merge' },
+        selectedAt: '2025-01-08T09:00:02.000Z',
+      },
+    ],
+    parallelRounds: [],
+    recoveries: [],
+  }
+  const state = runFlowState(graph, facts.runs[0], facts)
+  assert.equal(state.nodes.plan.status, 'completed')
+  assert.equal(state.nodes.plan.visits, 1)
+  assert.equal(state.nodes.merge.status, 'running')
+  assert.equal(state.currentRef, 'merge')
+  // 开始边由首个访问记录确认，路由边由路由决策确认，没走的回边保持未访问。
+  assert.equal(state.edges['start||plan'].traversed, 1)
+  assert.equal(state.edges['plan|通过|merge'].traversed, 1)
+  assert.equal(state.edges['plan|返工|plan'], undefined)
+})

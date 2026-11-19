@@ -109,6 +109,8 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   await call('GET', '/api/v1/runs')
   await call('GET', '/api/v1/runs/run-1')
   await call('GET', '/api/v1/runs/run-1/history')
+  await call('GET', '/api/v1/runs/run-1/flow')
+  await call('GET', '/api/v1/runs/run-1/nodes/node-1/trajectory')
   await call('POST', '/api/v1/runs/run-1/stop')
   await call('GET', '/api/v1/flow-config')
   await call('PATCH', '/api/v1/flow-config', { maxConcurrent: 2 })
@@ -128,6 +130,8 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
       'run.list',
       'run.get',
       'run.history',
+      'run.flow',
+      'run.trajectory',
       'run.stop',
       'config.get',
       'config.update',
@@ -138,13 +142,15 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   assert.deepEqual(daemon.calls[3].args, { id: 'validate' })
   assert.deepEqual(daemon.calls[4].args, { id: 'ordinary', files, expectedRevision: 'rev-1' })
   assert.deepEqual(daemon.calls[5].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
+  assert.deepEqual(daemon.calls[12].args, { id: 'run-1' })
+  assert.deepEqual(daemon.calls[13].args, { id: 'run-1', node: 'node-1' })
   assert.deepEqual(daemon.calls[7].args, {
     id: 'run-1',
     flow: 'ordinary',
     cwd: workdir,
     variables: { 任务: '检查' },
   })
-  assert.deepEqual(daemon.calls[14].args, { maxConcurrent: 2 })
+  assert.deepEqual(daemon.calls[16].args, { maxConcurrent: 2 })
 })
 
 test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成', async (t) => {
@@ -287,6 +293,8 @@ test('控制台配置带安全响应头且不缓存', async (t) => {
   assert.match(csp, /frame-ancestors 'none'/)
   // 画布与图表依赖行内样式定位，脚本仍只允许同源。
   assert.match(csp, /style-src 'self' 'unsafe-inline'/)
+  // 会话轨迹里的图片块是 data: URI。
+  assert.match(csp, /img-src 'self' data: blob:/)
   assert.doesNotMatch(csp, /script-src[^;]*unsafe-inline/)
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer')
 })

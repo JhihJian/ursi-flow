@@ -27,6 +27,8 @@ export function publicConfig(config: Config): PublicConfig {
 		maxConcurrent: config.maxConcurrent,
 	};
 }
+/** 轨迹超过这个大小就不整体返回，避免桥接层的响应上限变成 502。 */
+const TRAJECTORY_LIMIT = 8 * 1024 * 1024;
 interface Job {
 	id: string;
 	flow: string;
@@ -109,6 +111,21 @@ export class Runs {
 				recoveries: [],
 			})),
 		};
+	}
+	/** 运行使用的目录修订；Flow 之后被删除或改动也不影响这里读到的包。 */
+	async flow(key: string) {
+		const job = await this.get(key);
+		return this.catalog.at(job.flow, job.revision);
+	}
+	/** 一次 Agent 节点执行的 Pi 会话轨迹切片；命令节点没有轨迹文件。 */
+	async trajectory(key: string, node: string) {
+		await this.get(key);
+		const file = join(this.dir(key), "trajectories", `${id(node)}.jsonl`);
+		const info = await optional(stat(file), null);
+		if (!info) throw new BusinessError("not_found", "该节点还没有会话轨迹");
+		if (info.size > TRAJECTORY_LIMIT)
+			return { node, size: info.size, jsonl: "", omitted: true };
+		return { node, size: info.size, jsonl: await readFile(file, "utf8") };
 	}
 	async start(
 		key: string,

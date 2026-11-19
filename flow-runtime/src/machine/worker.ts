@@ -30,7 +30,10 @@ process.once(
 	}) => {
 		try {
 			const pkg = await loadFlow(path),
-				harness = new PiSdkHarness(provider);
+				harness = new PiSdkHarness(provider, {
+					// 轨迹按节点执行分文件，和 facts.json 一起留在这次运行的目录里。
+					trajectoryDir: join(dir, "trajectories"),
+				});
 			const runner = createFlowCoordinator({
 				...pkg,
 				store: new JsonFileRunStore(join(dir, "facts.json")),

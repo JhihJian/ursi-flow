@@ -24,10 +24,19 @@ test('纯静态子目录：主题、列表、深链刷新与只读演示', async
   await page.getByRole('link', { name: '运行记录' }).click()
   await page.getByRole('link', { name: 'verify-003', exact: true }).click()
   await expect(page.locator('[data-status="failed"]').first()).toBeVisible()
-  await page.getByRole('button', { name: '执行证据' }).click()
+  // 详情分流转图与节点执行两类记录：命令节点在节点执行页直接给出标准错误。
+  await expect(page.getByRole('tab', { name: 'Flow 流转' })).toBeVisible()
+  await page.getByRole('tab', { name: '节点执行' }).click()
+  await page.getByRole('button', { name: /校验发布清单/ }).click()
   await expect(page.locator('pre.text-destructive')).toContainText('版本号与 CHANGELOG')
   await page.reload()
   await expect(page.getByRole('heading', { name: 'verify-003' })).toBeVisible()
+  // 演示数据带节点会话轨迹，直接渲染轨迹查看器。
+  await page.goto(base + '#/runs/review-001')
+  await page.getByRole('tab', { name: '节点执行' }).click()
+  await page.getByRole('button', { name: /分析任务/ }).click()
+  await expect(page.locator('.trajectory-host')).toBeVisible()
+  await expect(page.locator('[data-kind="user"]').first()).toBeVisible()
   expect(paths.every((url) => url.startsWith(base))).toBe(true)
   expect(paths.some((url) => url.includes('/api/'))).toBe(false)
 })
@@ -35,7 +44,13 @@ test('纯静态子目录：主题、列表、深链刷新与只读演示', async
 test('窄屏不产生横向滚动', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 820 })
   await page.goto('http://127.0.0.1:14484/dist/')
-  for (const path of ['#/flows', '#/flows/release-check/edit', '#/runs', '#/runs/review-001']) {
+  for (const path of [
+    '#/flows',
+    '#/flows/release-check/edit',
+    '#/runs',
+    '#/runs/review-001',
+    '#/runs/review-001?tab=nodes&node=nr-review-1',
+  ]) {
     await page.goto('http://127.0.0.1:14484/dist/' + path)
     await expect(page.locator('main').first()).toBeVisible()
     expect(

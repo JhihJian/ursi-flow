@@ -81,6 +81,8 @@ export interface NodeRun {
   childRunId?: string
   retryOf?: string
   enteredFrom: { kind: string; [key: string]: unknown }
+  /** Pi 会话引用：Agent 节点执行记录用它定位轨迹切片。 */
+  session?: { id: string; sessionReference?: string }
 }
 export interface RouteDecision {
   id: string
@@ -88,7 +90,7 @@ export interface RouteDecision {
   sequence: number
   sourceNodeRunId: string
   result: string
-  destination: { kind: string; ref?: string }
+  destination: { kind: 'node' | 'parallel'; ref: string } | { kind: 'finish' }
   selectedAt: string
 }
 export interface RunRecord {
@@ -112,6 +114,9 @@ export interface ParallelRound {
   startedAt: string
   completedAt?: string
   branchStatuses: Record<string, string>
+  /** 分支引用名 → 该轮分支的节点执行 ID，用于在流转图上标记实际的并行分支。 */
+  branchNodeRunIds?: Record<string, string>
+  joinNodeRunId?: string
   error?: FlowError
 }
 export interface RunRecovery {
@@ -129,6 +134,13 @@ export interface RunHistory {
   parallelRounds: ParallelRound[]
   recoveries: RunRecovery[]
   [key: string]: unknown
+}
+/** 一次 Agent 节点执行的 Pi 会话 JSONL 切片。 */
+export interface NodeTrajectory {
+  node: string
+  size: number
+  jsonl: string
+  omitted?: boolean
 }
 export interface ConsoleConfig {
   mode: 'demo' | 'live'
@@ -148,6 +160,9 @@ export interface Source {
   runs(signal?: AbortSignal): Promise<Run[]>
   run(id: string, signal?: AbortSignal): Promise<Run>
   history(id: string, signal?: AbortSignal): Promise<RunHistory>
+  /** 运行启动时固定的 Flow 修订；详情页据此绘制流转图。 */
+  runFlow(id: string, signal?: AbortSignal): Promise<FlowPackage>
+  trajectory(id: string, node: string, signal?: AbortSignal): Promise<NodeTrajectory>
   stop(id: string): Promise<Run>
   config(signal?: AbortSignal): Promise<FlowConfig>
   configure(patch: ConfigPatch): Promise<FlowConfig>
@@ -222,6 +237,9 @@ function createClient(apiBase: string): Source {
     runs: (signal) => request('/runs', { signal }),
     run: (id, signal) => request(runPath(id), { signal }),
     history: (id, signal) => request(`${runPath(id)}/history`, { signal }),
+    runFlow: (id, signal) => request(`${runPath(id)}/flow`, { signal }),
+    trajectory: (id, node, signal) =>
+      request(`${runPath(id)}/nodes/${encodeURIComponent(node)}/trajectory`, { signal }),
     stop: (id) => send('POST', `${runPath(id)}/stop`),
     config: (signal) => request('/flow-config', { signal }),
     configure: (patch) => send('PATCH', '/flow-config', patch),

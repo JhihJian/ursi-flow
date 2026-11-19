@@ -97,6 +97,43 @@
   .react-flow__edge:hover .cedge-path { stroke-width: 2.2 }
   .react-flow__node { @apply !cursor-default }
   .react-flow__node:focus-visible { outline: none }
+
+  /* 运行流转图：同一张卡片承载运行状态，当前节点带呼吸环。 */
+  .rnode[data-run-status='completed'] { border-color: rgb(var(--c-ok) / 0.45) }
+  .rnode[data-run-status='failed'] { border-color: rgb(var(--c-err) / 0.55) }
+  .rnode[data-run-status='interrupted'] { border-color: rgb(var(--c-warn) / 0.55) }
+  .rnode[data-run-status='running'], .rnode.is-current {
+    border-color: rgb(var(--c-accent));
+    box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.18), var(--shadow-card);
+  }
+  .rnode.is-current { animation: rnode-pulse 1.8s ease-in-out infinite }
+  @keyframes rnode-pulse {
+    50% { box-shadow: 0 0 0 6px rgb(var(--c-accent) / 0.1), var(--shadow-card) }
+  }
+  .rnode-dot { @apply mr-1 inline-block size-1.5 rounded-full align-middle; background: rgb(var(--c-line-strong)) }
+  .rnode-dot.status-running { background: rgb(var(--c-accent)) }
+  .rnode-dot.status-completed { background: rgb(var(--c-ok)) }
+  .rnode-dot.status-failed { background: rgb(var(--c-err)) }
+  .rnode-dot.status-interrupted { background: rgb(var(--c-warn)) }
+  .rnode-count {
+    @apply absolute -right-2 -top-2 grid size-5 place-items-center rounded-full text-[10px] font-semibold text-primary-foreground;
+    background: rgb(var(--c-accent));
+  }
+  .cedge-path.is-taken { stroke: rgb(var(--c-accent)); stroke-width: 2 }
+  .cedge-path.is-idle { stroke: rgb(var(--c-line-strong) / 0.7); stroke-width: 1.4; stroke-dasharray: 4 4 }
+  .runflow { @apply space-y-2 }
+  .runflow-area { height: clamp(24rem, 56vh, 46rem) }
+  .runflow-legend { @apply flex flex-wrap items-center gap-3 text-[11px] text-txt3 }
+  .runflow-legend li { @apply flex items-center gap-1.5 }
+  .runflow-legend-line { @apply inline-block h-0.5 w-4 rounded-full; background: rgb(var(--c-accent)) }
+
+  /* 节点执行记录：左列访问列表，右侧轨迹或执行证据。 */
+  .execution-grid { @apply grid min-w-0 items-start gap-4 xl:grid-cols-[19rem_minmax(0,1fr)] }
+  .execution-list { @apply max-h-[38rem] overflow-auto rounded-xl border border-line bg-surface }
+  .execution-row {
+    @apply flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-elevated;
+  }
+  .execution-row[data-active='true'] { @apply bg-accent-dim text-accent-2 }
 }
 
 /* Markdown 视图 */

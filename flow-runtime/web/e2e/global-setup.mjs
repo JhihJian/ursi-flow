@@ -15,13 +15,20 @@ export default async function setup() {
   await mkdir(workdir, { recursive: true })
   // Runtime 的 dist 不在版本库里，验收前先构建 daemon 及其 worker。
   await run('npm', ['run', 'build'], { cwd: join(root, '..') })
-  // 验收跑的是命令节点，但启动运行要求 provider 已配置，这里给一份占位配置。
+  // 命令节点也要求 provider 已配置；Agent 用例由本地 OpenAI 兼容 fixture 应答。
+  const model = spawn(process.execPath, [join(root, 'e2e', 'model-fixture.mjs')], {
+    env: { ...process.env, MODEL_FIXTURE_PORT: '14485' },
+    stdio: 'ignore',
+    detached: true,
+  })
+  model.unref()
+  await writeFile(join(root, '.e2e-model.pid'), String(model.pid))
   await writeFile(
     join(home, 'config.json'),
     JSON.stringify({
       executor: 'local-pi',
       provider: {
-        baseUrl: 'http://127.0.0.1:1/v1',
+        baseUrl: 'http://127.0.0.1:14485/v1',
         apiKey: 'e2e',
         model: 'e2e-fixture',
         api: 'openai-completions',
