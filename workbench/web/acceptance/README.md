@@ -5,7 +5,7 @@
 
 ## 复跑
 
-在 `web/` 下一行跑完三个场景（会自动构建产物）：
+在 `workbench/` 执行 `cargo build --locked -p ursi-server`，再从 `workbench/web/` 运行三个场景（自动构建 Web 产物）：
 
 ```sh
 npm run test:acceptance
@@ -48,7 +48,7 @@ npx playwright test --config playwright.acceptance.config.ts --project mobile
 | `URSI_ACCEPTANCE_MODEL_PORT` | 18102 | 模拟模型端点 |
 | `URSI_ACCEPTANCE_MAIN_WEB_PORT` | 4180 | 主场景预览服务 |
 | `URSI_ACCEPTANCE_SOURCES_WEB_PORT` | 4181 | 来源专用预览服务 |
-| `URSI_ACCEPTANCE_SERVER` | `/data/dev/ursi-flow/target/debug/ursi-server` | Server 产物 |
+| `URSI_ACCEPTANCE_SERVER` | `workbench/target/debug/ursi-server`（仓库相对路径） | Server 产物 |
 | `URSI_ACCEPTANCE_PI` | `PATH` 中的 `pi` | 真实 Pi CLI |
 | `URSI_ACCEPTANCE_SKIP_BUILD` | 未设置 | 置 `1` 时复用现有 `dist/` |
 

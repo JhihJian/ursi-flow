@@ -1,7 +1,7 @@
 ---
 parent: ../../SPEC.md
 depends-on:
-  - ../../../flow-runtime/client/SPEC.md
+  - ../../../../flow-runtime/client/SPEC.md
 ---
 
 # Flow 用例

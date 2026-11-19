@@ -23,7 +23,7 @@ Flow 源码提交：`e7a100f94fa2c479de7b113586d9af60128b4875`。独立构建目
 
 ## 复验
 
-复验脚本随记录保存在提交 `a123a10`。在该版本的仓库根目录运行以下命令。当前 Server 使用本机 `ursi-flowd`，部署见 [Server 使用说明](../server/README.md)。需要本机 Linux Docker、宿主到 internal bridge 容器 IP 的路由、上述镜像和独立产物、Rust 工具链、Bash、curl、jq、OpenSSL。脚本核对 dist 校验文件，按本地镜像 ID 启动容器并输出产物摘要，可与上表比对。
+复验脚本随记录保存在提交 `a123a10`。在该版本的仓库根目录运行以下命令。当前 Server 使用本机 `ursi-flowd`，部署见 [Server 使用说明](../workbench/server/README.md)。需要本机 Linux Docker、宿主到 internal bridge 容器 IP 的路由、上述镜像和独立产物、Rust 工具链、Bash、curl、jq、OpenSSL。脚本核对 dist 校验文件，按本地镜像 ID 启动容器并输出产物摘要，可与上表比对。
 
 ```bash
 CARGO_TARGET_DIR=/data/dev/ursi-flow/target \

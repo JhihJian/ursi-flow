@@ -112,8 +112,8 @@ export default async function globalSetup() {
   writeFileSync(modelLog, '')
   writeFileSync(pidsFile, '[]')
 
-  const serverBin = process.env.URSI_ACCEPTANCE_SERVER ?? '/data/dev/ursi-flow/target/debug/ursi-server'
-  if (!existsSync(serverBin)) throw new Error(`找不到 Server 产物 ${serverBin}；先在 /data/dev/ursi-flow 执行 cargo build --locked -p ursi-server`)
+  const serverBin = process.env.URSI_ACCEPTANCE_SERVER ?? path.resolve(webRoot, '../target/debug/ursi-server')
+  if (!existsSync(serverBin)) throw new Error(`找不到 Server 产物 ${serverBin}；先在 workbench/ 执行 cargo build --locked -p ursi-server`)
   const piBin = process.env.URSI_ACCEPTANCE_PI ?? execFileSync('bash', ['-lc', 'command -v pi'], { encoding: 'utf8' }).trim()
   if (!piBin || !path.isAbsolute(piBin) || !existsSync(piBin)) throw new Error(`找不到真实 Pi CLI：${piBin}`)
   if (!existsSync(viteBin)) throw new Error(`找不到 vite：${viteBin}；不要安装依赖，检查 web/node_modules 软链`)

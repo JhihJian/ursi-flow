@@ -1,4 +1,0 @@
-[workspace]
-resolver = "2"
-members = ["server"]
-exclude = ["ursi-sandbox", "flow-runtime/client"]

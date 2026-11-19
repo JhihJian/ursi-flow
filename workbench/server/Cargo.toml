@@ -11,5 +11,5 @@ libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "process", "sync", "time", "io-util", "signal"] }
-ursi-flow-client = { path = "../flow-runtime/client" }
+ursi-flow-client = { path = "../../flow-runtime/client" }
 uuid = { version = "1", features = ["v4"] }

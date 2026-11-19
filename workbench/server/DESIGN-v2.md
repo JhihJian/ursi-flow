@@ -56,7 +56,7 @@ Server 保存上述四类对象、执行关联和交付记录。工作管理层�
 
 ## 当前实现与接入边界
 
-- **Flow 固定修订（pinned）已实现。** 工作项以尝试 ID 为运行 ID，通过 [FlowClient::start_pinned](../flow-runtime/client/src/lib.rs) 在一次 `run.startPinned` 请求中提交 `flowId` 与 `flowRevision`。daemon 在受理启动时核对[整个 Flow 目录的修订](../flow-runtime/src/machine/catalog.ts)，执行核对过的快照。修订不匹配返回 409，保留失败尝试，不创建运行或执行节点，也不回退到普通启动。CLI 可按同一 ID 查询成功启动的运行及节点历史。
+- **Flow 固定修订（pinned）已实现。** 工作项以尝试 ID 为运行 ID，通过 [FlowClient::start_pinned](../../flow-runtime/client/src/lib.rs) 在一次 `run.startPinned` 请求中提交 `flowId` 与 `flowRevision`。daemon 在受理启动时核对[整个 Flow 目录的修订](../../flow-runtime/src/machine/catalog.ts)，执行核对过的快照。修订不匹配返回 409，保留失败尝试，不创建运行或执行节点，也不回退到普通启动。CLI 可按同一 ID 查询成功启动的运行及节点历史。
 - **沙箱会话。** Server 通过 CLI 连接管理员为单个工作项预配的独占 ACP 沙箱，保存会话 ID 后才发送 prompt，可查询收尾证据、取消或人工核实。未配置或绑定不符时不回退本地。Server 不负责经 Gateway 创建或回收环境，也没有 SSH/SFTP、PTY、浏览器或通用文件管理入口。文件 API 读取的是已提交的交付文本。MCP 资源可登记引用，当前执行器不支持注入。
 - **来源。** `json-file` 按管理员配置的本地 JSON 导出列出资源、读取单项材料并按固定动作派工。平台 SDK、平台侧鉴权和定制 Web 列表仍是设计目标。
 - **断线与重复提交。** 派工操作接受请求标识，同一标识和参数返回原工作项，参数不同则冲突。执行前先持久化尝试标识，Flow 以此为运行 ID，沙箱在发送 prompt 前记下会话标识。响应丢失后优先查询；缺少完成证据则标为待核实并提示可能已有副作用，不自动重发 prompt。操作者核实后显式重试会产生新的尝试。

@@ -5,7 +5,7 @@ depends-on:
   - ../work/execute/SPEC.md
   - ../work/sources/SPEC.md
   - ../transport/SPEC.md
-  - ../../../flow-runtime/client/SPEC.md
+  - ../../../../flow-runtime/client/SPEC.md
 references:
   - ../../DESIGN.md
   - ../../README.md

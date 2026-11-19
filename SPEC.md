@@ -1,7 +1,6 @@
 ---
 references:
-  - server/DESIGN.md
-  - server/DESIGN-v2.md
+  - workbench/README.md
   - flow-runtime/docs/flow-spec.md
 ---
 
@@ -17,8 +16,7 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 | --- | --- |
 | [flow-runtime](flow-runtime/SPEC.md) | Node.js 引擎与本地执行器。`ursi-flowd` 管理包修订、执行配置、后台运行与历史；`ursi-flow-local` 用于单次本地执行。 |
 | [flow-runtime/client](flow-runtime/client/SPEC.md) | Rust `FlowClient` 与 `ursi-flow` CLI，通过 Unix socket 访问 daemon。 |
-| [server](server/SPEC.md) | `ursi-server` 提供带 Bearer 鉴权的 v2 工作管理 API。启用 Flow 时管理本机 daemon，通过 SDK 提供 v1 API 和 v2 Flow 执行。 |
-| [web](web/SPEC.md) | 通过同源 API 编辑包、管理运行和配置；对话页是独立的本地演示。 |
+| [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 办理工作项；启用 Flow 时可管理流程包、运行与配置。 |
 | [ursi-sandbox](ursi-sandbox/SPEC.md) | 独立交付的沙箱 Gateway、Runtime 和 Client。本地 Flow 执行不依赖该工作区。 |
 
 ## 关键功能与验收

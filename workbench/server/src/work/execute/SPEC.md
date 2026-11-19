@@ -1,9 +1,9 @@
 ---
 parent: ../../../SPEC.md
 depends-on:
-  - ../../../../flow-runtime/client/SPEC.md
+  - ../../../../../flow-runtime/client/SPEC.md
   - ../catalog/SPEC.md
-  - ../../../../ursi-sandbox/client/SPEC.md
+  - ../../../../../ursi-sandbox/client/SPEC.md
 references:
   - ../../../DESIGN-v2.md
   - API.md

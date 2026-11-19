@@ -18,7 +18,8 @@ import threading
 import time
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
+WORKBENCH = Path(__file__).resolve().parents[2]
+ROOT = WORKBENCH.parent
 MODEL = 'fixed-local-model'
 ANSWER = 'SIMULATED-MODEL: fixed report'
 SOP = 'SOP-read-the-ticket'
@@ -294,7 +295,7 @@ class WorkAcceptance(unittest.TestCase):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stage', choices=('agent', 'flow', 'both'), default='both')
-    parser.add_argument('--server', type=Path, default=ROOT / 'target/debug/ursi-server')
+    parser.add_argument('--server', type=Path, default=WORKBENCH / 'target/debug/ursi-server')
     parser.add_argument('--pi', default='pi', help='installed real Pi CLI')
     parser.add_argument('--daemon', type=Path, default=ROOT / 'flow-runtime/dist/machine/daemon.js')
     parser.add_argument('--cli', type=Path, default=ROOT / 'flow-runtime/client/target/debug/ursi-flow')

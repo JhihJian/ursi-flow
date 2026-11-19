@@ -4,10 +4,10 @@
 
 ## 安装与启动
 
-以下命令从仓库根目录执行，需要 Linux 和 Rust 工具链。默认启用 Flow，另需 npm、Node.js 22.19+ 和本机 `ursi-flowd`：
+以下命令从 `workbench/` 执行，需要 Linux 和 Rust 工具链。默认启用 Flow，另需 npm、Node.js 22.19+ 和本机 `ursi-flowd`：
 
 ```sh
-(cd flow-runtime && npm ci && npm run build && npm install -g .)
+(cd ../flow-runtime && npm ci && npm run build && npm install -g .)
 command -v ursi-flowd
 ```
 
@@ -54,4 +54,4 @@ cargo run --locked -p ursi-server
 
 收到 `SIGINT`（Ctrl-C）或 `SIGTERM` 后，Server 停止 HTTP 服务。若启用了 Flow，还会等待自己的 daemon 退出。启用 Flow 时若已有 `runtime.sock`，Server 拒绝启动，不接管已有 socket 或进程。先核实原实例是否仍在运行，仅在确认它已退出后清理残留 socket。
 
-要从 CLI 检查 Flow 数据，可按[客户端说明](../flow-runtime/client/README.md)安装 `ursi-flow`，将 CLI 的 `URSI_FLOW_HOME` 设为上述 `flow-runtime/` 子目录的绝对路径。daemon 在线时运行 `ursi-flow flow list` 即可。
+要从 CLI 检查 Flow 数据，可按[客户端说明](../../flow-runtime/client/README.md)安装 `ursi-flow`，将 CLI 的 `URSI_FLOW_HOME` 设为上述 `flow-runtime/` 子目录的绝对路径。daemon 在线时运行 `ursi-flow flow list` 即可。

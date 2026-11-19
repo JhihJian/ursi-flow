@@ -1,7 +1,7 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - ../flow-runtime/client/SPEC.md
+  - ../../flow-runtime/client/SPEC.md
 references:
   - DESIGN.md
   - DESIGN-v2.md
@@ -24,7 +24,7 @@ Server 通过 `/api/v2` 管理工作包、资源和执行器，按包版本发�
 | 工作项办理与验收 | 工作项、交付版本 | [items](src/work/items/SPEC.md) | 一张单保存当次输入和包版本快照，可多次交付。文件和验收意见归属具体交付版本。 |
 | 执行跟踪 | 执行尝试 | [execute](src/work/execute/SPEC.md) | 每次尝试属于一张单的一个动作。模块记录执行结果，按运行 ID 或会话 ID 查询后端证据。 |
 | 外部来源接入 | 来源、来源条目 | [sources](src/work/sources/SPEC.md) | 按来源条目和固定动作派工。来源提供材料，工作项保留派工时的输入。 |
-| Flow 运行后端 | Flow 包、Flow 运行、节点运行 | [Flow Runtime](../flow-runtime/SPEC.md) | Runtime 持有目录修订、运行状态和节点历史。[flow](src/flow/SPEC.md) 提供 v1 用例，`execute` 按运行 ID 跟踪 v2 尝试。 |
+| Flow 运行后端 | Flow 包、Flow 运行、节点运行 | [Flow Runtime](../../flow-runtime/SPEC.md) | Runtime 持有目录修订、运行状态和节点历史。[flow](src/flow/SPEC.md) 提供 v1 用例，`execute` 按运行 ID 跟踪 v2 尝试。 |
 
 [app](src/app/SPEC.md) 负责服务装配及 daemon 启停，[transport](src/transport/SPEC.md) 负责两版 API 的路由、Bearer 鉴权和 v1 错误映射。
 

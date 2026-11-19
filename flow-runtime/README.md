@@ -10,7 +10,7 @@ ursi-flow-local check examples/ordinary
 ursi-flow-local run examples/ordinary --variables '{"任务":"评审改动"}'
 ```
 
-`--model provider/id` 选择 Pi 模型。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。测试真实 Pi CLI（已验证 1.5.2）运行 `TEST_REAL_PI=1 npm test`；模型响应由本地测试服务提供，不消费模型额度。`npm pack` 生成可独立安装的压缩包，安装后用 `ursi-flow-local check|run` 做单次执行。常驻管理服务 `ursi-flowd` 管理流程包、后台运行、配置和历史。[Rust Server](../server/README.md) 自动启动和关闭自己的 daemon，通过 `FlowClient` 与它通信。仅使用 [独立 CLI](client/README.md) 时可自行启动 daemon。
+`--model provider/id` 选择 Pi 模型。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。测试真实 Pi CLI（已验证 1.5.2）运行 `TEST_REAL_PI=1 npm test`；模型响应由本地测试服务提供，不消费模型额度。`npm pack` 生成可独立安装的压缩包，安装后用 `ursi-flow-local check|run` 做单次执行。常驻管理服务 `ursi-flowd` 管理流程包、后台运行、配置和历史。[Rust Server](../workbench/server/README.md) 自动启动和关闭自己的 daemon，通过 `FlowClient` 与它通信。仅使用 [独立 CLI](client/README.md) 时可自行启动 daemon。
 
 ## 项目边界
 

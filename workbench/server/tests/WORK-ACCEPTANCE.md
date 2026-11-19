@@ -4,13 +4,13 @@
 
 ## 运行
 
-从仓库根目录执行。需要 Linux、Python 3、可构建本仓库的 Rust 工具链以及 Node.js 22.19+。Agent 阶段需要已安装的真实 Pi CLI，支持 [Agent 执行参数](../src/work/execute/API.md)。Flow 阶段需要支持 `run.startPinned` 的 daemon 和对应的 Rust CLI。
+从 `workbench/` 执行。需要 Linux、Python 3、可构建本仓库的 Rust 工具链以及 Node.js 22.19+。Agent 阶段需要已安装的真实 Pi CLI，支持 [Agent 执行参数](../src/work/execute/API.md)。Flow 阶段需要支持 `run.startPinned` 的 daemon 和对应的 Rust CLI。
 
 ```sh
 # 构建产物已就绪时，直接执行最后一行。
 cargo build --locked -p ursi-server
-(cd flow-runtime && npm ci && npm run build)
-cargo build --locked --manifest-path flow-runtime/client/Cargo.toml
+(cd ../flow-runtime && npm ci && npm run build)
+cargo build --locked --manifest-path ../flow-runtime/client/Cargo.toml
 python3 server/tests/work_e2e.py
 ```
 
@@ -22,7 +22,7 @@ python3 server/tests/work_e2e.py --stage flow --server /path/to/ursi-server \
   --daemon /path/to/dist/machine/daemon.js --cli /path/to/ursi-flow
 ```
 
-默认路径为 `target/debug/ursi-server`、`PATH` 中的 `pi`、`flow-runtime/dist/machine/daemon.js` 和 `flow-runtime/client/target/debug/ursi-flow`。脚本只启动指定产物，不触发构建。默认运行两个测试，`Ran 2 tests`、`OK` 且退出码为 0 表示两阶段通过。单阶段结果只覆盖所选阶段。缺少依赖或断言失败时退出码非零。
+默认路径为 `target/debug/ursi-server`、`PATH` 中的 `pi`、`../flow-runtime/dist/machine/daemon.js` 和 `../flow-runtime/client/target/debug/ursi-flow`。脚本只启动指定产物，不触发构建。默认运行两个测试，`Ran 2 tests`、`OK` 且退出码为 0 表示两阶段通过。单阶段结果只覆盖所选阶段。缺少依赖或断言失败时退出码非零。
 
 ## 阶段一：关闭 Flow，同包办理两单
 
