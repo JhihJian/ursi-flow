@@ -15,10 +15,10 @@ for (const width of [390, 1280])
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
-    await page.getByLabel('实例状态').selectOption('running')
+    await page.getByRole('button', { name: /运行中/ }).click()
     await expect(page.locator('tbody tr')).toHaveCount(3)
-    await page.getByLabel('搜索实例').fill('absent')
-    await page.getByRole('button', { name: '清除筛选' }).click()
+    await page.getByRole('button', { name: /全部实例/ }).click()
+    await expect(page.locator('tbody tr')).toHaveCount(6)
     await page.getByRole('link', { name: '查看 hello-html' }).click()
     await page.reload()
     await expect(

@@ -10,10 +10,8 @@ import {
   CircleStop,
   Cpu,
   Layers3,
-  ListFilter,
   Network,
   RefreshCw,
-  Search,
   Server,
   Terminal,
 } from 'lucide-react'
@@ -28,8 +26,6 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { CreateSandbox, Actions, CliTools } from './Management'
 import { Button } from './shared/ui/button'
-import { Input } from './shared/ui/input'
-import { Select } from './shared/ui/select'
 import { Badge as UiBadge } from './shared/ui/badge'
 import { Alert } from './shared/ui/alert'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
@@ -143,17 +139,9 @@ function Header({ source }: { source?: Source }) {
 }
 function List({ source }: { source: Source }) {
   const state = useLoad((s) => source.list(s), [source])
-  const [q, search] = useState(''),
-    [status, filter] = useState('')
-  const rows = state.value || [],
-    term = q.trim().toLowerCase()
-  const result = rows.filter(
-    (r) =>
-      (!status || r.status === status) &&
-      [nameOf(r), r.id, r.spec.image].some((s) =>
-        s.toLowerCase().includes(term),
-      ),
-  )
+  const [status, filter] = useState('')
+  const rows = state.value || []
+  const result = rows.filter((r) => !status || r.status === status)
   const stats: [string, string, LucideIcon][] = [
     ['', '全部实例', Layers3],
     ['running', '运行中', Activity],
@@ -191,53 +179,19 @@ function List({ source }: { source: Source }) {
         ))}
       </div>
       <section aria-label="沙箱实例">
-        <div className="tools">
-          <h2>
-            <Box />
-            实例列表
-          </h2>
-          <div className="filters">
-            <label className="field">
-              <Search />
-              <Input
-                aria-label="搜索实例"
-                placeholder="搜索名称、ID 或镜像"
-                value={q}
-                onChange={(e) => search(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <ListFilter />
-              <Select
-                aria-label="实例状态"
-                value={status}
-                onChange={(e) => filter(e.target.value)}
-              >
-                <option value="">全部状态</option>
-                {Object.entries(statuses).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          </div>
-        </div>
+        <h2 className="mb-3">
+          <Box />
+          实例列表
+        </h2>
         {!state.value ? (
           <AsyncState state={state} />
         ) : !result.length ? (
           <div className="empty" role="status">
             <Boxes />
             {rows.length ? '没有匹配的实例' : '暂无沙箱实例'}
-            {rows.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  search('')
-                  filter('')
-                }}
-              >
-                清除筛选
+            {status && (
+              <Button variant="outline" onClick={() => filter('')}>
+                显示全部
               </Button>
             )}
           </div>

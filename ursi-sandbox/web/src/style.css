@@ -18,11 +18,11 @@
   .mode { @apply ml-auto text-xs text-txt3; }
   .sep,.crumb,small,.muted,footer,dt { @apply text-txt3; }
   .back { @apply mb-4 text-accent-2 hover:underline; }
-  .heading,.tools,.filters { @apply flex min-w-0 flex-wrap items-center justify-between gap-3; }
+  .heading,.tools { @apply flex min-w-0 flex-wrap items-center justify-between gap-3; }
   .heading { @apply mb-5; }
   h1 { @apply text-xl font-semibold; }
   h2 { @apply text-base; }
-  h2 svg,.field svg,button svg { @apply size-4 shrink-0; }
+  h2 svg,button svg { @apply size-4 shrink-0; }
   button { @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3.5 text-sm font-medium hover:border-line-strong hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-50; }
   .stats { @apply grid grid-cols-2 gap-2 sm:grid-cols-4; }
   .stat { @apply h-auto justify-between gap-2 rounded-lg px-3 py-2.5; }
@@ -31,10 +31,6 @@
   .stat strong { @apply font-mono text-lg; }
   section { @apply mt-5; }
   .tools { @apply mb-3; }
-  .filters { @apply justify-start gap-2; }
-  .field { @apply inline-flex min-h-9 min-w-0 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-txt3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15; }
-  .field input,.field select { @apply min-w-0 bg-surface text-sm text-txt outline-none; }
-  .field input { @apply w-40; }
   .input, .textarea, .select { @apply block w-full min-w-0 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-txt outline-none transition-colors disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3; }
   .input:focus, .textarea:focus, .select:focus { @apply border-accent ring-2 ring-accent/15; }
   .textarea { min-height: 120px; resize: vertical; line-height: 1.7; }
@@ -66,7 +62,6 @@
   pre { @apply max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-elevated p-4 text-txt2; }
 }
 @media(max-width: 760px){
-  .filters { width:100% } .field:first-child {flex:1} .field input { width:100% }
   table,tbody {display:block} thead {display:none}
   tr {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:12px;border-bottom:1px solid rgb(var(--c-line))} tr:last-child {border:0}
   td {padding:0;border:0} .identity,.image,.quota {grid-column:1} .state,.action,.count {justify-self:end}
