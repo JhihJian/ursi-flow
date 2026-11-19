@@ -53,8 +53,9 @@
   .mono, code, pre { @apply font-mono; }
   pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-base p-3 text-xs; }
   pre.err { @apply text-err; }
-  dl { @apply grid grid-cols-2 gap-4 border-y border-line py-4 sm:grid-cols-3; }
-  dd { @apply mt-0.5 break-all; }
+  /* 键值块：只在显式标注 .facts 时按多列排，避免影响 Markdown 里的 dl。 */
+  .facts { @apply grid grid-cols-2 gap-4 border-y border-line py-4 sm:grid-cols-3; }
+  .facts dd { @apply mt-0.5 break-all; }
   details { @apply mt-3; }
   summary { @apply cursor-pointer text-sm text-txt2; }
   .panel { @apply max-w-2xl space-y-4 rounded-xl border border-line bg-surface p-5; }
@@ -233,7 +234,7 @@
 
 /* FLOW.md 元信息：键值块，不参与正文标题层级 */
 @layer components {
-  .md-meta { @apply mb-4 rounded-lg border border-line bg-base px-3 py-2 text-xs }
+  .md-meta { @apply mb-4 block rounded-lg border border-line bg-base px-3 py-2 text-xs }
   /* 每项一行：键在上、值在下，长文本按行换行而不是被挤成窄列。 */
   .md-meta > div { @apply border-b border-line/60 py-1.5 last:border-0 }
   .md-meta dt { @apply font-mono text-[11px] text-txt3 }

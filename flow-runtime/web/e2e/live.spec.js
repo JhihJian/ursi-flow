@@ -169,6 +169,20 @@ test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }
   await expect(page.locator('.mermaid-figure svg')).toHaveCount(1)
   await expect(page.locator('code.language-mermaid')).toHaveCount(0)
   await expect(page.locator('.md h2').first()).toHaveText('汇总结果')
+  // 元信息逐行展示：每项占满整行，不被全局 dl 网格排成多列。
+  const meta = page.locator('.md-meta')
+  await expect(meta).toBeVisible()
+  const rows = meta.locator(':scope > div')
+  const widths = await rows.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().width)))
+  const box = Math.round((await meta.boundingBox()).width)
+  for (const width of widths) expect(width).toBeGreaterThan(box - 40)
+  const keys = await meta.locator('dt').evaluateAll((els) =>
+    els.map((el) => {
+      const value = el.nextElementSibling.getBoundingClientRect()
+      return value.top >= el.getBoundingClientRect().bottom - 1
+    }),
+  )
+  expect(keys.every(Boolean)).toBe(true)
 
   // 包内相对链接直接打开对应文件。
   await page.getByRole('button', { name: 'references/checklist.md' }).click()

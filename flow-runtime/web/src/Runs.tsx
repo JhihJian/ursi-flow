@@ -191,7 +191,7 @@ export function RunDetail({ source }: { source: Source }) {
           )}
           <section>
             <h2>运行参数</h2>
-            <dl>
+            <dl className="facts">
               {Object.entries({
                 状态: jobRow.status,
                 阶段: (run?.phase as string) || '·',
