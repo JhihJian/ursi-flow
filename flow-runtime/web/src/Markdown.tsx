@@ -5,6 +5,7 @@ import { marked } from 'marked'
 import { Columns2, Eye, Pencil } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Textarea } from './components/ui/textarea'
+import { cn } from './lib/utils'
 
 marked.setOptions({ gfm: true, breaks: false })
 
@@ -66,11 +67,13 @@ export function Markdown({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const { meta, body } = useMemo(() => splitFrontmatter(text), [text])
-  const html = useMemo(
-    () =>
-      DOMPurify.sanitize(marked.parse(body, { async: false }) as string, {
+  // Mermaid 会就地替换代码块，正文未变时保留同一份 HTML，避免重渲染覆盖图形。
+  const markup = useMemo(
+    () => ({
+      __html: DOMPurify.sanitize(marked.parse(body, { async: false }) as string, {
         ADD_ATTR: ['target'],
       }),
+    }),
     [body],
   )
   useEffect(() => {
@@ -83,7 +86,7 @@ export function Markdown({
     return () => {
       cancelled = true
     }
-  }, [html])
+  }, [markup])
   return (
     <div
       ref={ref}
@@ -108,7 +111,7 @@ export function Markdown({
           ))}
         </dl>
       )}
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+      <div dangerouslySetInnerHTML={markup} />
     </div>
   )
 }
@@ -152,15 +155,17 @@ export function MarkdownEditor({
   onChange,
   onOpenFile,
   path,
+  className,
 }: {
   value: string
   onChange: (next: string) => void
   onOpenFile?: (path: string) => void
   path?: string
+  className?: string
 }) {
   const [mode, setMode] = useState<'split' | 'edit' | 'preview'>('split')
   return (
-    <div className={'md-editor mode-' + mode}>
+    <div className={cn('md-editor', `mode-${mode}`, className)}>
       <div className="md-editor-bar">
         <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>
           <TabsList className="border-0 pb-0">

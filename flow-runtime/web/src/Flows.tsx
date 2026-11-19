@@ -4,9 +4,9 @@ import {
   ArrowLeft,
   ChevronRight,
   CircleAlert,
-  FileCode2,
   FilePlus2,
   FileText,
+  FolderTree,
   Network,
   Play,
   RotateCcw,
@@ -33,17 +33,15 @@ import { DataTable, dataTableFeatures, type DataTableColumn } from './components
 import { Empty, EmptyContent, EmptyMedia, EmptyTitle } from './components/ui/empty'
 import { Input } from './components/ui/input'
 import { Label } from './components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs'
-import { Textarea } from './components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { FlowCanvas } from './Graph'
-import { Markdown, MarkdownEditor } from './Markdown'
+import { FlowOverview } from './FlowOverview'
+import { MarkdownEditor } from './Markdown'
 import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
 import { createColumnHelper } from '@tanstack/react-table'
 import { providerMissing, type FlowFiles, type FlowSummary, type Source } from './data'
 import {
-  frontmatterMeta,
-  frontmatterOf,
   joinSections,
   parseFlow,
   serializeFlow,
@@ -271,8 +269,7 @@ export function Flows({ source }: { source: Source }) {
   )
 }
 
-// 图形与文档是两种编辑方式；scripts 下的脚本只能按代码编辑。
-type View = 'graph' | 'doc' | 'code'
+type View = 'overview' | 'graph' | 'doc'
 
 export function FlowEditor({ source }: { source: Source }) {
   const id = useParams<'id'>().id
@@ -286,30 +283,37 @@ export function FlowEditor({ source }: { source: Source }) {
   const [files, setFiles] = useState<FlowFiles>(() => (editing ? {} : blankFiles()))
   const [revision, setRevision] = useState('')
   const [selected, setSelected] = useState('FLOW.md')
-  const [view, setView] = useState<View>('graph')
+  const [fileOpen, setFileOpen] = useState(false)
+  const [view, setView] = useState<View>('overview')
   const [dirty, setDirty] = useState(!editing)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [newPath, setNewPath] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [startOpen, setStartOpen] = useState(false)
   // provider 没配全时不让启动，避免用户提交后才看到失败。
   const config = useLoad(async (signal) => source.config(signal), [source])
   const missingProvider = providerMissing(config.value)
   // 修订号是整个目录共用的，必须连同 Flow 标识一起比较，否则切换包时不会刷新。
-  const loadedKey = useRef<string | null>(null)
+  const loadedPackage = useRef<{ id: string; revision: string } | null>(null)
 
   useEffect(() => {
     const pkg = loaded.value
-    const key = pkg ? `${pkg.id}:${pkg.revision}` : ''
-    if (!pkg || loadedKey.current === key) return
-    loadedKey.current = key
+    if (!pkg) return
+    const previous = loadedPackage.current
+    if (previous?.id === pkg.id && previous.revision === pkg.revision) return
+    loadedPackage.current = { id: pkg.id, revision: pkg.revision }
     setName(pkg.id)
     setFiles(pkg.files)
     setRevision(pkg.revision)
     setDirty(false)
-    setSelected(pkg.files['FLOW.md'] !== undefined ? 'FLOW.md' : Object.keys(pkg.files)[0])
+    if (previous?.id !== pkg.id) {
+      setSelected('FLOW.md')
+      setFileOpen(false)
+      setView('overview')
+    } else {
+      setSelected((path) => Object.hasOwn(pkg.files, path) ? path : 'FLOW.md')
+    }
   }, [loaded.value])
 
   const flowText = files['FLOW.md'] ?? ''
@@ -329,13 +333,18 @@ export function FlowEditor({ source }: { source: Source }) {
     [parsed.doc],
   )
 
-  /** 选中文件后切到能编辑它的视图：FLOW.md 用图形，Markdown 用文档，脚本用代码。 */
   const openFile = (path: string) => {
+    if (!Object.hasOwn(files, path)) {
+      setError(`包内没有 ${path}`)
+      return false
+    }
     setSelected(path)
-    setView(path === 'FLOW.md' ? (parsed.doc ? 'graph' : 'doc') : path.endsWith('.md') ? 'doc' : 'code')
+    setFileOpen(true)
+    setError('')
+    return true
   }
 
-  if (editing && !loaded.value) {
+  if (editing && loaded.value?.id !== id) {
     return (
       <main>
         <Link className="back" to="/flows">
@@ -393,20 +402,29 @@ export function FlowEditor({ source }: { source: Source }) {
       return next
     })
     if (selected === path) setSelected('FLOW.md')
+    setFileOpen(false)
     setDirty(true)
+    setNotice('')
   }
-  const addFile = () => {
-    const path = newPath.trim()
-    if (!filePattern.test(path) || path.split('/').some((part) => part === '.' || part === '..'))
-      return setError('文件路径只能是 FLOW.md、references/ 或 scripts/ 下的文件')
-    if (files[path] !== undefined) return setError('文件已存在')
-    for (let i = path.indexOf('/'); i !== -1; i = path.indexOf('/', i + 1))
-      if (files[path.slice(0, i)] !== undefined) return setError('文件与目录重名')
+  const addFile = (input: string) => {
+    const path = input.trim()
+    if (!filePattern.test(path) || path.split('/').some((part) => part === '.' || part === '..')) {
+      setError('文件路径只能是 FLOW.md、references/ 或 scripts/ 下的文件')
+      return
+    }
+    if (Object.hasOwn(files, path)) {
+      setError('文件已存在')
+      return
+    }
+    if (Object.keys(files).some((file) => file.startsWith(`${path}/`) || path.startsWith(`${file}/`))) {
+      setError('文件与目录重名')
+      return
+    }
     setError('')
     writeFile(path, path.endsWith('.md') ? `# ${path.split('/').pop()?.replace(/\.md$/, '')}\n` : '')
     setSelected(path)
-    setView(path.endsWith('.md') ? 'doc' : 'code')
-    setNewPath('')
+    setFileOpen(true)
+    return path
   }
   const run = async (action: 'validate' | 'save' | 'delete') => {
     setBusy(action)
@@ -453,10 +471,6 @@ export function FlowEditor({ source }: { source: Source }) {
     navigate(`/runs/${encodeURIComponent(created.id)}`)
   }
   const readOnly = source.mode === 'demo'
-  const isMarkdown = selected.endsWith('.md')
-  const paths = Object.keys(files).sort((a, b) =>
-    a === 'FLOW.md' ? -1 : b === 'FLOW.md' ? 1 : a.localeCompare(b),
-  )
   return (
     <main className="editor-page">
       <Link className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 mb-2')} to="/flows">
@@ -541,58 +555,6 @@ export function FlowEditor({ source }: { source: Source }) {
               placeholder="release-check"
             />
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FileCode2 />
-              包文件
-            </span>
-            <div className="flex min-w-0 flex-wrap items-center gap-1">
-              {paths.map((path) => (
-                <span key={path} className="flex min-w-0 items-center gap-0.5">
-                  <Button
-                    size="sm"
-                    variant={selected === path ? 'secondary' : 'ghost'}
-                    aria-pressed={selected === path}
-                    onClick={() => openFile(path)}
-                    className={cn(
-                      'min-w-0 max-w-[11rem] px-2 font-mono text-[11px] sm:max-w-[13rem]',
-                      selected === path && 'bg-accent-dim text-accent-2',
-                    )}
-                  >
-                    <span className="truncate">{path}</span>
-                  </Button>
-                  {path !== 'FLOW.md' && selected === path && (
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={`删除 ${path}`}
-                      onClick={() => removeFile(path)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  )}
-                </span>
-              ))}
-            </div>
-            <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
-              <Input
-                aria-label="新增文件路径"
-                className="h-7 min-w-0 flex-1 px-2 text-[11px] sm:w-44 sm:flex-none"
-                placeholder="references/checklist.md"
-                value={newPath}
-                onChange={(event) => setNewPath(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    addFile()
-                  }
-                }}
-              />
-              <Button size="icon-sm" variant="ghost" onClick={addFile} aria-label="新增文件" title="新增文件">
-                <FilePlus2 />
-              </Button>
-            </div>
-          </div>
           {editing && (
             <Button
               variant="primary"
@@ -641,84 +603,76 @@ export function FlowEditor({ source }: { source: Source }) {
 
       <section className="mt-3 min-w-0">
         <Tabs value={view} onValueChange={(next) => setView(next as View)}>
-          <TabsList>
-            {selected === 'FLOW.md' && (
-              <TabsTrigger value="graph" disabled={!parsed.doc}>
-                <Network />
-                图形
-              </TabsTrigger>
-            )}
-            {isMarkdown && (
-              <TabsTrigger value="doc">
-                <FileText />
-                文档
-              </TabsTrigger>
-            )}
-            {!isMarkdown && (
-              <TabsTrigger value="code">
-                <FileCode2 />
-                脚本
-              </TabsTrigger>
-            )}
-            <span className="ml-auto flex items-center gap-2">
-              <span className="truncate font-mono text-xs text-muted-foreground">{selected}</span>
-              {issues.length > 0 && <Badge variant="warn">{issues.length} 处结构提示</Badge>}
-            </span>
+          <TabsList aria-label="Flow 编辑视图">
+            <TabsTrigger value="overview">
+              <FolderTree />
+              总览
+            </TabsTrigger>
+            <TabsTrigger value="graph">
+              <Network />
+              图形
+            </TabsTrigger>
+            <TabsTrigger value="doc">
+              <FileText />
+              文档
+            </TabsTrigger>
+            {issues.length > 0 && <Badge variant="warn" className="ml-auto">{issues.length} 处结构提示</Badge>}
           </TabsList>
 
-          {view === 'graph' && parsed.doc && (
-            <>
-              {issues.length > 0 && (
-                <Alert variant="warning" role="status">
-                  <AlertTitle>{issues.length} 处结构提示</AlertTitle>
-                  <AlertDescription>
-                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                      {issues.map((issue) => (
-                        <li key={issue}>{issue}</li>
-                      ))}
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              )}
-              <FlowCanvas
-                graph={parsed.doc.graph}
-                sections={parsedSections}
-                issues={issues}
-                onGraph={applyGraph}
-                onAction={applyAction}
-                onStart={() => setStartOpen(true)}
-              />
-            </>
-          )}
-          {view === 'graph' && !parsed.doc && (
-            <Alert variant="warning" className="mt-3">
-              <CircleAlert />
-              <AlertDescription>{parsed.error}。切到文档视图即可直接修改 FLOW.md 原文。</AlertDescription>
-            </Alert>
-          )}
-          {view === 'doc' &&
-            (isMarkdown ? (
-              <MarkdownEditor
-                value={files[selected] ?? ''}
-                path={selected}
-                onChange={(next) => writeFile(selected, next)}
-                onOpenFile={(path) => {
-                  if (files[path] !== undefined) openFile(path)
-                  else setError(`包内没有 ${path}`)
-                }}
-              />
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">只有 Markdown 文件提供文档视图。</p>
-            ))}
-          {view === 'code' && !isMarkdown && (
-            <Textarea
-              className="mt-3 min-h-[26rem] font-mono text-xs leading-5"
-              aria-label={`${selected} 内容`}
-              spellCheck={false}
-              value={files[selected] ?? ''}
-              onChange={(event) => writeFile(selected, event.target.value)}
+          <TabsContent value="overview" className="mt-3">
+            <FlowOverview
+              key={id}
+              files={files}
+              selected={selected}
+              fileOpen={fileOpen}
+              onBack={() => setFileOpen(false)}
+              onOpen={openFile}
+              onAdd={addFile}
+              onRemove={removeFile}
+              onChange={writeFile}
             />
-          )}
+          </TabsContent>
+          <TabsContent value="graph" className="mt-3">
+            {parsed.doc ? (
+              <>
+                {issues.length > 0 && (
+                  <Alert variant="warning" role="status">
+                    <AlertTitle>{issues.length} 处结构提示</AlertTitle>
+                    <AlertDescription>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                        {issues.map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <FlowCanvas
+                  graph={parsed.doc.graph}
+                  sections={parsedSections}
+                  issues={issues}
+                  onGraph={applyGraph}
+                  onAction={applyAction}
+                  onStart={() => setStartOpen(true)}
+                />
+              </>
+            ) : (
+              <Alert variant="warning" role="status">
+                <CircleAlert />
+                <AlertDescription>{parsed.error}。切到文档视图即可直接修改 FLOW.md 原文。</AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+          <TabsContent value="doc" className="mt-3">
+            <MarkdownEditor
+              value={flowText}
+              path="FLOW.md"
+              onChange={(next) => writeFile('FLOW.md', next)}
+              onOpenFile={(path) => {
+                if (openFile(path)) setView('overview')
+              }}
+            />
+          </TabsContent>
         </Tabs>
       </section>
     </main>

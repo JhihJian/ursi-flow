@@ -100,7 +100,7 @@ flowchart TD
 
 ### 已完成
 
-已按清单汇总。
+已按[检查清单](references/checklist.md)汇总。
 `
 
 async function openNewFlow(page) {
@@ -132,7 +132,7 @@ async function seed(page, id, files) {
 async function openFlow(page, id) {
   await page.goto('/#/flows/' + id + '/edit')
   await expect(page.getByRole('heading', { name: id, exact: true })).toBeVisible()
-  await expect(page.locator('.cnode').first()).toBeVisible()
+  await expect(page.getByRole('tab', { name: '总览' })).toHaveAttribute('aria-selected', 'true')
 }
 async function storedFlow(page, id) {
   const result = await api(page, '/flows/' + id)
@@ -161,6 +161,7 @@ test('从空包开始用图形与脚本编辑，保存后可以运行', async ({
   await page.getByLabel('Flow 标识').fill('e2e-create')
 
   // 模板只有一个工作节点，改名后改动作、再加脚本文件。
+  await page.getByRole('tab', { name: '图形' }).click()
   await page.locator('.cnode').click()
   await page.getByLabel('节点名称').fill('跑脚本')
   await page.getByLabel('动作').selectOption({ label: '执行自定义命令' })
@@ -170,13 +171,16 @@ test('从空包开始用图形与脚本编辑，保存后可以运行', async ({
   )
   await page.getByRole('button', { name: '收起' }).click()
 
-  // scripts 下的文件用脚本视图编辑，不提供图形与文档。
+  await page.getByRole('tab', { name: '总览' }).click()
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue(/## 跑脚本/)
   await page.getByLabel('新增文件路径').fill('scripts/hello.mjs')
   await page.getByRole('button', { name: '新增文件' }).click()
-  await expect(page.getByLabel('scripts/hello.mjs 内容')).toBeVisible()
-  await expect(page.getByRole('tab', { name: '图形' })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: '文档' })).toHaveCount(0)
-  await page.getByLabel('scripts/hello.mjs 内容').fill("console.log('hello from script')\n")
+  const script = page.getByLabel('scripts/hello.mjs 内容')
+  await script.fill("console.log('hello from script')\n")
+  await page.getByRole('tab', { name: '文档' }).click()
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue(/## 跑脚本/)
+  await page.getByRole('tab', { name: '总览' }).click()
+  await expect(script).toHaveValue("console.log('hello from script')\n")
 
   await page.getByRole('button', { name: '校验' }).click()
   await expect(page.getByRole('status').filter({ hasText: '校验通过' })).toBeVisible()
@@ -191,21 +195,17 @@ test('从空包开始用图形与脚本编辑，保存后可以运行', async ({
   await seed(page, 'e2e-switch', { 'FLOW.md': quick })
   await page.goto('/#/flows/e2e-switch/edit')
   await expect(page.getByRole('heading', { name: 'e2e-switch', exact: true })).toBeVisible()
-  await expect(page.locator('.cnode')).toHaveCount(1)
-
-  // 回到 FLOW.md 只看得到图形与文档两个视图。
-  await page.getByRole('button', { name: 'FLOW.md' }).click()
-  await expect(page.getByRole('tab', { name: '图形' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '文档' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '源码' })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '总览' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('button', { name: 'scripts/hello.mjs' })).toHaveCount(0)
+  await page.getByRole('tab', { name: '图形' }).click()
+  await expect(page.locator('.cnode-title')).toHaveText('执行检查')
 })
 
 test('图形视图可按画布编辑节点与结果边，并跑通运行闭环', async ({ page }) => {
   await seed(page, 'e2e-graph', { 'FLOW.md': quick })
   await openFlow(page, 'e2e-graph')
 
-  // 打开 FLOW.md 默认就是图形视图。
-  await expect(page.getByRole('tab', { name: '图形' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: '图形' }).click()
   await expect(page.locator('.cnode')).toHaveCount(1)
   await expect(page.locator('.cterminal')).toHaveCount(2)
   // 选中连线的结果说明只在选中时显示在走线上。
@@ -339,7 +339,6 @@ test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }
   await expect(page.locator('.md h1')).toHaveText('检查清单')
   await expect(page.locator('.md li')).toHaveCount(2)
 
-  await page.getByRole('button', { name: 'FLOW.md' }).click()
   await page.getByRole('tab', { name: '文档' }).click()
   await expect(page.locator('.mermaid-figure svg')).toHaveCount(1)
   await expect(page.locator('code.language-mermaid')).toHaveCount(0)
@@ -359,17 +358,50 @@ test('文档视图渲染 Markdown、Mermaid 图与包内链接', async ({ page }
   )
   expect(keys.every(Boolean)).toBe(true)
 
-  // 包内相对链接直接打开对应文件。
-  await page.getByRole('button', { name: 'references/checklist.md' }).click()
-  await page.locator('.md a', { hasText: '版本规范' }).click()
+  // 从专用文档跳到总览后，引用文件中的相对链接仍可继续导航。
+  await page.getByRole('link', { name: '检查清单' }).click()
+  await expect(page.getByRole('tab', { name: '总览' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.md h1')).toHaveText('检查清单')
+  await page.getByRole('link', { name: '版本规范' }).click()
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(/版本号必须与/)
   await expect(page.locator('.md h1')).toHaveText('版本规范')
+})
+
+test('总览可编辑包草稿和增删嵌套附件', async ({ page }) => {
+  await seed(page, 'e2e-overview', { 'FLOW.md': quick, 'references/old.md': '# 旧文档\n' })
+  await openFlow(page, 'e2e-overview')
+  await expect(page.getByRole('button', { name: '删除 FLOW.md', exact: true })).toHaveCount(0)
+
+  await page.getByLabel('Markdown 源码').fill(quick.replaceAll('执行检查', '总览草稿'))
+  await page.getByRole('tab', { name: '图形' }).click()
+  await expect(page.locator('.cnode-title')).toHaveText('总览草稿')
+  await page.getByRole('tab', { name: '总览' }).click()
+  await page.getByRole('button', { name: 'references', exact: true }).click()
+  const path = page.getByLabel('新增文件路径')
+  await path.fill('references/guides/checklist.md')
+  await path.press('Enter')
+  await expect(page.getByRole('button', { name: 'references/guides', exact: true })).toHaveAttribute('aria-expanded', 'true')
+  await page.getByLabel('Markdown 源码').fill('# 新清单\n')
+  await path.fill('references/guides')
+  await path.press('Enter')
+  await expect(page.getByText('文件与目录重名')).toBeVisible()
+
+  await page.getByRole('button', { name: 'references/old.md', exact: true }).click()
+  await page.getByRole('button', { name: '删除 references/old.md' }).click()
+  await expect(page.getByRole('button', { name: 'references/old.md' })).toHaveCount(0)
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
+  const saved = (await storedFlow(page, 'e2e-overview')).files
+  expect(saved['FLOW.md']).toContain('总览草稿')
+  expect(saved['references/guides/checklist.md']).toBe('# 新清单\n')
+  expect(saved).not.toHaveProperty('references/old.md')
 })
 
 test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
   await seed(page, 'e2e-conflict', { 'FLOW.md': quick })
   await openFlow(page, 'e2e-conflict')
   // 画布改名产生草稿，随后别处又提交了一次修订。
+  await page.getByRole('tab', { name: '图形' }).click()
   await page.locator('.cnode').click()
   await page.getByLabel('节点名称').fill('本地草稿')
   const current = await storedFlow(page, 'e2e-conflict')
