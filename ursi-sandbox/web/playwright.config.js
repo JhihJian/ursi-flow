@@ -8,6 +8,7 @@ export default defineConfig({
       env: {
         PORT: '14481',
         URSI_WEB_PASSWORD: '',
+        URSI_WEB_ADMIN_PASSWORD: '',
         URSI_GATEWAY_URL: '',
         URSI_GATEWAY_KEY: '',
       },

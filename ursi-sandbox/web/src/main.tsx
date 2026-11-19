@@ -17,9 +17,17 @@ import {
   Server,
   Terminal,
 } from 'lucide-react'
-import { HashRouter, Link, Route, Routes, useParams } from 'react-router'
+import {
+  HashRouter,
+  Link,
+  Route,
+  Routes,
+  useParams,
+  useNavigate,
+} from 'react-router'
 import type { LucideIcon } from 'lucide-react'
-import { loadSource, type Source, type Sandbox } from './data'
+import { CreateSandbox, Actions, CliTools } from './Management'
+import { loadSource, GatewayError, type Source, type Sandbox } from './data'
 import { initAppearance } from './theme'
 import './tokens.css'
 import './style.css'
@@ -40,23 +48,26 @@ function useLoad<T>(
   deps: React.DependencyList,
 ) {
   const [seq, refresh] = React.useReducer((n) => n + 1, 0)
+  const run = React.useRef(0)
   const [state, set] = useState<State<T>>({ loading: true })
   useEffect(() => {
-    const ctl = new AbortController()
+    const ctl = new AbortController(),
+      current = ++run.current
     set({ loading: true })
     Promise.resolve()
       .then(() => load(ctl.signal))
       .then(
         (value) => {
-          if (!ctl.signal.aborted) set({ value })
+          if (!ctl.signal.aborted && current === run.current) set({ value })
         },
         (e) => {
-          if (!ctl.signal.aborted) set({ error: e.message })
+          if (!ctl.signal.aborted && current === run.current)
+            set({ error: e.message })
         },
       )
     return () => ctl.abort()
   }, [...deps, seq])
-  return { ...state, refresh }
+  return { ...state, refresh, update: (value: T) => set({ value }) }
 }
 type RequestState = State<unknown> & { refresh: () => void }
 function AsyncState({ state }: { state: RequestState }) {
@@ -108,7 +119,11 @@ function Header({ source }: { source?: Source }) {
         {source && (
           <span className="mode">
             <Server size={14} />
-            {source.demo ? '演示数据' : 'Gateway · 只读'}
+            {source.demo
+              ? '演示数据'
+              : source.manage
+                ? 'Gateway · 管理员'
+                : 'Gateway · 只读'}
           </span>
         )}
       </div>
@@ -117,6 +132,7 @@ function Header({ source }: { source?: Source }) {
 }
 function List({ source }: { source: Source }) {
   const state = useLoad((s) => source.list(s), [source])
+  const caps = useLoad((s) => source.capabilities(s), [source])
   const [q, search] = useState(''),
     [status, filter] = useState('')
   const rows = state.value || [],
@@ -141,7 +157,22 @@ function List({ source }: { source: Source }) {
           <h1>沙箱管理</h1>
         </div>
         <Refresh state={state} />
+        <CreateSandbox source={source} />
       </div>
+      <details className="mb-4">
+        <summary>Gateway 能力</summary>
+        {caps.value ? (
+          <p>
+            驱动：{caps.value.driver} · 隧道：
+            {caps.value.tunnel_enabled ? '开启' : '关闭'}{' '}
+            {Object.entries(caps.value.capabilities)
+              .map(([k, v]) => `${k}: ${v ? '支持' : '不支持'}`)
+              .join(' · ')}
+          </p>
+        ) : (
+          <AsyncState state={caps} />
+        )}
+      </details>
       <div className="stats">
         {stats.map(([value, label, Icon]) => (
           <button
@@ -299,10 +330,63 @@ function Logs({ source, id }: { source: Source; id: string }) {
     </section>
   )
 }
+function Endpoints({ source, id }: { source: Source; id: string }) {
+  const state = useLoad((s) => source.endpoints(id, s), [source, id])
+  return (
+    <section>
+      <div className="tools">
+        <h2>
+          <Network />
+          端点查询 <small>gateway endpoints</small>
+        </h2>
+        <Refresh state={state} />
+      </div>
+      {state.error || state.loading ? (
+        <AsyncState state={state} />
+      ) : (
+        <ul>
+          {(state.value || []).map((e) => (
+            <li key={e.name}>
+              <b>{e.name}</b>
+              <code>{e.address}</code>
+              <span>
+                {e.port} / {e.visibility === 'internal' ? '内部' : '公开'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 function Details({ source }: { source: Source }) {
   const id = useParams<'id'>().id!
-  const state = useLoad((s) => source.detail(id, s), [source, id]),
+  const navigate = useNavigate(),
+    deleting = React.useRef(false)
+  const state = useLoad(
+      async (s) => {
+        try {
+          return await source.detail(id, s)
+        } catch (e) {
+          if (
+            !s.aborted &&
+            deleting.current &&
+            e instanceof GatewayError &&
+            e.status === 404
+          )
+            navigate('/sandboxes', { replace: true })
+          throw e
+        }
+      },
+      [source, id],
+    ),
     r = state.value
+  useEffect(() => {
+    if (source.demo || !r?.operation) return
+    deleting.current = r.operation.kind === 'delete'
+    const timer = setTimeout(state.refresh, 1000)
+    return () => clearTimeout(timer)
+  }, [r, source, state.refresh])
   return (
     <main>
       <Link className="back" to="/sandboxes">
@@ -321,6 +405,7 @@ function Details({ source }: { source: Source }) {
             <Refresh state={state} />
           </div>
           <Badge status={r.status} />
+          <Actions source={source} row={r} refresh={state.update} />
           {r.error && (
             <p className="warning" role="alert">
               {r.error}
@@ -369,6 +454,8 @@ function Details({ source }: { source: Source }) {
             )}
           </section>
           <Logs source={source} id={id} />
+          <Endpoints source={source} id={id} />
+          <CliTools />
         </>
       )}
     </main>

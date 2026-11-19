@@ -1,6 +1,6 @@
 # 沙箱资源控制台
 
-`/sandboxes` 提供只读实例列表。可按状态筛选，按名称（`labels.name`）、ID 或镜像搜索。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
+`/sandboxes` 提供 Gateway 实例管理。管理员可提交完整 SandboxSpec 创建沙箱，并在详情页启动、停止或确认删除实例。请求受理后页面轮询最终状态。列表可展开 Gateway 能力。可按状态筛选，按名称（`labels.name`）、ID 或镜像搜索。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
 
 ## 独立预览
 
@@ -18,19 +18,25 @@ npm start
 
 页面采用 React 19、TypeScript、React Router、Tailwind CSS 3 和 Vite。`npm run build` 先做类型检查，再将 HTML、CSS、脚本及配置输出到 `dist/`。只需将其内容发布到静态目录，例如 `/apps/sandbox/`，即可在 `/apps/sandbox/#/sandboxes` 预览演示实例。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
 
-`src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。静态产物只包含演示数据。需要连接 Gateway 时可使用自带服务，也可由部署方在同一目录下提供 `console-config.json`（`{"mode":"gateway"}`）并将 `api/v1/sandboxes` 的只读请求交给鉴权代理。Gateway 管理密钥只配置在代理端。
+`src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。静态产物只包含演示数据。需要连接 Gateway 时可使用自带服务，也可由部署方在同一目录下提供 `console-config.json`（`{"mode":"gateway"}`）并将能力查询及实例请求交给鉴权代理。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
 
 ## 查看真实沙箱
 
-先启动 [Gateway](../gateway/README.md)。为控制台进程设置以下环境变量，重新运行 `npm start`，浏览器登录用户名为 `viewer`。
+先启动 [Gateway](../gateway/README.md)。为控制台进程设置以下环境变量，重新运行 `npm start`，浏览器使用 `admin` 或 `viewer` 登录。至少配置一种 Web 身份。
 
 | 变量 | 用途 |
 | --- | --- |
 | `URSI_GATEWAY_URL` | 受信的 Gateway 地址，例如 `http://127.0.0.1:8899` |
 | `URSI_GATEWAY_KEY` | 已配置给该 Gateway 的管理密钥，仅保存在服务端 |
-| `URSI_WEB_PASSWORD` | 独立查看密码，至少 16 个字符 |
+| `URSI_WEB_PASSWORD` | 可选。`viewer` 只读密码，至少 16 个字符 |
+| `URSI_WEB_ADMIN_PASSWORD` | 可选。`admin` 管理密码，至少 16 个字符，必须与查看密码和 Gateway 密钥不同 |
+| `URSI_WEB_TLS_CERT` / `URSI_WEB_TLS_KEY` | 直接对外提供 HTTPS 时使用的证书和私钥文件路径 |
 
-查看者可读取整个命名空间的规格及日志。服务监听 `0.0.0.0`，HTTP Basic 凭据需要受保护的传输链路。对外提供访问时，在 HTTPS 反向代理后运行，并限制控制台端口的直接访问。真实模式连接失败会显示错误，不切换到演示数据。
+查看者可读取整个命名空间的规格及日志。管理员可操作整个命名空间。管理模式无 TLS 证书时只监听 `127.0.0.1`，可配合 HTTPS 反向代理或 SSH 端口转发；配置证书后监听 `0.0.0.0`。HTTP Basic 凭据需要受保护的传输链路。对外提供访问时，在 HTTPS 反向代理后运行，并限制控制台端口的直接访问。真实模式连接失败会显示错误，不切换到演示数据。
+
+### CLI 对照
+
+`gateway capabilities/list/create/status/start/stop/delete/endpoints` 分别对应列表的能力面板、实例列表、创建规格以及详情的状态、操作与服务端点。端点读取自 Gateway 的实例快照。SSH/SFTP 工作区访问、ACP 会话命令使用独立身份，仍通过 [CLI](../client/README.md) 执行。
 
 ## 测试
 
@@ -39,3 +45,5 @@ npm test
 npx playwright install chromium
 npm run test:e2e
 ```
+
+`tests/live-management.mjs` 会在专用 Docker 命名空间实际创建、启停并删除 `alpine:3.22` 实例。设置 `URSI_TEST_WEB_URL` 为管理页、`URSI_TEST_ADMIN_FILE` 为管理密码文件后执行 `node tests/live-management.mjs`。使用自签证书时，`URSI_TEST_CERT_PIN` 指定经核实的证书 SPKI SHA-256（Base64）。
