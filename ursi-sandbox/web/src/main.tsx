@@ -154,8 +154,10 @@ function List({ source }: { source: Source }) {
         <div>
           <h1>沙箱管理</h1>
         </div>
-        <Refresh state={state} />
-        <CreateSandbox source={source} />
+        <div className="flex items-center gap-2">
+          <Refresh state={state} />
+          <CreateSandbox source={source} />
+        </div>
       </div>
       <div className="stats">
         {stats.map(([value, label, Icon]) => (
