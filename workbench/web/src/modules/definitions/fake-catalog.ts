@@ -70,16 +70,15 @@ export function createFakeCatalog() {
     return { id, revision: 0, kind, content: text(body.content, '资源内容') }
   }
   function executor(id: string, body: Body): Executor {
-    const io = { inputs: ports(body.inputs, '输入声明'), outputs: ports(body.outputs, '输出声明') }
     if (body.kind === 'flow') {
       if (body.environment !== undefined) throw new Error('Flow 执行器不接受执行环境')
       if (body.resources !== undefined && (body.resources as unknown[]).length) throw new Error('Flow 执行器不支持注入资源')
-      return { id, revision: 0, kind: 'flow', flowId: text(body.flowId, 'Flow ID'), flowRevision: text(body.flowRevision, 'Flow 目录修订'), ...io }
+      return { id, revision: 0, kind: 'flow', flowId: text(body.flowId, 'Flow ID'), flowRevision: text(body.flowRevision, 'Flow 目录修订') }
     }
     if (body.kind !== 'agent') throw new Error('执行器类型无效')
     if (body.environment !== undefined && body.environment !== 'local' && body.environment !== 'sandbox') throw new Error('执行环境无效')
     return { id, revision: 0, kind: 'agent', environment: body.environment as 'local' | 'sandbox' | undefined,
-      resources: bindable(body.resources, '执行器资源'), ...io }
+      resources: bindable(body.resources, '执行器资源') }
   }
   function pkg(id: string, body: Body): Package {
     const sop = text(body.sop, '办理说明')

@@ -10,7 +10,7 @@ export type ResourceKind = 'skill' | 'prompt' | 'mcp'
 export type ExecutorKind = 'agent' | 'flow'
 export type Target = Ref & { kind: ExecutorKind; environment?: 'local' | 'sandbox'; flowId?: string; flowRevision?: string }
 export type Resource = Ref & { kind: ResourceKind; content: string | { serverRef: string; credentialRef?: string } }
-export type Executor = Target & { resources?: Ref[]; inputs?: Ports; outputs?: Ports }
+export type Executor = Target & { resources?: Ref[] }
 export type Package = Ref & {
   goal?: unknown; sop: string; acceptance: string; deliverables?: string[]; resources?: Ref[]; inputs?: Ports; outputs?: Ports
   actions: Record<string, { executor: Target; resources: Resource[] }>

@@ -17,7 +17,7 @@ curl -fsS -H "$AUTH" "$BASE" | jq '.[] | {id,action,status}'
 curl -fsS -H "$AUTH" -X POST "$BASE/$ATTEMPT/cancel"
 ```
 
-发布时，目录检查 `inputs`、`outputs` 的名称和类型兼容性，合并包、动作与执行器引用的 `resources`。执行时使用工作项快照中的 `actions[action].executor`（固定版本的投影）和同级 `resources`（已展开的正文），不再解析发布请求中的引用或端口声明。
+发布时，目录检查包和动作 `inputs`、`outputs` 的名称与类型格式，合并包、动作与执行器引用的 `resources`。执行器不声明业务端口。执行时使用工作项快照中的 `actions[action].executor`（固定版本的投影）和同级 `resources`（已展开的正文），不再解析发布请求中的引用或端口声明。
 
 本地 Agent 需要管理员配置 `URSI_AGENT_BIN` 为支持这些选项的 Pi 可执行文件绝对路径。Pi 在管理员指定的工作目录内，以 `--print --mode text --no-session` 运行，从标准输入接收冻结的 `workInstruction`（动作、SOP、固定版本的 prompt/skill 正文和工作项输入）。其余参数是 `--no-tools --no-extensions --no-mcp --no-skills --no-prompt-templates --no-context-files --no-approve`。平台通过 `URSI_ARTIFACT_DIR` 提供制品目录能力，该变量与工作目录一样不随尝试返回。当前内置 Pi 调用关闭工具和扩展，因此实际写入需要后续执行器能力或受控包装程序；本切片负责目录登记、清单和终态冻结。尝试中的 `workspace` 是 `{"id":"default","access":"read-write","purpose":"work-input"}` 引用；后端输出内的实际目录文本分别替换为 `[workspace]` 和 `[artifacts]`。部署者提供 Pi 模型和认证配置；子进程环境按名称放行，不继承 `URSI_API_TOKEN`。Agent 输入上限 256 KiB，stdout 和 stderr 各 64 KiB，单次最长 5 分钟，同时最多 4 个 Agent。超时、超限、取消和正常退出均清理本次 Unix 进程组。这是受信本地执行，不是沙箱。服务异常退出后不使用持久化 PID 杀进程。
 

@@ -93,7 +93,7 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
     }
     api.post(
         "executors",
-        json!({"id":"pi","kind":"agent","inputs":ports,"outputs":outputs,"resources":[refs[2]]}),
+        json!({"id":"pi","kind":"agent","resources":[refs[2]]}),
     )
     .await;
     api.post(
@@ -175,7 +175,11 @@ async fn catalog_publication_to_plan_and_agent_uses_frozen_resources_and_ports()
             .contains(temp.0.to_str().unwrap())
     );
 
-    api.post("executors", json!({"id":"checker","kind":"flow","flowId":"check","flowRevision":"revA","inputs":ports,"outputs":outputs,"resources":[]})).await;
+    api.post(
+        "executors",
+        json!({"id":"checker","kind":"flow","flowId":"check","flowRevision":"revA"}),
+    )
+    .await;
     api.post(
         "packages",
         json!({"id":"flowcase","sop":"核查","acceptance":"有报告","inputs":ports,"outputs":outputs,
@@ -297,7 +301,7 @@ async fn agent_artifacts_are_registered_frozen_and_never_expose_host_paths() {
     let ports = json!({"ticket":"string"});
     api.post(
         "executors",
-        json!({"id":"pi","kind":"agent","inputs":ports,"outputs":{"report":"string"},"resources":[]}),
+        json!({"id":"pi","kind":"agent","resources":[]}),
     )
     .await;
     api.post(

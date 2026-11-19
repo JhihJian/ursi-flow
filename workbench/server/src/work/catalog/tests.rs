@@ -112,11 +112,24 @@ fn deactivation_blocks_new_references_but_keeps_history_readable() {
 }
 
 #[test]
-fn port_mismatch_and_conflicting_resource_revisions_leave_old_package_alone() {
+fn package_ports_are_independent_from_executor_and_conflicting_resources_leave_old_package_alone() {
     let mut db = json!({"other":"unchanged"});
     resource(&mut db, "guide", "skill", "v1".into());
     resource(&mut db, "guide", "skill", "v2".into());
-    publish(&mut db,"executors",json!({"id":"agent","kind":"agent","resources":[{"id":"guide","revision":1}],"inputs":{"ticket":"string"},"outputs":{"report":"string"}})).unwrap();
+    publish(
+        &mut db,
+        "executors",
+        json!({"id":"agent","kind":"agent","resources":[{"id":"guide","revision":1}]}),
+    )
+    .unwrap();
+    assert!(matches!(
+        publish(
+            &mut db,
+            "executors",
+            json!({"id":"ports","kind":"agent","inputs":{"ticket":"string"}}),
+        ),
+        Err(Error::Invalid(_))
+    ));
     let b = json!({"id":"p","sop":"步骤","acceptance":"有报告","inputs":{"ticket":"string"},"outputs":{"report":"string"},"resources":[{"id":"guide","revision":1}],"actions":{"run":{"executor":{"id":"agent","revision":1}}}});
     let frozen = publish(&mut db, "packages", b.clone()).unwrap();
     assert_eq!(
@@ -126,11 +139,7 @@ fn port_mismatch_and_conflicting_resource_revisions_leave_old_package_alone() {
             .len(),
         1
     );
-    for (field, value) in [
-        ("inputs", json!({"ticket":"integer"})),
-        ("outputs", json!({"missing":"string"})),
-        ("resources", json!([{"id":"guide","revision":2}])),
-    ] {
+    for (field, value) in [("resources", json!([{"id":"guide","revision":2}]))] {
         let mut bad = b.clone();
         bad[field] = value;
         let before = db.clone();

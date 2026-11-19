@@ -33,10 +33,10 @@ it('通过表单引用旧资源版本，MCP 版本不可绑定，即使同一 ID
   await userEvent.selectOptions(screen.getByLabelText('资源 ID', { exact: true }), 'guide')
   expect(await screen.findByRole('option', { name: 'v2 · MCP 引用' })).toBeDisabled()
   await userEvent.selectOptions(screen.getByLabelText('资源版本', { exact: true }), '1')
-  await userEvent.click(screen.getByRole('button', { name: '添加输入字段' }))
-  await userEvent.type(screen.getByLabelText('输入字段名'), 'ticket')
+  expect(screen.getByText('workspace + workInstruction → artifactDirectory')).toBeVisible()
+  expect(screen.queryByRole('button', { name: '添加输入字段' })).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
-  await waitFor(() => expect(sent).toEqual({ id: 'pi', kind: 'agent', environment: 'sandbox', inputs: { ticket: 'string' }, resources: [{ id: 'guide', revision: 1 }] }))
+  await waitFor(() => expect(sent).toEqual({ id: 'pi', kind: 'agent', environment: 'sandbox', resources: [{ id: 'guide', revision: 1 }] }))
 })
 
 it('历史包按阅读版本跳转，从目录读取启停状态并确认停用整个 ID', async () => {
@@ -71,6 +71,27 @@ it('编辑旧包须明确核对不可还原字段，发布失败保留草稿，�
   await userEvent.click(button); expect(await screen.findByRole('alert')).toHaveTextContent('版本冲突'); expect(screen.getByLabelText('办理说明')).toHaveValue('原 SOP 已更新')
   expect(sent).toMatchObject({ actions: { inspect: { executor: { id: 'pi', revision: 1 }, resources: [] } } }); expect(sent).not.toHaveProperty('revision')
   accept = true; await userEvent.click(button); await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/4'))
+})
+
+it('执行器目录展示通用契约与后端目标，详情不再把输入输出当作执行器字段', async () => {
+  const executor = { id: 'assistant', revision: 2, kind: 'agent', environment: 'local', resources: [{ id: 'guide', revision: 1 }] }
+  const router = start('/executors', url => {
+    if (url === '/executors') return Response.json([{ ...executor, active: true }])
+    if (url === '/executors/assistant') return Response.json({ ...executor, active: true })
+    if (url === '/executors/assistant/revisions/2') return Response.json(executor)
+    if (url === '/executors/assistant/revisions') return Response.json([executor])
+    return Response.json({ error: 'not found' }, { status: 404 })
+  })
+  expect(await screen.findByText('workspace + workInstruction → artifactDirectory')).toBeVisible()
+  expect(screen.getByText('本地 Pi Agent')).toBeVisible()
+  expect(screen.getByText('1 个固定资源')).toBeVisible()
+  await userEvent.click(screen.getByRole('link', { name: 'assistant v2' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/executors/assistant/revisions/2'))
+  expect(await screen.findByRole('heading', { name: '执行契约' })).toBeVisible()
+  expect(screen.getByText('平台记录日志')).toBeVisible()
+  expect(screen.getByText('执行器记录日志')).toBeVisible()
+  expect(screen.queryByText('输入声明')).toBeNull()
+  expect(screen.queryByText('输出声明')).toBeNull()
 })
 
 it('资源目录区分加载失败和空态，按类型过滤并浏览历史版本', async () => {

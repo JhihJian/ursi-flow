@@ -32,8 +32,8 @@ async function publishChain(fake: ReturnType<typeof createFakeCatalog>) {
   await userEvent.click(screen.getByRole('button', { name: '添加执行器资源' }))
   await userEvent.selectOptions(screen.getByLabelText('资源 ID', { exact: true }), 'guide')
   await userEvent.selectOptions(await screen.findByLabelText('资源版本', { exact: true }), '1')
-  await userEvent.click(screen.getByRole('button', { name: '添加输入字段' }))
-  await userEvent.type(screen.getByLabelText('输入字段名'), 'ticket')
+  expect(screen.getByText('workspace + workInstruction → artifactDirectory')).toBeVisible()
+  expect(screen.queryByRole('button', { name: '添加输入字段' })).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/executors/assistant/revisions/1'))
 
@@ -67,7 +67,8 @@ it('只用表单发布提示词 r1、引用它的 Agent r1 与包 r1，详情追
   expect(screen.getByText('发布快照只保留合并后的执行器与资源，动作级输入输出声明没有写入快照，编辑历史版本时需要维护人重新核对。')).toBeVisible()
 
   const executor = fake.latest<Executor>('executors', 'assistant')
-  expect(executor).toMatchObject({ revision: 1, kind: 'agent', environment: 'sandbox', resources: [{ id: 'guide', revision: 1 }], inputs: { ticket: 'string' } })
+  expect(executor).toMatchObject({ revision: 1, kind: 'agent', environment: 'sandbox', resources: [{ id: 'guide', revision: 1 }] })
+  expect(executor).not.toHaveProperty('inputs')
   const pkg = fake.latest<Package>('packages', 'triage')
   expect(pkg.actions.inspect.executor).toEqual({ id: 'assistant', revision: 1, kind: 'agent', environment: 'sandbox' })
   expect(pkg.deliverables).toEqual(['核查报告.txt', '证据清单.txt'])

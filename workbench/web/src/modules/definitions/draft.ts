@@ -28,8 +28,9 @@ export function initialDraft(v?: Definition, executors: Executor[] = []): Draft 
     else { d.serverRef = v.content.serverRef; d.credentialRef = v.content.credentialRef ?? '' }
     return d
   }
-  d.inputs = rows(v.inputs); d.outputs = rows(v.outputs); d.resources = (v.resources ?? []).map(pinned)
+  d.resources = (v.resources ?? []).map(pinned)
   if ('actions' in v) {
+    d.inputs = rows(v.inputs); d.outputs = rows(v.outputs)
     d.sop = v.sop; d.acceptance = v.acceptance; d.deliverables = v.deliverables?.join('\n')
     d.structuredGoal = v.goal !== undefined && typeof v.goal !== 'string'
     d.goal = d.structuredGoal ? JSON.stringify(v.goal, null, 2) : v.goal as string | undefined
@@ -58,11 +59,11 @@ export function publishBody(k: Collection, d: Draft) {
   const id = d.id
   if (k === 'resources') return { id, kind: d.resourceKind, content: d.resourceKind === 'mcp'
     ? { serverRef: d.serverRef, credentialRef: d.credentialRef || undefined } : d.text }
-  const io = { inputs: fields(d.inputs), outputs: fields(d.outputs) }
   if (k === 'executors') return d.executorKind === 'flow'
-    ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision, ...io }
-    : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed), ...io }
+    ? { id, kind: 'flow', flowId: d.flowId, flowRevision: d.flowRevision }
+    : { id, kind: 'agent', environment: d.environment === 'sandbox' ? 'sandbox' : 'local', resources: d.resources.map(fixed) }
   if (!id.trim()) throw new Error('请填写派工模板 ID。')
+  const io = { inputs: fields(d.inputs), outputs: fields(d.outputs) }
   if (!d.sop.trim() || !d.acceptance.trim()) throw new Error('请填写办理说明和验收标准。')
   if (!d.actions.length || d.actions.some(a => !a.name.trim())) throw new Error('至少需要一个具名动作。')
   if (new Set(d.actions.map(a => a.name.trim())).size !== d.actions.length) throw new Error('动作名称不能重复，否则会覆盖先前的输入。')

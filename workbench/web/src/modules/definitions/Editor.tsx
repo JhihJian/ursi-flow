@@ -85,6 +85,12 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
         <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被 Agent 或派工模板引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
       </>}
       {k === 'executors' && <>
+        <section className="space-y-3 border-y border-line py-4" aria-labelledby="executor-contract">
+          <div><h2 id="executor-contract" className="font-semibold">执行契约</h2>
+            <p className="mt-1 text-sm text-txt3">平台为每次执行提供工作区和冻结的工作指令，执行器完成工作后写入独立的制品目录。</p></div>
+          <p className="font-mono text-sm">workspace + workInstruction → artifactDirectory</p>
+          <p className="text-sm text-txt3">平台记录日志和执行器记录日志都会保存在执行详情中，日志查看器暂未实现。</p>
+        </section>
         <Choice label="执行器类型" value={d.executorKind} change={v => change('executorKind', v)} options={[["agent", "Agent"], ["flow", "Agent Flow"]]} />
         {d.executorKind === 'agent' ? <>
           <Choice label="执行环境" value={d.environment} change={v => change('environment', v)} options={[["local", environmentNames.local], ["sandbox", environmentNames.sandbox]]} />
@@ -105,7 +111,7 @@ function EditForm({ k, initial, revision, storageKey, resources, executors }: {
         <ResourceRefs label="派工模板资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
         <Hint>派工模板资源对该模板所有动作生效，发布时与动作资源按固定版本合并。</Hint>
       </>}
-      {k !== 'resources' && <div className="grid gap-4 md:grid-cols-2">
+      {k === 'packages' && <div className="grid gap-4 md:grid-cols-2">
         <PortsEditor label="输入" value={d.inputs} change={v => change('inputs', v)} />
         <PortsEditor label="输出" value={d.outputs} change={v => change('outputs', v)} />
       </div>}

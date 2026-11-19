@@ -96,18 +96,6 @@ fn ports<'a>(b: &'a Value, k: &str) -> Result<Option<&'a Map<String, Value>>, Er
     }
     Ok(Some(map))
 }
-fn compatible(
-    required: Option<&Map<String, Value>>,
-    provided: Option<&Map<String, Value>>,
-    k: &str,
-) -> Result<(), Error> {
-    for (key, ty) in required.into_iter().flatten() {
-        if provided.and_then(|p| p.get(key)) != Some(ty) {
-            return Err(Error::Invalid(format!("{k} 声明不匹配: {key}")));
-        }
-    }
-    Ok(())
-}
 fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
     fields(
         b,
@@ -118,12 +106,8 @@ fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
             "environment",
             "flowId",
             "flowRevision",
-            "inputs",
-            "outputs",
         ],
     )?;
-    ports(b, "inputs")?;
-    ports(b, "outputs")?;
     let deps = array(b, "resources")?;
     match text(b, "kind")? {
         "agent" => {
@@ -200,8 +184,8 @@ fn package(db: &Value, b: &Value) -> Result<Value, Error> {
     text(b, "sop")?;
     text(b, "acceptance")?;
     let common = array(b, "resources")?;
-    let ins = ports(b, "inputs")?;
-    let outs = ports(b, "outputs")?;
+    ports(b, "inputs")?;
+    ports(b, "outputs")?;
     let actions = b["actions"]
         .as_object()
         .filter(|m| !m.is_empty())
@@ -211,19 +195,11 @@ fn package(db: &Value, b: &Value) -> Result<Value, Error> {
     for (action, binding) in actions {
         name(action)?;
         fields(binding, &["executor", "resources", "inputs", "outputs"])?;
+        ports(binding, "inputs")?;
+        ports(binding, "outputs")?;
         let (id, rev) = reference(&binding["executor"])?;
         require_active(db, "executors", id)?;
         let exec = version(db, "executors", id, rev)?;
-        compatible(
-            ports(exec, "inputs")?,
-            ports(binding, "inputs")?.or(ins),
-            "inputs",
-        )?;
-        compatible(
-            ports(binding, "outputs")?.or(outs),
-            ports(exec, "outputs")?,
-            "outputs",
-        )?;
         let refs = common
             .iter()
             .chain(array(binding, "resources")?)

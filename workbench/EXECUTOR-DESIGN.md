@@ -233,9 +233,7 @@ type ExecutorOutput = {
   "environment": "local",
   "resources": [
     { "id": "排查规范", "revision": 3 }
-  ],
-  "logCapability": "events-and-output",
-  "artifactCapability": "directory"
+  ]
 }
 ```
 
@@ -247,7 +245,7 @@ type ExecutorOutput = {
 - `kind` 标识执行后端类型。
 - `environment` 是环境选择策略，`local` 使用服务端配置的本地执行环境，`sandbox` 使用管理员预配的独占沙箱。
 - `resources` 是可选的固定版本资源引用，当前用于 Skill 和提示词。
-- `logCapability` 和 `artifactCapability` 描述后端能否提供对应记录；它们是能力声明，不包含某次执行的数据。
+- 平台为每次尝试统一保存平台记录日志、执行器记录日志和独立的 artifactDirectory；这些是尝试侧输出，不是执行器定义字段。
 
 执行器定义不保存 workspace、workInstruction、artifactDirectory、attemptId、日志正文或运行中的会话。
 
@@ -263,13 +261,11 @@ Agent 执行器使用管理员配置的 Agent 程序，把 workspace 和 workIns
   "resources": [
     { "id": "排查规范", "revision": 3 },
     { "id": "报告格式", "revision": 1 }
-  ],
-  "logCapability": "events-and-output",
-  "artifactCapability": "directory"
+  ]
 }
 ```
 
-程序路径、命令行、模型、密钥、主机目录和并发限制由部署配置管理。浏览器只配置执行器类型、环境策略、资源引用和能力声明。
+程序路径、命令行、模型、密钥、主机目录和并发限制由部署配置管理。浏览器只配置执行器类型、环境策略和固定资源引用。平台统一提供执行日志与制品目录管道。
 
 ### Agent Flow
 
@@ -280,9 +276,7 @@ Agent Flow 执行器引用固定的 Flow ID 和目录修订，由 Flow Runtime �
   "id": "复现验证",
   "kind": "flow",
   "flowId": "reproduce-fix",
-  "flowRevision": "2026-11-19.1",
-  "logCapability": "flow-events",
-  "artifactCapability": "directory"
+  "flowRevision": "2026-11-19.1"
 }
 ```
 
@@ -293,7 +287,7 @@ Flow 执行器不能通过 `environment` 选择 Agent 环境，也不把 Flow �
 执行器的生命周期如下：
 
 1. 在 `/executors/new` 填写一个新执行器定义。
-2. 服务端校验执行器类型、资源引用、日志能力和制品能力。
+2. 服务端校验执行器类型、后端绑定和资源引用。
 3. 发布成功后生成不可变的 `revision`。
 4. 派工模板发布时，动作绑定一个已启用执行器的固定 `{id, revision}`。
 5. 发布派工模板时冻结执行器定义及资源依赖，并校验动作能生成所需的 `workInstruction`。
