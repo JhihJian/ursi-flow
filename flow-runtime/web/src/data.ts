@@ -36,6 +36,23 @@ export const PROVIDER_APIS = [
 ] as const
 export const THINKING_LEVELS = ['off', 'low', 'medium', 'high'] as const
 
+/** 早期运行只存了 executor 与顶层的 model，没有 provider；读出时补齐成当前形状，页面不必为历史记录分叉。 */
+export function normalizeRun(run: Run): Run {
+  const raw = run.config as FlowConfig & { model?: string }
+  return {
+    ...run,
+    config: {
+      executor: 'local-pi',
+      provider: {
+        ...raw?.provider,
+        baseUrl: raw?.provider?.baseUrl ?? '',
+        model: raw?.provider?.model ?? (typeof raw?.model === 'string' ? raw.model : ''),
+      },
+      maxConcurrent: raw?.maxConcurrent ?? 0,
+    },
+  }
+}
+
 /** provider 缺项时返回缺的字段，页面据此提示去补配置。 */
 export function providerMissing(config?: FlowConfig | null): string[] {
   const provider = config?.provider
@@ -234,9 +251,12 @@ function createClient(apiBase: string): Source {
     remove: (id) => send('DELETE', flowPath(id)),
     start: (id, variables, runId) =>
       send('POST', `${flowPath(id)}/runs`, { runId, workspace: 'default', variables }),
-    runs: (signal) => request('/runs', { signal }),
-    run: (id, signal) => request(runPath(id), { signal }),
-    history: (id, signal) => request(`${runPath(id)}/history`, { signal }),
+    runs: async (signal) => (await request<Run[]>('/runs', { signal })).map(normalizeRun),
+    run: async (id, signal) => normalizeRun(await request<Run>(runPath(id), { signal })),
+    history: async (id, signal) => {
+      const history = await request<RunHistory>(`${runPath(id)}/history`, { signal })
+      return { ...history, job: normalizeRun(history.job) }
+    },
     runFlow: (id, signal) => request(`${runPath(id)}/flow`, { signal }),
     trajectory: (id, node, signal) =>
       request(`${runPath(id)}/nodes/${encodeURIComponent(node)}/trajectory`, { signal }),

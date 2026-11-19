@@ -446,3 +446,35 @@ flowchart TD
   assert.equal(state.edges['plan|通过|merge'].traversed, 1)
   assert.equal(state.edges['plan|返工|plan'], undefined)
 })
+
+test('运行配置读出时补齐 provider 形状，旧运行不因缺字段崩溃', async () => {
+  const load = (name) => import(join(root, 'src', name))
+  // data.ts 里 React 无关的部分可以直接加载，这里只验证配置归一化。
+  const { normalizeRun } = await load('data.ts')
+  const legacy = normalizeRun({
+    id: 'r1',
+    flow: 'code-change',
+    revision: 'v1',
+    status: 'failed',
+    config: { executor: 'local-pi', model: 'gpt-4o-mini', maxConcurrent: 4 },
+  })
+  assert.equal(legacy.config.provider.model, 'gpt-4o-mini')
+  assert.equal(legacy.config.provider.baseUrl, '')
+  assert.equal(legacy.config.maxConcurrent, 4)
+
+  const missing = normalizeRun({ id: 'r2', flow: 'f', revision: 'v1', status: 'failed' })
+  assert.deepEqual(missing.config, {
+    executor: 'local-pi',
+    provider: { baseUrl: '', model: '' },
+    maxConcurrent: 0,
+  })
+
+  const current = normalizeRun({
+    id: 'r3',
+    flow: 'f',
+    revision: 'v1',
+    status: 'running',
+    config: { executor: 'local-pi', provider: { baseUrl: 'http://x', model: 'm' }, maxConcurrent: 2 },
+  })
+  assert.equal(current.config.provider.baseUrl, 'http://x')
+})

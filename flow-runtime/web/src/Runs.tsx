@@ -464,7 +464,13 @@ function FlowPanel({
   return (
     <>
       <Section title="流转图" meta={current ? `当前节点：${current}` : undefined}>
-        {!flow.value ? (
+        {flow.error ? (
+          <Alert variant="error">
+            <AlertDescription>
+              这次运行使用的流程修订已经不可读取（{flow.error}），因此没有流转图。节点执行记录与下方证据仍然完整。
+            </AlertDescription>
+          </Alert>
+        ) : !flow.value ? (
           <AsyncState state={flow} />
         ) : !graph || !state ? (
           <Alert variant="error">
