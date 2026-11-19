@@ -2,6 +2,23 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Play, Plus, Square, Trash2 } from 'lucide-react'
 import type { Sandbox, Source } from './data'
+import { Button } from './shared/ui/button'
+import { Textarea } from './shared/ui/textarea'
+import { Label } from './shared/ui/label'
+import { Alert } from './shared/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './shared/ui/dialog'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from './shared/ui/collapsible'
 
 const template = JSON.stringify(
   {
@@ -45,40 +62,42 @@ export function CreateSandbox({ source }: { source: Source }) {
     }
   }
   return (
-    <>
-      <button aria-expanded={open} onClick={() => show(!open)}>
-        <Plus />
-        创建沙箱
-      </button>
-      {open && (
-        <section className="basis-full space-y-3">
-          <label className="block">
-            创建规格（SandboxSpec JSON）
-            <textarea
-              className="mt-2 block w-full rounded-md border border-line bg-surface p-3 font-mono"
-              rows={9}
-              value={text}
-              disabled={busy}
-              onChange={(e) => edit(e.target.value)}
-            />
-          </label>
-          {!source.manage && (
-            <p>
-              {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
-              提交需要 Gateway 管理员身份。
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="warning">
-              {error}
-            </p>
-          )}
-          <button disabled={!source.manage || busy} onClick={submit}>
-            {busy ? '提交中…' : '提交创建'}
-          </button>
-        </section>
-      )}
-    </>
+    <Collapsible open={open} onOpenChange={show} className="basis-full">
+      <CollapsibleTrigger asChild>
+        <Button variant="outline">
+          <Plus />
+          创建沙箱
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3 space-y-3 rounded-xl border border-line bg-surface p-4">
+        <Label htmlFor="sandbox-spec">创建规格（SandboxSpec JSON）</Label>
+        <Textarea
+          id="sandbox-spec"
+          rows={9}
+          value={text}
+          disabled={busy}
+          onChange={(e) => edit(e.target.value)}
+          className="font-mono"
+        />
+        {!source.manage && (
+          <p className="text-sm text-txt3">
+            {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
+            提交需要 Gateway 管理员身份。
+          </p>
+        )}
+        {error && (
+          <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>
+        )}
+        <Button
+          variant="primary"
+          disabled={!source.manage}
+          loading={busy}
+          onClick={submit}
+        >
+          提交创建
+        </Button>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 export function Actions({
@@ -110,63 +129,85 @@ export function Actions({
   return (
     <section aria-label="生命周期操作">
       <div className="flex flex-wrap gap-2">
-        <button
+        <Button
           disabled={disabled || row.status !== 'stopped'}
+          loading={busy}
           onClick={() => run('start')}
         >
           <Play />
           启动
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={disabled || row.status !== 'running'}
+          loading={busy}
           onClick={() => run('stop')}
         >
           <Square />
           停止
-        </button>
-        <button disabled={disabled} onClick={() => ask(true)}>
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={disabled}
+          onClick={() => ask(true)}
+        >
           <Trash2 />
           删除
-        </button>
+        </Button>
       </div>
-      {confirm && (
-        <div className="warning" role="alert">
-          删除 {row.spec.labels.name || row.id} 将永久清除容器和工作卷。
-          <button onClick={() => ask(false)}>取消</button>{' '}
-          <button onClick={() => run('delete')}>确认永久删除</button>
-        </div>
-      )}
+      <Dialog open={confirm} onOpenChange={ask}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除沙箱</DialogTitle>
+            <DialogDescription>
+              删除 {row.spec.labels.name || row.id}{' '}
+              将永久清除容器和工作卷，此操作不能撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => ask(false)}>
+              取消
+            </Button>
+            <Button variant="destructive" onClick={() => run('delete')}>
+              确认永久删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {error && (
-        <p className="warning" role="alert">
-          {error}
-        </p>
+        <Alert className="mt-3 border-err/30 bg-err/10 text-err">{error}</Alert>
       )}
       {row.operation && (
-        <p role="status">Gateway 正在处理：{row.operation.kind}</p>
+        <p role="status" className="mt-3 text-sm text-txt3">
+          Gateway 正在处理：{row.operation.kind}
+        </p>
       )}
     </section>
   )
 }
 export function CliTools() {
   return (
-    <details className="mt-5">
-      <summary>运行时工具（独立 CLI）</summary>
-      <dl>
-        <div>
-          <dt>ACP 会话</dt>
-          <dd>
-            acp initialize / new / prompt / status / cancel / close，连接
-            Runtime 会话端点并使用会话令牌。
-          </dd>
-        </div>
-        <div>
-          <dt>工作区访问</dt>
-          <dd>
-            ssh 执行脚本，sftp-put / sftp-get 传输文件。使用本机 SSH 私钥及
-            known_hosts。
-          </dd>
-        </div>
-      </dl>
-    </details>
+    <Collapsible className="mt-5">
+      <CollapsibleTrigger className="text-sm font-medium text-txt2">
+        运行时工具（独立 CLI）
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <dl>
+          <div>
+            <dt>ACP 会话</dt>
+            <dd>
+              acp initialize / new / prompt / status / cancel / close，连接
+              Runtime 会话端点并使用会话令牌。
+            </dd>
+          </div>
+          <div>
+            <dt>工作区访问</dt>
+            <dd>
+              ssh 执行脚本，sftp-put / sftp-get 传输文件。使用本机 SSH 私钥及
+              known_hosts。
+            </dd>
+          </div>
+        </dl>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

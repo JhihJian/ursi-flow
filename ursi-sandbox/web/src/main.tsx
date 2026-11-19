@@ -27,6 +27,16 @@ import {
 } from 'react-router'
 import type { LucideIcon } from 'lucide-react'
 import { CreateSandbox, Actions, CliTools } from './Management'
+import { Button } from './shared/ui/button'
+import { Input } from './shared/ui/input'
+import { Select } from './shared/ui/select'
+import { Badge as UiBadge } from './shared/ui/badge'
+import { Alert } from './shared/ui/alert'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from './shared/ui/collapsible'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
 import { initAppearance } from './theme'
 import './tokens.css'
@@ -67,7 +77,12 @@ function useLoad<T>(
       )
     return () => ctl.abort()
   }, [...deps, seq])
-  return { ...state, refresh, update: (value: T) => set({ value }) }
+  function update(value: T) {
+    // 生命周期操作返回的新状态优先于尚未完成的旧详情请求。
+    run.current += 1
+    set({ value })
+  }
+  return { ...state, refresh, update }
 }
 type RequestState = State<unknown> & { refresh: () => void }
 function AsyncState({ state }: { state: RequestState }) {
@@ -77,10 +92,10 @@ function AsyncState({ state }: { state: RequestState }) {
         <>
           <CircleAlert />
           {state.error}
-          <button onClick={state.refresh}>
+          <Button variant="outline" onClick={state.refresh}>
             <RefreshCw />
             重试
-          </button>
+          </Button>
         </>
       ) : (
         '正在读取…'
@@ -89,19 +104,20 @@ function AsyncState({ state }: { state: RequestState }) {
   )
 }
 function Badge({ status }: { status: string }) {
-  return (
-    <span className={'badge ' + status}>
-      <i />
-      {statuses[status] || status}
-    </span>
-  )
+  const tone =
+    status === 'error'
+      ? 'destructive'
+      : status === 'running'
+        ? 'default'
+        : 'secondary'
+  return <UiBadge variant={tone}>{statuses[status] || status}</UiBadge>
 }
 function Refresh({ state }: { state: RequestState }) {
   return (
-    <button onClick={state.refresh} disabled={state.loading}>
+    <Button variant="outline" onClick={state.refresh} loading={state.loading}>
       <RefreshCw />
       刷新
-    </button>
+    </Button>
   )
 }
 function Header({ source }: { source?: Source }) {
@@ -159,24 +175,29 @@ function List({ source }: { source: Source }) {
         <Refresh state={state} />
         <CreateSandbox source={source} />
       </div>
-      <details className="mb-4">
-        <summary>Gateway 能力</summary>
-        {caps.value ? (
-          <p>
-            驱动：{caps.value.driver} · 隧道：
-            {caps.value.tunnel_enabled ? '开启' : '关闭'}{' '}
-            {Object.entries(caps.value.capabilities)
-              .map(([k, v]) => `${k}: ${v ? '支持' : '不支持'}`)
-              .join(' · ')}
-          </p>
-        ) : (
-          <AsyncState state={caps} />
-        )}
-      </details>
+      <Collapsible className="mb-4 rounded-lg border border-line bg-surface p-3">
+        <CollapsibleTrigger className="text-sm font-medium text-txt2">
+          Gateway 能力
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          {caps.value ? (
+            <p className="mt-3 text-sm text-txt3">
+              驱动：{caps.value.driver} · 隧道：
+              {caps.value.tunnel_enabled ? '开启' : '关闭'}{' '}
+              {Object.entries(caps.value.capabilities)
+                .map(([k, v]) => `${k}: ${v ? '支持' : '不支持'}`)
+                .join(' · ')}
+            </p>
+          ) : (
+            <AsyncState state={caps} />
+          )}
+        </CollapsibleContent>
+      </Collapsible>
       <div className="stats">
         {stats.map(([value, label, Icon]) => (
-          <button
+          <Button
             key={label}
+            variant="outline"
             aria-pressed={status === value}
             onClick={() => filter(value)}
             className={'stat ' + (value || 'all')}
@@ -190,7 +211,7 @@ function List({ source }: { source: Source }) {
                 ? rows.filter((r) => !value || r.status === value).length
                 : '·'}
             </strong>
-          </button>
+          </Button>
         ))}
       </div>
       <section aria-label="沙箱实例">
@@ -202,7 +223,7 @@ function List({ source }: { source: Source }) {
           <div className="filters">
             <label className="field">
               <Search />
-              <input
+              <Input
                 aria-label="搜索实例"
                 placeholder="搜索名称、ID 或镜像"
                 value={q}
@@ -211,7 +232,7 @@ function List({ source }: { source: Source }) {
             </label>
             <label className="field">
               <ListFilter />
-              <select
+              <Select
                 aria-label="实例状态"
                 value={status}
                 onChange={(e) => filter(e.target.value)}
@@ -222,7 +243,7 @@ function List({ source }: { source: Source }) {
                     {v}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </div>
@@ -233,14 +254,15 @@ function List({ source }: { source: Source }) {
             <Boxes />
             {rows.length ? '没有匹配的实例' : '暂无沙箱实例'}
             {rows.length > 0 && (
-              <button
+              <Button
+                variant="outline"
                 onClick={() => {
                   search('')
                   filter('')
                 }}
               >
                 清除筛选
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -407,9 +429,9 @@ function Details({ source }: { source: Source }) {
           <Badge status={r.status} />
           <Actions source={source} row={r} refresh={state.update} />
           {r.error && (
-            <p className="warning" role="alert">
+            <Alert className="mt-3 border-err/30 bg-err/10 text-err">
               {r.error}
-            </p>
+            </Alert>
           )}
           <section>
             <h2>
