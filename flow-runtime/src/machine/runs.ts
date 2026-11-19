@@ -85,10 +85,13 @@ export class Runs {
 		const job = await this.get(key);
 		return {
 			job,
+			// 历史信封始终携带全部事实集合，消费方不必区分“尚未提交”和“没有记录”。
 			...(await optional(readJson(join(this.dir(key), "facts.json")), {
 				runs: [],
 				nodeRuns: [],
 				routeDecisions: [],
+				parallelRounds: [],
+				recoveries: [],
 			})),
 		};
 	}

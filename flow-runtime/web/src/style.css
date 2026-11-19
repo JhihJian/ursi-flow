@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply bg-base font-sans text-sm text-txt antialiased; font-size:16px }
+  body { @apply min-w-0 text-sm; }
+  :focus-visible { outline:2px solid rgb(var(--c-accent));outline-offset:3px }
+}
+@layer components {
+  header { @apply border-b border-line bg-surface; }
+  main, .bar { @apply mx-auto w-full min-w-0 max-w-[1600px] px-4 sm:px-6 lg:px-7; overflow-wrap:anywhere }
+  main { @apply py-6; }
+  .bar { @apply flex h-12 items-center gap-3; }
+  .brand, .mode, .back, h2 { @apply inline-flex min-w-0 items-center gap-2; }
+  .brand, h2 { @apply font-semibold; }
+  .logo { @apply inline-grid size-8 shrink-0 place-items-center rounded-lg bg-accent-dim text-accent-2; }
+  .mode { @apply ml-auto text-xs text-txt3; }
+  nav { @apply flex min-w-0 flex-wrap items-center gap-1; }
+  nav a { @apply inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-txt2 hover:bg-elevated hover:text-txt; }
+  nav a.active { @apply bg-accent-dim text-accent-2; }
+  .back { @apply mb-4 text-accent-2 hover:underline; }
+  .heading, .tools, .filters { @apply flex min-w-0 flex-wrap items-center gap-3; }
+  .heading { @apply mb-5 justify-between; }
+  h1 { @apply text-xl font-semibold; }
+  h2 { @apply text-base; }
+  h3 { @apply mb-1 text-xs font-medium text-txt3; }
+  h2 svg,button svg,h3 svg { @apply size-4 shrink-0; }
+  button, .button { @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3.5 text-sm font-medium text-txt hover:border-line-strong hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-50; }
+  button.primary, .button.primary { @apply border-transparent bg-accent-2 text-white hover:bg-accent-hover; }
+  button.icon { @apply size-8 border-0 bg-transparent px-0 text-txt3 hover:bg-elevated hover:text-txt; }
+  section { @apply mt-6; }
+  .tools { @apply mb-3 justify-between; }
+  .table-wrap { @apply overflow-x-auto rounded-xl border border-line bg-surface; }
+  table { @apply w-full border-collapse text-left text-sm; }
+  th { @apply border-b border-line bg-elevated px-4 py-2.5 text-xs font-medium text-txt3; }
+  td { @apply border-b border-line px-4 py-3 align-middle text-txt2; }
+  tr:last-child td { @apply border-0; }
+  tbody tr:hover { @apply bg-elevated/40; }
+  .identity b { @apply block font-medium text-txt; }
+  .identity small, small { @apply block text-xs text-txt3; }
+  .badge { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-elevated px-2 py-0.5 text-xs font-medium text-txt3; }
+  .badge i { @apply size-1.5 rounded-full bg-current; }
+  .badge.running { @apply bg-info/10 text-info; }
+  .badge.completed, .badge.joining { @apply bg-ok/10 text-ok; }
+  .badge.failed { @apply bg-err/10 text-err; }
+  .badge.interrupted, .badge.stopped, .badge.unknown { @apply bg-warn/10 text-warn; }
+  .warning { @apply mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-err/10 p-3 text-err; }
+  .success { @apply mt-3 rounded-lg bg-ok/10 p-3 text-ok; }
+  .empty { @apply flex flex-wrap items-center justify-center gap-3 rounded-xl border border-line bg-surface px-5 py-12 text-txt3; }
+  .muted, footer, dt, th, .evidence small { @apply text-txt3; }
+  footer { @apply mt-3 text-xs; }
+  .mono, code, pre { @apply font-mono; }
+  pre { @apply mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-base p-3 text-xs; }
+  pre.err { @apply text-err; }
+  dl { @apply grid grid-cols-2 gap-4 border-y border-line py-4 sm:grid-cols-3; }
+  dd { @apply mt-0.5 break-all; }
+  details { @apply mt-3; }
+  summary { @apply cursor-pointer text-sm text-txt2; }
+  .panel { @apply max-w-2xl space-y-4 rounded-xl border border-line bg-surface p-5; }
+  label { @apply block text-xs font-medium text-txt3; }
+  .input, .code { @apply mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-txt outline-none focus:border-accent focus:ring-2 focus:ring-accent/15; }
+  .code { @apply min-h-[26rem] font-mono text-xs leading-5; }
+  .code.short { @apply min-h-24 }
+  .list { @apply divide-y divide-line rounded-xl border border-line bg-surface; }
+  .list a { @apply flex items-center gap-3 px-4 py-3 hover:bg-elevated; }
+  .list a > .identity, .list a > span:first-child { @apply min-w-0 flex-1; }
+  .cube { @apply inline-grid size-8 shrink-0 place-items-center rounded-lg bg-accent-dim text-accent-2; }
+  .editor { @apply grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]; }
+  .editor aside { @apply min-w-0; }
+  .editor section { @apply mt-0 min-w-0; }
+  .files { @apply mt-2 space-y-0.5; }
+  .files li { @apply flex items-center gap-1; }
+  .file { @apply h-8 min-w-0 flex-1 justify-start border-0 bg-transparent px-2 font-mono text-xs text-txt2 hover:bg-elevated; }
+  .file.active { @apply bg-accent-dim text-accent-2; }
+  .add-file { @apply mt-2 flex items-start gap-1; }
+  .add-file .input { @apply mt-0 }
+  .start-run { @apply grid gap-4 rounded-xl border border-line bg-surface p-4 md:grid-cols-2; }
+  .start-run > :last-child { @apply justify-self-start md:col-span-2; }
+  .evidence { @apply divide-y divide-line rounded-xl border border-line bg-surface; }
+  .evidence li { @apply flex flex-wrap items-center gap-2 px-4 py-2.5; }
+  .evidence li > span { @apply min-w-0 flex-1; }
+  .evidence-cell { @apply bg-base; }
+  .evidence-grid { @apply grid gap-4 md:grid-cols-2; }
+  .evidence-grid > .wide { @apply md:col-span-2; }
+  .rotate-90 { transform: rotate(90deg); }
+  @media (max-width: 640px) {
+    td[data-label]::before { content: attr(data-label); @apply mr-2 text-xs text-txt3; }
+    .heading { @apply items-start; }
+  }
+}

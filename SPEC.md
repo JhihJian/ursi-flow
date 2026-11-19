@@ -16,6 +16,7 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 | --- | --- |
 | [flow-runtime](flow-runtime/SPEC.md) | Node.js 引擎与本地执行器。`ursi-flowd` 管理包修订、执行配置、后台运行与历史；`ursi-flow-local` 用于单次本地执行。 |
 | [flow-runtime/client](flow-runtime/client/SPEC.md) | Rust `FlowClient` 与 `ursi-flow` CLI，通过 Unix socket 访问 daemon。 |
+| [flow-runtime/web](flow-runtime/web/SPEC.md) | 独立 Flow 控制台。静态包加同源桥，完成建包、运行、历史与配置闭环。 |
 | [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 办理工作项；启用 Flow 时可管理流程包、运行与配置。 |
 | [ursi-sandbox](ursi-sandbox/SPEC.md) | 独立交付的沙箱 Gateway、Runtime 和 Client。本地 Flow 执行不依赖该工作区。 |
 
@@ -35,6 +36,13 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 
 - 校验含 `FLOW.md` 及其引用文件的草稿后，目录中的已发布包不变。非法更新保留原修订。
 - 按预期修订更新成功后，新运行使用新修订。提交过期修订返回冲突。
+
+### 不依赖工作台办理 Flow
+
+#### 验收
+
+- 独立控制台只取 `flow-runtime/web` 即可构建并发布静态包，用同源 `/api/v1` 接口完成建包、校验、运行、查看证据、停止与配置修改。
+- 控制台请求的形状与工作台的 Flow 接口一致，嵌入工作台时不需要改写页面逻辑；Runtime 未启动时显示错误，不退回演示数据。
 
 ### 在受信工作区执行与查询
 
