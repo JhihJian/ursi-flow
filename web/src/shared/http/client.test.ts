@@ -55,8 +55,43 @@ describe('Runtime HTTP', () => {
     await expect(pending).rejects.toMatchObject({ status: 401 })
     expect(readToken()).toBe('another')
   })
+  it('当前令牌自己的 401 仍清除会话', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({}, { status: 401 })))
+    await expect(requestV2Text('/file')).rejects.toMatchObject({ status: 401 })
+    expect(readToken()).toBe('')
+  })
   it('服务返回 HTML 时报告错误', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html/>')))
     await expect(requestJson('/flows')).rejects.toThrow('非 JSON')
+  })
+  it('v2 的 204 视为无内容', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    await expect(requestV2('/items/i/cancel')).resolves.toBeUndefined()
+  })
+})
+
+describe('交付纯文本读取', () => {
+  const path = '/items/i/deliveries/1/files/report.txt'
+  const stub = (response: Response) => { const fetch = vi.fn().mockResolvedValue(response); vi.stubGlobal('fetch', fetch); return fetch }
+
+  it('只有 text/plain 正文算读取成功，保留换行与空白', async () => {
+    const text = '第一行\n  第二行\n'
+    stub(new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } }))
+    await expect(requestV2Text(path)).resolves.toBe(text)
+  })
+
+  it('200 text/html 报告读取失败，不把代理首页当交付', async () => {
+    stub(new Response('<!doctype html><html><body>Vite</body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+    await expect(requestV2Text(path)).rejects.toMatchObject({ status: 200, message: 'HTTP 200：交付文件必须是纯文本，服务返回了 text/html。' })
+  })
+
+  it('204 报告读取失败', async () => {
+    stub(new Response(null, { status: 204 }))
+    await expect(requestV2Text(path)).rejects.toMatchObject({ status: 204, message: 'HTTP 204：交付文件为空，无法读取。' })
+  })
+
+  it.each(['', '  \n\t '])('空正文 %j 报告读取失败', async body => {
+    stub(new Response(body, { headers: { 'content-type': 'text/plain' } }))
+    await expect(requestV2Text(path)).rejects.toMatchObject({ status: 200 })
   })
 })
