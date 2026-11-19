@@ -37,3 +37,17 @@ test('Pi CLI 新建和复用会话，由真实工具提交两个结果', { skip:
   const log=JSON.parse(await readFile(history,'utf8'));
   assert.deepEqual(log.nodeRuns.map(n=>n.outcome.result),['已分析','已完成']);
 });
+
+test('找不到 Pi 可执行文件时给出可操作的错误', async () => {
+  const { HeadlessPi } = await import(resolve('dist/executor-adapters/local-pi/headless.js'));
+  const harness = new HeadlessPi({ executable: '/nonexistent/pi-binary' });
+  const agent = await harness.open({ cwd: process.cwd(), runtimeTools: { definitions: [{ name: 'submit_flow_outcome' }], invoke: async () => ({}) } });
+  await assert.rejects(
+    harness.run(agent, { executionId: 'x', prompt: 'hi' }),
+    (error) => {
+      assert.match(error.message, /找不到 Pi 可执行文件/);
+      assert.match(error.message, /URSI_FLOW_PI/);
+      return true;
+    },
+  );
+});
