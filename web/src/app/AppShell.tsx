@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, Outlet, useLocation, useMatches } from 'react-router'
 
-import { readToken, setToken, subscribeSession } from '@/shared/http/session'
+import { readToken, subscribeSession } from '@/shared/http/session'
 import { useFeedbackStore } from '@/shared/stores/feedback'
 import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 import { Modal } from '@/shared/ui/modal'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
-import { ShellSidebar } from '@/shared/ui/shell-sidebar'
+import { AppSidebar } from './AppSidebar'
 import { cn } from '@/shared/lib/utils'
-import { navigationGroups } from './router'
-import { useThemeStore } from './theme'
+import { navigationGroups, useCapability } from './navigation'
 
 
 function routeTitle(matches: { handle?: unknown }[]): string | undefined {
@@ -22,13 +21,19 @@ function routeTitle(matches: { handle?: unknown }[]): string | undefined {
 }
 
 export default function AppShell() {
+  const token = useSyncExternalStore(subscribeSession, readToken)
+  return <Workspace key={token} signedIn={Boolean(token)} />
+}
+
+function Workspace({ signedIn }: { signedIn: boolean }) {
   const location = useLocation()
-  const signedIn = Boolean(useSyncExternalStore(subscribeSession, readToken))
   const matches = useMatches()
-  const themeMode = useThemeStore((state) => state.mode)
-  const palette = useThemeStore((state) => state.palette)
-  const toggleTheme = useThemeStore((state) => state.toggleTheme)
-  const togglePalette = useThemeStore((state) => state.togglePalette)
+  const sources = useCapability('sources', signedIn)
+  const flow = useCapability('flow', signedIn)
+  const capabilities = { sources, flow }
+  const groups = navigationGroups.map(group => ({ ...group,
+    items: group.items.filter(item => !item.capability || capabilities[item.capability].data),
+  })).filter(group => group.items.length > 0)
   const toasts = useFeedbackStore((state) => state.toasts)
   const dismissToast = useFeedbackStore((state) => state.dismissToast)
   const confirmation = useFeedbackStore((state) => state.confirmation)
@@ -40,6 +45,7 @@ export default function AppShell() {
   const currentDomain = navigationGroups
     .flatMap((group) => group.items)
     .find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
+  const unavailable = currentDomain?.capability && !capabilities[currentDomain.capability].data
   // 页面标题优先取路由 handle.title，未声明时退回当前导航项标题。
   const pageTitle = useMemo(() => routeTitle(matches) ?? currentDomain?.title ?? '工作台', [matches, currentDomain])
 
@@ -54,7 +60,7 @@ export default function AppShell() {
       <a href="#main-content" className="skip-link">跳到主要内容</a>
       <div className="app-shell">
         <aside className="desktop-sidebar">
-          <ShellSidebar groups={navigationGroups} mode={themeMode} palette={palette} signedIn={signedIn} onToggleMode={toggleTheme} onTogglePalette={togglePalette} onLogout={() => { setToken(''); closeDrawer() }} />
+          <AppSidebar groups={groups} signedIn={signedIn} />
         </aside>
         <div className="shell-col">
           <header className="shell-topbar">
@@ -80,7 +86,16 @@ export default function AppShell() {
           </header>
           <div className="shell-scroll">
             <main id="main-content" tabIndex={-1} className="shell-content">
-              <Outlet />
+              {([['外部来源', sources], ['Flow 工具', flow]] as const).map(([label, probe]) => probe.error && (
+                <div key={label} role="alert" className="mb-3 flex flex-wrap items-center gap-3 border-b border-line pb-3 text-sm text-txt2">
+                  <span>{label}检查失败：{probe.error}</span>
+                  <Button icon="refresh" onClick={probe.reload}>重试{label}</Button>
+                </div>
+              ))}
+              {unavailable ? <section className="space-y-3">
+                <h1 className="text-xl font-semibold">{currentDomain.capability === 'flow' ? 'Flow 工具' : '外部来源'}未启用</h1>
+                <Link to="/items" className="text-accent-2">返回工作清单</Link>
+              </section> : <Outlet />}
             </main>
           </div>
         </div>
@@ -88,7 +103,7 @@ export default function AppShell() {
 
       <Sheet open={drawerOpen} onOpenChange={changeDrawer}>
         <SheetContent side="left" title="工作区导航" className="w-[280px] border-r border-line sm:max-w-[280px]">
-          <ShellSidebar groups={navigationGroups} mode={themeMode} palette={palette} signedIn={signedIn} onNavigate={closeDrawer} onToggleMode={toggleTheme} onTogglePalette={togglePalette} onLogout={() => { setToken(''); closeDrawer() }} />
+          <AppSidebar groups={groups} signedIn={signedIn} onNavigate={closeDrawer} />
         </SheetContent>
       </Sheet>
 

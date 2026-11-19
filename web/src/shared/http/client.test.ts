@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requestJson } from './client'
+import { requestJson, requestV2, requestV2Text } from './client'
 import { readToken, setToken } from './session'
 
 beforeEach(() => setToken('session-canary'))
@@ -14,16 +14,46 @@ describe('Runtime HTTP', () => {
     expect(fetch.mock.calls[0]![1].headers.get('Authorization')).toBe('Bearer session-canary')
     expect(localStorage.length).toBe(0)
   })
-  it('无令牌不发请求，拒绝绝对地址', async () => {
+  it.each([requestJson, requestV2, requestV2Text])('无令牌不发请求，拒绝绝对地址', async request => {
     vi.stubGlobal('fetch', vi.fn()); setToken('')
-    await expect(requestJson('/flows')).rejects.toMatchObject({ status: 401 })
-    await expect(requestJson('https://invalid.test')).rejects.toThrow(TypeError)
+    await expect(request('/items')).rejects.toMatchObject({ status: 401 })
+    await expect(request('https://invalid.test')).rejects.toThrow(TypeError)
+    await expect(request('//invalid.test')).rejects.toThrow(TypeError)
     expect(fetch).not.toHaveBeenCalled()
   })
   it('401 清除失效会话，错误消息不回显令牌', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: 'session-canary' }, { status: 401 })))
     await expect(requestJson('/flows')).rejects.toThrow('HTTP 401：[已隐藏]')
     expect(readToken()).toBe('')
+  })
+  it('v2 JSON 请求支持写入并保留请求参数', async () => {
+    const fetch = vi.fn(async (_path: string, _init: RequestInit) => Response.json({ id: 'item-1' }))
+    vi.stubGlobal('fetch', fetch)
+    const { signal } = new AbortController()
+    const body = JSON.stringify({ assignee: 'Lin' })
+    await expect(requestV2('/items/item-1/start', { method: 'POST', signal, body })).resolves.toEqual({ id: 'item-1' })
+    const [url, options] = fetch.mock.calls[0]!
+    expect(url).toBe('/api/v2/items/item-1/start')
+    expect(options).toMatchObject({ method: 'POST', signal, body, cache: 'no-store', redirect: 'error' })
+    expect(Object.fromEntries(new Headers(options.headers))).toMatchObject({ authorization: 'Bearer session-canary', 'content-type': 'application/json' })
+  })
+  it('v2 文本返回原始交付正文，错误使用共享的 HTTP 状态和脱敏规则', async () => {
+    const text = '第一行\n第二行\n'
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(text)).mockResolvedValueOnce(Response.json({ error: { message: 'session-canary' } }, { status: 409 }))
+    vi.stubGlobal('fetch', fetch)
+    const path = '/items/i/deliveries/1/files/report.txt'
+    await expect(requestV2Text(path)).resolves.toBe(text)
+    expect(fetch.mock.calls[0]![0]).toBe(`/api/v2${path}`)
+    expect(fetch.mock.calls[0]![1].headers.get('Accept')).toBe('text/plain')
+    await expect(requestV2Text(path)).rejects.toMatchObject({ status: 409, message: 'HTTP 409：[已隐藏]' })
+    expect(readToken()).toBe('session-canary')
+  })
+  it('旧请求的 401 不清除新令牌', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({}, { status: 401 })))
+    const pending = requestV2Text('/file')
+    setToken('another')
+    await expect(pending).rejects.toMatchObject({ status: 401 })
+    expect(readToken()).toBe('another')
   })
   it('服务返回 HTML 时报告错误', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html/>')))

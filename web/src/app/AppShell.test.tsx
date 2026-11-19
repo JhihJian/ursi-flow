@@ -33,10 +33,13 @@ describe('应用壳', () => {
   it('侧边导航切换页面并更新标题、面包屑与当前项', async () => {
     const { router } = renderAt('/flows')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Flow 包')
-    expect(screen.getByText('Flow Runtime')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'ursi-flow 首页' })).toHaveAttribute('href', '/items')
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
+    for (const [name, href] of [['工作清单', '/items'], ['外部来源', '/sources'], ['工作包', '/packages'], ['资源库', '/resources'], ['执行器', '/executors']]) {
+      expect(within(mainNav).getByRole('link', { name })).toHaveAttribute('href', href)
+    }
     expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
 
     await userEvent.click(within(mainNav).getByRole('link', { name: '运行记录' }))
@@ -57,11 +60,39 @@ describe('应用壳', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
+    expect(within(drawer).getByRole('link', { name: '工作清单' })).toHaveAttribute('href', '/items')
     await userEvent.click(within(drawer).getByRole('link', { name: '运行配置' }))
 
     await waitFor(() => { expect(router.state.location.pathname).toBe('/flow-config') })
     await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('运行配置')
+  })
+
+  it('只有集合 404 收起对应模块，空集合仍可进入；故障保留入口并可单独重试', async () => {
+    let status = 503
+    const fetch = vi.fn(async (path: string) => Response.json([], { status: path === '/api/v1/flows' ? 404 : status }))
+    vi.stubGlobal('fetch', fetch)
+    renderAt('/missing')
+    const nav = within(screen.getByRole('navigation', { name: '主导航' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 503')
+    for (const name of ['Flow 包', '运行记录', '运行配置']) expect(nav.queryByRole('link', { name })).toBeNull()
+    expect(nav.getByRole('link', { name: '工作清单' })).toBeInTheDocument()
+    expect(nav.getByRole('link', { name: '外部来源' })).toBeInTheDocument()
+    status = 200
+    await userEvent.click(screen.getByRole('button', { name: '重试外部来源' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(nav.getByRole('link', { name: '外部来源' })).toBeInTheDocument()
+    expect(fetch.mock.calls.map(([path]) => path).sort()).toEqual(['/api/v1/flows', '/api/v2/sources', '/api/v2/sources'])
+  })
+
+  it('来源未挂载时保留 Flow 工具，来源深链提供返回清单入口', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => Response.json([], { status: path === '/api/v2/sources' ? 404 : 200 })))
+    renderAt('/sources')
+    expect(await screen.findByRole('heading', { name: '外部来源未启用' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items')
+    const nav = within(screen.getByRole('navigation', { name: '主导航' }))
+    expect(nav.queryByRole('link', { name: '外部来源' })).toBeNull()
+    expect(nav.getByRole('link', { name: 'Flow 包' })).toBeInTheDocument()
   })
 
   it('主题按钮同步 html 属性、存储与跨标签页变化', async () => {

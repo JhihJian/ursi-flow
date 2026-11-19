@@ -1,19 +1,20 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 import { routes as chatRoutes } from '@/modules/chat/routes'
+import { workListRoutes } from '@/modules/work-list/routes'
+import { sourceRoutes } from '@/modules/sources/routes'
+import { definitionRoutes } from '@/modules/definitions/routes'
 import AppShell from './AppShell'
 import { LoginGate } from './LoginGate'
 import NotFoundView from './NotFoundView'
 import { RouteErrorAlert } from './RouteErrorAlert'
 
-export const navigationGroups = [
-  { title: '运行工作区', items: [
-    { path: '/flows', title: 'Flow 包', icon: 'workflow' },
-    { path: '/runs', title: '运行记录', icon: 'runs' },
-    { path: '/flow-config', title: '运行配置', icon: 'settings' },
-  ] },
-  { title: '本地演示', items: [{ path: '/chat', title: '对话', icon: 'chat' }] },
-]
+const workDetail = async () => ({ Component: (await import('@/modules/work-detail/WorkDetail')).WorkDetail })
 const protectedRoutes: RouteObject[] = [
+  ...workListRoutes,
+  { path: 'items/:id', handle: { title: '办理详情' }, lazy: workDetail },
+  { path: 'items/:id/deliveries/:version', handle: { title: '交付与验收' }, lazy: workDetail },
+  ...sourceRoutes,
+  ...definitionRoutes,
   { path: 'flows', handle: { title: 'Flow 包' }, lazy: async () => ({ Component: (await import('@/modules/flows/Flows')).Flows }) },
   { path: 'flows/new', handle: { title: '创建 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },
   { path: 'flows/:id/edit', handle: { title: '编辑 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },
@@ -23,7 +24,7 @@ const protectedRoutes: RouteObject[] = [
 ]
 export function createAppRoutes(): RouteObject[] {
   return [{ path: '/', element: <AppShell />, children: [
-    { index: true, element: <Navigate to="/flows" replace /> },
+    { index: true, element: <Navigate to="/items" replace /> },
     { errorElement: <RouteErrorAlert />, children: [{ element: <LoginGate />, children: protectedRoutes }, ...chatRoutes] },
     { path: '*', element: <NotFoundView />, handle: { title: '页面未找到' } },
   ] }]

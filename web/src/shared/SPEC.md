@@ -2,21 +2,23 @@
 parent: ../../SPEC.md
 references:
   - ../../DESIGN.md
+  - ../../DESIGN-v2.md
 ---
 # Web 共享层
 
 ## 功能意图
 
-统一访问 Flow HTTP 服务，并提供各页共享的异步读取、界面控件和反馈。
+统一访问工作管理与 Flow HTTP 服务，并提供各页共享的异步读取、界面控件和反馈。
 
 ## 关键功能与验收
 
-### Runtime 请求
+### 同源业务请求
 
 #### 验收
 
-- 向同源 `/api/v1` 发送 Bearer 请求头并保留 AbortSignal；成功直接读取 JSON，错误保留 HTTP 状态。
-- 无令牌时阻止请求，401 清除与该响应匹配的会话；浏览器地址和 localStorage 均不记录令牌。
+- `requestJson<T>` 读取 `/api/v1`，`requestV2<T>` 读取 `/api/v2`，均直接返回业务 JSON。`requestV2Text` 读取 `/api/v2` 的交付文件，保留原始文本与换行。
+- 三种请求使用同源相对路径，保留请求方法、正文与 AbortSignal。仅通过 Bearer 请求头发送会话令牌，拒绝无令牌请求和绝对地址。
+- 错误保留 HTTP 状态并从消息中隐藏令牌。仅当前令牌的 401 清除会话；其他错误或旧会话的迟到响应不影响新登录。浏览器地址和 localStorage 均不记录令牌。
 - 资源重新加载时旧响应不能覆盖新数据，组件卸载取消读取。
 
 ### 共享呈现
