@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
+import { apiProxy } from './src/app/dev-proxy'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'URSI_')
@@ -12,9 +13,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5173,
       strictPort: true,
-      proxy: {
-        '/api': { target: env.URSI_API_PROXY || 'http://127.0.0.1:8080' },
-      },
+      proxy: apiProxy(env.URSI_API_PROXY || 'http://127.0.0.1:8080'),
     },
     preview: { host: '0.0.0.0', port: 4173, strictPort: true },
     test: {

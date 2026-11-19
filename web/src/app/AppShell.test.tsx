@@ -95,6 +95,42 @@ describe('应用壳', () => {
     expect(nav.getByRole('link', { name: 'Flow 包' })).toBeInTheDocument()
   })
 
+  it('桌面侧栏与移动抽屉提供相同分组和入口', async () => {
+    renderAt('/flows')
+    await screen.findByRole('heading', { level: 1 })
+    const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
+    const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
+    const desktopEntries = entries(desktop!)
+    expect(desktopEntries.map(([title]) => title)).toEqual(expect.arrayContaining(['工作清单', '外部来源', '工作包', '资源库', '执行器', 'Flow 包', '运行记录', '运行配置', '对话']))
+
+    await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
+    const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
+    expect(entries(within(drawer).getByRole('navigation', { name: '主导航' }))).toEqual(desktopEntries)
+    for (const group of ['日常工作', '工作定义', '运行工具', '本地演示']) {
+      expect(within(drawer).getByRole('heading', { name: group })).toBeInTheDocument()
+    }
+  })
+
+  it('可选模块探测失败时仍能使用工作清单并单独重试', async () => {
+    let sourcesCalls = 0
+    const fetch = vi.fn(async (path: string) => {
+      if (path === '/api/v2/items') return Response.json([])
+      if (path === '/api/v2/sources') { sourcesCalls += 1; return sourcesCalls === 1 ? Response.json([], { status: 503 }) : Response.json([]) }
+      return Response.json([], { status: 503 })
+    })
+    vi.stubGlobal('fetch', fetch)
+    renderAt('/items')
+    expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
+    expect(await screen.findByText(/外部来源检查失败：HTTP 503/)).toBeInTheDocument()
+    expect(screen.getByText(/Flow 工具检查失败：HTTP 503/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '重试外部来源' }))
+    await waitFor(() => { expect(screen.queryByText(/外部来源检查失败/)).toBeNull() })
+    expect(screen.getByText(/Flow 工具检查失败/)).toBeInTheDocument()
+    expect(screen.getByText('暂无工作项')).toBeInTheDocument()
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v2/items', '/api/v2/sources', '/api/v1/flows']))
+  })
+
   it('主题按钮同步 html 属性、存储与跨标签页变化', async () => {
     renderAt('/flows')
     await screen.findByRole('heading', { level: 1 })

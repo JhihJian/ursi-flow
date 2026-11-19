@@ -4,7 +4,10 @@ test('深链保留、401 后重新登录、刷新和退出', async ({ page }) =>
   let count = 0
   await page.route('**/api/**', async route => {
     count++
-    expect(route.request().url()).toMatch(/\/api\/v1\/flow-config$/)
+    // 登录后的可选模块探测用替身返回空集合，本用例只验证 flow-config 的 401 处理。
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v2/sources' || path === '/api/v1/flows') return route.fulfill({ json: [] })
+    expect(path).toBe('/api/v1/flow-config')
     if (route.request().headers().authorization !== 'Bearer test-canary') return route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } })
     return route.fulfill({ json: { model: 'configured', executor: 'local-pi', maxConcurrent: 2 } })
   })
@@ -24,5 +27,5 @@ test('导航可跳过，亮暗和主色偏好独立保持', async ({ page }) => 
   await page.keyboard.press('Enter'); await expect(page.locator('#main-content')).toBeFocused()
   await openNavigation(page); await page.getByRole('button', { name: '切换到暗色主题' }).click(); await page.getByRole('button', { name: '切换到黑白主题' }).click()
   await page.reload(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); await expect(page.locator('html')).toHaveAttribute('data-palette', 'mono')
-  await page.getByRole('link', { name: '返回 Flow 目录' }).click(); await expect(page).toHaveURL(/\/flows$/)
+  await page.getByRole('link', { name: '返回工作清单' }).click(); await expect(page).toHaveURL(/\/items$/)
 })

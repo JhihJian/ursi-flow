@@ -1,9 +1,19 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createAppRoutes } from './router'
 import { readToken, setToken } from '@/shared/http/session'
+
+const workItem = {
+  id: 'item-1', package: 'example', revision: 1, assignee: 'Lin', status: 'review',
+  input: {}, source: { type: 'builtin' },
+  packageSnapshot: { sop: '检查日志', acceptance: '报告覆盖结论', deliverables: ['report.txt'], actions: {} },
+  attempts: [], deliveries: [{ version: 2, files: { 'report.txt': 'x' }, attemptIds: [], review: null }],
+  acceptedVersion: null,
+}
+
+const probe = async (path: string) => path === '/api/v2/sources' || path === '/api/v1/flows' ? Response.json([]) : Response.json({ status: 404 })
 
 afterEach(() => { cleanup(); sessionStorage.clear() })
 it('在深链登录，退出后隐藏运行数据', async () => {
@@ -29,8 +39,12 @@ it('根地址和未知页均可到达工作清单', async () => {
   await screen.findByLabelText('访问令牌')
   expect(router.state.location.pathname).toBe('/items')
   cleanup()
-  render(<RouterProvider router={createMemoryRouter(createAppRoutes(), { initialEntries: ['/unknown'] })} />)
-  expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items')
+  const unknown = createMemoryRouter(createAppRoutes(), { initialEntries: ['/unknown'] })
+  render(<RouterProvider router={unknown} />)
+  expect(screen.getByRole('heading', { name: '页面未找到' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('link', { name: '返回工作清单' }))
+  await waitFor(() => expect(unknown.state.location.pathname).toBe('/items'))
+  expect(await screen.findByLabelText('访问令牌')).toBeInTheDocument()
   expect(fetch).not.toHaveBeenCalled()
 })
 
@@ -57,4 +71,61 @@ it('可选集合 401 清除会话，重新登录后在原深链继续', async ()
   await userEvent.click(screen.getByRole('button', { name: '登录' }))
   await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('运行记录'))
   expect(router.state.location).toMatchObject({ pathname: '/runs', search: '?filter=all' })
+})
+
+it('指定交付版本深链登录后读到那一版正文', async () => {
+  const fetch = vi.fn(async (path: string) => {
+    if (path === '/api/v2/items/item-1') return Response.json(workItem)
+    if (path === '/api/v2/items/item-1/deliveries/2/files/report.txt') {
+      return new Response('第二版报告\n第二行\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } })
+    }
+    return probe(path)
+  })
+  vi.stubGlobal('fetch', fetch)
+  const target = '/items/item-1/deliveries/2?status=review#report'
+  const router = createMemoryRouter(createAppRoutes(), { initialEntries: [target] })
+  render(<RouterProvider router={router} />)
+  expect(await screen.findByLabelText('访问令牌')).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('访问令牌'), 'manual-token')
+  await userEvent.click(screen.getByRole('button', { name: '登录' }))
+  expect(await screen.findByRole('heading', { name: '第 2 版交付文件' })).toBeInTheDocument()
+  expect(await screen.findByText(/第二版报告/)).toBeInTheDocument()
+  expect(router.state.location).toMatchObject({ pathname: '/items/item-1/deliveries/2', search: '?status=review', hash: '#report' })
+})
+
+it('旧会话迟到的 401 不影响新登录', async () => {
+  setToken('old-token')
+  let release: (response: Response) => void = () => {}
+  const late = new Promise<Response>((resolve) => { release = resolve })
+  vi.stubGlobal('fetch', vi.fn(async (path: string, init: RequestInit) => {
+    const authorization = new Headers(init.headers).get('Authorization')
+    if (authorization === 'Bearer old-token' && (path === '/api/v2/sources' || path === '/api/v1/flows')) return late
+    return Response.json([])
+  }))
+  render(<RouterProvider router={createMemoryRouter(createAppRoutes(), { initialEntries: ['/items'] })} />)
+  expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
+  await act(async () => { setToken('new-token') })
+  release(Response.json({}, { status: 401 }))
+  await waitFor(() => expect(readToken()).toBe('new-token'))
+  expect(screen.queryByLabelText('访问令牌')).toBeNull()
+  expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
+})
+
+it('退出后不沿用旧探测结果，重新登录会重新探测可选模块', async () => {
+  let sources = 404
+  vi.stubGlobal('fetch', vi.fn(async (path: string) => {
+    if (path === '/api/v2/sources') return Response.json([], { status: sources })
+    return probe(path)
+  }))
+  render(<RouterProvider router={createMemoryRouter(createAppRoutes(), { initialEntries: ['/items'] })} />)
+  await userEvent.type(await screen.findByLabelText('访问令牌'), 'first')
+  await userEvent.click(screen.getByRole('button', { name: '登录' }))
+  const nav = () => within(screen.getByRole('navigation', { name: '主导航' }))
+  await waitFor(() => expect(nav().queryByRole('link', { name: '外部来源' })).toBeNull())
+  await userEvent.click(screen.getByRole('button', { name: '退出登录' }))
+  await screen.findByLabelText('访问令牌')
+  sources = 200
+  await userEvent.type(screen.getByLabelText('访问令牌'), 'second')
+  await userEvent.click(screen.getByRole('button', { name: '登录' }))
+  await waitFor(() => expect(nav().getByRole('link', { name: '外部来源' })).toBeInTheDocument())
 })
