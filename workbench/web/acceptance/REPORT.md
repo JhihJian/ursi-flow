@@ -12,7 +12,7 @@
 | --- | --- |
 | 工作包 | 06 联合验收，分支 `web-v2/06-acceptance`（基线 `main` 的 `1cd6257`，已合并 01 至 05） |
 | Web | `@ursi-flow/web@0.1.0`，`npm run build` 产物经 `vite preview` 提供，同源代理 `/api/v1`、`/api/v2` |
-| Server | `/data/dev/ursi-flow/target/debug/ursi-server`（dev profile，`cargo build --locked -p ursi-server` 构建） |
+| Server | `/data/dev/ursi-flow/workbench/target/debug/ursi-server`（dev profile，在工作台工作区执行 `cargo build --locked -p ursi-server` 构建） |
 | 执行器 | 真实 Pi CLI `pi 1.5.2`（`PATH` 中） |
 | 浏览器 | Playwright 1.65.1，Chromium build 1255；移动视口 Pixel 7（412×839） |
 | 运行时 | Node v24.13.1，npm 11.8.0，Linux 7.0.0-38-generic |
