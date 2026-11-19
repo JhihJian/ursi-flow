@@ -104,7 +104,7 @@ export function FlowOverview({ files, selected, fileOpen, onBack, onOpen, onAdd,
             <Input
               aria-label="新增文件路径"
               className="h-7 min-w-0 px-2 font-mono text-xs"
-              placeholder="references/checklist.md"
+              placeholder="tools/checks/format.mjs"
               value={newPath}
               onChange={(event) => setNewPath(event.target.value)}
             />

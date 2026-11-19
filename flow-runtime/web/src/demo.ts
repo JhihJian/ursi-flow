@@ -94,6 +94,7 @@ flowchart TD
 - 发布说明包含变更范围。
 - 安装包可独立构建。
 `,
+  'tools/checks/options.json': '{"requireChangelog":true}\n',
   'scripts/verify-version.mjs': `const pkg = await import('node:fs/promises').then((fs) =>
   fs.readFile(new URL('../../../package.json', import.meta.url), 'utf8'),
 )

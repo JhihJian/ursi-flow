@@ -25,7 +25,7 @@
 3. `references/`只放供 Agent 阅读的 Markdown。入口中用普通相对链接引用它，例如链接到 `references/release-checklist.md`。
 4. `scripts/`只放命令节点调用的 Node.js ESM 脚本。命令参数从包根写相对路径，例如`"args": ["scripts/verify-version.mjs"]`。
 
-除上述约定外，包内其他文件暂不定义运行时含义。Flow 作者可以按维护需要增加测试或说明文件，但不应让它们参与流程执行。
+包内可按维护需要添加文本文件，例如根目录的 `package.json` 或 `tools/` 下的检查脚本。发布时按包内相对路径保存这些文件。运行时按上述约定解析参考资料与脚本，其他文件没有特殊解析规则。
 
 脚本文件属于 Flow 包，业务项目文件属于一次 Run 的工作目录。运行时会把标准 Markdown 内联链接中的`references/...`和命令`args`中独立的`scripts/...`定位到包内对应文件，命令进程的`cwd`仍保持业务项目目录。裸文本、引用式 Markdown 链接、复合命令参数和其他相对路径保持原样。
 

@@ -52,11 +52,8 @@ export function checkFiles(files: unknown): asserts files is PackageFiles {
 		throw invalid("需要包含 FLOW.md 的文件集合");
 	for (const [path, text] of Object.entries(files)) {
 		if (
-			!(
-				path === "FLOW.md" ||
-				/^(references|scripts)\/(?:[^/\\\x00]+\/)*[^/\\\x00]+$/.test(path)
-			) ||
-			path.split("/").some((s) => s === "." || s === "..") ||
+			/^[A-Za-z]:|[\\\0]/.test(path) ||
+			path.split("/").some((s) => !s || s === "." || s === "..") ||
 			typeof text !== "string"
 		)
 			throw invalid("非法包内文件");
@@ -66,7 +63,7 @@ export function checkFiles(files: unknown): asserts files is PackageFiles {
 	}
 }
 async function filesAt(dir: string, prefix = ""): Promise<PackageFiles> {
-	const files: PackageFiles = {};
+	const files: PackageFiles = Object.create(null);
 	for (const item of await readdir(join(dir, prefix), {
 		withFileTypes: true,
 	})) {

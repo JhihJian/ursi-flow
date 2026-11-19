@@ -52,7 +52,6 @@ import { graphIssues, type ActionKind, type FlowGraph } from './flow/graph'
 import { setActionKind } from './flow/edit'
 
 const idPattern = /^[A-Za-z0-9][\w-]{0,95}$/
-const filePattern = /^(FLOW\.md|(references|scripts)\/(?:[^/\\]+\/)*[^/\\]+)$/
 const template = `---
 name: 新流程
 description: 说明这个流程适用于什么任务。
@@ -408,8 +407,8 @@ export function FlowEditor({ source }: { source: Source }) {
   }
   const addFile = (input: string) => {
     const path = input.trim()
-    if (!filePattern.test(path) || path.split('/').some((part) => part === '.' || part === '..')) {
-      setError('文件路径只能是 FLOW.md、references/ 或 scripts/ 下的文件')
+    if (/^[A-Za-z]:|[\\\0]/.test(path) || path.split('/').some((part) => !part || part === '.' || part === '..')) {
+      setError('请输入有效的包内相对文件路径')
       return
     }
     if (Object.hasOwn(files, path)) {

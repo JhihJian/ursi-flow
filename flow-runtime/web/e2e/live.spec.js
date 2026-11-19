@@ -397,6 +397,60 @@ test('总览可编辑包草稿和增删嵌套附件', async ({ page }) => {
   expect(saved).not.toHaveProperty('references/old.md')
 })
 
+test('总览保留已发布的目录结构，并可新增任意包内文本文件', async ({ page }) => {
+  const id = 'e2e-package-tree'
+  const initial = {
+    'FLOW.md': quick,
+    'package.json': '{"private":true}\n',
+    'references/报告模板.json': '{"title":"示例"}\n',
+    'tools/check.mjs': 'export const enabled = true\n',
+  }
+  await seed(page, id, initial)
+  for (const path of ['/outside.md', 'tools/../notes.md', 'tools//check.md', 'C:/notes.md']) {
+    const rejected = await api(page, '/flows/validate', 'POST', { id, files: { ...initial, [path]: '' } })
+    expect(rejected.status).toBe(400)
+  }
+  await openFlow(page, id)
+  const files = page.getByRole('complementary', { name: '包文件' })
+  const entry = (name) => files.getByRole('button', { name, exact: true })
+  await expect(entry('references')).toHaveAttribute('aria-expanded', 'true')
+  await entry('references/报告模板.json').click()
+  await expect(page.getByLabel('references/报告模板.json 内容')).toHaveValue(initial['references/报告模板.json'])
+  await entry('tools/check.mjs').click()
+  await expect(page.getByLabel('tools/check.mjs 内容')).toHaveValue(initial['tools/check.mjs'])
+  await entry('package.json').click()
+  await expect(page.getByLabel('package.json 内容')).toHaveValue(initial['package.json'])
+
+  const input = page.getByLabel('新增文件路径')
+  await input.fill('/outside.md')
+  await input.press('Enter')
+  await expect(page.getByText('请输入有效的包内相对文件路径')).toBeVisible()
+  for (const [path, text] of [
+    ['flow-manifest.json', '{}\n'],
+    ['tools/helpers/config.json', '{"check":true}\n'],
+    ['reference/guides/说明.md', '# 说明\n'],
+  ]) {
+    await input.fill(path)
+    await input.press('Enter')
+    await expect(entry(path)).toHaveAttribute('aria-current', 'true')
+    await page.getByLabel(path.endsWith('.md') ? 'Markdown 源码' : `${path} 内容`).fill(text)
+  }
+  await page.getByRole('button', { name: '校验' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '校验通过' })).toBeVisible()
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '已保存修订' })).toBeVisible()
+  await page.reload()
+  await expect(entry('tools/helpers')).toHaveAttribute('aria-expanded', 'true')
+  await entry('tools/helpers/config.json').click()
+  await expect(page.getByLabel('tools/helpers/config.json 内容')).toHaveValue('{"check":true}\n')
+  expect((await storedFlow(page, id)).files).toEqual({
+    ...initial,
+    'flow-manifest.json': '{}\n',
+    'tools/helpers/config.json': '{"check":true}\n',
+    'reference/guides/说明.md': '# 说明\n',
+  })
+})
+
 test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
   await seed(page, 'e2e-conflict', { 'FLOW.md': quick })
   await openFlow(page, 'e2e-conflict')
