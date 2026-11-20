@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent as ReactMouseEvent, type RefObject } from 'react'
 
 import { errorMessage } from '@/shared/api'
+import { copyText } from '@/shared/lib/clipboard'
 import { confirmAction, notify } from '@/shared/stores/feedback'
 
 import {
@@ -498,16 +499,11 @@ export function useExplorer(options: ExplorerOptions) {
   }, [base, createName, creating, directory, ensureDirs, index, openDoc, reload])
 
   const copyPath = useCallback(async (path: string) => {
-    if (!navigator.clipboard?.writeText) {
-      notify(`当前浏览器不支持自动复制，路径为 ${path}。`, 'error')
+    if (await copyText(path)) {
+      notify(`已复制路径 ${path}。`)
       return
     }
-    try {
-      await navigator.clipboard.writeText(path)
-      notify(`已复制路径 ${path}。`)
-    } catch {
-      notify('复制路径失败，请手动选择路径。', 'error')
-    }
+    notify(`当前浏览器不支持自动复制，路径为 ${path}。`, 'error')
   }, [])
 
   const downloadPath = useCallback(async (path: string) => {

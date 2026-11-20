@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useResource } from '@/shared/hooks/use-resource'
+import { copyText } from '@/shared/lib/clipboard'
 import { notify } from '@/shared/stores/feedback'
 import { readResource, type McpResource, type ResourceContent } from '@/shared/api/work-items'
 import { Badge } from '@/shared/ui/badge'
@@ -20,13 +21,10 @@ function formatBytes(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MiB`
 }
 
-async function copyText(text: string, message: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    notify(message)
-  } catch {
-    notify('浏览器未允许写入剪贴板', 'error')
-  }
+async function copy(text: string, message: string) {
+  const done = await copyText(text)
+  if (done) notify(message)
+  else notify('浏览器未允许写入剪贴板，请手动选中后复制', 'error')
 }
 
 function ContentMeta({ content, children }: { content: ResourceContent; children?: ReactNode }) {
@@ -47,7 +45,7 @@ export function ResourceContentBlock({ content }: { content: ResourceContent }) 
     return (
       <div className="space-y-2">
         <ContentMeta content={content}>
-          <Button size="sm" variant="ghost" icon="copy" onClick={() => { void copyText(text, '已复制资源正文') }}>复制全文</Button>
+          <Button size="sm" variant="ghost" icon="copy" onClick={() => { void copy(text, '已复制资源正文') }}>复制全文</Button>
         </ContentMeta>
         <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-base p-3 font-mono text-xs leading-6 text-txt">
           {overflow ? text.slice(0, PREVIEW_LIMIT) : text}
@@ -91,7 +89,7 @@ export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPane
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {resource.mimeType ? <Badge variant="outline">{resource.mimeType}</Badge> : null}
-          <Button size="sm" icon="copy" onClick={() => { void copyText(resource.uri, '已复制资源 URI') }}>复制 URI</Button>
+          <Button size="sm" icon="copy" onClick={() => { void copy(resource.uri, '已复制资源 URI') }}>复制 URI</Button>
           <Button size="sm" icon="refresh" loading={read.loading} onClick={read.reload}>重新读取</Button>
         </div>
       </header>

@@ -23,7 +23,17 @@ npm ci
 npm run dev
 ```
 
-打开 `http://localhost:5173`，在登录框输入管理员配置的 API token。只输入令牌本身，无需 `Bearer ` 前缀。登录后可刷新或直接打开详情地址，退出登录会清除当前标签页的令牌。请通过 HTTPS 或可信的本机连接访问工作台。
+打开 `http://localhost:5173`，在登录框输入管理员配置的 API token。只输入令牌本身，无需 `Bearer ` 前缀。登录后可刷新或直接打开详情地址，退出登录会清除当前标签页的令牌。
+
+### 局域网访问
+
+开发服务与 `vite preview` 都监听 `0.0.0.0`，同一网段的手机和电脑可直接用本机地址打开，例如 `http://192.168.1.20:5173`。Vite 默认只放行 IP 和本机名，用 mDNS 名（`主机名.local`）或自建域名访问时需在命令前加 `URSI_ALLOWED_HOSTS`，多个主机名用逗号分隔，子域用 `.example.com` 形式：
+
+```sh
+URSI_ALLOWED_HOSTS=workbench.lan,.example.com npm run dev
+```
+
+除明示的主机名以外仍会被 403 拒绝，不接受任意来源的主机头。页面本身不发行令牌，登录仍在浏览器里输入；局域网 HTTP 明文传输令牌，只应在可信网段使用，否则请在前面套一层 HTTPS 反向代理。复制按钮在明文 HTTP 下自动改用选中文本方式，不依赖只在 HTTPS 可用的 Clipboard API。
 
 开发服务默认将 `/api/v1` 与 `/api/v2` 转发到 `http://127.0.0.1:8080`，可通过 `URSI_API_PROXY` 修改目标；`vite preview` 提供构建产物时使用同一套代理。生产环境使用 `npm run build` 生成的 `dist/`，由独立的静态服务提供页面，并通过反向代理将同源 `/api` 请求转发给 Server，仅对前端路由启用 SPA 回退。Server 不提供静态资源。令牌通过请求头传递，不写入 URL 或构建配置。
 
