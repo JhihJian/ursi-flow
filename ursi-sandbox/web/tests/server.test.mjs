@@ -8,13 +8,20 @@ async function listen(t, server) {
   t.after(() => new Promise((resolve) => server.close(resolve)))
   return 'http://127.0.0.1:' + server.address().port
 }
-test('演示与真实配置分离，配置不完整时拒绝启动', async (t) => {
-  assert.throws(() => createConsole({ URSI_GATEWAY_URL: 'http://localhost' }))
-  const base = await listen(t, createConsole({}))
-  assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), {
-    mode: 'demo',
-  })
-  assert.equal((await fetch(base + '/api/v1/sandboxes')).status, 404)
+test('缺少 Gateway 配置或 Web 身份时拒绝启动', () => {
+  assert.throws(() => createConsole({}), /控制台需要 Gateway/)
+  assert.throws(
+    () => createConsole({ URSI_GATEWAY_URL: 'http://localhost' }),
+    /控制台需要 Gateway/,
+  )
+  assert.throws(
+    () =>
+      createConsole({
+        URSI_GATEWAY_URL: 'http://localhost',
+        URSI_GATEWAY_KEY: 'test-only-key',
+      }),
+    /控制台需要 Gateway/,
+  )
 })
 test('管理员写请求必须使用白名单路径和同源操作头', async (t) => {
   const calls = [],
@@ -118,9 +125,8 @@ test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日�
   )
   assert.deepEqual(
     requests,
-    ['/api/v1/capabilities', list, item, item + '/logs?tail=200'].map((path) => [
-      path,
-      'Bearer ' + key,
-    ]),
+    ['/api/v1/capabilities', list, item, item + '/logs?tail=200'].map(
+      (path) => [path, 'Bearer ' + key],
+    ),
   )
 })

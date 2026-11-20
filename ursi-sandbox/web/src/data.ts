@@ -21,7 +21,6 @@ export interface Sandbox {
   }[]
   error: string | null
 }
-type Read<T> = T | Promise<T>
 export interface Registry {
   bundles: Record<
     string,
@@ -53,17 +52,16 @@ const defaultCapabilities: Capabilities = {
   tunnel_enabled: false,
 }
 export interface Source {
-  demo: boolean
   manage: boolean
   sshSandboxes?: string[]
   capabilities: Capabilities
   create?: (spec: unknown, key: string) => Promise<Sandbox>
   action?: (id: string, action: 'start' | 'stop' | 'delete') => Promise<Sandbox>
   rebuild?: (id: string, preserveData: boolean) => Promise<Sandbox>
-  list: (signal: AbortSignal) => Read<Sandbox[]>
-  detail: (id: string, signal: AbortSignal) => Read<Sandbox>
-  logs: (id: string, signal: AbortSignal) => Read<string>
-  registry?: (signal: AbortSignal) => Read<Registry>
+  list: (signal: AbortSignal) => Promise<Sandbox[]>
+  detail: (id: string, signal: AbortSignal) => Promise<Sandbox>
+  logs: (id: string, signal: AbortSignal) => Promise<string>
+  registry?: (signal: AbortSignal) => Promise<Registry>
   replaceRegistry?: (registry: Registry) => Promise<Registry>
 }
 export class GatewayError extends Error {
@@ -101,25 +99,13 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
     mode: string
     manage?: boolean
     sshSandboxes?: string[]
-  }>('./console-config.json', signal)
-  if (mode === 'demo') {
-    const { rows } = await import('./demo')
-    const item = (id: string) => {
-      const row = rows.find((r) => r.id === id)
-      if (!row) throw new Error('沙箱不存在')
-      return row
-    }
-    return {
-      demo: true,
-      manage: false,
-      capabilities: defaultCapabilities,
-      list: () => rows,
-      detail: item,
-      logs: (id) =>
-        `[demo] ${item(id).spec.labels.name}\n[status] ${item(id).error || item(id).status}`,
-    }
-  }
-  if (mode !== 'gateway') throw new Error('数据源配置无效')
+  }>('./console-config.json', signal).catch((error: unknown) => {
+    if (error instanceof GatewayError && error.status === 404)
+      throw new Error('未配置 Gateway 控制台')
+    if (error instanceof SyntaxError) throw new Error('Gateway 控制台配置无效')
+    throw error
+  })
+  if (mode !== 'gateway') throw new Error('Gateway 控制台配置无效')
   const base = './api/v1/sandboxes'
   const gatewayCapabilities = await json<GatewayCapabilities>(
     './api/v1/capabilities',
@@ -132,7 +118,6 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
       }
     : defaultCapabilities
   return {
-    demo: false,
     manage: manage === true,
     sshSandboxes,
     capabilities,

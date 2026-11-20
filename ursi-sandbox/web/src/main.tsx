@@ -180,13 +180,11 @@ function Header({ source }: { source?: Source }) {
         </nav>
         <Badge variant="outline" className="ml-auto whitespace-nowrap">
           <Server className="size-3" />
-          {source?.demo
-            ? '演示数据'
-            : source?.manage
-              ? 'Gateway · 管理员'
-              : source
-                ? 'Gateway · 只读'
-                : 'Gateway'}
+          {source?.manage
+            ? 'Gateway · 管理员'
+            : source
+              ? 'Gateway · 只读'
+              : 'Gateway'}
         </Badge>
       </div>
     </header>
@@ -435,7 +433,7 @@ function Details({ source, id }: { source: Source; id: string }) {
   )
   const row = state.value
   useEffect(() => {
-    if (source.demo || !row?.operation || state.loading) return
+    if (!row?.operation || state.loading) return
     deleting.current = row.operation.kind === 'delete'
     const timer = setTimeout(state.refresh, 1000)
     return () => clearTimeout(timer)

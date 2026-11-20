@@ -15,17 +15,15 @@ export function createConsole(env) {
     URSI_WEB_PASSWORD: password,
     URSI_WEB_ADMIN_PASSWORD: admin,
   } = env
-  const live = Boolean(url || key || password || admin)
   if (
-    live &&
-    (!url ||
-      !key ||
-      !(password || admin) ||
-      [password, admin].some((p) => p && (p.length < 16 || p === key)) ||
-      (admin && admin === password))
+    !url ||
+    !key ||
+    !(password || admin) ||
+    [password, admin].some((p) => p && (p.length < 16 || p === key)) ||
+    (admin && admin === password)
   )
-    throw Error('真实模式需要 Gateway 地址、密钥和独立的至少 16 位查看密码')
-  if (live && !/^https?:$/.test(new URL(url).protocol))
+    throw Error('控制台需要 Gateway 地址、密钥和至少一个独立的 Web 密码（至少 16 字符）')
+  if (!/^https?:$/.test(new URL(url).protocol))
     throw Error('Gateway 地址必须使用 HTTP(S)')
   const adminAuth =
     admin && hash('Basic ' + Buffer.from('admin:' + admin).toString('base64'))
@@ -54,7 +52,7 @@ export function createConsole(env) {
     }
     const supplied = hash(req.headers.authorization || '')
     const manage = Boolean(adminAuth && timingSafeEqual(supplied, adminAuth))
-    if (live && !manage && !(auth && timingSafeEqual(supplied, auth))) {
+    if (!manage && !(auth && timingSafeEqual(supplied, auth))) {
       res.setHeader(
         'WWW-Authenticate',
         'Basic realm="Ursi Sandbox", charset="UTF-8"',
@@ -66,7 +64,7 @@ export function createConsole(env) {
     if (!write && path === '/console-config.json')
       return send(
         200,
-        JSON.stringify(live ? { mode: 'gateway', manage, ...(manage ? { sshSandboxes: workbench.sshSandboxes } : {}) } : { mode: 'demo' }),
+        JSON.stringify({ mode: 'gateway', manage, ...(manage ? { sshSandboxes: workbench.sshSandboxes } : {}) }),
       )
     const collection = '/api/v1/sandboxes'
     const registry = path === '/api/v1/registry'
@@ -75,7 +73,7 @@ export function createConsole(env) {
       req.method === 'POST' &&
       /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/rebuild$/.test(path)
     if (write) {
-      if (!live || !manage) return send(403, '{}')
+      if (!manage) return send(403, '{}')
       if (
         !(
           create ||
@@ -96,13 +94,12 @@ export function createConsole(env) {
         return send(403, '{}')
     }
     if (
-      live &&
-      (write ||
-        path === '/api/v1/capabilities' ||
-        registry ||
-        /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
-          path,
-        ))
+      write ||
+      path === '/api/v1/capabilities' ||
+      registry ||
+      /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
+        path,
+      )
     ) {
       try {
         const headers = { Authorization: `Bearer ${key}` }
@@ -176,10 +173,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const port = Number(process.env.PORT || 4180)
-  const host =
-    process.env.URSI_GATEWAY_URL && !process.env.URSI_WEB_TLS_CERT
-      ? '127.0.0.1'
-      : '0.0.0.0'
+  const host = process.env.URSI_WEB_TLS_CERT ? '0.0.0.0' : '127.0.0.1'
   createConsole(process.env).listen(port, host, () =>
     console.log(
       `Ursi Sandbox: ${process.env.URSI_WEB_TLS_CERT ? 'https' : 'http'}://${host}:${port}/sandboxes`,

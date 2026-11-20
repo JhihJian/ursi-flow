@@ -308,8 +308,7 @@ export function CreateSandbox({ source }: { source: Source }) {
           </Tabs>
           {!source.manage && (
             <Alert className="border-warn/30 bg-warn/10 text-warn">
-              {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
-              提交需要 Gateway 管理员身份。
+              当前账户只读。提交需要 Gateway 管理员身份。
             </Alert>
           )}
           {error && (

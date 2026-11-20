@@ -63,35 +63,33 @@ export function EndpointWorkbench({
     : !ready('ssh', 'ssh')
       ? 'SSH 未就绪'
       : ''
-  const unavailable = source.demo
-    ? '演示数据'
-    : !source.manage
-      ? '需要管理员权限'
-      : snapshotFailed
-        ? '无法确认实例状态'
-        : row.status !== 'running' || row.operation
-          ? '实例未就绪'
-          : !source.capabilities.tunnel_enabled
-            ? 'Gateway 隧道未启用'
-            : view === 'terminal'
-              ? sshUnavailable
-              : !window.isSecureContext
-                ? '桌面连接需要 HTTPS'
-                : !ready('desktop', 'websocket')
-                  ? '桌面未就绪'
-                  : view === 'desktop'
-                    ? ''
-                    : sshUnavailable
-                      ? sshUnavailable
-                      : view === 'ide'
-                        ? !ready('ide', 'http')
-                          ? 'IDE 未就绪'
+  const unavailable = !source.manage
+    ? '需要管理员权限'
+    : snapshotFailed
+      ? '无法确认实例状态'
+      : row.status !== 'running' || row.operation
+        ? '实例未就绪'
+        : !source.capabilities.tunnel_enabled
+          ? 'Gateway 隧道未启用'
+          : view === 'terminal'
+            ? sshUnavailable
+            : !window.isSecureContext
+              ? '桌面连接需要 HTTPS'
+              : !ready('desktop', 'websocket')
+                ? '桌面未就绪'
+                : view === 'desktop'
+                  ? ''
+                  : sshUnavailable
+                    ? sshUnavailable
+                    : view === 'ide'
+                      ? !ready('ide', 'http')
+                        ? 'IDE 未就绪'
+                        : ''
+                      : !selected
+                        ? '未注册应用'
+                        : !selected.ready
+                          ? '应用未就绪'
                           : ''
-                        : !selected
-                          ? '未注册应用'
-                          : !selected.ready
-                            ? '应用未就绪'
-                            : ''
   const route = view === 'preview' ? `preview/${selected?.name}` : view
   const url = new URL(
     `./api/v1/sandboxes/${row.id}/workbench/${row.resource.generation}/${route}`,
@@ -99,7 +97,6 @@ export function EndpointWorkbench({
   )
   url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const connected = active && !unavailable
-  const demoTerminal = source.demo && view === 'terminal' && active
   const status =
     unavailable ||
     (connected
@@ -108,15 +105,14 @@ export function EndpointWorkbench({
         ]
       : '未连接')
   const showSurface =
-    demoTerminal ||
-    (connected && (connection !== 'failed' || view === 'terminal'))
+    connected && (connection !== 'failed' || view === 'terminal')
 
   useEffect(() => {
-    if (unavailable && !source.demo) {
+    if (unavailable) {
       setActive(false)
       setControl(false)
     }
-  }, [unavailable, source.demo])
+  }, [unavailable])
   useEffect(() => {
     const sync = () =>
       setFullscreen(document.fullscreenElement === stage.current)
@@ -253,21 +249,16 @@ export function EndpointWorkbench({
                           键鼠控制
                         </label>
                       )}
-                    {(connected || demoTerminal) && connection !== 'failed' ? (
+                    {connected && connection !== 'failed' ? (
                       <Button size="sm" variant="outline" onClick={disconnect}>
                         <Unplug />
                         断开
                       </Button>
                     ) : (
-                      (!unavailable ||
-                        (source.demo && view === 'terminal')) && (
+                      !unavailable && (
                         <Button size="sm" variant="primary" onClick={connect}>
                           <Plug />
-                          {source.demo
-                            ? '打开终端示例'
-                            : active && connection === 'failed'
-                              ? '重新连接'
-                              : '连接'}
+                          {connected ? '重新连接' : '连接'}
                         </Button>
                       )
                     )}
@@ -292,10 +283,7 @@ export function EndpointWorkbench({
                       }
                     >
                       {view === 'terminal' ? (
-                        <Terminal
-                          url={source.demo ? undefined : url.href}
-                          status={setConnection}
-                        />
+                        <Terminal url={url.href} status={setConnection} />
                       ) : (
                         <Desktop
                           url={url.href}

@@ -1,9 +1,42 @@
 import { test, expect } from '@playwright/test'
+
+const rows = ['running', 'running', 'stopped'].map((status, index) => ({
+  id: String(index + 1).repeat(32),
+  status,
+  spec: {
+    image: 'alpine:3.22',
+    labels: { name: `test-sandbox-${index + 1}` },
+    cpus: 1,
+    memory_mb: 256,
+  },
+  resource: { generation: 1, data_generation: 1 },
+  revision: 1,
+  endpoints: [],
+  operation: null,
+  error: null,
+}))
+
 for (const width of [320, 390, 1280])
   test(`列表、筛选和详情深链 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 820 })
-    await page.goto('/sandboxes')
-    await expect(page.getByText('演示数据')).toBeVisible()
+    await page.route('**/dist/console-config.json', (route) =>
+      route.fulfill({ json: { mode: 'gateway' } }),
+    )
+    await page.route('**/dist/api/v1/capabilities', (route) =>
+      route.fulfill({ json: { tunnel_enabled: false, capabilities: {} } }),
+    )
+    await page.route('**/dist/api/v1/sandboxes', (route) =>
+      route.fulfill({ json: { sandboxes: rows } }),
+    )
+    await page.route('**/dist/api/v1/sandboxes/' + rows[0].id, (route) =>
+      route.fulfill({ json: rows[0] }),
+    )
+    await page.route(
+      '**/dist/api/v1/sandboxes/' + rows[0].id + '/logs?tail=200',
+      (route) => route.fulfill({ json: { content: '[status] running' } }),
+    )
+    await page.goto('./#/sandboxes')
+    await expect(page.getByText('Gateway · 只读')).toBeVisible()
     await page.getByRole('button', { name: '创建沙箱' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByLabel('镜像')).toBeVisible()
@@ -12,20 +45,21 @@ for (const width of [320, 390, 1280])
     await page.getByRole('button', { name: '取消' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
     const links = page.getByRole('link', { name: /^查看 / })
-    await expect(links).toHaveCount(6)
+    await expect(links).toHaveCount(3)
     if (width >= 768)
       await expect(page.getByRole('table', { name: '实例列表' })).toBeVisible()
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
     await page.getByRole('button', { name: /运行中/ }).click()
-    await expect(links).toHaveCount(3)
+    await expect(links).toHaveCount(2)
     await page.getByRole('button', { name: /全部实例/ }).click()
-    await expect(links).toHaveCount(6)
-    await page.getByRole('link', { name: '查看 hello-html' }).click()
+    await expect(links).toHaveCount(3)
+    await page.getByRole('link', { name: '查看 test-sandbox-1' }).click()
+    await expect(page).toHaveURL(/\/dist\/#\/sandboxes\/[a-f0-9]{32}$/)
     await page.reload()
     await expect(
-      page.getByRole('heading', { name: 'hello-html' }),
+      page.getByRole('heading', { name: 'test-sandbox-1' }),
     ).toBeVisible()
     const workbench = page.getByRole('region', { name: '端点工作台' })
     const inspector = page.getByRole('complementary', { name: '实例检查' })
@@ -41,7 +75,7 @@ for (const width of [320, 390, 1280])
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
     await page.getByRole('link', { name: '实例列表' }).click()
-    await expect(links).toHaveCount(6)
+    await expect(links).toHaveCount(3)
   })
 test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
   await page.route('**/console-config.json', (r) =>
@@ -79,7 +113,7 @@ test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
     }
     return r.fulfill({ json: { sandboxes: [] } })
   })
-  await page.goto('/sandboxes')
+  await page.goto('./#/sandboxes')
   await page.getByRole('button', { name: '创建沙箱' }).click()
   await page.getByLabel('镜像').fill('node:22')
   await page.getByLabel('名称（可选）').fill('quick-web')
@@ -150,7 +184,7 @@ test('管理员可以选择保留数据重建并提交 Gateway 请求', async ({
       },
     }),
   )
-  await page.goto('/sandboxes/' + 'a'.repeat(32))
+  await page.goto('./#/sandboxes/' + 'a'.repeat(32))
   const more = page.getByRole('button', { name: '更多操作' })
   const choose = async () => {
     await more.click()
@@ -178,7 +212,7 @@ test('Gateway 失败时显示错误，重试后识别空列表', async ({ page }
     first = false
     return r.fulfill({ status, json: { sandboxes: [] } })
   })
-  await page.goto('/sandboxes')
+  await page.goto('./#/sandboxes')
   await expect(page.getByRole('status')).toContainText('Gateway 暂不可用')
   await page.getByRole('button', { name: '重试' }).click()
   await expect(page.getByRole('status')).toHaveText('暂无沙箱实例')

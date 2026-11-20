@@ -40,7 +40,7 @@ test('刷新保留当前连接，切换、端点失效、代际变化和离开�
     const index = sockets.push(ws.url())
     ws.onClose(() => closed.push(index))
   })
-  await page.goto(`/sandboxes/${id}`)
+  await page.goto(`./#/sandboxes/${id}`)
   const tools = page.getByRole('region', { name: '端点工作台' })
   const status = tools.getByRole('status')
   const connect = tools.getByRole('button', { name: '连接', exact: true })

@@ -2,9 +2,9 @@
 
 `/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止、选择保留数据或销毁数据重建，或确认删除实例，请求受理后页面轮询最终状态。页面按 Gateway capabilities 展示可用的重建方式。列表可按状态筛选。详情页以工作台为主，旁边的检查区可展开规格、端点快照和最近 200 行日志，窄屏下检查区位于工作台下方。重建和删除在「更多操作」中确认。刷新详情时，仍然有效的同代际连接会保留。
 
-## 独立预览
+## 构建与启动
 
-在本目录使用 Node.js 22.16 或更高版本：
+在本目录使用 Node.js 22.16 或更高版本。运行 `npm start` 前，按下文配置 Gateway 及 Web 身份：
 
 ```bash
 npm ci
@@ -12,15 +12,15 @@ npm run build
 npm start
 ```
 
-打开 `http://localhost:4180/sandboxes`。未配置 Gateway 时显示带“演示数据”标记的本地样例；开发时 `npm run dev` 也可预览样例。内置服务的交付文件包括 `dist/`、`server.mjs`、`workbench.mjs` 和 npm 清单。安装运行依赖后，使用 `node server.mjs` 启动。`PORT` 可调整监听端口。
+打开 `http://localhost:4180/sandboxes`。内置服务的交付文件包括 `dist/`、`server.mjs`、`workbench.mjs` 和 npm 清单。安装运行依赖后，使用 `node server.mjs` 启动。`PORT` 可调整监听端口。
 
 ## 静态交付
 
-页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS、脚本及配置输出到 `dist/`。只需将其内容发布到静态目录，例如 `/apps/sandbox/`，即可在 `/apps/sandbox/#/sandboxes` 预览演示实例。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
+页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS 和脚本输出到 `dist/`。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
 
-`src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。静态产物只包含演示数据。需要连接 Gateway 时可使用自带服务，也可由部署方在同一目录下提供 `console-config.json`（`{"mode":"gateway"}`）并将能力查询及实例请求交给鉴权代理。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
+`src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。将静态资源部署到子目录（例如 `/apps/sandbox/`）时，由同源鉴权代理在该目录提供 `console-config.json`（`{"mode":"gateway"}`）及 Gateway API。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
 
-## 查看真实沙箱
+## 配置 Gateway 与 Web 身份
 
 先启动 [Gateway](../gateway/README.md)。为控制台进程设置以下环境变量，重新运行 `npm start`，浏览器使用 `admin` 或 `viewer` 登录。至少配置一种 Web 身份。
 
@@ -35,7 +35,7 @@ npm start
 | `URSI_WEB_SSH_KEY_FILE` | Web 服务专用 SSH 私钥文件。公钥须由管理员加入实例配置的 `authorized_keys` |
 | `URSI_WEB_SSH_HOST_PINS_FILE` | 可信 SSH 主机指纹 JSON 文件。键是沙箱 ID，值是 `ssh-keygen -lf` 输出中的 `SHA256:…` 指纹 |
 
-查看者可读取整个命名空间的规格及日志。管理员可操作整个命名空间。真实模式无 TLS 证书时只监听 `127.0.0.1`，可配合 HTTPS 反向代理或 SSH 端口转发；配置证书后监听 `0.0.0.0`。HTTP Basic 凭据需要受保护的传输链路。对外提供访问时，在 HTTPS 反向代理后运行，并限制控制台端口的直接访问。真实模式连接失败会显示错误，不切换到演示数据。
+查看者可读取整个命名空间的规格及日志。管理员可操作整个命名空间。无 TLS 证书时只监听 `127.0.0.1`，可配合 HTTPS 反向代理或 SSH 端口转发；配置证书后监听 `0.0.0.0`。HTTP Basic 凭据需要受保护的传输链路。对外提供访问时，在 HTTPS 反向代理后运行，并限制控制台端口的直接访问。未配置 Gateway 或 Web 身份时服务拒绝启动。查询失败时页面显示错误并提供重试。
 
 ### 端点工作台
 
