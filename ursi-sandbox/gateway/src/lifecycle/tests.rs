@@ -186,7 +186,7 @@ async fn readiness_requires_registered_endpoint_and_hides_internal_address() {
         r#"{"bundles":{"terminal":{"endpoints":[{"name":"ssh","protocol":"ssh","port":22}]}},"images":{"alpine:3.22":["terminal"]}}"#,
     )
     .unwrap();
-    let service = Service::new(store, driver, Arc::new(registry));
+    let service = Service::new(store, driver.clone(), Arc::new(registry));
     let created = service.create(spec(), None).await.unwrap();
     assert_eq!(created.endpoints.len(), 1);
     assert_eq!(created.endpoints[0].name, "ssh");
@@ -198,7 +198,7 @@ async fn readiness_requires_registered_endpoint_and_hides_internal_address() {
     assert_eq!(endpoint.name, "ssh");
     assert_eq!(address, "127.0.0.1:22");
     assert!(
-        serde_json::to_value(endpoint)
+        serde_json::to_value(&endpoint)
             .unwrap()
             .get("address")
             .is_none()
@@ -207,6 +207,37 @@ async fn readiness_requires_registered_endpoint_and_hides_internal_address() {
         service.resolve_endpoint(&created.id, "unknown").await,
         Err(Error::NotFound(_))
     ));
+
+    service
+        .replace_registry(Registry::new(Default::default()).unwrap())
+        .unwrap();
+    let mut unavailable = endpoint.clone();
+    unavailable.state = EndpointState::Unavailable;
+    unavailable.ready = false;
+
+    driver.fail_next("observe");
+    assert!(service.reconcile(&created.id).await.is_err());
+    let failed = service.get(&created.id).unwrap();
+    assert_eq!(failed.status, Status::Error);
+    assert_eq!(failed.endpoints, [unavailable.clone()]);
+    service.reconcile(&created.id).await.unwrap();
+    assert_eq!(
+        service.resolve_endpoint(&created.id, "ssh").await.unwrap(),
+        endpoint
+    );
+
+    service.request(&created.id, Action::Stop).await.unwrap();
+    service.reconcile(&created.id).await.unwrap();
+    service.reconcile(&created.id).await.unwrap();
+    let stopped = service.get(&created.id).unwrap();
+    assert_eq!(stopped.status, Status::Stopped);
+    assert_eq!(stopped.endpoints, [unavailable]);
+    service.request(&created.id, Action::Start).await.unwrap();
+    service.reconcile(&created.id).await.unwrap();
+    assert_eq!(
+        service.resolve_endpoint(&created.id, "ssh").await.unwrap(),
+        endpoint
+    );
 }
 
 #[tokio::test]

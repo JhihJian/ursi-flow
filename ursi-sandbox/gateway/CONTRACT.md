@@ -57,7 +57,7 @@ Endpoint 为 `{name,bundle,protocol,port,state,ready}` 逻辑对象，不包含 
 
 命名数据卷挂载 `/ursi/workspace`，驱动只处理具有匹配 scope、id 与代际标签的资源。真实 Docker 驱动固定本地 Unix socket，首版不支持远程 daemon。
 
-准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及每个声明端口的真实 TCP readiness 检查。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。创建时的端点快照不会因注册表更新而扩大。
+准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及每个声明端口的真实 TCP readiness 检查。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。实例保留创建时的端点声明。停止或对账失败时标记端点为 `unavailable`、`ready: false`，重新就绪后更新状态。注册表更新不改变既有实例的端点声明。
 
 ## 可选 TCP over WebSocket
 

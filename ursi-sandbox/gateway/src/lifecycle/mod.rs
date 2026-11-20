@@ -295,6 +295,12 @@ impl Service {
         }
         Ok(endpoints)
     }
+    fn mark_endpoints_unavailable(sandbox: &mut Sandbox) {
+        for endpoint in &mut sandbox.endpoints {
+            endpoint.state = EndpointState::Unavailable;
+            endpoint.ready = false;
+        }
+    }
     /// 可被启动/周期对账与独立恢复测试调用。每轮最多执行一次操作推进。
     pub async fn reconcile(&self, id: &str) -> Result<()> {
         let lock = self.lock_for(id);
@@ -313,7 +319,7 @@ impl Service {
                 sandbox.error = Some(message);
                 if sandbox.operation.is_none() {
                     sandbox.status = Status::Error;
-                    sandbox.endpoints.clear();
+                    Self::mark_endpoints_unavailable(&mut sandbox);
                 }
                 self.store.update(&mut sandbox)?;
             }
@@ -346,7 +352,7 @@ impl Service {
                     other => other?,
                 }
                 sandbox.status = Status::Stopped;
-                sandbox.endpoints.clear();
+                Self::mark_endpoints_unavailable(sandbox);
             }
             Some(Operation::Create) => {
                 let observed = self.driver.ensure(sandbox).await?;
@@ -379,7 +385,7 @@ impl Service {
                     sandbox.endpoints = self.ready(sandbox, observed).await?;
                     sandbox.status = Status::Running;
                 } else {
-                    sandbox.endpoints.clear();
+                    Self::mark_endpoints_unavailable(sandbox);
                     sandbox.status = Status::Stopped;
                 }
             }
