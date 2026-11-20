@@ -1,11 +1,12 @@
 import { requestV2 } from '@/shared/http/client'
+import type { AgentConfig } from '@/shared/api/agent-executor'
 import type { ConfigSchema } from './config'
 
 export const titles = { executors: '执行器', resources: '资源' } as const
 export type Collection = keyof typeof titles
 export type Ref = { id: string; revision: number }
 export type ResourceKind = 'skill' | 'prompt' | 'mcp'
-export type Executor = Ref & { resources?: Ref[]; configSchema?: ConfigSchema }
+export type Executor = Ref & { resources?: Ref[]; configSchema?: ConfigSchema; agent?: AgentConfig }
 export type Resource = Ref & { kind: ResourceKind; content: string | { serverRef: string; credentialRef?: string } }
 export type Definition = Resource | Executor
 export type Latest = Definition & { active: boolean }

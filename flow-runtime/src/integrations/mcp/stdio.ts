@@ -26,7 +26,7 @@ interface JsonRpcRequest {
 const tools = [
 	{
 		name: "executor_start",
-		description: "Start or resume the configured Flow executor for one attempt.",
+		description: "Start or retrieve one configured executor attempt.",
 		inputSchema: {
 			type: "object",
 			additionalProperties: false,
@@ -46,7 +46,7 @@ const tools = [
 	},
 	{
 		name: "executor_inspect",
-		description: "Inspect one configured Flow executor attempt.",
+		description: "Inspect one configured executor attempt.",
 		inputSchema: {
 			type: "object",
 			additionalProperties: false,
@@ -56,7 +56,7 @@ const tools = [
 	},
 	{
 		name: "executor_cancel",
-		description: "Cancel one configured Flow executor attempt.",
+		description: "Cancel one configured executor attempt.",
 		inputSchema: {
 			type: "object",
 			additionalProperties: false,
@@ -94,12 +94,16 @@ function isRequest(value: unknown): value is JsonRpcRequest {
 	);
 }
 
+type ExecutorBackend = Pick<ExecutorAdapter, "start" | "inspect" | "cancel">;
+
 export class McpStdioServer {
 	private initialized = false;
 	private initializationStarted = false;
-	private readonly adapter?: ExecutorAdapter;
+	private readonly adapter?: ExecutorBackend;
+	private readonly serverName: string;
 	private readonly adapterError?: ExecutorError;
-	constructor(adapter?: ExecutorAdapter) {
+	constructor(adapter?: ExecutorBackend, serverName = EXECUTOR_SERVER_NAME) {
+		this.serverName = serverName;
 		if (adapter) {
 			this.adapter = adapter;
 			return;
@@ -148,7 +152,7 @@ export class McpStdioServer {
 		return response(id, {
 			protocolVersion: MCP_PROTOCOL_VERSION,
 			capabilities: { tools: {} },
-			serverInfo: { name: EXECUTOR_SERVER_NAME, version: EXECUTOR_SERVER_VERSION },
+			serverInfo: { name: this.serverName, version: EXECUTOR_SERVER_VERSION },
 		});
 	}
 

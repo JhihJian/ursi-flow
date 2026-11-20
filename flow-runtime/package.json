@@ -15,7 +15,8 @@
  "bin": {
   "ursi-flow-local": "dist/cli.js",
   "ursi-flowd": "dist/machine/daemon.js",
-  "ursi-flow-executor-mcp": "dist/integrations/mcp/stdio.js"
+  "ursi-flow-executor-mcp": "dist/integrations/mcp/stdio.js",
+  "ursi-pi-executor-mcp": "dist/pi-executor/stdio.js"
  },
  "files": [
   "dist",
@@ -27,7 +28,7 @@
  "scripts": {
   "build": "tsc -p tsconfig.build.json",
   "prepack": "npm run build",
-  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/local-pi.test.mjs && vitest run"
+  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/local-pi.test.mjs test/pi-session.test.mjs && vitest run"
  },
  "dependencies": {
   "@earendil-works/pi-coding-agent": "1.5.2",

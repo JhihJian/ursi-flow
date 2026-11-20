@@ -78,6 +78,8 @@ describe('包编辑台框架', () => {
     expect(await screen.findByRole('button', { name: '交付整理' })).toBeInTheDocument()
     expect(screen.getByTestId('explorer')).toBeInTheDocument()
     expect(screen.queryByTestId('config-editor')).toBeNull()
+    expect(screen.getByRole('link', { name: '运行工作包' })).toHaveAttribute('href', '/work-patches/w1/execute')
+    expect(calls.map(call => call.path)).toEqual(['/patches/work'])
     expect(await directoryPathAt(calls, 0)).toBe('/directories/d1/tree')
 
     const before = seen.dirs.at(-1)
@@ -109,11 +111,13 @@ describe('包编辑台框架', () => {
 
   it('配置包详情使用 ConfigEditor，并同样支持换包', async () => {
     const user = userEvent.setup()
-    const { router } = mount('/config-patches/c1', packages('config'))
+    const { router, calls } = mount('/config-patches/c1', packages('config'))
 
     expect(await screen.findByTestId('config-editor')).toBeInTheDocument()
     expect(screen.queryByTestId('explorer')).toBeNull()
     expect(await screen.findByRole('button', { name: '审核助手' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '运行工作包' })).toBeNull()
+    expect(calls.map(call => call.path)).toEqual(['/patches/config'])
 
     const before = seen.dirs.at(-1)
     await user.click(screen.getByTestId('patch-switcher-trigger'))
@@ -190,6 +194,7 @@ describe('包编辑台框架', () => {
     expect(patchRoutes.map(route => route.path)).toEqual([
       '/work-patches',
       '/work-patches/:id',
+      '/work-patches/:id/execute',
       '/config-patches',
       '/config-patches/:id',
     ])

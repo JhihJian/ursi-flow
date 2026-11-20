@@ -30,6 +30,13 @@ const ref = (value: unknown) => {
 }
 const refs = (value: unknown) => Array.isArray(value) ? value.map(ref).filter((v): v is { id: string; revision: number } => v !== null) : []
 
+function agentFields(value: unknown) {
+  if (!value || typeof value !== 'object') return {}
+  const a = value as Record<string, unknown>
+  return { agent: { systemPrompt: text(a.systemPrompt, ''), modelProfile: text(a.modelProfile, ''),
+    tools: Array.isArray(a.tools) ? a.tools.filter((id): id is string => typeof id === 'string') : [] } }
+}
+
 function persistedDraft(draft: Draft): Draft {
   // 显式白名单是这里的安全边界，不能用 spread 把未来新增的 secret 字段写入存储。
   const schema = normalizeConfigSchema(draft.configSchema)
@@ -39,6 +46,7 @@ function persistedDraft(draft: Draft): Draft {
     text: draft.text,
     serverRef: draft.serverRef,
     credentialRef: draft.credentialRef,
+    ...agentFields(draft.agent),
     resources: refs(draft.resources),
     configSchema: schema,
     config: sanitizeConfigValues(schema, draft.config),
@@ -61,6 +69,7 @@ export function readDraft(key: string): Draft | null {
       text: text(value.text, base.text),
       serverRef: text(value.serverRef, base.serverRef),
       credentialRef: text(value.credentialRef, base.credentialRef),
+      ...agentFields(value.agent),
       resources: refs(value.resources),
       configSchema: schema,
       config: sanitizeConfigValues(schema, value.config),

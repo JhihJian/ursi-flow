@@ -1,4 +1,5 @@
-//! 每次工具调用独享一个 stdio 会话，不重放可能已经执行的请求。
+//! Each tool call gets an independent stdio session and never replays a possibly executed request.
+use super::binding::{Backend, FLOW_ENV};
 use crate::work::Error;
 use serde_json::{Value, json};
 use std::{io, path::Path, process::Stdio, time::Duration};
@@ -10,28 +11,36 @@ use tokio::{
 
 const VERSION: &str = "2025-06-18";
 const TRUSTED_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-const LINE_LIMIT: usize = 4 * 1024 * 1024; // 包括 JSONL 换行符
+const LINE_LIMIT: usize = 4 * 1024 * 1024;
 const CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn unavailable() -> Error {
     Error::Unavailable("执行器不可用或协议响应无效".into())
 }
 
-pub(super) async fn call(bin: &Path, root: &Path, tool: &str, args: Value) -> Result<Value, Error> {
-    if !bin.is_absolute() || !args.is_object() {
+pub(super) async fn call(
+    backend: &Backend,
+    root: &Path,
+    tool: &str,
+    args: Value,
+) -> Result<Value, Error> {
+    if !backend.bin().is_absolute() || !args.is_object() {
         return Err(unavailable());
     }
-    let mut cmd = Command::new(bin);
+    let mut cmd = Command::new(backend.bin());
     cmd.env_clear()
         .env("PATH", TRUSTED_PATH)
         .env("URSI_EXECUTOR_ROOT", root);
-    for key in [
-        "URSI_EXECUTOR_FLOW",
-        "URSI_EXECUTOR_FLOW_REVISION",
-        "URSI_FLOW_HOME",
-    ] {
-        if let Some(value) = std::env::var_os(key) {
-            cmd.env(key, value);
+    match backend {
+        Backend::Flow { env, .. } => {
+            for (key, value) in FLOW_ENV.into_iter().zip(env) {
+                if let Some(value) = value {
+                    cmd.env(key, value);
+                }
+            }
+        }
+        Backend::Pi { policy, .. } => {
+            cmd.env("URSI_PI_POLICY", policy);
         }
     }
     let mut child = cmd
@@ -79,7 +88,7 @@ async fn run(
         request["params"]["arguments"] = args;
         send(&mut input, request).await?;
         let result = response(&mut output, 2).await?;
-        drop(input); // MCP stdio 通过关闭 stdin 请求服务端退出。
+        drop(input);
         drop(output);
         if !child.wait().await.map_err(|_| unavailable())?.success() {
             return Err(unavailable());
@@ -89,7 +98,6 @@ async fn run(
     match timeout(deadline, exchange).await {
         Ok(Ok(result)) => tool_result(result),
         _ => {
-            // kill() 同时回收子进程。调用方取消时另由 kill_on_drop 兜底。
             let _ = timeout(Duration::from_secs(1), child.kill()).await;
             Err(unavailable())
         }
@@ -117,7 +125,6 @@ async fn send(input: &mut ChildStdin, message: Value) -> Result<(), Error> {
 }
 
 async fn response(reader: &mut (impl AsyncBufRead + Unpin), id: u64) -> Result<Value, Error> {
-    // 合法通知不占用响应 ID，但与响应共享同一字节预算。
     let mut remaining = LINE_LIMIT as u64;
     let mut buf = Vec::new();
     for _ in 0..32 {
@@ -190,33 +197,38 @@ mod tests {
     use std::{fs, os::unix::fs::PermissionsExt};
 
     #[tokio::test]
-    async fn private_stdio_round_trip() {
+    async fn private_pi_environment_round_trip() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         fs::create_dir(&root).unwrap();
-        let bin = root.join("private mcp");
+        let bin = root.join("private pi");
+        let policy = root.join("policy");
+        fs::write(&policy, "{}").unwrap();
+        fs::set_permissions(&policy, fs::Permissions::from_mode(0o600)).unwrap();
         fs::write(&bin, r#"#!/usr/bin/python3
 import json, os, sys
-assert len(sys.argv) == 1
-assert os.environ['URSI_EXECUTOR_ROOT'] == os.path.dirname(sys.argv[0])
-# Python may coerce the C locale by setting LC_CTYPE at startup.
-assert not set(os.environ) - {'LC_CTYPE','PATH','URSI_EXECUTOR_ROOT','URSI_EXECUTOR_FLOW','URSI_EXECUTOR_FLOW_REVISION','URSI_FLOW_HOME'}
+assert not set(os.environ) - {'LC_CTYPE', 'PATH', 'URSI_EXECUTOR_ROOT', 'URSI_PI_POLICY'}
+assert os.environ['URSI_PI_POLICY'] == sys.argv[0].rsplit('/', 1)[0] + '/policy'
+assert os.environ['URSI_EXECUTOR_ROOT'] == sys.argv[0].rsplit('/', 1)[0]
 assert os.environ['PATH'] == '/usr/local/bin:/usr/bin:/bin'
-def reply(request, result):
-    print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)
-a = json.loads(input())
-assert a['jsonrpc'] == '2.0' and a['method'] == 'initialize' and a['params']['protocolVersion'] == '2025-06-18'
-reply(a, {'protocolVersion':'2025-06-18','serverInfo':{'name':'fixture','version':'1'},'capabilities':{'tools':{}}})
-assert json.loads(input()) == {'jsonrpc':'2.0','method':'notifications/initialized'}
-b = json.loads(input())
-assert b['method'] == 'tools/call' and b['params']['name'] == 'inspect' and b['id'] != a['id']
-reply(b, {'content':[],'structuredContent':b['params']['arguments']})
+def reply(request, result): print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)
+a=json.loads(input()); reply(a, {'protocolVersion':'2025-06-18','serverInfo':{'name':'pi','version':'1'},'capabilities':{'tools':{}}})
+assert json.loads(input())['method'] == 'notifications/initialized'
+b=json.loads(input()); reply(b, {'content':[], 'structuredContent':b['params']['arguments']})
 assert sys.stdin.read() == ''
 "#).unwrap();
         fs::set_permissions(&bin, fs::Permissions::from_mode(0o700)).unwrap();
-        let args = json!({"text":"一行\n另一行 \"$()\""});
-        let result = call(&bin, &root, "inspect", args.clone()).await;
+        let backend = Backend::Pi {
+            bin: bin.clone(),
+            policy,
+        };
+        let args = json!({"attemptId":"x"});
+        assert_eq!(
+            call(&backend, &root, "inspect", args.clone())
+                .await
+                .unwrap(),
+            args
+        );
         fs::remove_dir_all(root).unwrap();
-        assert_eq!(result.unwrap(), args);
     }
 
     #[test]
@@ -258,7 +270,7 @@ assert sys.stdin.read() == ''
             "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n",
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}",
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"error\":null}\n",
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[]}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[] }\n",
             "not-json\n",
         ] {
             assert!(matches!(

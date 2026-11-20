@@ -23,3 +23,4 @@ export const patchKindMeta: Record<PatchKind, PatchKindMeta> = {
 export const patchListPath = (kind: PatchKind) => kind === 'work' ? '/work-patches' : '/config-patches'
 
 export const patchPath = (kind: PatchKind, id: string) => `${patchListPath(kind)}/${encodeURIComponent(id)}`
+export const workPatchExecutePath = (id: string) => `${patchPath('work', id)}/execute`

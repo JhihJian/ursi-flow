@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::json;
 
+mod agent;
+
 fn resource(db: &mut Value, id: &str, kind: &str, content: Value) -> Value {
     publish(
         db,

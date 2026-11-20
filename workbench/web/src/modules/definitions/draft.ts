@@ -1,9 +1,11 @@
+import type { AgentConfig } from '@/shared/api/agent-executor'
 import { pinned, type Collection, type Definition, type Ref, type ResourceKind } from './catalog'
 import { configDefaults, normalizeConfigSchema, type ConfigSchema, type ConfigValues } from './config'
 
 export const blankRef = (): Ref => ({ id: '', revision: 0 })
 export type Draft = {
   id: string; resourceKind: ResourceKind; text: string; serverRef: string; credentialRef: string
+  agent?: AgentConfig
   resources: Ref[]; configSchema: ConfigSchema; config: ConfigValues
 }
 export function initialDraft(v?: Definition): Draft {
@@ -18,6 +20,7 @@ export function initialDraft(v?: Definition): Draft {
     else { d.serverRef = v.content.serverRef; d.credentialRef = v.content.credentialRef ?? '' }
     return d
   }
+  if (v.agent) d.agent = v.agent
   d.resources = (v.resources ?? []).map(pinned)
   d.configSchema = normalizeConfigSchema(v.configSchema)
   d.config = configDefaults(d.configSchema)
@@ -31,5 +34,6 @@ export function publishBody(k: Collection, d: Draft) {
   const id = d.id
   if (k === 'resources') return { id, kind: d.resourceKind, content: d.resourceKind === 'mcp'
     ? { serverRef: d.serverRef, credentialRef: d.credentialRef || undefined } : d.text }
+  if (d.agent) return { id, resources: d.resources.map(fixed), agent: d.agent }
   return { id, resources: d.resources.map(fixed), ...(d.configSchema.fields.length ? { configSchema: d.configSchema } : {}) }
 }

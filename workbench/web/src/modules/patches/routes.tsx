@@ -13,6 +13,11 @@ export const patchRoutes: RouteObject[] = [
     lazy: async () => ({ Component: (await import('./PatchStudio')).WorkPatchStudio }),
   },
   {
+    path: '/work-patches/:id/execute',
+    handle: { title: '运行工作包' },
+    lazy: async () => ({ Component: (await import('./WorkPatchExecute')).WorkPatchExecute }),
+  },
+  {
     path: '/config-patches',
     handle: { title: '配置包' },
     lazy: async () => ({ Component: (await import('./PatchList')).ConfigPatchList }),

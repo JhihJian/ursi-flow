@@ -18,5 +18,6 @@ it.each<[Patch['executionStatus'], string, string]>([
   expect(screen.getByText('是否已执行').nextElementSibling).toHaveTextContent(executed)
   expect(screen.getByText('执行结果').nextElementSibling).toHaveTextContent(result)
   expect(screen.getByRole('link', { name: '核对' })).toHaveAttribute('href', '/work-patches/w1')
+  expect(screen.getByRole('link', { name: '运行工作包' })).toHaveAttribute('href', '/work-patches/w1/execute')
   expect(screen.getByRole('button', { name: '执行详情' })).toBeDisabled()
 })

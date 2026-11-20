@@ -1,4 +1,4 @@
-import { requestV2 } from '@/shared/http/client'
+import { ApiError, requestV2 } from '@/shared/http/client'
 
 export type PatchKind = 'work' | 'config'
 /** 包记录：名称与目录标识都由服务端生成，界面按目录标识打开内容。 */
@@ -21,6 +21,15 @@ export type ConfigPackageChoice = Pick<Patch, 'id' | 'name'>
 
 export const listPatches = (kind: PatchKind, signal?: AbortSignal) =>
   requestV2<Patch[]>(`/patches/${kind}`, { signal })
+
+export async function getWorkPatch(id: string, signal: AbortSignal): Promise<Patch | null> {
+  try {
+    return await requestV2<Patch>(`/patches/work/${encodeURIComponent(id)}`, { signal })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
+}
 
 export const setPatchOwner = (id: string, workItemId: string | null, signal: AbortSignal) =>
   requestV2<void>(`/patches/work/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ workItemId }), signal })

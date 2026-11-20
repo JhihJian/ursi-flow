@@ -3,7 +3,7 @@ use super::{Error, require_active, version};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-fn fields(v: &Value, allowed: &[&str]) -> Result<(), Error> {
+pub(super) fn fields(v: &Value, allowed: &[&str]) -> Result<(), Error> {
     let obj = v
         .as_object()
         .ok_or_else(|| Error::Invalid("需要 JSON 对象".into()))?;
@@ -12,12 +12,12 @@ fn fields(v: &Value, allowed: &[&str]) -> Result<(), Error> {
     }
     Ok(())
 }
-fn text<'a>(v: &'a Value, k: &str) -> Result<&'a str, Error> {
+pub(super) fn text<'a>(v: &'a Value, k: &str) -> Result<&'a str, Error> {
     v[k].as_str()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| Error::Invalid(format!("{k} 必须是非空字符串")))
 }
-fn name(s: &str) -> Result<&str, Error> {
+pub(super) fn name(s: &str) -> Result<&str, Error> {
     if s.len() > 128
         || s.is_empty()
         || s.trim() != s
@@ -337,16 +337,20 @@ fn validate_config_schema(v: &Value) -> Result<Value, Error> {
 
 fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
     fields(b, &["id", "resources", "configSchema"])?;
-    let deps = array(b, "resources")?;
     let mut value = b.clone();
     if let Some(schema) = b.get("configSchema") {
         value["configSchema"] = validate_config_schema(schema)?;
     }
-    validate_resources(db, deps)?;
+    resolve_resources(db, b)?;
     Ok(value)
 }
 
-fn validate_resources(db: &Value, refs: &[Value]) -> Result<(), Error> {
+pub(super) fn resolve_resources<'a>(
+    db: &'a Value,
+    definition: &Value,
+) -> Result<Vec<&'a Value>, Error> {
+    let refs = array(definition, "resources")?;
+    let mut resolved = Vec::new();
     let mut seen = BTreeMap::new();
     let mut budget: usize = 2 * 1024 * 1024;
     for r in refs {
@@ -366,6 +370,7 @@ fn validate_resources(db: &Value, refs: &[Value]) -> Result<(), Error> {
         budget = budget
             .checked_sub(size)
             .ok_or_else(|| Error::Invalid("展开的资源超过 2 MiB".into()))?;
+        resolved.push(v);
     }
-    Ok(())
+    Ok(resolved)
 }

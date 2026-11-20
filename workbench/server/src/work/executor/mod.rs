@@ -1,4 +1,5 @@
 //! Workbench owns attempt identities and snapshots; MCP owns execution and its evidence.
+mod binding;
 mod client;
 mod files;
 
@@ -22,35 +23,53 @@ struct Instruction {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ExecutorRef {
+    id: String,
+    revision: u64,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Start {
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    executor_ref: Option<ExecutorRef>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    preview_definition: Option<Value>,
     work_instruction: Instruction,
     work_patch_id: Option<String>,
+}
+
+// Only omitted selectors opt into the legacy Flow route; an explicit null is invalid.
+fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<T>, D::Error> {
+    Option::deserialize(de)?
+        .map(Some)
+        .ok_or_else(|| serde::de::Error::custom("目标不能为 null"))
 }
 
 struct Service {
     store: Store,
     root: PathBuf,
-    bin: Option<PathBuf>,
-    binding: Value,
+    flow: Option<binding::Backend>,
+    pi: Option<binding::Backend>,
     // Bound both concurrent subprocesses and lock storage. No database lock spans an RPC.
     locks: [Mutex<()>; 16],
 }
 
 pub(super) fn routes(store: Store) -> Router {
-    let bin = std::env::var_os("URSI_EXECUTOR_BIN")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute());
-    let binding = json!([
-        bin,
-        std::env::var("URSI_EXECUTOR_FLOW").ok(),
-        std::env::var("URSI_EXECUTOR_FLOW_REVISION").ok(),
-        std::env::var("URSI_FLOW_HOME").ok()
-    ]);
     let service = Service {
         root: store.dir().join("executor-workspaces"),
         store,
-        bin,
-        binding,
+        flow: binding::flow_from_env(),
+        pi: binding::pi_from_env(),
         locks: Default::default(),
     };
     Router::new()
@@ -84,9 +103,6 @@ enum Operation {
     Inspect,
     Cancel,
 }
-fn unavailable() -> Error {
-    Error::Unavailable("执行器未启用、绑定已变更或响应无法核实".into())
-}
 async fn run(s: Arc<Service>, id: String, op: Operation) -> Reply {
     let uuid = Uuid::parse_str(&id)
         .ok()
@@ -112,35 +128,62 @@ impl Service {
                 return Err(Error::Conflict("同一尝试 ID 已绑定其他输入".into()));
             }
         }
+
         if let Some(row) = &row {
             if row["result"]["artifactDirectoryId"].is_string() {
                 return Ok(row["result"].clone());
             }
         }
-        let bin = self.bin.as_ref().ok_or_else(unavailable)?;
-        if row.as_ref().is_some_and(|r| r["binding"] != self.binding) {
-            return Err(unavailable());
-        }
-        if row.is_none() {
+        let backend = if let Some(row) = &row {
+            let backend = binding::backend_for_row(row, self.flow.as_ref(), self.pi.as_ref())?;
+            if matches!(
+                (&backend, &op),
+                (binding::Backend::Pi { .. }, Operation::Start(_))
+            ) {
+                binding::verify_snapshot(
+                    &self.root,
+                    id,
+                    row["configDigest"]
+                        .as_str()
+                        .ok_or_else(binding::unavailable)?,
+                )?;
+            }
+            backend
+        } else {
             let Operation::Start(body) = &op else {
                 return Err(Error::NotFound("尝试不存在".into()));
             };
+            let target = binding::target(body)?;
+            let (backend, config) =
+                binding::resolve(&self.store, &target, self.flow.as_ref(), self.pi.as_ref())?;
             let store = self.store.clone();
             let root = self.root.clone();
             let key = id.to_owned();
             let patch = body.work_patch_id.clone();
-            tokio::task::spawn_blocking(move || {
-                files::prepare(&store, &root, &key, patch.as_deref())
+            let digest = tokio::task::spawn_blocking(move || {
+                files::prepare(&store, &root, &key, patch.as_deref())?;
+                config
+                    .as_ref()
+                    .map(|c| binding::create_snapshot(&root, &key, c))
+                    .transpose()
             })
             .await
             .map_err(|_| Error::Internal("工作区准备中断".into()))??;
-            let new = json!({"request":body,"binding":self.binding,"result":{"attemptId":id,"status":"starting","artifactDirectoryRef":format!("artifacts:{id}")}});
+            let new = json!({
+                "request": body,
+                "backend": backend.mode(),
+                "configDigest": digest,
+                "binding": backend.binding(),
+                "result": {"attemptId":id,"status":"starting","artifactDirectoryRef":format!("artifacts:{id}")}
+            });
             self.store.update(|db| {
                 db["executorAttempts"][id] = new.clone();
                 Ok(())
             })?;
             row = Some(new);
-        }
+            backend
+        };
+
         let row = row.expect("reserved");
         let (tool, args) = match op {
             Operation::Start(_) => (
@@ -150,7 +193,7 @@ impl Service {
             Operation::Inspect => ("executor_inspect", json!({"attemptId":id})),
             Operation::Cancel => ("executor_cancel", json!({"attemptId":id})),
         };
-        let answer = client::call(bin, &self.root, tool, args)
+        let answer = client::call(&backend, &self.root, tool, args)
             .await
             .and_then(|v| validate(id, v));
         let answer = match answer {
@@ -203,7 +246,7 @@ fn validate(id: &str, v: Value) -> Result<Value, Error> {
             Some("running" | "succeeded" | "failed" | "cancelled" | "unverified")
         )
     {
-        return Err(unavailable());
+        return Err(binding::unavailable());
     }
     let mut result = json!({"attemptId":id,"artifactDirectoryRef":v["artifactDirectoryRef"],"status":v["status"]});
     if let Some(reference) = v.get("backendRunRef") {
@@ -211,7 +254,7 @@ fn validate(id: &str, v: Value) -> Result<Value, Error> {
             .as_str()
             .is_some_and(|s| !s.is_empty() && s.len() <= 256)
         {
-            return Err(unavailable());
+            return Err(binding::unavailable());
         }
         result["backendRunRef"] = reference.clone();
     }

@@ -11,7 +11,7 @@ import { PatchOwner } from './PatchOwner'
 import { ConfigEditor } from './ConfigEditor'
 import { Explorer } from './Explorer'
 import { PatchCreateDialog } from './PatchCreate'
-import { patchKindMeta, patchListPath, patchPath } from './PatchModel'
+import { patchKindMeta, patchListPath, patchPath, workPatchExecutePath } from './PatchModel'
 import { PatchSwitchList, PatchSwitcher } from './PatchSwitcher'
 import './studio.css'
 
@@ -96,6 +96,9 @@ export function PatchStudio({ kind }: { kind: PatchKind }) {
           aria-label={`新建${meta.title}`}
           onClick={create}
         />
+        {kind === 'work' && patch && <Button size="sm" variant="outline" asChild>
+          <Link to={workPatchExecutePath(patch.id)}>运行工作包</Link>
+        </Button>}
         <div className="ml-auto hidden shrink-0 items-center gap-2 lg:flex">
           <Button size="sm" variant="ghost" asChild>
             <Link to={patchListPath(kind)}>全部{meta.title}</Link>

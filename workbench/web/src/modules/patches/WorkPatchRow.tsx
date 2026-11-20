@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { Button } from '@/shared/ui/button'
 import type { Patch } from './api'
-import { patchPath } from './PatchModel'
+import { patchPath, workPatchExecutePath } from './PatchModel'
 
 const results = { not_started: '暂无结果', running: '执行中', succeeded: '成功', failed: '失败' }
 const localTime = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })
@@ -20,6 +20,9 @@ export function WorkPatchRow({ patch }: { patch: Patch }) {
       <div><dt className="text-txt3">是否已执行</dt><dd>{status === 'not_started' ? '未执行' : status && status in results ? '已执行' : '未记录'}</dd></div>
       <div><dt className="text-txt3">执行结果</dt><dd>{status ? results[status] ?? '未知' : '未记录'}</dd></div>
     </dl>
-    <Button size="sm" variant="outline" disabled title="暂无执行详情链接">执行详情</Button>
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" asChild><Link to={workPatchExecutePath(patch.id)}>运行工作包</Link></Button>
+      <Button size="sm" variant="outline" disabled title="暂无执行详情链接">执行详情</Button>
+    </div>
   </li>
 }

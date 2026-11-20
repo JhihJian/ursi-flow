@@ -1,5 +1,7 @@
 //! 目录版本只追加；发布校验与版本分配在同一次 Store 更新中完成。
+mod agent;
 mod definitions;
+mod policy;
 #[cfg(test)]
 mod tests;
 
@@ -15,7 +17,7 @@ type Reply = Result<Json<Value>, Error>;
 type Collection = (Store, &'static str);
 
 pub fn routes(store: Store) -> Router {
-    let mut api = Router::new();
+    let mut api = Router::new().route("/v2/agent-options", get(agent::options));
     for kind in ["resources", "executors"] {
         let collection = Router::new()
             .route("/", get(index).post(create))
@@ -123,8 +125,20 @@ fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
         }
         None => 0,
     };
-    let mut value = definitions::build(db, k, &body)?;
-    value["revision"] = (n as u64 + 1).into();
+    let (mut value, snapshot) = if k == "executors" && body.get("agent").is_some() {
+        let snapshot = agent_preview(db, &body)?;
+        if db["catalog"][k][id]
+            .get("agentSnapshots")
+            .is_some_and(|s| !s.is_object())
+        {
+            return Err(corrupt());
+        }
+        (body.clone(), Some(snapshot))
+    } else {
+        (definitions::build(db, k, &body)?, None)
+    };
+    let revision = n as u64 + 1;
+    value["revision"] = revision.into();
     // All fallible validation precedes the first write. No other db namespace is touched.
     if n == 0 {
         db["catalog"][k][id] = json!({"active":true,"revisions":[value]});
@@ -134,8 +148,29 @@ fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
             .ok_or_else(corrupt)?
             .push(value.clone());
     }
+    if let Some(snapshot) = snapshot {
+        db["catalog"][k][id]["agentSnapshots"][revision.to_string()] = snapshot;
+    }
     Ok(value)
 }
+pub(super) fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Value, Error> {
+    require_active(db, "executors", id)?;
+    if version(db, "executors", id, revision)?
+        .get("agent")
+        .is_none()
+    {
+        return Err(Error::Invalid("该执行器修订未配置 Agent".into()));
+    }
+    record(db, "executors", id)?["agentSnapshots"]
+        .get(revision.to_string())
+        .cloned()
+        .ok_or_else(corrupt)
+}
+
+pub(super) fn agent_preview(db: &Value, definition: &Value) -> Result<Value, Error> {
+    agent::preview(db, definition)
+}
+
 fn deactivate(db: &mut Value, k: &str, id: &str) -> Result<Value, Error> {
     let mut detail = latest(db, k, id)?;
     db["catalog"][k][id]["active"] = false.into();
