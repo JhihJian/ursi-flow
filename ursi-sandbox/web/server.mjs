@@ -4,10 +4,23 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { pipeline } from 'node:stream/promises'
 import { attachWorkbench } from './workbench.mjs'
 
 const dist = new URL('./dist/', import.meta.url)
 const hash = (s) => createHash('sha256').update(s).digest()
+const observations = '/api/v1/sandboxes/[a-f0-9]{32}/observations'
+const run = `${observations}/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`
+const observationPost = new RegExp(`^(?:${observations}|${run}/stop)$`)
+const observationStatus = new RegExp(`^${run}$`)
+const observationSegment = new RegExp(`^${run}/segments/([1-9][0-9]*)$`)
+const responseHeaders = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy':
+    "default-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+}
 export function createConsole(env) {
   const {
     URSI_GATEWAY_URL: url,
@@ -40,14 +53,7 @@ export function createConsole(env) {
   const isAdmin = (req) => Boolean(adminAuth && timingSafeEqual(hash(req.headers.authorization || ''), adminAuth))
   const server = serve(async (req, res) => {
     const send = (code, body, type = 'application/json') => {
-      res.writeHead(code, {
-        'Content-Type': type,
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'no-referrer',
-        'Content-Security-Policy':
-          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
-      })
+      res.writeHead(code, { ...responseHeaders, 'Content-Type': type })
       res.end(body)
     }
     const supplied = hash(req.headers.authorization || '')
@@ -72,12 +78,16 @@ export function createConsole(env) {
     const rebuild =
       req.method === 'POST' &&
       /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/rebuild$/.test(path)
+    const segment = !write && observationSegment.exec(path)?.[1]
+    const readObservation = !write && (segment || observationStatus.test(path))
+    if (readObservation && !manage) return send(403, '{}')
     if (write) {
       if (!manage) return send(403, '{}')
       if (
         !(
           create ||
           rebuild ||
+          (req.method === 'POST' && observationPost.test(path)) ||
           (registry && req.method === 'PUT') ||
           (req.method === 'POST' &&
             /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/(start|stop)$/.test(path)) ||
@@ -87,20 +97,26 @@ export function createConsole(env) {
       )
         return send(405, '{}')
       // Custom header forces a CORS preflight; this server never grants cross-origin requests.
+      const origin = env.URSI_WEB_ORIGIN || `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}`
       if (
         req.headers['x-ursi-action'] !== 'manage' ||
-        req.headers['sec-fetch-site'] === 'cross-site'
+        (req.headers.origin !== undefined && req.headers.origin !== origin) ||
+        ['same-site', 'cross-site'].includes(req.headers['sec-fetch-site'])
       )
         return send(403, '{}')
     }
     if (
       write ||
+      readObservation ||
       path === '/api/v1/capabilities' ||
       registry ||
       /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
         path,
       )
     ) {
+      const client = new AbortController()
+      const disconnect = () => client.abort()
+      res.once('close', disconnect)
       try {
         const headers = { Authorization: `Bearer ${key}` }
         let body
@@ -128,9 +144,20 @@ export function createConsole(env) {
           body,
           headers,
           redirect: 'error',
-          signal: AbortSignal.timeout(10000),
+          signal: segment ? client.signal : AbortSignal.any([client.signal, AbortSignal.timeout(10000)]),
         })
+        if (segment && r.ok) {
+          if (!r.body) return send(502, '{}')
+          res.writeHead(r.status, {
+            ...responseHeaders,
+            'Content-Type': 'application/vnd.tcpdump.pcap',
+            'Content-Disposition': `attachment; filename="capture-${segment}.pcap"`,
+          })
+          await pipeline(r.body, res, { signal: client.signal })
+          return
+        }
         const result = await r.json().catch(() => ({}))
+        if (res.destroyed) return
         return send(
           r.status,
           r.ok
@@ -144,7 +171,11 @@ export function createConsole(env) {
               }),
         )
       } catch {
+        if (res.destroyed) return
+        if (res.headersSent) return res.destroy()
         return send(502, '{}')
+      } finally {
+        res.off('close', disconnect)
       }
     }
     let file, type

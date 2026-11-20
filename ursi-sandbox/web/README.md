@@ -2,7 +2,9 @@
 
 `/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止、选择保留数据或销毁数据重建，或确认删除实例，请求受理后页面轮询最终状态。页面按 Gateway capabilities 展示可用的重建方式。列表可按状态筛选。详情页以工作台为主，旁边的检查区可展开规格、端点快照和最近 200 行日志，窄屏下检查区位于工作台下方。重建和删除在「更多操作」中确认。刷新详情时，仍然有效的同代际连接会保留。
 
-网络观测页的[设计说明](./design/NETWORK-OBSERVATION.md)和[可交互原型](./design/network-observation.html)供预览。原型使用示例数据，尚未接入控制台。
+管理员从实例详情进入「网络观测」。启用和配对 [Observer](../observer/README.md) 后，可为运行且无待处理操作的实例开始采集。活动页每 2 秒更新已写报文数、PCAP 大小、丢包及最近一分钟的写入速率。离开页面不停止观测，保存记录链接即可在刷新或重建后打开同一记录。服务离线时保留最后快照，恢复后重新查询。
+
+停止请求受理后，等待收尾，再选择分段。点「预览分段」可读取前 500 条完整 SLL2 记录，按地址、协议和方向筛选。点「下载完整分段」可取回未经显示筛选的 PCAP。`interrupted` 的末段可能不完整。状态、预览和下载均限管理员。自建同源代理须对观测 GET 和 POST 再次校验管理员身份，并按二进制流转发分段。技术细节见[页面设计](./design/NETWORK-OBSERVATION.md)。
 
 ## 构建与启动
 
@@ -63,6 +65,8 @@ npm test
 npx playwright install chromium
 npm run test:e2e
 ```
+
+`node tests/live-observation.mjs` 验证真实 Chromium、Web 代理、Gateway 和 Observer 的完整链路。先在 `ursi-sandbox/` 构建 Gateway 和 Observer 的 debug 二进制，准备 [Docker 验收镜像](../observer/ACCEPTANCE.md#复现)，再从 `web/` 以普通用户运行 `npm run build` 和该脚本。Linux 测试宿主需允许 `sudo -n` 启动 Python 夹具。夹具核对两个临时沙箱和宿主的网络命名空间各异，再开始观测；浏览器在方向筛选后下载的文件须与 Gateway 原始分段的大小和 SHA-256 一致。脚本退出时清理本轮资源。
 
 `tests/live-management.mjs` 会在专用 Docker 命名空间实际创建、启停并删除 `alpine:3.22` 实例。设置 `URSI_TEST_WEB_URL` 为管理页、`URSI_TEST_ADMIN_FILE` 为管理密码文件后执行 `node tests/live-management.mjs`。使用自签证书时，`URSI_TEST_CERT_PIN` 指定经核实的证书 SPKI SHA-256（Base64）。
 

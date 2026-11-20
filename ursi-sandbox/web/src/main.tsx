@@ -28,6 +28,7 @@ import {
   useParams,
   useNavigate,
 } from 'react-router'
+import { ObservationRoute } from './ObservationPage'
 import { EndpointWorkbench } from './Workbench'
 import { CreateSandbox, Actions, CliTools, RegistryAdmin } from './Management'
 import { Button, buttonVariants } from './shared/ui/button'
@@ -471,6 +472,15 @@ function Details({ source, id }: { source: Source; id: string }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Refresh state={state} />
+              {source.manage && (
+                <Link
+                  className={buttonVariants({ variant: 'outline' })}
+                  to={`/sandboxes/${row.id}/observations`}
+                >
+                  <Activity />
+                  网络观测
+                </Link>
+              )}
               <Actions source={source} row={row} refresh={state.update} />
             </div>
           </div>
@@ -577,6 +587,10 @@ function App() {
           <Route
             path="registry"
             element={<RegistryAdmin source={config.value} />}
+          />
+          <Route
+            path="sandboxes/:id/observations/:run?"
+            element={<ObservationRoute source={config.value} />}
           />
           <Route
             path="sandboxes/:id"

@@ -41,15 +41,18 @@ export interface Capabilities {
   rebuild_preserve_data: boolean
   rebuild_destroy_data: boolean
   tunnel_enabled: boolean
+  observer_enabled: boolean
 }
 interface GatewayCapabilities {
-  capabilities: Omit<Capabilities, 'tunnel_enabled'>
+  capabilities: Omit<Capabilities, 'tunnel_enabled' | 'observer_enabled'>
+  observer_enabled: boolean
   tunnel_enabled: boolean
 }
 const defaultCapabilities: Capabilities = {
   rebuild_preserve_data: false,
   rebuild_destroy_data: false,
   tunnel_enabled: false,
+  observer_enabled: false,
 }
 export interface Source {
   manage: boolean
@@ -72,7 +75,7 @@ export class GatewayError extends Error {
     super(message)
   }
 }
-async function json<T>(
+export async function json<T>(
   path: string,
   signal?: AbortSignal,
   init?: RequestInit,
@@ -115,6 +118,7 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
     ? {
         ...gatewayCapabilities.capabilities,
         tunnel_enabled: gatewayCapabilities.tunnel_enabled,
+        observer_enabled: gatewayCapabilities.observer_enabled === true,
       }
     : defaultCapabilities
   return {
