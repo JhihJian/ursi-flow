@@ -34,7 +34,14 @@ impl Fixture {
         let app = Router::new()
             .route(
                 "/mcp",
-                post(peer).delete(|| async { StatusCode::NO_CONTENT }),
+                post(peer).delete(
+                    |State(calls): State<Arc<Mutex<Vec<String>>>>, h: HeaderMap| async move {
+                        assert_eq!(h["mcp-session-id"], "session");
+                        assert_eq!(h["mcp-protocol-version"], "2025-06-18");
+                        calls.lock().unwrap().push("DELETE".into());
+                        StatusCode::NO_CONTENT
+                    },
+                ),
             )
             .with_state(calls.clone());
         let sock = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -89,6 +96,7 @@ async fn peer(
     let reply = |result: Value| json!({"jsonrpc":"2.0","id":q["id"],"result":result});
     if method == "initialize" {
         assert_eq!(q["params"]["clientInfo"]["name"], "ursi-workbench");
+        assert_eq!(q["params"]["protocolVersion"], "2025-11-25");
         return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"}})))).into_response();
     }
     assert_eq!(h["mcp-session-id"], "session");
@@ -117,6 +125,19 @@ async fn peer(
             json!({"contents":[{"uri":"memo:a","text":"来自服务"},{"uri":"memo:a","blob":"AP8="}]}),
         ))
         .into_response(),
+        "resources/read" if q["params"]["uri"] == "memo:ambiguous" => Json(reply(
+            json!({"contents":[{"uri":"memo:a","text":"正文","blob":"AP8="}]}),
+        ))
+        .into_response(),
+        "resources/read" if q["params"]["uri"] == "memo:oversize" => {
+            let comments = ": keepalive\n\n".repeat(SNAPSHOT_LIMIT / 13 + 1);
+            let result = reply(json!({"contents":[{"uri":"memo:a","text":"正文"}]}));
+            (
+                [("content-type", "text/event-stream")],
+                format!("{comments}data: {result}\n\n"),
+            )
+                .into_response()
+        }
         "resources/read" => Json(
             json!({"jsonrpc":"2.0","id":q["id"],"error":{"code":-32002,"message":"not found"}}),
         )
@@ -180,9 +201,25 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
             "initialize",
             "notifications/initialized",
             "resources/list",
-            "resources/list"
+            "resources/list",
+            "DELETE"
         ]
     );
+    let report: Value = client
+        .get(format!("{endpoint}/inspection"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        report["server"],
+        json!({"name":"fixture","version":"1","protocolVersion":"2025-06-18","capabilities":{"resources":true,"tools":false,"prompts":false}})
+    );
+    assert_eq!(report["resources"], resources);
     fs::remove_file(f.dir.join("mcp-policy.json")).unwrap();
     assert!(
         !client
@@ -232,6 +269,9 @@ async fn api_reads_one_resource_for_preview_and_hides_remote_errors() {
     assert!(matches!(remote, Error::Unavailable(_)));
     assert!(!format!("{remote:?}").contains("not found"));
     assert!(read("  ").await.is_err());
+    for uri in ["memo:ambiguous", "memo:oversize"] {
+        assert!(matches!(read(uri).await, Err(Error::Unavailable(_))));
+    }
 }
 
 #[tokio::test]

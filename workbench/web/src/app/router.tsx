@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 import { routes as chatRoutes } from '@/modules/chat/routes'
 import { workItemRoutes } from '@/modules/work-items/routes'
+import { mcpRoutes } from '@/modules/mcp/routes'
 import { patchRoutes } from '@/modules/patches/routes'
 import { definitionRoutes } from '@/modules/definitions/routes'
 import AppShell from './AppShell'
@@ -10,6 +11,7 @@ import { RouteErrorAlert } from './RouteErrorAlert'
 
 const protectedRoutes: RouteObject[] = [
   ...workItemRoutes,
+  ...mcpRoutes,
   ...patchRoutes,
   ...definitionRoutes,
   { path: 'flows', handle: { title: 'Flow 包' }, lazy: async () => ({ Component: (await import('@/modules/flows/Flows')).Flows }) },

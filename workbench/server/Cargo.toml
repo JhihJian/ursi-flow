@@ -2,15 +2,16 @@
 name = "ursi-server"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 
 [dependencies]
 axum = "0.8"
 base64 = "0.22"
-eventsource-stream = "0.2"
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rmcp = { version = "3.10.0", default-features = false, features = ["client", "transport-streamable-http-client"] }
+sse-stream = "0.2.6"
 sha2 = "0.10"
 libc = "0.2"
 rustix = { version = "1", features = ["fs"] }

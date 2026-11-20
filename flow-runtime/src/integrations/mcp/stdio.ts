@@ -157,7 +157,8 @@ export class McpStdioServer {
 	}
 
 	private async call(id: JsonRpcId, params: unknown) {
-		if (!isRecord(params) || !hasOnly(params, ["name", "arguments"]) || typeof params.name !== "string")
+		if (!isRecord(params) || !hasOnly(params, ["name", "arguments", "_meta"]) || typeof params.name !== "string" ||
+			(params._meta !== undefined && !isRecord(params._meta)))
 			return errorResponse(id, -32602, "Invalid params");
 		if (!TOOL_NAMES.includes(params.name as ToolName))
 			return response(id, toolError("invalid"));

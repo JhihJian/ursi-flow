@@ -12,11 +12,13 @@ const resources = [
   { name: '架构图', uri: 'memo:b', mimeType: 'image/png' },
 ]
 
-function stubApi(read: () => Response) {
+const peer = { name: 'fixture', version: '1', protocolVersion: '2025-06-18', capabilities: { resources: true, tools: false, prompts: false } }
+
+function stubApi(read: () => Response, inspect = () => Response.json({ server: peer, resources })) {
   const fetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async input => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname === '/api/v2/mcp-servers') return Response.json(servers)
-    if (url.pathname === '/api/v2/mcp-servers/s1/resources') return Response.json(resources)
+    if (url.pathname === '/api/v2/mcp-servers/s1/inspection') return inspect()
     if (url.pathname === '/api/v2/mcp-servers/s1/resources/read') return read()
     return new Response('{}', { status: 404 })
   })
@@ -48,6 +50,8 @@ describe('资源浏览', () => {
     expect(await screen.findByText('来自服务')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '周报' })).toBeInTheDocument()
     expect(screen.getByText('共 2 个资源')).toBeInTheDocument()
+    expect(screen.getByText('2025-06-18')).toBeInTheDocument()
+    expect(screen.getByText('已登记')).toBeInTheDocument()
     const read = fetch.mock.calls.find(([input]) => String(input).endsWith('/resources/read'))
     expect(read).toBeDefined()
     expect(read![1]?.method).toBe('POST')
@@ -68,6 +72,18 @@ describe('资源浏览', () => {
     expect(await screen.findByText(/共 3 字节/)).toBeInTheDocument()
     expect(screen.getByText(/不在页面预览/)).toBeInTheDocument()
     expect(fetch.mock.calls.filter(([input]) => String(input).endsWith('/resources/read'))).toHaveLength(1)
+  })
+
+  it('未声明资源时不读取 URI，也不报连接错误', async () => {
+    const fetch = stubApi(() => Response.error(), () => Response.json({
+      server: { ...peer, capabilities: { resources: false, tools: true, prompts: false } }, resources: [],
+    }))
+    mount('/mcp-servers/s1?uri=memo%3Aa')
+
+    expect(await screen.findByText('服务未声明资源能力')).toBeInTheDocument()
+    expect(screen.getByText('工具')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(fetch.mock.calls.some(([input]) => String(input).endsWith('/resources/read'))).toBe(false)
   })
 
   it('读取失败显示原因并允许重试', async () => {

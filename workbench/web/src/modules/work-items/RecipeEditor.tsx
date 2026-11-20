@@ -6,7 +6,8 @@ import { Input } from '@/shared/ui/input'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { listResources, listServers, type Recipe, type ResourceRef } from '@/shared/api/work-items'
+import { listResources, listServers } from '@/shared/api/mcp'
+import type { Recipe, ResourceRef } from '@/shared/api/work-items'
 
 function ResourceChoices({ serverId, selected, change }: {
   serverId: string; selected: ResourceRef[]; change: (refs: ResourceRef[]) => void

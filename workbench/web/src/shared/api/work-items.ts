@@ -10,13 +10,8 @@ export type ResourceRef = { alias: string; serverId: string; uri: string }
 export type Recipe = { resources: ResourceRef[]; script: string }
 export type WorkDraft = { title: string; description: string; category: Category; status: WorkStatus; recipe: Recipe | null }
 export type WorkItem = WorkDraft & { id: string; revision: number }
-export type ServerDraft = { name: string; url: string; credentialEnv?: string }
-export type McpServer = ServerDraft & { id: string }
-export type McpResource = { name: string; uri: string; mimeType?: string }
-export type ResourceContent = { uri: string; mimeType?: string; text?: string; blob?: string }
 
 export const workItemPath = (id: string) => `/work-items/${encodeURIComponent(id)}`
-export const serverBrowsePath = (id: string) => `/mcp-servers/${encodeURIComponent(id)}`
 export const listWorkItems = (signal: AbortSignal) => requestV2<WorkItem[]>('/work-items', { signal })
 export const getWorkItem = (id: string, signal: AbortSignal) => requestV2<WorkItem>(workItemPath(id), { signal })
 export function saveWorkItem({ status, ...fields }: WorkDraft, item: WorkItem | undefined, signal: AbortSignal) {
@@ -27,15 +22,3 @@ export function saveWorkItem({ status, ...fields }: WorkDraft, item: WorkItem | 
 export const deleteWorkItem = (id: string, signal: AbortSignal) => requestV2<void>(workItemPath(id), { method: 'DELETE', signal })
 export const generatePatch = (id: string, requestId: string, signal: AbortSignal) =>
   requestV2<{ id: string }>(`${workItemPath(id)}/generate`, { method: 'POST', body: JSON.stringify({ requestId }), signal })
-
-export const listServers = (signal: AbortSignal) => requestV2<McpServer[]>('/mcp-servers', { signal })
-export const addServer = (draft: ServerDraft, signal: AbortSignal) =>
-  requestV2<McpServer>('/mcp-servers', { method: 'POST', body: JSON.stringify(draft), signal })
-export const removeServer = (id: string, signal: AbortSignal) =>
-  requestV2<void>(`/mcp-servers/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
-export const listResources = (id: string, signal: AbortSignal) =>
-  requestV2<McpResource[]>(`/mcp-servers/${encodeURIComponent(id)}/resources`, { signal })
-export const readResource = (id: string, uri: string, signal: AbortSignal) =>
-  requestV2<{ contents: ResourceContent[] }>(`/mcp-servers/${encodeURIComponent(id)}/resources/read`, {
-    method: 'POST', body: JSON.stringify({ uri }), signal,
-  })

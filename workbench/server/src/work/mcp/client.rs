@@ -1,230 +1,188 @@
-//! MCP Streamable HTTP：每次操作建立短会话，不追随重定向，不把对端错误正文返回给用户。
+//! Short-lived platform sessions. rmcp owns MCP initialization, dispatch and typed requests.
+mod http;
+
 use super::{Config, Error, SNAPSHOT_LIMIT, STANDARD, Store, label, policy, unavailable};
+use crate::work::mcp_client_info;
 use base64::Engine;
-use eventsource_stream::Eventsource;
-use futures_util::{StreamExt, TryStreamExt};
-use reqwest::{
-    Client, Method, RequestBuilder, Response, Url,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue},
-    redirect::Policy,
+use rmcp::{
+    RoleClient, ServiceExt,
+    model::{
+        ClientConfig, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
+        ResourceContents,
+    },
+    service::RunningService,
+    transport::{
+        StreamableHttpClientTransport, common::client_side_sse::NeverRetry,
+        streamable_http_client::StreamableHttpClientTransportConfig,
+    },
 };
 use serde_json::{Value, json};
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
-const VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
 fn rpc_err() -> Error {
     unavailable("MCP 服务连接失败或协议响应无效")
 }
 
-pub(super) struct Session {
-    http: Client,
-    url: Url,
-    headers: HeaderMap,
-    id: u64,
-}
+pub(super) struct Session(RunningService<RoleClient, ClientConfig>);
+
 impl Session {
     pub(super) async fn open(store: &Store, cfg: &Config) -> Result<Self, Error> {
-        let (url, bearer) = policy::endpoint(store, cfg)?;
-        let http = Client::builder()
-            .no_proxy()
-            .redirect(Policy::none())
-            .connect_timeout(Duration::from_secs(3))
-            .timeout(Duration::from_secs(8))
-            .build()
-            .map_err(|_| rpc_err())?;
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            ACCEPT,
-            HeaderValue::from_static("application/json, text/event-stream"),
+        let (url, authorization) = policy::endpoint(store, cfg)?;
+        let mut options = StreamableHttpClientTransportConfig::with_uri(url.as_str())
+            .max_sse_event_size(SNAPSHOT_LIMIT);
+        options.reinit_on_expired_session = false;
+        options.allow_stateless = true;
+        options.retry_config = Arc::new(NeverRetry::default());
+        let transport = StreamableHttpClientTransport::with_client(
+            http::BoundedHttp::new(url, authorization)?,
+            options,
         );
-        if let Some(token) = bearer {
-            headers.insert(AUTHORIZATION, token);
-        }
-        let mut s = Self {
-            http,
-            url,
-            headers,
-            id: 0,
-        };
-        let init=s.rpc("initialize",json!({"protocolVersion":VERSIONS[0],"capabilities":{},"clientInfo":{"name":"ursi-workbench","version":env!("CARGO_PKG_VERSION")}})).await?;
-        let ver = init["protocolVersion"]
-            .as_str()
-            .filter(|v| VERSIONS.contains(v))
-            .ok_or_else(rpc_err)?;
-        if !init["capabilities"]["resources"].is_object() {
-            return Err(unavailable("MCP 服务未声明资源能力"));
-        }
-        s.headers.insert(
-            "mcp-protocol-version",
-            HeaderValue::from_str(ver).map_err(|_| rpc_err())?,
+        let session = Self(
+            mcp_client_info(ProtocolVersion::V_2025_11_25)
+                .serve(transport)
+                .await
+                .map_err(|_| rpc_err())?,
         );
-        let ack = s
-            .request(Method::POST)
-            .json(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
-            .send()
-            .await
-            .map_err(|_| rpc_err())?;
-        if !ack.status().is_success() {
+        let supported = session.0.peer_info().is_some_and(|info| {
+            matches!(
+                info.protocol_version.as_str(),
+                "2025-11-25" | "2025-06-18" | "2025-03-26"
+            )
+        });
+        if !supported {
+            session.close().await;
             return Err(rpc_err());
         }
-        Ok(s)
+        Ok(session)
     }
-    fn request(&self, method: Method) -> RequestBuilder {
-        self.http
-            .request(method, self.url.clone())
-            .headers(self.headers.clone())
-    }
-    pub(super) async fn close(&self) {
-        if self.headers.contains_key("mcp-session-id") {
-            let _ = self
-                .request(Method::DELETE)
-                .timeout(Duration::from_secs(1))
-                .send()
-                .await;
-        }
-    }
-    async fn rpc(&mut self, method: &str, params: Value) -> Result<Value, Error> {
-        self.id += 1;
-        let resp = self
-            .request(Method::POST)
-            .json(&json!({"jsonrpc":"2.0","id":self.id,"method":method,"params":params}))
-            .send()
-            .await
-            .map_err(|_| rpc_err())?;
-        if !resp.status().is_success() {
+
+    pub(super) fn info(&self) -> Result<Value, Error> {
+        let info = self.0.peer_info().ok_or_else(rpc_err)?;
+        let implementation = info.server_info.as_ref().ok_or_else(rpc_err)?;
+        if !label(&implementation.name, 512) || !label(&implementation.version, 256) {
             return Err(rpc_err());
         }
-        if method == "initialize" {
-            if let Some(id) = resp.headers().get("mcp-session-id") {
-                if id.is_empty()
-                    || id.len() > 512
-                    || !id.as_bytes().iter().all(u8::is_ascii_graphic)
-                {
-                    return Err(rpc_err());
-                }
-                self.headers.insert("mcp-session-id", id.clone());
-            }
-        }
-        response(resp, self.id).await
+        Ok(json!({
+            "name": implementation.name,
+            "version": implementation.version,
+            "protocolVersion": info.protocol_version,
+            "capabilities": {
+                "resources": info.capabilities.resources.is_some(),
+                "tools": info.capabilities.tools.is_some(),
+                "prompts": info.capabilities.prompts.is_some(),
+            },
+        }))
     }
-    pub(super) async fn list(&mut self) -> Result<Vec<Value>, Error> {
-        let mut params = json!({});
+
+    pub(super) fn has_resources(&self) -> bool {
+        self.0
+            .peer_info()
+            .is_some_and(|info| info.capabilities.resources.is_some())
+    }
+
+    fn require_resources(&self) -> Result<(), Error> {
+        self.has_resources()
+            .then_some(())
+            .ok_or_else(|| unavailable("MCP 服务未声明资源能力"))
+    }
+
+    pub(super) async fn close(mut self) {
+        let _ = self.0.close().await;
+    }
+
+    pub(super) async fn list(&self) -> Result<Vec<Value>, Error> {
+        self.require_resources()?;
+        let mut cursor = None;
         let mut seen = HashSet::new();
+        let mut uris = HashSet::new();
         let mut rows = vec![];
-        let mut bytes = 0;
+        let mut bytes = 2;
         for _ in 0..32 {
-            let result = self.rpc("resources/list", params).await?;
-            for row in result["resources"].as_array().ok_or_else(rpc_err)? {
+            let result = self
+                .0
+                .list_resources(Some(PaginatedRequestParams::default().with_cursor(cursor)))
+                .await
+                .map_err(|_| rpc_err())?;
+            for resource in result.resources {
                 if rows.len() >= 1024 {
                     return Err(unavailable("MCP 资源列表超过上限"));
                 }
-                let mut entry = json!({"name":field(row,"name",512)?,"uri":field(row,"uri",4096)?});
-                if row.get("mimeType").is_some() {
-                    entry["mimeType"] = json!(field(row, "mimeType", 256)?);
+                if !label(&resource.name, 512)
+                    || !label(&resource.uri, 4096)
+                    || !uris.insert(resource.uri.clone())
+                {
+                    return Err(rpc_err());
                 }
-                bytes += entry.to_string().len();
+                let mut entry = json!({"name":resource.name,"uri":resource.uri});
+                if let Some(mime) = resource.mime_type {
+                    if !label(&mime, 256) {
+                        return Err(rpc_err());
+                    }
+                    entry["mimeType"] = json!(mime);
+                }
+                if let Some(description) = resource.description.filter(|text| text.len() <= 4096) {
+                    entry["description"] = json!(description);
+                }
+                bytes += entry.to_string().len() + usize::from(!rows.is_empty());
                 if bytes > SNAPSHOT_LIMIT {
                     return Err(unavailable("MCP 资源列表超过上限"));
                 }
                 rows.push(entry);
             }
-            if result.get("nextCursor").is_none() {
+            let Some(next) = result.next_cursor else {
                 return Ok(rows);
+            };
+            if !label(&next, 4096) || !seen.insert(next.clone()) {
+                return Err(unavailable("MCP 分页游标无效或重复"));
             }
-            let cursor = field(&result, "nextCursor", 4096)?;
-            if !seen.insert(cursor.to_owned()) {
-                return Err(unavailable("MCP 分页游标重复"));
-            }
-            params = json!({"cursor":cursor});
+            cursor = Some(next);
         }
         Err(unavailable("MCP 资源分页超过上限"))
     }
-    pub(super) async fn read(&mut self, uri: &str) -> Result<Value, Error> {
-        let result = self.rpc("resources/read", json!({"uri":uri})).await?;
-        let parts = result["contents"]
-            .as_array()
-            .filter(|p| p.len() <= 1024)
-            .ok_or_else(rpc_err)?;
-        let mut rows = vec![];
-        for p in parts {
-            let mut part = json!({"uri":field(p,"uri",4096)?});
-            if p.get("mimeType").is_some() {
-                part["mimeType"] = json!(field(p, "mimeType", 256)?);
-            }
-            match (p.get("text"), p.get("blob")) {
-                (Some(Value::String(text)), None) => part["text"] = json!(text),
-                (None, Some(Value::String(blob))) if STANDARD.decode(blob).is_ok() => {
-                    part["blob"] = json!(blob)
-                }
+
+    pub(super) async fn read(&self, uri: &str) -> Result<Value, Error> {
+        self.require_resources()?;
+        let result = self
+            .0
+            .read_resource(ReadResourceRequestParams::new(uri))
+            .await
+            .map_err(|_| rpc_err())?;
+        if result.contents.len() > 1024 {
+            return Err(rpc_err());
+        }
+        let mut rows = Vec::with_capacity(result.contents.len());
+        for content in result.contents {
+            let (uri, mime, mut row) = match content {
+                ResourceContents::TextResourceContents {
+                    uri,
+                    mime_type,
+                    text,
+                    ..
+                } => (uri, mime_type, json!({"text":text})),
+                ResourceContents::BlobResourceContents {
+                    uri,
+                    mime_type,
+                    blob,
+                    ..
+                } if STANDARD.decode(&blob).is_ok() => (uri, mime_type, json!({"blob":blob})),
                 _ => return Err(rpc_err()),
+            };
+            if !label(&uri, 4096) {
+                return Err(rpc_err());
             }
-            rows.push(part);
-        }
-        Ok(Value::Array(rows))
-    }
-}
-fn field<'a>(v: &'a Value, key: &str, max: usize) -> Result<&'a str, Error> {
-    v[key]
-        .as_str()
-        .filter(|s| label(s, max))
-        .ok_or_else(rpc_err)
-}
-async fn response(resp: Response, id: u64) -> Result<Value, Error> {
-    let mime = resp
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("")
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    let mut total = 0;
-    let mut stream = resp
-        .bytes_stream()
-        .map_err(|_| rpc_err())
-        .and_then(move |chunk| {
-            total += chunk.len();
-            std::future::ready(if total > SNAPSHOT_LIMIT {
-                Err(unavailable("MCP 响应超过 4 MiB"))
-            } else {
-                Ok(chunk)
-            })
-        });
-    let mut msg: Value = match mime.as_str() {
-        "application/json" => {
-            let mut buf = vec![];
-            while let Some(chunk) = stream.try_next().await? {
-                buf.extend_from_slice(&chunk);
-            }
-            serde_json::from_slice(&buf).map_err(|_| rpc_err())?
-        }
-        "text/event-stream" => {
-            let mut events = stream.eventsource();
-            loop {
-                let e = events
-                    .next()
-                    .await
-                    .ok_or_else(rpc_err)?
-                    .map_err(|_| rpc_err())?;
-                if e.event != "message" || e.data.is_empty() {
-                    continue;
+            row["uri"] = json!(uri);
+            if let Some(mime) = mime {
+                if !label(&mime, 256) {
+                    return Err(rpc_err());
                 }
-                let v: Value = serde_json::from_str(&e.data).map_err(|_| rpc_err())?;
-                if v["id"] == id {
-                    break v;
-                }
+                row["mimeType"] = json!(mime);
             }
+            rows.push(row);
         }
-        _ => return Err(rpc_err()),
-    };
-    if msg["jsonrpc"] != "2.0"
-        || msg["id"] != id
-        || msg.get("error").is_some()
-        || !msg["result"].is_object()
-    {
-        return Err(rpc_err());
+        let value = Value::Array(rows);
+        if value.to_string().len() > SNAPSHOT_LIMIT {
+            return Err(rpc_err());
+        }
+        Ok(value)
     }
-    Ok(msg["result"].take())
 }

@@ -1,17 +1,21 @@
 //! Each tool call gets an independent stdio session and never replays a possibly executed request.
+mod stdio;
+
 use super::binding::{Backend, FLOW_ENV};
-use crate::work::Error;
-use serde_json::{Value, json};
-use std::{io, path::Path, process::Stdio, time::Duration};
+use crate::work::{Error, mcp_client_info};
+use rmcp::{
+    ServiceExt,
+    model::{CallToolRequestParams, CallToolResponse, CallToolResult, ProtocolVersion},
+};
+use serde_json::Value;
+use std::{path::Path, process::Stdio, time::Duration};
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::{Child, ChildStdin, Command},
+    process::{Child, Command},
     time::timeout,
 };
 
-const VERSION: &str = "2025-06-18";
+const VERSION: ProtocolVersion = ProtocolVersion::V_2025_06_18;
 const TRUSTED_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-const LINE_LIMIT: usize = 4 * 1024 * 1024;
 const CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn unavailable() -> Error {
@@ -60,36 +64,31 @@ async fn run(
     deadline: Duration,
 ) -> Result<Value, Error> {
     let exchange = async {
-        let mut input = child.stdin.take().ok_or_else(unavailable)?;
-        let mut output = BufReader::new(child.stdout.take().ok_or_else(unavailable)?);
-        send(
-            &mut input,
-            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-                "protocolVersion":VERSION,"capabilities":{},
-                "clientInfo":{"name":"ursi-workbench","version":env!("CARGO_PKG_VERSION")}
-            }}),
-        )
-        .await?;
-        let init = response(&mut output, 1).await?;
-        if init["protocolVersion"] != VERSION
-            || !init["capabilities"]["tools"].is_object()
-            || !init["serverInfo"]["name"].is_string()
-            || !init["serverInfo"]["version"].is_string()
+        let input = child.stdin.take().ok_or_else(unavailable)?;
+        let output = child.stdout.take().ok_or_else(unavailable)?;
+        let mut session = mcp_client_info(VERSION)
+            .serve(stdio::Stdio::new(output, input))
+            .await
+            .map_err(|_| unavailable())?;
+        let init = session.peer_info().ok_or_else(unavailable)?;
+        if init.protocol_version != VERSION
+            || init.capabilities.tools.is_none()
+            || init.server_info.is_none()
         {
             return Err(unavailable());
         }
-        send(
-            &mut input,
-            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        )
-        .await?;
-        let mut request =
-            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":tool}});
-        request["params"]["arguments"] = args;
-        send(&mut input, request).await?;
-        let result = response(&mut output, 2).await?;
-        drop(input);
-        drop(output);
+        let Value::Object(args) = args else {
+            return Err(unavailable());
+        };
+        let params = CallToolRequestParams::new(tool.to_owned()).with_arguments(args);
+        let CallToolResponse::Complete(result) = session
+            .call_tool_once(params)
+            .await
+            .map_err(|_| unavailable())?
+        else {
+            return Err(unavailable());
+        };
+        session.close().await.map_err(|_| unavailable())?;
         if !child.wait().await.map_err(|_| unavailable())?.success() {
             return Err(unavailable());
         }
@@ -104,80 +103,18 @@ async fn run(
     }
 }
 
-struct Frame(Vec<u8>);
-impl io::Write for Frame {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() >= LINE_LIMIT - self.0.len() {
-            return Err(io::Error::other("frame too large"));
-        }
-        self.0.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-async fn send(input: &mut ChildStdin, message: Value) -> Result<(), Error> {
-    let mut frame = Frame(Vec::new());
-    serde_json::to_writer(&mut frame, &message).map_err(|_| unavailable())?;
-    frame.0.push(b'\n');
-    input.write_all(&frame.0).await.map_err(|_| unavailable())
-}
-
-async fn response(reader: &mut (impl AsyncBufRead + Unpin), id: u64) -> Result<Value, Error> {
-    let mut remaining = LINE_LIMIT as u64;
-    let mut buf = Vec::new();
-    for _ in 0..32 {
-        buf.clear();
-        let n = (&mut *reader)
-            .take(remaining)
-            .read_until(b'\n', &mut buf)
-            .await
-            .map_err(|_| unavailable())?;
-        if buf.last() != Some(&b'\n') {
-            return Err(unavailable());
-        }
-        remaining -= n as u64;
-        let mut msg: Value = serde_json::from_slice(&buf).map_err(|_| unavailable())?;
-        if msg["jsonrpc"] != "2.0" || msg.get("error").is_some() {
-            return Err(unavailable());
-        }
-        if msg.get("id").is_none()
-            && msg["method"]
-                .as_str()
-                .is_some_and(|s| s.starts_with("notifications/"))
-            && msg.get("result").is_none()
-            && msg.get("params").is_none_or(Value::is_object)
-        {
-            continue;
-        }
-        if msg["id"].as_u64() != Some(id)
-            || msg.get("method").is_some()
-            || !msg["result"].is_object()
-        {
-            return Err(unavailable());
-        }
-        return Ok(msg["result"].take());
-    }
-    Err(unavailable())
-}
-
-fn tool_result(mut result: Value) -> Result<Value, Error> {
-    let content = result["content"].as_array().ok_or_else(unavailable)?;
-    match result.get("isError") {
-        None | Some(Value::Bool(false)) if result["structuredContent"].is_object() => {
-            Ok(result["structuredContent"].take())
-        }
-        Some(Value::Bool(true)) => {
-            let [part] = content.as_slice() else {
+fn tool_result(result: CallToolResult) -> Result<Value, Error> {
+    match result.is_error {
+        None | Some(false) => result
+            .structured_content
+            .filter(Value::is_object)
+            .ok_or_else(unavailable),
+        Some(true) => {
+            let [part] = result.content.as_slice() else {
                 return Err(unavailable());
             };
-            if part["type"] != "text" {
-                return Err(unavailable());
-            }
-            let detail: Value =
-                serde_json::from_str(part["text"].as_str().ok_or_else(unavailable)?)
-                    .map_err(|_| unavailable())?;
+            let text = part.as_text().ok_or_else(unavailable)?;
+            let detail: Value = serde_json::from_str(&text.text).map_err(|_| unavailable())?;
             Err(match detail["code"].as_str() {
                 Some("invalid") => Error::Invalid("执行器拒绝了无效请求".into()),
                 Some("conflict") => Error::Conflict("执行器状态冲突".into()),
@@ -187,13 +124,13 @@ fn tool_result(mut result: Value) -> Result<Value, Error> {
                 _ => unavailable(),
             })
         }
-        _ => Err(unavailable()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::{fs, os::unix::fs::PermissionsExt};
 
     #[tokio::test]
@@ -244,7 +181,7 @@ assert sys.stdin.read() == ''
             let detail = json!({"code":code,"message":"private detail"});
             let result =
                 json!({"isError":true,"content":[{"type":"text","text":detail.to_string()}]});
-            let error = tool_result(result).unwrap_err();
+            let error = tool_result(serde_json::from_value(result).unwrap()).unwrap_err();
             assert!(!format!("{error:?}").contains("private detail"));
             assert!(matches!(
                 (code, error),
@@ -260,33 +197,13 @@ assert sys.stdin.read() == ''
             json!({"isError":"false","content":[],"structuredContent":{}}),
             json!({"isError":true,"content":[{"type":"text","text":"invalid"}],"structuredContent":{}}),
         ] {
-            assert!(matches!(tool_result(result), Err(Error::Unavailable(_))));
-        }
-    }
-
-    #[tokio::test]
-    async fn rejects_invalid_or_oversize_frames() {
-        for line in [
-            "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n",
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}",
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"error\":null}\n",
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[] }\n",
-            "not-json\n",
-        ] {
             assert!(matches!(
-                response(&mut line.as_bytes(), 1).await,
+                serde_json::from_value(result)
+                    .map_err(|_| unavailable())
+                    .and_then(tool_result),
                 Err(Error::Unavailable(_))
             ));
         }
-        let mut bytes = vec![b' '; LINE_LIMIT];
-        bytes.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n");
-        let mut reader = &bytes[..];
-        assert!(matches!(
-            response(&mut reader, 1).await,
-            Err(Error::Unavailable(_))
-        ));
-        assert_eq!(reader, &bytes[LINE_LIMIT..]);
-        assert!(serde_json::to_writer(Frame(Vec::new()), &"x".repeat(LINE_LIMIT)).is_err());
     }
 
     #[tokio::test]

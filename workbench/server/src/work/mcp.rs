@@ -56,6 +56,7 @@ pub(super) fn routes(store: Store) -> Router {
     Router::new()
         .route("/v2/mcp-servers", get(index).post(register))
         .route("/v2/mcp-servers/{id}", delete(remove))
+        .route("/v2/mcp-servers/{id}/inspection", get(inspect))
         .route("/v2/mcp-servers/{id}/resources", get(resources))
         .route("/v2/mcp-servers/{id}/resources/read", post(read_resource))
         .layer(DefaultBodyLimit::max(8192))
@@ -115,17 +116,37 @@ fn lookup(store: &Store, id: &str) -> Result<Config, Error> {
         serde_json::from_value(row).map_err(|_| Error::Internal("MCP 服务记录损坏".into()))
     })
 }
+async fn inspect(State(store): State<Store>, Path(id): Path<String>) -> Result<Json<Value>, Error> {
+    discover(&store, &id, true).await
+}
+
 async fn resources(
     State(store): State<Store>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Error> {
+    discover(&store, &id, false).await
+}
+
+async fn discover(store: &Store, id: &str, inspection: bool) -> Result<Json<Value>, Error> {
+    let cfg = lookup(store, id)?;
     let _permit = slot()?;
-    let cfg = lookup(&store, &id)?;
     timeout(Duration::from_secs(25), async {
-        let mut conn = client::Session::open(&store, &cfg).await?;
-        let result = conn.list().await;
+        let conn = client::Session::open(store, &cfg).await?;
+        let result = async {
+            if !inspection {
+                return conn.list().await.map(Value::Array);
+            }
+            let server = conn.info()?;
+            let resources = if conn.has_resources() {
+                conn.list().await?
+            } else {
+                vec![]
+            };
+            Ok(json!({"server":server,"resources":resources}))
+        }
+        .await;
         conn.close().await;
-        result.map(|rows| Json(Value::Array(rows)))
+        result.map(Json)
     })
     .await
     .map_err(|_| unavailable("MCP 资源发现超时"))?
@@ -146,7 +167,7 @@ async fn read_resource(
     let _permit = slot()?;
     let cfg = lookup(&store, &id)?;
     timeout(Duration::from_secs(25), async {
-        let mut conn = client::Session::open(&store, &cfg).await?;
+        let conn = client::Session::open(&store, &cfg).await?;
         let result = conn.read(&request.uri).await;
         conn.close().await;
         result.map(|contents| Json(json!({"contents":contents})))
@@ -202,7 +223,7 @@ async fn convert_inner(store: &Store, item: &Value) -> Result<Generated, Error> 
     let mut size = 0;
     for r in &recipe.resources {
         let cfg = lookup(store, &r.server_id)?;
-        let mut session = client::Session::open(store, &cfg).await?;
+        let session = client::Session::open(store, &cfg).await?;
         let result = session.read(&r.uri).await;
         session.close().await;
         let contents = result

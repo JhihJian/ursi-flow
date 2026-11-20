@@ -140,11 +140,13 @@ describe("executor MCP adapter", () => {
 		expect(await server.handle({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeUndefined();
 		const list = await server.handle({ jsonrpc: "2.0", id: 2, method: "tools/list" });
 		expect(list).toMatchObject({ result: { tools: [{ name: "executor_start" }, { name: "executor_inspect" }, { name: "executor_cancel" }] } });
-		const good = await server.handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "executor_start", arguments: { attemptId, workspaceRef: `workspace:${attemptId}`, artifactDirectoryRef: `artifacts:${attemptId}`, workInstruction: { text: "review this", encoding: "utf-8" } } } });
+		const good = await server.handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "executor_start", _meta: { progressToken: 1 }, arguments: { attemptId, workspaceRef: `workspace:${attemptId}`, artifactDirectoryRef: `artifacts:${attemptId}`, workInstruction: { text: "review this", encoding: "utf-8" } } } });
 		if (!good || typeof good !== "object" || !("result" in good)) throw new Error("missing MCP result");
 		const result = (good as { result: { structuredContent: unknown; content: [{ text: string }] } }).result;
 		expect(result.content[0].text).toBe(JSON.stringify(result.structuredContent));
 		const bad = await server.handle({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "executor_inspect", arguments: { attemptId, extra: true } } });
 		expect(bad).toMatchObject({ result: { isError: true, content: [{ text: JSON.stringify({ code: "invalid" }) }] } });
+		const invalidMeta = await server.handle({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "executor_inspect", _meta: [], arguments: { attemptId } } });
+		expect(invalidMeta).toMatchObject({ error: { code: -32602 } });
 	});
 });

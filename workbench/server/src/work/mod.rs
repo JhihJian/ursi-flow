@@ -3,6 +3,15 @@ mod catalog;
 mod directories;
 mod executor;
 mod mcp;
+
+fn mcp_client_info(version: rmcp::model::ProtocolVersion) -> rmcp::model::ClientConfig {
+    use rmcp::model::{ClientCapabilities, ClientConfig, Implementation};
+    ClientConfig::new(
+        ClientCapabilities::default(),
+        Implementation::new("ursi-workbench", env!("CARGO_PKG_VERSION")),
+    )
+    .with_protocol_version(version)
+}
 mod patches;
 mod store;
 mod worklist;

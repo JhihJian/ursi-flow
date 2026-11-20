@@ -25,7 +25,7 @@ Workbench 通过一个管理员指定的本机可执行文件启动、查询和�
 
 ## 单次调用的线协议
 
-传输为 MCP **`2025-06-18`**，stdin/stdout 使用 UTF-8 JSON-RPC 2.0，每条消息单独一行，以换行结束并及时刷新。stdout 专用于协议，客户端丢弃 stderr。会话顺序如下：
+Workbench 使用官方 Rust MCP SDK `rmcp` 建立客户端会话，传输固定为 MCP **`2025-06-18`**。stdin/stdout 使用 UTF-8 JSON-RPC 2.0，每条消息单独一行，以换行结束并及时刷新。stdout 专用于协议，客户端丢弃 stderr。`tools/call` 可携带标准 `_meta` 对象，由协议层接收，不作为执行器业务参数。会话顺序如下：
 
 1. 客户端发送 `initialize`（`id: 1`），参数含 `protocolVersion`、`capabilities: {}` 和 `clientInfo: {name,version}`。服务端回同一 ID，`result` 含同一版本、`capabilities: {tools: {}}` 和字符串 `serverInfo.name`、`serverInfo.version`。
 2. 客户端发送无 ID 的 `notifications/initialized`，服务端无需回复。随后客户端直接发 `tools/call`（`id: 2`），参数为 `{name,arguments}`。工具名固定，不依赖发现；参考实现也支持 `tools/list`。

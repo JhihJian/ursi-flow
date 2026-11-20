@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useResource } from '@/shared/hooks/use-resource'
 import { copyText } from '@/shared/lib/clipboard'
 import { notify } from '@/shared/stores/feedback'
-import { readResource, type McpResource, type ResourceContent } from '@/shared/api/work-items'
+import { readResource, type McpResource, type ResourceContent } from '@/shared/api/mcp'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -47,7 +47,7 @@ export function ResourceContentBlock({ content }: { content: ResourceContent }) 
         <ContentMeta content={content}>
           <Button size="sm" variant="ghost" icon="copy" onClick={() => { void copy(text, '已复制资源正文') }}>复制全文</Button>
         </ContentMeta>
-        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-base p-3 font-mono text-xs leading-6 text-txt">
+        <pre className="whitespace-pre-wrap break-words rounded-lg border border-line bg-base p-3 font-mono text-xs leading-6 text-txt">
           {overflow ? text.slice(0, PREVIEW_LIMIT) : text}
         </pre>
         {overflow ? <p className="text-xs text-txt3">正文较长，只显示前 16 384 个字符。复制全文可得完整内容。</p> : null}
@@ -85,7 +85,7 @@ export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPane
       <header className="flex flex-wrap items-start gap-2 border-b border-line pb-3">
         <div className="min-w-0 flex-auto">
           <h2 className="break-all text-base font-semibold text-txt">{resource.name}</h2>
-          <p className="mt-1 break-all text-xs text-txt3">{resource.uri}</p>
+          <p className="mt-1 break-all font-mono text-xs text-txt3">{resource.uri}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {resource.mimeType ? <Badge variant="outline">{resource.mimeType}</Badge> : null}
@@ -93,6 +93,9 @@ export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPane
           <Button size="sm" icon="refresh" loading={read.loading} onClick={read.reload}>重新读取</Button>
         </div>
       </header>
+      <p role="status" className="text-xs text-txt3">
+        {read.loading ? '正在读取' : read.error ? '本次读取失败' : `本次读取完成 · ${read.data.contents.length} 个内容分片`}
+      </p>
       <ResourceState
         className="border-0 bg-transparent p-0 shadow-none"
         loading={read.loading}
@@ -102,13 +105,12 @@ export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPane
         title={read.error ? undefined : '服务未返回内容'}
         description={read.error ? undefined : '资源读取成功，但没有任何可展示的内容。'}
       />
-      {!read.loading && !read.error && read.data.contents.length ? (
-        <div className="scroll-area min-h-0 flex-1 space-y-4 overflow-auto">
-          {read.data.contents.map((content, index) => (
-            <ResourceContentBlock key={`${index}-${content.uri}`} content={content} />
-          ))}
-        </div>
-      ) : null}
+      <div className="scroll-area min-h-0 flex-1 space-y-4 overflow-auto">
+        {resource.description && <p className="whitespace-pre-wrap break-words text-sm text-txt2">{resource.description}</p>}
+        {!read.loading && !read.error && read.data.contents.map((content, index) => (
+          <ResourceContentBlock key={`${index}-${content.uri}`} content={content} />
+        ))}
+      </div>
     </div>
   )
 }
