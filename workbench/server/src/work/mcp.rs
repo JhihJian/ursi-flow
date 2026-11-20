@@ -9,7 +9,7 @@ use super::{Error, Store, directories};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, State},
-    routing::{delete, get},
+    routing::{delete, get, post},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -57,6 +57,7 @@ pub(super) fn routes(store: Store) -> Router {
         .route("/v2/mcp-servers", get(index).post(register))
         .route("/v2/mcp-servers/{id}", delete(remove))
         .route("/v2/mcp-servers/{id}/resources", get(resources))
+        .route("/v2/mcp-servers/{id}/resources/read", post(read_resource))
         .layer(DefaultBodyLimit::max(8192))
         .with_state(store)
 }
@@ -128,6 +129,30 @@ async fn resources(
     })
     .await
     .map_err(|_| unavailable("MCP 资源发现超时"))?
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReadRequest {
+    uri: String,
+}
+async fn read_resource(
+    State(store): State<Store>,
+    Path(id): Path<String>,
+    Json(request): Json<ReadRequest>,
+) -> Result<Json<Value>, Error> {
+    if !label(&request.uri, 4096) {
+        return Err(invalid("资源 URI 无效"));
+    }
+    let _permit = slot()?;
+    let cfg = lookup(&store, &id)?;
+    timeout(Duration::from_secs(25), async {
+        let mut conn = client::Session::open(&store, &cfg).await?;
+        let result = conn.read(&request.uri).await;
+        conn.close().await;
+        result.map(|contents| Json(json!({"contents":contents})))
+    })
+    .await
+    .map_err(|_| unavailable("MCP 资源读取超时"))?
 }
 
 pub(super) struct Generated {

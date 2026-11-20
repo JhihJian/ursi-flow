@@ -10,6 +10,7 @@
 | `/work-patches`、`/config-patches` | 新建工作包并整理文件，或编辑配置包中的提示词、Skills 和 MCP 配置。 |
 | `/resources`、`/executors` | 发布资源与执行器定义，查看历史修订及固定版本的资源依赖。 |
 | `/mcp-servers` | 登记获准的 MCP 服务并发现资源，供工作项配方选择。 |
+| `/mcp-servers/:id` | 浏览单个服务的资源：左栏按名称或 URI 搜索，右栏读取并预览原文，选中资源记在 `uri` 查询参数里。 |
 | `/flows`、`/runs`、`/flow-config` | Flow 工具，保留原有深链。 |
 | `/chat` | 本地演示对话，不使用令牌也不调用模型。 |
 

@@ -23,8 +23,11 @@
 | `POST /api/v2/mcp-servers` | 输入 `{name,url,credentialEnv?}`，返回含 `id` 的服务记录。只登记配置，连接检查使用资源发现接口。 |
 | `DELETE /api/v2/mcp-servers/{id}` | 删除登记，返回 `{id}`。旧工作包保留生成来源。 |
 | `GET /api/v2/mcp-servers/{id}/resources` | 新建会话并翻页，返回 `[{name,uri,mimeType?}]`。 |
+| `POST /api/v2/mcp-servers/{id}/resources/read` | 输入 `{uri}`，返回 `{contents:[{uri,mimeType?,text|blob}]}`。只用于界面预览，不写工作项或目录。 |
 
-连接采用 MCP Streamable HTTP，协商 `2025-11-25`、`2025-06-18` 或 `2025-03-26`。发送初始化完成通知，此后携带协商版本和服务端给出的会话 ID。资源发现最多 32 页、1024 条，最多等待 25 秒。发现或转换同时最多 4 个请求。远端 JSON-RPC 错误和脚本诊断不回显原文。
+连接采用 MCP Streamable HTTP，协商 `2025-11-25`、`2025-06-18` 或 `2025-03-26`。发送初始化完成通知，此后携带协商版本和服务端给出的会话 ID。资源发现最多 32 页、1024 条，最多等待 25 秒。发现、读取预览和转换合计最多 4 个并发请求。远端 JSON-RPC 错误和脚本诊断不回显原文。
+
+资源预览复用同一条授权与限额链路：每次预览新建会话、只发 `resources/read`，响应仍受 4 MiB 上限约束。界面把 `text` 按原文展示，不解释 Markdown 或 HTML；`blob` 只显示大小。预览不是生成的前置步骤，生成仍会自行重新读取。
 
 ## Python 输入与结果
 

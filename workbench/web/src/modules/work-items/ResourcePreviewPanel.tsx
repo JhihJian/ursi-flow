@@ -1,0 +1,116 @@
+import type { ReactNode } from 'react'
+import { useResource } from '@/shared/hooks/use-resource'
+import { notify } from '@/shared/stores/feedback'
+import { readResource, type McpResource, type ResourceContent } from '@/shared/api/work-items'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { ResourceState } from '@/shared/ui/resource-state'
+
+/** 页面只显示正文前 16 KiB 字符，完整内容仍可复制。 */
+const PREVIEW_LIMIT = 16_384
+
+function blobBytes(blob: string): number {
+  const padding = blob.endsWith('==') ? 2 : blob.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((blob.length * 3) / 4) - padding)
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} 字节`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`
+  return `${(size / 1024 / 1024).toFixed(1)} MiB`
+}
+
+async function copyText(text: string, message: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    notify(message)
+  } catch {
+    notify('浏览器未允许写入剪贴板', 'error')
+  }
+}
+
+function ContentMeta({ content, children }: { content: ResourceContent; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-txt3">
+      <span className="min-w-0 break-all">{content.uri}</span>
+      {content.mimeType ? <Badge variant="outline">{content.mimeType}</Badge> : null}
+      {children}
+    </div>
+  )
+}
+
+/** 单个内容分片：文本按原文显示，二进制只说明大小，不解析也不渲染 HTML。 */
+export function ResourceContentBlock({ content }: { content: ResourceContent }) {
+  const text = content.text
+  if (text !== undefined) {
+    const overflow = text.length > PREVIEW_LIMIT
+    return (
+      <div className="space-y-2">
+        <ContentMeta content={content}>
+          <Button size="sm" variant="ghost" icon="copy" onClick={() => { void copyText(text, '已复制资源正文') }}>复制全文</Button>
+        </ContentMeta>
+        <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-base p-3 font-mono text-xs leading-6 text-txt">
+          {overflow ? text.slice(0, PREVIEW_LIMIT) : text}
+        </pre>
+        {overflow ? <p className="text-xs text-txt3">正文较长，只显示前 16 384 个字符。复制全文可得完整内容。</p> : null}
+      </div>
+    )
+  }
+  if (content.blob !== undefined) {
+    return (
+      <div className="space-y-2">
+        <ContentMeta content={content} />
+        <p className="rounded-lg border border-line bg-base p-3 text-sm leading-6 text-txt2">
+          二进制内容，共 {formatBytes(blobBytes(content.blob))}，不在页面预览。
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      <ContentMeta content={content} />
+      <p className="rounded-lg border border-line bg-base p-3 text-sm leading-6 text-txt2">这项内容既没有文本也没有二进制正文，无法预览。</p>
+    </div>
+  )
+}
+
+export interface ResourcePreviewPanelProps {
+  serverId: string
+  resource: McpResource
+}
+
+/** 右侧预览：每次选中资源都重新读取一次，读取失败时保留失败原因并允许重试。 */
+export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPanelProps) {
+  const read = useResource(signal => readResource(serverId, resource.uri, signal), { contents: [] })
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      <header className="flex flex-wrap items-start gap-2 border-b border-line pb-3">
+        <div className="min-w-0 flex-auto">
+          <h2 className="break-all text-base font-semibold text-txt">{resource.name}</h2>
+          <p className="mt-1 break-all text-xs text-txt3">{resource.uri}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {resource.mimeType ? <Badge variant="outline">{resource.mimeType}</Badge> : null}
+          <Button size="sm" icon="copy" onClick={() => { void copyText(resource.uri, '已复制资源 URI') }}>复制 URI</Button>
+          <Button size="sm" icon="refresh" loading={read.loading} onClick={read.reload}>重新读取</Button>
+        </div>
+      </header>
+      <ResourceState
+        className="border-0 bg-transparent p-0 shadow-none"
+        loading={read.loading}
+        error={read.error}
+        onRetry={read.reload}
+        empty={!read.data.contents.length}
+        title={read.error ? undefined : '服务未返回内容'}
+        description={read.error ? undefined : '资源读取成功，但没有任何可展示的内容。'}
+      />
+      {!read.loading && !read.error && read.data.contents.length ? (
+        <div className="scroll-area min-h-0 flex-1 space-y-4 overflow-auto">
+          {read.data.contents.map((content, index) => (
+            <ResourceContentBlock key={`${index}-${content.uri}`} content={content} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}

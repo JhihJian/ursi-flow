@@ -214,6 +214,27 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
     http.abort();
 }
 #[tokio::test]
+async fn api_reads_one_resource_for_preview_and_hides_remote_errors() {
+    let f = Fixture::new().await;
+    let id = f.add().await;
+    let read = |uri: &str| {
+        read_resource(
+            State(f.store.clone()),
+            Path(id.clone()),
+            Json(ReadRequest { uri: uri.into() }),
+        )
+    };
+    assert_eq!(
+        read("memo:a").await.unwrap().0,
+        json!({"contents":[{"uri":"memo:a","text":"来自服务"},{"uri":"memo:a","blob":"AP8="}]})
+    );
+    let remote = read("memo:missing").await.unwrap_err();
+    assert!(matches!(remote, Error::Unavailable(_)));
+    assert!(!format!("{remote:?}").contains("not found"));
+    assert!(read("  ").await.is_err());
+}
+
+#[tokio::test]
 async fn admin_grants_bind_secret_to_exact_endpoint() {
     let f = Fixture::new().await;
     let mut cfg = f.cfg();
