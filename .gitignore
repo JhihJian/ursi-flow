@@ -1,6 +1,7 @@
 target/
 /data/
-/workbench/web/node_modules
+/workbench/data/
+node_modules
 /workbench/web/dist/
 /workbench/web/coverage/
 /workbench/web/test-results/
