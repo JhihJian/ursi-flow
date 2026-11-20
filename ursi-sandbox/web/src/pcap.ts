@@ -2,10 +2,24 @@ export const PREVIEW_LIMIT = 500
 // Observer's per-record capture limit. Never allocate based on an untrusted length.
 const MAX_CAPTURE = 262144
 
+const BYTE_PREVIEW = 512
+const MAX_HTTP_LINE = 8192
+
+interface PacketField {
+  label: string
+  value: string
+  start: number
+  length: number
+}
+
 export interface PacketRow {
   number: number
   offset: number
   time: string
+  relativeTime: number
+  summary: string
+  bytes: Uint8Array
+  layers: { name: string; fields: PacketField[] }[]
   captured: number
   original: number
   ifindex?: number
@@ -60,7 +74,49 @@ function ipv6(v: DataView, at: number) {
         words.slice(start + length).join(':')
 }
 
+function field(
+  label: string,
+  value: number | string,
+  start: number,
+  length: number,
+): PacketField {
+  return { label, value: String(value), start, length }
+}
+const hex16 = (n: number) => `0x${n.toString(16).padStart(4, '0')}`
+const flagNames = ['FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'ECE', 'CWR', 'AE']
+
+// Only inspect a bounded, printable start-line terminated inside this TCP payload.
+function httpStartLine(v: DataView, start: number, end: number) {
+  const limit = Math.min(end, start + MAX_HTTP_LINE)
+  for (let i = start; i < limit; i++) {
+    const byte = v.getUint8(i)
+    if (byte === 13 && i + 1 < limit && v.getUint8(i + 1) === 10) {
+      const line = new TextDecoder().decode(
+        new Uint8Array(v.buffer, v.byteOffset + start, i - start),
+      )
+      if (/^HTTP\/1\.\d [1-5]\d\d .*$/.test(line))
+        return field('状态行', line, start, i - start)
+      const request = /^([\w!#$%&'*+.^`|~-]+) (\S+) HTTP\/1\.\d$/.exec(line)
+      if (!request) return
+      const [, method, target] = request
+      if (!/^(?:[\w.!$&'()*+,;=:@/?~\[\]-]|%[\da-fA-F]{2})+$/.test(target))
+        return
+      const validTarget =
+        method === 'CONNECT'
+          ? /^(?:\[[\da-fA-F:.]+\]|[\w.-]+):\d+$/.test(target)
+          : target.startsWith('/') ||
+            (/^[a-z][a-z\d+.-]*:/i.test(target) && URL.canParse(target)) ||
+            (method === 'OPTIONS' && target === '*')
+      if (validTarget) return field('请求行', line, start, i - start)
+      return
+    }
+    if (byte < 0x20 || byte > 0x7e) return
+  }
+}
+
 function decodePacket(row: PacketRow, v: DataView) {
+  const layer = (name: string, ...fields: PacketField[]) =>
+    row.layers.push({ name, fields })
   const size = v.byteLength
   if (size < 20) {
     row.note = 'SLL2 首部不完整'
@@ -71,6 +127,13 @@ function decodePacket(row: PacketRow, v: DataView) {
   row.direction = directions[row.packetType] ?? `包类型 ${row.packetType}`
   let ether = v.getUint16(0),
     at = 20
+  layer(
+    'SLL2',
+    field('EtherType', hex16(ether), 0, 2),
+    field('接口索引', row.ifindex, 4, 4),
+    field('硬件类型', v.getUint16(8), 8, 2),
+    field('包类型', `${row.packetType} (${row.direction})`, 10, 1),
+  )
   for (let tags = 0; ether === 0x8100 || ether === 0x88a8; tags++) {
     row.protocol = 'VLAN'
     if (tags === 2 || size < at + 4) {
@@ -78,6 +141,11 @@ function decodePacket(row: PacketRow, v: DataView) {
       return
     }
     ether = v.getUint16(at + 2)
+    layer(
+      'VLAN',
+      field('VLAN ID', v.getUint16(at) & 0xfff, at, 2),
+      field('EtherType', hex16(ether), at + 2, 2),
+    )
     at += 4
   }
   let next: number, end: number
@@ -97,7 +165,18 @@ function decodePacket(row: PacketRow, v: DataView) {
     row.destination = ipv4(v, at + 16)
     next = v.getUint8(at + 9)
     end = Math.min(at + total, size)
-    if (v.getUint16(at + 6) & 0x3fff) {
+    const fragment = v.getUint16(at + 6)
+    layer(
+      'IPv4',
+      field('首部长度', ihl, at, 1),
+      field('总长度', total, at + 2, 2),
+      field('标志和片偏移', hex16(fragment), at + 6, 2),
+      field('TTL', v.getUint8(at + 8), at + 8, 1),
+      field('协议', next, at + 9, 1),
+      field('源地址', row.source, at + 12, 4),
+      field('目的地址', row.destination, at + 16, 4),
+    )
+    if (fragment & 0x3fff) {
       row.protocol = ipProtocols[next] ?? `IP 协议 ${next}`
       row.note = 'IPv4 分片，未解析传输层'
       return
@@ -112,7 +191,16 @@ function decodePacket(row: PacketRow, v: DataView) {
     row.source = ipv6(v, at + 8)
     row.destination = ipv6(v, at + 24)
     next = v.getUint8(at + 6)
-    end = Math.min(at + 40 + v.getUint16(at + 4), size)
+    const payloadLength = v.getUint16(at + 4)
+    end = Math.min(at + 40 + payloadLength, size)
+    layer(
+      'IPv6',
+      field('载荷长度', payloadLength, at + 4, 2),
+      field('下一首部', next, at + 6, 1),
+      field('跳数限制', v.getUint8(at + 7), at + 7, 1),
+      field('源地址', row.source, at + 8, 16),
+      field('目的地址', row.destination, at + 24, 16),
+    )
     at += 40
     for (let count = 0; [0, 43, 60, 51].includes(next); count++) {
       if (count === 8 || at + 2 > end) {
@@ -127,7 +215,13 @@ function decodePacket(row: PacketRow, v: DataView) {
         row.note = 'IPv6 扩展首部长度无效'
         return
       }
+      const extension = next
       next = v.getUint8(at)
+      layer(
+        `IPv6 扩展首部 ${extension}`,
+        field('下一首部', next, at, 1),
+        field('首部长度', len, at + 1, 1),
+      )
       at += len
     }
     if (next === 44) {
@@ -146,6 +240,13 @@ function decodePacket(row: PacketRow, v: DataView) {
       if (at + 8 + 2 * (hardware + 4) <= size) {
         row.source = ipv4(v, at + 8 + hardware)
         row.destination = ipv4(v, at + 12 + 2 * hardware)
+        layer(
+          'ARP',
+          field('操作码', v.getUint16(at + 6), at + 6, 2),
+          field('发送方 IP', row.source, at + 8 + hardware, 4),
+          field('目标 IP', row.destination, at + 12 + 2 * hardware, 4),
+        )
+        row.summary = `ARP ${row.source} → ${row.destination}`
       }
     }
     return
@@ -159,17 +260,58 @@ function decodePacket(row: PacketRow, v: DataView) {
     row.note = '传输层首部不完整'
     return
   }
+  const source = v.getUint16(at),
+    destination = v.getUint16(at + 2)
+  const ports = [
+    field('源端口', source, at, 2),
+    field('目的端口', destination, at + 2, 2),
+  ]
   if (next === 6) {
     const len = (v.getUint8(at + 12) >>> 4) * 4
     if (len < 20 || at + len > end) {
       row.note = 'TCP 首部长度无效或不完整'
       return
     }
-  } else if (v.getUint16(at + 4) < 8) {
-    row.note = 'UDP 长度无效'
-    return
+    const seq = v.getUint32(at + 4),
+      ack = v.getUint32(at + 8)
+    const bits = v.getUint16(at + 12) & 0x1ff
+    const flags = flagNames.filter((_, i) => bits & (1 << i)).join(', ') || '无'
+    const payload = at + len,
+      length = end - payload
+    layer(
+      'TCP',
+      ...ports,
+      field('序列号', seq, at + 4, 4),
+      field('确认号', ack, at + 8, 4),
+      field('首部长度', len, at + 12, 1),
+      field('Flags', flags, at + 12, 2),
+      field('窗口', v.getUint16(at + 14), at + 14, 2),
+      ...(length ? [field('已捕获载荷', `${length} B`, payload, length)] : []),
+    )
+    row.summary = `${source} → ${destination} [${flags}] Seq=${seq}${bits & 16 ? ` Ack=${ack}` : ''} Len=${length}`
+    const line = httpStartLine(v, payload, end)
+    if (line) {
+      layer('HTTP', line)
+      row.protocol = 'HTTP'
+      row.summary = line.value
+    }
+  } else {
+    const len = v.getUint16(at + 4)
+    if (len < 8) {
+      row.note = 'UDP 长度无效'
+      return
+    }
+    const length = Math.min(len, end - at) - 8
+    layer(
+      'UDP',
+      ...ports,
+      field('长度', len, at + 4, 2),
+      field('校验和', hex16(v.getUint16(at + 6)), at + 6, 2),
+      ...(length ? [field('已捕获载荷', `${length} B`, at + 8, length)] : []),
+    )
+    row.summary = `${source} → ${destination} UDP Len=${length}`
   }
-  row.ports = [v.getUint16(at), v.getUint16(at + 2)]
+  row.ports = [source, destination]
 }
 
 export async function readPcap(
@@ -180,7 +322,7 @@ export async function readPcap(
     cursor = 0,
     offset = 0,
     eof = false
-  // Only the current network chunk and one reusable record buffer are retained.
+  // Parse into one reusable record buffer; retain only each row's small byte preview.
   async function fill(target: Uint8Array, wanted: number) {
     let used = 0
     while (used < wanted) {
@@ -225,6 +367,8 @@ export async function readPcap(
     const snaplen = h.getUint32(16, little)
     if (!snaplen) throw new Error('无效的 PCAP snaplen。')
     const body = new Uint8Array(Math.min(MAX_CAPTURE, snaplen))
+    let first: { sec: number; fraction: number } | undefined
+    const units = nano ? 1e9 : 1e6
     while (rows.length < PREVIEW_LIMIT) {
       const start = offset,
         n = await fill(header, 16)
@@ -247,6 +391,7 @@ export async function readPcap(
       }
       if ((await fill(body, captured)) < captured)
         return truncated(`第 ${rows.length + 1} 条记录`)
+      first ??= { sec, fraction }
       const time =
         new Date(sec * 1000).toISOString().slice(0, 19) +
         '.' +
@@ -256,6 +401,11 @@ export async function readPcap(
         number: rows.length + 1,
         offset: start,
         time,
+        relativeTime:
+          ((sec - first.sec) * units + (fraction - first.fraction)) / units,
+        summary: '',
+        bytes: body.slice(0, Math.min(captured, BYTE_PREVIEW)),
+        layers: [],
         captured,
         original,
         protocol: '未知',
@@ -264,6 +414,7 @@ export async function readPcap(
         destination: '',
       }
       decodePacket(row, new DataView(body.buffer, 0, captured))
+      if (!row.summary) row.summary = row.note ?? row.protocol
       rows.push(row)
     }
     return { rows, end: 'limit' }

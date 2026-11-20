@@ -24,11 +24,12 @@ function record(
     original = captured,
     little = true,
     fraction = 12345,
+    sec = 1,
   } = {},
 ) {
   const h = Buffer.alloc(16),
     view = new DataView(h.buffer)
-  for (const [i, n] of [1, fraction, captured, original].entries())
+  for (const [i, n] of [sec, fraction, captured, original].entries())
     view.setUint32(i * 4, n, little)
   return Buffer.concat([h, body])
 }
@@ -89,22 +90,40 @@ test('跨块读取大小端及两种时间精度，独立解释 SLL2 网络字�
         1,
       )
       assert.equal(end, 'eof')
-      assert.deepEqual(rows, [
-        {
-          number: 1,
-          offset: 24,
-          captured: 52,
-          original: 100,
-          time: `1970-01-01T00:00:01.${nano ? '000012345' : '012345'}Z`,
-          ifindex: 256,
-          packetType: 4,
-          direction: '发出',
-          source: '192.0.2.1',
-          destination: '192.0.2.2',
-          protocol: 'UDP',
-          ports: [1024, 443],
-        },
-      ])
+      assert.equal(rows.length, 1)
+      const { layers, ...row } = rows[0]
+      assert.deepEqual(
+        layers.map((l) => l.name),
+        ['SLL2', 'VLAN', 'IPv4', 'UDP'],
+      )
+      for (const [i, label, value, start, length] of [
+        [0, '接口索引', '256', 4, 4],
+        [1, 'EtherType', '0x0800', 22, 2],
+        [2, '源地址', '192.0.2.1', 36, 4],
+        [3, '目的端口', '443', 46, 2],
+      ]) {
+        assert.deepEqual(
+          layers[i].fields.find((f) => f.label === label),
+          { label, value, start, length },
+        )
+      }
+      assert.deepEqual(row, {
+        number: 1,
+        relativeTime: 0,
+        bytes: Uint8Array.from(frame),
+        summary: '1024 → 443 UDP Len=0',
+        offset: 24,
+        captured: 52,
+        original: 100,
+        time: `1970-01-01T00:00:01.${nano ? '000012345' : '012345'}Z`,
+        ifindex: 256,
+        packetType: 4,
+        direction: '发出',
+        source: '192.0.2.1',
+        destination: '192.0.2.2',
+        protocol: 'UDP',
+        ports: [1024, 443],
+      })
     }
 })
 
@@ -120,6 +139,7 @@ test('IPv4 首片和非首片、IP 总长之后的填充和畸形 IHL 均不产�
   )
   assert.equal(rows.length, 5)
   assert.ok(rows.every((r) => !r.ports && r.note))
+  assert.ok(rows.every((r) => !r.layers.some((l) => l.name === 'UDP')))
   assert.match(rows[0].note, /分片/)
   assert.match(rows[1].note, /分片/)
 })
@@ -163,6 +183,155 @@ test('未知协议、包类型和不完整的内层首部不吞掉后续记录�
     rows.map((r) => r.direction),
     ['包类型 99', '未知', '本机接收', '发出'],
   )
+})
+
+test('仅保留独立的前 512 字节，相对时间支持跨秒和纳秒精度', async () => {
+  const a = Buffer.alloc(600, 0xab),
+    b = Buffer.alloc(700, 0xcd)
+  for (const nano of [true, false]) {
+    const units = nano ? 1e9 : 1e6
+    const { rows } = await parse(
+      Buffer.concat([
+        header({ nano }),
+        record(a, { sec: 1700000000, fraction: units - 1 }),
+        record(b, { sec: 1700000001, fraction: 0 }),
+        record(a.subarray(0, 3), { sec: 1700000000, fraction: units - 3 }),
+      ]),
+    )
+    assert.deepEqual(
+      rows.map((r) => r.relativeTime),
+      [0, 1 / units, -2 / units],
+    )
+    assert.deepEqual(
+      rows.map((r) => r.bytes),
+      [a, b, a.subarray(0, 3)].map((buf) =>
+        Uint8Array.from(buf.subarray(0, 512)),
+      ),
+    )
+    assert.equal(rows[0].bytes.buffer.byteLength, 512)
+    assert.notEqual(rows[0].bytes.buffer, rows[1].bytes.buffer)
+    assert.deepEqual(rows[2].layers, [])
+  }
+})
+
+function tcp(payload, port = 4321) {
+  const header = Buffer.alloc(24)
+  header.writeUInt16BE(9876)
+  header.writeUInt16BE(port, 2)
+  header.writeUInt32BE(0xf1234567, 4)
+  header.writeUInt32BE(17, 8)
+  header[12] = 0x60 // includes four bytes of options
+  header[13] = 0x18
+  return Buffer.concat([header, Buffer.from(payload)])
+}
+
+test('非标准端口也可识别完整可显示的请求行、响应行；偏移越过扩展首部和 TCP 选项', async () => {
+  for (const line of [
+    'GET /path?q=1 HTTP/1.1',
+    'HTTP/1.0 404 Not Found',
+    'OPTIONS * HTTP/1.1',
+    'CONNECT example.test:443 HTTP/1.1',
+  ]) {
+    const ext = Buffer.from([6, 0, 0, 0, 0, 0, 0, 0])
+    const frame = ip6(
+      60,
+      Buffer.concat([ext, tcp(`${line}\r\nX-Test: 1\r\n\r\n`)]),
+    )
+    const {
+      rows: [row],
+    } = await packets(frame)
+    assert.equal(row.protocol, 'HTTP')
+    assert.equal(row.summary, line)
+    assert.deepEqual(row.ports, [9876, 4321])
+    const [sll2, ip, extension, transport, http] = row.layers
+    assert.deepEqual(
+      [sll2.name, ip.name, extension.name, transport.name, http.name],
+      ['SLL2', 'IPv6', 'IPv6 扩展首部 60', 'TCP', 'HTTP'],
+    )
+    assert.deepEqual(
+      transport.fields.find((f) => f.label === 'Flags'),
+      { label: 'Flags', value: 'PSH, ACK', start: 80, length: 2 },
+    )
+    assert.deepEqual(http.fields[0], {
+      label: line.startsWith('HTTP/') ? '状态行' : '请求行',
+      value: line,
+      start: 92,
+      length: line.length,
+    })
+    assert.equal(frame.toString('ascii', 92, 92 + line.length), line)
+  }
+})
+
+test('截短、跨包、填充、密文及非 HTTP 首行均保留 TCP 摘要，即便端口为 80', async () => {
+  const complete = tcp('GET / HTTP/1.1\r\n', 80)
+  const frames = [
+    ip6(6, complete, complete.length - 1), // LF is outside IP payload
+    ip6(6, complete.subarray(0, -1), complete.length), // LF not captured
+    ip6(6, tcp('\n', 80)),
+    ...[
+      '',
+      'HTTP/1.1 200 OK\n',
+      'GET / HTTP/1.1',
+      'GET / HTTP/2.0\r\n',
+      'GET /two words HTTP/1.1\r\n',
+      'HTTP/1.1 OK\r\n',
+      'GET /\t HTTP/1.1\r\n',
+      'GET /é HTTP/1.1\r\n',
+      'HTTP/1.1 200 bad\x7f\r\n',
+      'x\r\nGET / HTTP/1.1\r\n',
+      '\x16\x03\x03GET / HTTP/1.1\r\n',
+    ].map((p) => ip6(6, tcp(p, 80))),
+  ]
+  const { rows } = await packets(...frames)
+  assert.equal(rows.length, frames.length)
+  for (const row of rows) {
+    assert.equal(row.protocol, 'TCP')
+    assert.equal(row.layers.at(-1).name, 'TCP')
+    assert.match(
+      row.summary,
+      /^9876 → 80 \[PSH, ACK\] Seq=4045620583 Ack=17 Len=/,
+    )
+  }
+  assert.equal(rows[0].summary, rows[1].summary)
+})
+
+test('逐字节截短捕获时只描述完整首部，字段范围不超出帧', async () => {
+  const request = 'GET / HTTP/1.1\r\n'
+  const transport = tcp(request)
+  const ip = ip4({ ihl: 6, proto: 6, total: 24 + transport.length }).subarray(
+    0,
+    24,
+  )
+  const frame = sll(
+    0x8100,
+    Buffer.concat([Buffer.from([0, 1, 8, 0]), ip, transport]),
+  )
+  const { rows } = await packets(
+    ...Array.from({ length: frame.length + 1 }, (_, n) => frame.subarray(0, n)),
+  )
+  assert.equal(rows.length, frame.length + 1)
+  for (const [n, row] of rows.entries()) {
+    const expected = [
+      [20, 'SLL2'],
+      [24, 'VLAN'],
+      [48, 'IPv4'],
+      [72, 'TCP'],
+      [frame.length, 'HTTP'],
+    ]
+    assert.deepEqual(
+      row.layers.map((l) => l.name),
+      expected.filter(([end]) => end <= n).map(([, name]) => name),
+      `cut ${n}`,
+    )
+    for (const { fields } of row.layers) {
+      assert.ok(
+        fields.every(
+          (f) => f.start >= 0 && f.length > 0 && f.start + f.length <= n,
+        ),
+        `cut ${n}`,
+      )
+    }
+  }
 })
 
 test('每个可能的 EOF 位置：区分文件头、空段、完整前缀和截尾，并报告偏移', async () => {
