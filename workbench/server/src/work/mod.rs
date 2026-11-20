@@ -1,6 +1,7 @@
 //! 工作清单、包、资源定义及其持久化。
 mod catalog;
 mod directories;
+mod executor;
 mod mcp;
 mod patches;
 mod store;
@@ -42,6 +43,7 @@ pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     Ok(catalog::routes(store.clone())
         .merge(worklist::routes(store.clone()))
         .merge(mcp::routes(store.clone()))
+        .merge(executor::routes(store.clone()))
         .merge(directories::routes(store.clone())?)
         .merge(patches::routes(store)))
 }

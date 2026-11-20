@@ -5,6 +5,8 @@ references:
   - PATCH-STUDIO.md
   - WORK-LIST-DESIGN.md
   - EXECUTOR-DESIGN.md
+  - EXECUTOR-MCP.md
+  - FLOW-EXECUTOR-DESIGN.md
 ---
 
 # 工作台
@@ -33,4 +35,11 @@ references:
 #### 验收
 
 - 从工作台 Cargo 工作区构建 Server，从 `web/` 构建界面。浏览器可通过真实服务发布提示词及引用它的执行器，打开历史执行器修订后仍能查到当时引用的资源版本。
-- 执行器目录只管理定义。[通用执行器提案](EXECUTOR-DESIGN.md)描述未来如何调用这些定义。
+- 执行器目录只管理定义，发布定义不会启动运行。[通用执行器设计](EXECUTOR-DESIGN.md)区分了现行尝试接口与后续定义绑定方案。
+
+### 通过 MCP 执行一次尝试
+
+#### 验收
+
+- 配置管理员固定的执行器后，已认证的调用方可按小写 UUID 提交指令和可选工作包。同 ID 重复提交相同输入只对应一次运行，改动输入返回 409。
+- 可按原 ID 查询或取消。启动回执丢失后，GET 可查回原尝试，不发起运行。确认终态并收集输出后，可通过只读目录列出和读取文件。见[模块规格](server/src/work/executor/SPEC.md)与[执行器 MCP 契约](EXECUTOR-MCP.md)。

@@ -53,3 +53,15 @@ Daemon 将固定修订的启动与目录发布串行处理。首次启动核对�
 - `flow.list` 只返回标识；`flow.summaries` 一次返回当前修订下每个包的名称、说明、节点数、并行数、变量数与修订。单个包解析失败只在该条带错误原因，不影响其他条目。
 - 已发布的包可从 `versions/v1/<Flow ID>/` 读取，`v1` 表示 Flow 规范格式版本。校验通过后才原子切换当前目录。历史修订存放在 `.revisions/<修订>/`，供 Run 固定读取和编辑冲突检查。
 - 发布的包包含 `FLOW.md` 和按包内相对路径提供的文本附件。读取包保留文件路径与内容，路径不能越过包根，文件与目录不能重名。保存附件不改变运行时对 `references/` 和 `scripts/` 的资源解析规则。
+
+### Flow Executor MCP stdio adapter
+
+Flow Runtime 提供固定 MCP `2025-06-18` stdio JSONL adapter，作为 Workbench 的本机执行器。adapter 只暴露 `executor_start`、`executor_inspect`、`executor_cancel`，复用 daemon 的 `run.startPinned`、`run.get` 和 `run.stop`，不复制运行状态机。管理员通过 `URSI_EXECUTOR_ROOT`、`URSI_EXECUTOR_FLOW`、`URSI_EXECUTOR_FLOW_REVISION` 和 `URSI_FLOW_HOME` 固定执行边界。
+
+#### 验收
+
+- `executor_start` 严格接受 `{attemptId, workspaceRef, artifactDirectoryRef, workInstruction}`，其中 attempt ID 为小写标准 UUID，两个引用分别绑定同一 ID，指令编码固定为 `utf-8`；inspect/cancel 严格只接受 `{attemptId}`。
+- 成功工具结果的 `structuredContent` 与唯一 JSON text 内容相同，包含 `attemptId`、`status`、`artifactDirectoryRef`，并可包含区分后端的 `backendRunRef`；状态只使用 `running`、`succeeded`、`failed`、`cancelled`、`unverified`。
+- 工具失败使用 `isError: true`，text 只包含允许的 JSON 错误码 `invalid`、`conflict`、`not_found`、`busy` 或 `unavailable`，不回传路径、凭据或 daemon 原始错误。
+- adapter 将 `<URSI_EXECUTOR_ROOT>/<attemptId>/workspace` 作为 cwd，并使用其中的 `artifacts/`；调用 inspect/cancel 前确认真实目录、拒绝符号链接、验证当前用户所有权以及 daemon job 的 ID、Flow、revision、cwd 和任务身份。revision 或部署配置漂移时拒绝操作且不影响其他 Run。
+- stdio 生命周期遵循 MCP `initialize`、`notifications/initialized`、`tools/list`、`tools/call`，每个请求一行 JSON，每个响应一行 JSON；解析错误、协议错误和 stdin 关闭都能干净处理。

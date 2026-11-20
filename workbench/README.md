@@ -36,6 +36,8 @@ npm run dev
 
 在 `/resources` 发布资源，在 `/executors` 发布引用指定提示词或技能修订的执行器。两种目录都能打开历史修订。发布执行器只保存定义，不会启动运行。
 
+执行一次任务走独立的 HTTP 入口：调用方生成小写 UUID，向 `PUT /api/v2/executor-attempts/{attemptId}` 提交指令，可附工作包。回执丢失用同一路径 GET 查回；取得终态的 `artifactDirectoryId` 后，通过目录接口读报告。首版使用管理员固定的单个 stdio MCP 程序，不从「平台 MCP 服务」选择执行器。部署变量、请求示例和取消语义见[执行器 MCP 契约](EXECUTOR-MCP.md)；接入固定修订的 Flow 见[Flow 执行器设计](FLOW-EXECUTOR-DESIGN.md)。
+
 ## 检查
 
 ```sh

@@ -9,11 +9,13 @@
  },
  "exports": {
   ".": "./dist/index.js",
-  "./core": "./dist/core/index.js"
+  "./core": "./dist/core/index.js",
+  "./mcp": "./dist/integrations/mcp/index.js"
  },
  "bin": {
   "ursi-flow-local": "dist/cli.js",
-  "ursi-flowd": "dist/machine/daemon.js"
+  "ursi-flowd": "dist/machine/daemon.js",
+  "ursi-flow-executor-mcp": "dist/integrations/mcp/stdio.js"
  },
  "files": [
   "dist",

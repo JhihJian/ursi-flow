@@ -194,6 +194,13 @@ fn records_mut(db: &mut Value) -> Result<&mut Map<String, Value>, Error> {
         .ok_or_else(corrupt)
 }
 
+/// 在 allocate 的登记回调中冻结新目录，使首次可见的状态即为只读。
+pub(super) fn freeze(db: &mut Value, id: &str) -> Result<(), Error> {
+    let record = records_mut(db)?.get_mut(id).ok_or_else(corrupt)?;
+    record["state"] = json!(Mode::Frozen);
+    Ok(())
+}
+
 /// 目录根在磁盘上的位置，只用服务端生成的标识拼装。
 fn base(store: &Store) -> Result<PathBuf, Error> {
     Ok(fs::root(store.dir())?)

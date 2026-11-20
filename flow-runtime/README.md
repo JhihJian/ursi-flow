@@ -44,4 +44,24 @@ daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命�
 - `src/core/definition`、`execution`、`state`、`contracts`：包发现与解析、结果边路由、运行记录、调用契约。SDK 使用 `ursi-flow-runtime/core`。
 - `src/ability`：Agent 的创建与复用、每次节点执行独立的结果提交工具和能力协议。解析器、Core、Ability 与 [Flow 规范](docs/flow-spec.md) 引自 MIT 授权的 Agent-Flow-Runtime `e4ea1ee52c91a039676f8673baf939f83dad9146`。定义以源码和参考 fixtures 验收。
 - `src/executor-adapters/local-pi`：用 Pi SDK 在进程内创建 Agent 会话，provider 由运行配置注入。新 Agent 使用独立会话，复用节点在同一会话上继续。会话可用内置工具读写工作区，但只有显式的 `submit_flow_outcome` 工具回执参与路由；模型连续三次提交非法结果时本轮直接结束，避免无限重试。命令、文件历史、并行及子 Run 装配也由本地主机提供。本版适配器不启用 Pi 扩展、Skill 与 Profile，声明业务工具或要求接管既有会话会被拒绝。
-- `src/integrations/mcp`：[集成边界说明](src/integrations/mcp/README.md)。MCP 和 Gateway 执行器尚未提供。
+- `src/integrations/mcp`：[集成边界说明](src/integrations/mcp/README.md)。提供 `ursi-flow-executor-mcp`，通过 MCP `2025-06-18` stdio JSONL 暴露 `executor_start`、`executor_inspect`、`executor_cancel`。
+
+## MCP 执行器 adapter
+
+Workbench 管理员为 adapter 设置以下环境变量：
+
+- `URSI_EXECUTOR_ROOT`：每个尝试的受信根目录。
+- `URSI_EXECUTOR_FLOW` 与 `URSI_EXECUTOR_FLOW_REVISION`：固定的 Flow 及目录修订。
+- `URSI_FLOW_HOME`：运行 daemon 的私有目录，adapter 使用其中的 `runtime.sock`。
+
+每个尝试的工作目录固定为 `<URSI_EXECUTOR_ROOT>/<attemptId>/workspace`，结果目录为其中的 `artifacts/`。`attemptId` 必须是小写标准 UUID，`workspaceRef` 和 `artifactDirectoryRef` 必须分别是 `workspace:<attemptId>` 与 `artifacts:<attemptId>`。adapter 会在调用 daemon 前检查目录所有权并拒绝符号链接，在检查和取消时还会验证 daemon job 身份。配置 revision 漂移或身份不匹配只返回冲突，不会影响其他 Run。
+
+启动方式：
+
+```sh
+URSI_EXECUTOR_ROOT=/srv/ursi-executor \\
+URSI_EXECUTOR_FLOW=material-review \\
+URSI_EXECUTOR_FLOW_REVISION=revision-id \\
+URSI_FLOW_HOME=/var/lib/ursi-flow \\
+npx ursi-flow-executor-mcp
+```
