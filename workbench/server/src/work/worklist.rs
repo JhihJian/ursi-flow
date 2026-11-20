@@ -173,6 +173,9 @@ async fn create(
     if input.revision.is_some() {
         return Err(Error::Invalid("新建工作项无需修订号".into()));
     }
+    if input.status.is_some() {
+        return Err(Error::Invalid("新工作项固定为待开始，请勿指定状态".into()));
+    }
     let id = Uuid::new_v4().to_string();
     let row = input.row(&id, 1, None)?;
     store.update(|db| {

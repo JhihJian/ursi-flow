@@ -17,9 +17,9 @@ export type McpResource = { name: string; uri: string }
 export const workItemPath = (id: string) => `/work-items/${encodeURIComponent(id)}`
 export const listWorkItems = (signal: AbortSignal) => requestV2<WorkItem[]>('/work-items', { signal })
 export const getWorkItem = (id: string, signal: AbortSignal) => requestV2<WorkItem>(workItemPath(id), { signal })
-export function saveWorkItem(draft: WorkDraft, item: WorkItem | undefined, signal: AbortSignal) {
+export function saveWorkItem({ status, ...fields }: WorkDraft, item: WorkItem | undefined, signal: AbortSignal) {
   return requestV2<WorkItem>(item ? workItemPath(item.id) : '/work-items', {
-    method: item ? 'PUT' : 'POST', body: JSON.stringify(item ? { ...draft, revision: item.revision } : draft), signal,
+    method: item ? 'PUT' : 'POST', body: JSON.stringify(item ? { ...fields, status, revision: item.revision } : fields), signal,
   })
 }
 export const deleteWorkItem = (id: string, signal: AbortSignal) => requestV2<void>(workItemPath(id), { method: 'DELETE', signal })

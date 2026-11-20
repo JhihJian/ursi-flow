@@ -49,9 +49,9 @@ function Form({ item }: { item?: WorkItem }) {
       <label>类别<Select value={category} onChange={e => setCategory(e.target.value as Category)}>
         {Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select></label>
-      <label>状态<Select value={status} onChange={e => setStatus(e.target.value as WorkStatus)}>
+      {item && <label>状态<Select value={status} onChange={e => setStatus(e.target.value as WorkStatus)}>
         {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </Select></label>
+      </Select></label>}
       <label className="flex items-center gap-2"><input type="checkbox" checked={enabled} onChange={e => enable(e.target.checked)} />配置工作包来源</label>
       {enabled && <RecipeEditor recipe={draft} change={setDraft} />}
       {(validation || mutation.error) && <p role="alert" className="text-err">{validation || mutation.error}</p>}

@@ -121,13 +121,22 @@ async fn all_six_combinations_support_both_filters() {
         for status in ["pending", "active", "completed"] {
             let row = create(
                 State(store.clone()),
-                input(json!({"title":"事项", "category":category, "status":status})),
+                input(json!({"title":"事项", "category":category})),
             )
             .await
             .unwrap()
             .0;
-            assert_eq!(row["category"], category);
-            assert_eq!(row["status"], status);
+            assert_eq!(row["status"], "pending");
+            let updated = replace(
+                State(store.clone()),
+                Path(row["id"].as_str().unwrap().into()),
+                input(json!({"title":"事项","status":status})),
+            )
+            .await
+            .unwrap()
+            .0;
+            assert_eq!(updated["category"], category);
+            assert_eq!(updated["status"], status);
         }
     }
     for category in [None, Some("one_time"), Some("continuous")] {
@@ -155,7 +164,7 @@ async fn omitted_dimensions_keep_their_values_on_update() {
     let store = temp.open();
     let row = create(
         State(store.clone()),
-        input(json!({"title":"事项", "category":"continuous", "status":"completed"})),
+        input(json!({"title":"事项", "category":"continuous"})),
     )
     .await
     .unwrap()
@@ -165,13 +174,13 @@ async fn omitted_dimensions_keep_their_values_on_update() {
         (
             json!({"title":"事项", "category":"one_time"}),
             "one_time",
-            "completed",
+            "pending",
             2,
         ),
         (
             json!({"title":"事项", "category":"continuous"}),
             "continuous",
-            "completed",
+            "pending",
             3,
         ),
         (
@@ -190,6 +199,23 @@ async fn omitted_dimensions_keep_their_values_on_update() {
         assert_eq!(updated["status"], status);
         assert_eq!(updated["revision"], revision);
     }
+}
+
+#[tokio::test]
+async fn create_rejects_client_status() {
+    let temp = Temp::new();
+    let store = temp.open();
+    for status in ["pending", "active", "completed"] {
+        assert!(matches!(
+            create(
+                State(store.clone()),
+                input(json!({"title":"事项", "status":status}))
+            )
+            .await,
+            Err(Error::Invalid(_))
+        ));
+    }
+    assert!(store.read(|db| Ok(db.get(TABLE).is_none())).unwrap());
 }
 
 #[test]

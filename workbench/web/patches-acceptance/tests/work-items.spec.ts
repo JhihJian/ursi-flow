@@ -15,7 +15,7 @@ test('只填标题创建工作项，类别和状态可分别修改并保存', as
   const save = page.getByRole('button', { name: '保存工作项' })
   const edit = page.getByRole('link', { name: '编辑工作项' })
   await expect(category).toHaveValue('one_time')
-  await expect(status).toHaveValue('pending')
+  await expect(status).toHaveCount(0)
   await page.getByLabel('标题').fill(title)
   await save.click()
   await expect(page.getByText('一次性工作', { exact: true })).toBeVisible()
