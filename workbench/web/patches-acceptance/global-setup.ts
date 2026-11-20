@@ -1,10 +1,9 @@
 /**
- * 回执工作区联合验收夹具：真实 Web 构建产物 + 真实 Rust Server。
+ * 工作包与配置包联合验收夹具：真实 Web 构建产物 + 真实 Rust Server。
  *
  * 隔离边界：
- * - 临时数据目录、工作区、HOME 和日志全部在 echo-acceptance/.run/ 内。
+ * - 临时数据目录、工作区、HOME 和日志全部在 patches-acceptance/.run/ 内。
  * - Server 以白名单环境启动，Flow 关闭，不配置 Pi、模型、来源或沙箱。
- * - 业务执行器只有内置 echo，因此全链路不会调用任何 Pi、模型或守护进程。
  */
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, rmSync } from 'node:fs'
@@ -19,7 +18,7 @@ import { assertPortFree, killAll, killStale, startServer, startWeb } from './fix
 import { writeRuntime, type Runtime } from './fixtures/runtime'
 
 function serverBinary() {
-  const override = process.env.URSI_ECHO_ACCEPTANCE_SERVER
+  const override = process.env.URSI_PATCHES_ACCEPTANCE_SERVER
   return override ? path.resolve(override) : defaultServerBin
 }
 
@@ -39,11 +38,11 @@ export default async function globalSetup() {
     throw new Error(`找不到 vite：${viteBin}；不要安装依赖，检查 web/node_modules`)
   }
 
-  if (process.env.URSI_ECHO_SKIP_BUILD !== '1') {
+  if (process.env.URSI_PATCHES_SKIP_BUILD !== '1') {
     execFileSync('npm', ['run', 'build'], { cwd: webRoot, stdio: 'inherit' })
   }
   if (!existsSync(path.join(webRoot, 'dist/index.html'))) {
-    throw new Error('缺少 Web 构建产物 dist/index.html；先执行 npm run build，或不要设置 URSI_ECHO_SKIP_BUILD')
+    throw new Error('缺少 Web 构建产物 dist/index.html；先执行 npm run build，或不要设置 URSI_PATCHES_SKIP_BUILD')
   }
 
   await assertPortFree(ports.api, '工作区 Server')
@@ -89,5 +88,5 @@ export default async function globalSetup() {
     throw cause
   }
 
-  process.stdout.write(`回执工作区验收环境就绪：Web ${runtime.webBase}，Server ${runtime.apiBase}\n`)
+  process.stdout.write(`工作包与配置包验收环境就绪：Web ${runtime.webBase}，Server ${runtime.apiBase}\n`)
 }

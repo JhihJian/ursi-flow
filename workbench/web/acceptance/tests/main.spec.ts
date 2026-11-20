@@ -1,6 +1,6 @@
 /**
  * 主场景：真实 Web + 真实 ursi-server + 真实 Pi CLI。
- * 除登录外全部在浏览器完成：发布资源、执行器、派工模板 r1，派 A/B 两单，
+ * 在浏览器发布资源和执行器，通过 HTTP 发布派工模板。浏览器用 r1 派 A/B 两单，
  * 发布 r2 后旧单仍显示 r1，两单各执行一次，A 通过 v1，B 退回后提交 v2 并通过，
  * 最后用刷新与深链核对文件、退回意见、通过版本与清单状态。
  *
@@ -36,7 +36,7 @@ test.describe('双单办理与验收', () => {
     await expect(nav.getByRole('link', { name: 'Flow 包', exact: true })).toHaveCount(0)
     await expect(page.getByText('暂无工作项')).toBeVisible()
 
-    // 第一步：在浏览器发布提示词、引用它的本地 Agent 执行器、绑定该执行器的派工模板 r1。
+    // 第一步：在浏览器发布提示词和执行器，通过 HTTP 发布派工模板 r1。
     await nav.getByRole('link', { name: '资源库', exact: true }).click()
     await page.getByRole('link', { name: '新建资源' }).click()
     await page.getByLabel('资源 ID', { exact: true }).fill('guide')
@@ -49,28 +49,20 @@ test.describe('双单办理与验收', () => {
     await nav.getByRole('link', { name: '执行器', exact: true }).click()
     await page.getByRole('link', { name: '新建执行器' }).click()
     await page.getByLabel('执行器 ID', { exact: true }).fill('assistant')
-    await page.getByLabel('执行器类型').selectOption({ label: 'Agent' })
-    await page.getByLabel('执行环境').selectOption({ label: '本地 Pi Agent' })
     await page.getByRole('button', { name: '添加执行器资源' }).click()
     await page.getByLabel('资源 ID', { exact: true }).selectOption('guide')
     await selectRevision(page, '资源版本', 1)
     await page.getByRole('button', { name: '发布执行器' }).click()
     await expect(page).toHaveURL(/\/executors\/assistant\/revisions\/1$/)
 
-    await nav.getByRole('link', { name: '派工模板', exact: true }).click()
-    await page.getByRole('link', { name: '新建派工模板' }).click()
-    await page.getByLabel('派工模板 ID', { exact: true }).fill('triage')
-    await page.getByLabel('办理说明', { exact: true }).fill(SOP1)
-    await page.getByLabel('验收标准', { exact: true }).fill(ACCEPTANCE1)
-    await page.getByLabel('必交文件（每行一个文件名）').fill('report.txt')
-    await page.getByRole('button', { name: '添加输入字段' }).click()
-    await page.getByLabel('输入字段名', { exact: true }).fill('note')
-    await page.getByLabel('动作名称', { exact: true }).fill('inspect')
-    await page.getByLabel('执行器 ID', { exact: true }).selectOption('assistant')
-    await selectRevision(page, '执行器版本', 1)
-    await page.getByRole('button', { name: '发布派工模板' }).click()
-    await expect(page).toHaveURL(/\/templates\/triage\/revisions\/1$/)
-    await expect(page.getByText('assistant v1')).toBeVisible()
+    const publishTemplate = async (revision: number, sop: string, acceptance: string) => {
+      const published = await api.publish('packages', {
+        id: 'triage', sop, acceptance, deliverables: ['report.txt'], inputs: { note: 'string' },
+        actions: { inspect: { executor: { id: 'assistant', revision } } },
+      })
+      expect(published.revision).toBe(revision)
+    }
+    await publishTemplate(1, SOP1, ACCEPTANCE1)
 
     // 第二步：用 r1 派 A、B 两单，填写不同编号。
     const dispatch = async (note: string) => {
@@ -100,13 +92,7 @@ test.describe('双单办理与验收', () => {
     await page.getByRole('button', { name: '发布新版' }).click()
     await expect(page).toHaveURL(/\/executors\/assistant\/revisions\/2$/)
 
-    await page.goto('/templates/triage/revisions/1/edit')
-    await page.getByLabel('办理说明', { exact: true }).fill(SOP2)
-    await page.getByLabel('验收标准', { exact: true }).fill(ACCEPTANCE2)
-    await selectRevision(page, '执行器版本', 2)
-    await page.getByRole('checkbox', { name: /我已核对动作资源和输入输出声明/ }).check()
-    await page.getByRole('button', { name: '发布新版' }).click()
-    await expect(page).toHaveURL(/\/templates\/triage\/revisions\/2$/)
+    await publishTemplate(2, SOP2, ACCEPTANCE2)
 
     // 旧单仍显示 r1，不串新版材料。
     for (const [id, note] of [[idA, noteA], [idB, noteB]] as const) {
@@ -116,7 +102,7 @@ test.describe('双单办理与验收', () => {
       await expect(page.locator('section', { hasText: '开单时的办理说明' }).getByText(SOP1)).toBeVisible()
       await expect(page.getByText(SOP2)).toHaveCount(0)
       await expect(page.getByText(ACCEPTANCE2)).toHaveCount(0)
-      await expect(page.getByText('inspect → assistant v1（本地 Agent） · guide v1')).toBeVisible()
+      await expect(page.getByText('inspect → assistant v1 · guide v1')).toBeVisible()
     }
     await page.goto('/items')
     for (const id of [idA, idB]) {

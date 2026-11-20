@@ -1,15 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { setToken } from '@/shared/http/session'
 import { definitionRoutes } from './routes'
-import type { Package } from './catalog'
 
-const pkg: Package = { id: 'triage', revision: 1, sop: '原 SOP', acceptance: '有证据', actions: { inspect: {
-  executor: { id: 'pi', revision: 1 }, resources: [{ id: 'guide', revision: 2, kind: 'skill', content: '指南' }],
-} } }
-const exec = { ...pkg.actions.inspect.executor, resources: [{ id: 'guide', revision: 2 }] }
+const exec = { id: 'pi', revision: 1, resources: [{ id: 'guide', revision: 1 }] }
+
 function start(path: string, serve: (path: string, options: RequestInit) => Response) {
   setToken('demo'); vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => serve(url.replace('/api/v2', ''), options)))
   const router = createMemoryRouter(definitionRoutes, { initialEntries: [path] }); render(<RouterProvider router={router} />)
@@ -36,40 +33,6 @@ it('通过表单引用旧资源版本，MCP 版本不可绑定，即使同一 ID
   expect(screen.queryByRole('button', { name: '添加输入字段' })).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: '发布执行器' }))
   await waitFor(() => expect(sent).toEqual({ id: 'pi', resources: [{ id: 'guide', revision: 1 }] }))
-})
-
-it('历史包按阅读版本跳转，从目录读取启停状态并确认停用整个 ID', async () => {
-  let active = true
-  start('/templates/triage/revisions/1', (url, opts) => {
-    if (url === '/packages/triage/deactivate') { expect(opts.method).toBe('POST'); active = false }
-    return Response.json(url.endsWith('/1') ? pkg : { ...pkg, revision: 3, active })
-  })
-  expect(await screen.findByRole('link', { name: '发起工作' })).toHaveAttribute('href', '/items/new?package=triage&revision=1')
-  expect(screen.getByRole('link', { name: 'pi v1' })).toHaveAttribute('href', '/executors/pi/revisions/1')
-  expect(screen.getAllByRole('link', { name: 'guide v2' })[0]).toHaveAttribute('href', '/resources/guide/revisions/2')
-  await userEvent.click(screen.getByRole('button', { name: '停用派工模板' })); expect(active).toBe(true)
-  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认停用' }))
-  await screen.findByText('正在阅读 v1 · 最新 v3 · 对象已停用'); expect(screen.queryByRole('link', { name: '发起工作' })).toBeNull()
-  expect(screen.getByText('原 SOP')).toBeVisible()
-})
-
-it('编辑旧包须明确核对不可还原字段，发布失败保留草稿，成功进入服务端返回的版本', async () => {
-  let sent: Record<string, unknown> | null = null
-  let accept = false
-  const router = start('/templates/triage/revisions/1/edit', (url, opts) => {
-    if (opts.method === 'POST') { sent = JSON.parse(String(opts.body)); return Response.json(accept ? { ...pkg, revision: 4 } : { error: '版本冲突' }, { status: accept ? 200 : 409 }) }
-    if (url === '/executors') return Response.json([{ ...exec, active: true }])
-    if (url === '/resources') return Response.json([])
-    if (url === '/executors/pi/revisions/1') return Response.json(exec)
-    if (url === '/executors/pi/revisions') return Response.json([exec])
-    return Response.json(url === '/packages/triage' ? { ...pkg, revision: 3, active: true } : pkg)
-  })
-  const button = await screen.findByRole('button', { name: '发布新版' }); expect(button).toBeDisabled()
-  await userEvent.type(screen.getByLabelText('办理说明'), ' 已更新')
-  await userEvent.click(screen.getByLabelText('我已核对动作资源和输入输出声明'))
-  await userEvent.click(button); expect(await screen.findByRole('alert')).toHaveTextContent('版本冲突'); expect(screen.getByLabelText('办理说明')).toHaveValue('原 SOP 已更新')
-  expect(sent).toMatchObject({ actions: { inspect: { executor: { id: 'pi', revision: 1 }, resources: [] } } }); expect(sent).not.toHaveProperty('revision')
-  accept = true; await userEvent.click(button); await waitFor(() => expect(router.state.location.pathname).toBe('/templates/triage/revisions/4'))
 })
 
 it('执行器目录展示通用契约与资源，详情不再把输入输出当作执行器字段', async () => {

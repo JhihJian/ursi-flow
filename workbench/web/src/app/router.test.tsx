@@ -48,27 +48,19 @@ it('根地址和未知页均可到达工作清单', async () => {
   expect(fetch).not.toHaveBeenCalled()
 })
 
-it('/packages 与 /packages/new 进入真正的工作包入口，旧定义改在 /templates', async () => {
-  setToken('redirect-token')
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json([])))
-  const list = createMemoryRouter(createAppRoutes(), { initialEntries: ['/packages'] })
-  render(<RouterProvider router={list} />)
-  await waitFor(() => expect(list.state.location.pathname).toBe('/workspaces'))
-  cleanup()
-
-  const create = createMemoryRouter(createAppRoutes(), { initialEntries: ['/packages/new'] })
-  render(<RouterProvider router={create} />)
-  await waitFor(() => expect(create.state.location.pathname).toBe('/workspaces/new'))
-  cleanup()
-
-  const templates = createMemoryRouter(createAppRoutes(), { initialEntries: ['/templates'] })
-  render(<RouterProvider router={templates} />)
-  expect(await screen.findByRole('heading', { level: 1, name: '派工模板' })).toBeInTheDocument()
-  cleanup()
-
-  const editor = createMemoryRouter(createAppRoutes(), { initialEntries: ['/templates/new'] })
-  render(<RouterProvider router={editor} />)
-  expect(await screen.findByRole('heading', { level: 1, name: '新建派工模板' })).toBeInTheDocument()
+it.each([
+  '/workspaces', '/workspaces/new', '/workspaces/w1/result',
+  '/sops', '/sops/demo/revisions/1',
+  '/templates', '/templates/triage/revisions/1/edit', '/packages', '/packages/new',
+])('已移除的地址显示未找到：%s', async path => {
+  setToken('test-token')
+  const fetch = vi.fn(probe)
+  vi.stubGlobal('fetch', fetch)
+  const router = createMemoryRouter(createAppRoutes(), { initialEntries: [path] })
+  render(<RouterProvider router={router} />)
+  expect(await screen.findByRole('heading', { name: '页面未找到' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items')
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['/api/v1/flows', '/api/v2/sources'])
 })
 
 it.each(['/items/abc', '/items/abc/deliveries/2'])('办理和交付深链在原位置登录：%s', async path => {

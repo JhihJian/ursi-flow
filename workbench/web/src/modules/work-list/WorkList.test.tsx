@@ -33,7 +33,6 @@ function mount(handler: (path: string, options: RequestInit) => unknown, url = '
       <Route path="/items" element={<WorkList />} />
       <Route path="/items/new" element={<p>发起工作页</p>} />
       <Route path="/items/:id" element={<Detail />} />
-      <Route path="/templates" element={<p>派工模板目录页</p>} />
     </Routes>
   </MemoryRouter>)
   return fetchMock

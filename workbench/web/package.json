@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:acceptance": "playwright test --config playwright.acceptance.config.ts",
+    "test:patches-acceptance": "playwright test --config patches-acceptance/playwright.config.ts",
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {

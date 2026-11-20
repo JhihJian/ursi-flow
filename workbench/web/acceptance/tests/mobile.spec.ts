@@ -23,7 +23,7 @@ test.describe('移动视口验收', () => {
     const note = `ticket-M-${randomBytes(3).toString('hex')}`
 
     // 准备：发布执行器与派工模板，派一张单、开始办理并提交第 1 版。
-    await api.publish('executors', { id: 'mobile-agent', kind: 'agent', environment: 'local' })
+    await api.publish('executors', { id: 'mobile-agent' })
     await api.publish('packages', {
       id: PACKAGE, sop: 'MOBILE-SOP-核对工单', acceptance: 'MOBILE-ACCEPTANCE-核对工单编号',
       deliverables: ['report.txt'], actions: { inspect: { executor: { id: 'mobile-agent', revision: 1 } } },
@@ -47,9 +47,9 @@ test.describe('移动视口验收', () => {
     }
     await expectNoOverflow('工作清单')
 
-    // 抽屉进清单：先去派工模板目录，再从抽屉回到清单。
-    await viaDrawer(page, '派工模板')
-    await expect(page).toHaveURL(/\/templates$/)
+    // 抽屉进清单：先去资源库，再从抽屉回到清单。
+    await viaDrawer(page, '资源库')
+    await expect(page).toHaveURL(/\/resources$/)
     await viaDrawer(page, '工作清单')
     await expect(page).toHaveURL(/\/items$/)
 

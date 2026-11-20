@@ -9,7 +9,7 @@ import { ResourceState } from '@/shared/ui/resource-state'
 import { Choice } from './Fields'
 import { ConfigFields } from './ConfigFields'
 import { configDefaults } from './config'
-import { deactivate, history, resourceKindNames, list, objectPath, readVersion, revisionPath, routePath, sopLabel, titles, type Collection, type Definition, type Latest, type Ports, type Ref, type Target } from './catalog'
+import { deactivate, history, resourceKindNames, list, objectPath, readVersion, revisionPath, routePath, titles, type Collection, type Definition, type Executor, type Latest, type Ref } from './catalog'
 
 function VersionLink({ k, v }: { k: Collection; v: Ref }) {
   return <Link className="break-all font-medium text-accent-2 hover:underline" to={revisionPath(k, v)}>{v.id} v{v.revision}</Link>
@@ -17,7 +17,7 @@ function VersionLink({ k, v }: { k: Collection; v: Ref }) {
 function ExecutorDirectory({ items }: { items: Latest[] }) {
   return <ul className="divide-y divide-line border-y border-line" aria-label="执行器列表">
     {items.map(v => {
-      if ('content' in v || 'actions' in v) return null
+      if ('content' in v) return null
       return <li key={v.id} className="grid gap-2 py-3 md:grid-cols-[minmax(12rem,1.2fr)_minmax(12rem,1fr)_auto] md:items-center">
         <div className="min-w-0"><VersionLink k="executors" v={v} /><p className="mt-1 text-xs text-txt3">workspace + workInstruction → artifactDirectory</p></div>
         <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-sm"><span>{v.resources?.length ?? 0} 个固定资源</span><span className="text-txt3">{v.configSchema?.fields.length ?? 0} 个配置字段</span></div>
@@ -47,13 +47,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 function Resources({ refs }: { refs?: Ref[] }) {
   return refs?.length ? <ul>{refs.map((v, n) => <li key={n}><VersionLink k="resources" v={v} /></li>)}</ul> : '无'
 }
-function Ports({ label, value, inherited }: { label: string; value?: Ports; inherited: string }) {
-  const entries = Object.entries(value ?? {})
-  return <Fact label={label}>{value === undefined ? inherited : entries.length
-    ? <ul>{entries.map(([name, type]) => <li key={name}><span className="font-medium">{name}</span>：{type}</li>)}</ul> : '未声明'}</Fact>
-}
-function show(v: unknown) { return typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? '未声明' }
-function ConfigSchemaForm({ schema }: { schema?: Target['configSchema'] }) {
+function ConfigSchemaForm({ schema }: { schema?: Executor['configSchema'] }) {
   if (!schema?.fields.length) return null
   return <ConfigFields schema={schema} values={configDefaults(schema)} onValueChange={() => {}} readOnly />
 }
@@ -71,21 +65,7 @@ function VersionBody({ v }: { v: Definition }) {
     ? <><Fact label="资源内容">{v.content}</Fact></>
     : <><Fact label="服务引用">{v.content.serverRef}</Fact><Fact label="凭据引用">{v.content.credentialRef || '无'}</Fact>
       <Fact label="执行边界">只登记服务与凭据的命名引用；连接参数由管理员管理，当前执行后端不支持注入 MCP，所以它不能作为执行依赖。</Fact></>}</dl>
-  if (!('actions' in v)) return <><ExecutorContract /><dl className="space-y-4"><Fact label="资源依赖"><Resources refs={v.resources} /></Fact></dl><ConfigSchemaForm schema={v.configSchema} /></>
-  return <><dl className="space-y-4"><Fact label="目标">{show(v.goal)}</Fact><Fact label={sopLabel}>{v.sop}</Fact>
-    <Fact label="验收标准">{v.acceptance}</Fact><Fact label="必交文件">{v.deliverables?.length ? <ul>{v.deliverables.map(f => <li key={f}>{f}</li>)}</ul> : '未声明'}</Fact>
-    <Ports label="输入声明" value={v.inputs} inherited="未声明" /><Ports label="输出声明" value={v.outputs} inherited="未声明" />
-    <Fact label="派工模板资源"><Resources refs={v.resources} /></Fact></dl>
-    <section><h2 className="mb-2 font-semibold">动作绑定</h2>
-      <p className="mb-2 text-sm text-txt3">每个动作绑定固定执行器版本，并展示该版本可追溯的资源。</p>
-      {Object.entries(v.actions).map(([name, a]) => <div key={name} className="space-y-2 border-t border-line py-3">
-        <h3 className="break-words">{name} → <VersionLink k="executors" v={a.executor} /> → {a.resources.length
-          ? a.resources.map((r, n) => <span key={r.id}>{n > 0 && '、'}<VersionLink k="resources" v={r} /></span>) : '无动作级资源'}</h3>
-        <dl className="grid gap-2 sm:grid-cols-2"><Fact label="执行器契约">workspace + workInstruction → artifactDirectory</Fact>
-          <Fact label="动作固定资源"><Resources refs={a.resources} /></Fact>
-          <Fact label="动作级声明">发布快照只保留合并后的执行器与资源，动作级输入输出声明没有写入快照，编辑历史版本时需要维护人重新核对。</Fact></dl>
-        <ConfigSchemaForm schema={a.executor.configSchema} />
-      </div>)}</section></>
+  return <><ExecutorContract /><dl className="space-y-4"><Fact label="资源依赖"><Resources refs={v.resources} /></Fact></dl><ConfigSchemaForm schema={v.configSchema} /></>
 }
 export function History({ k, id }: { k: Collection; id: string }) {
   const result = useResource(async signal => {
@@ -119,7 +99,6 @@ export function Detail({ k, id, revision }: { k: Collection; id: string; revisio
     <p>正在阅读 v{v.revision} · 最新 v{latest.revision} · 对象{latest.active ? '已启用' : '已停用'}</p>
     {frozen && <p className="text-sm text-txt3">这是冻结的历史版本，只读；发布新版会创建新的修订号。</p>}</div>
     <nav className="flex flex-wrap gap-2" aria-label="定义操作">
-      {latest.active && k === 'packages' && <Button asChild variant="primary"><Link to={`/items/new?${new URLSearchParams({ package: id, revision: String(v.revision) })}`}>发起工作</Link></Button>}
       {latest.active && <Button asChild><Link to={`${path}/edit`}>编辑并发布新版</Link></Button>}
       <Button asChild><Link to={`${objectPath(k, id)}/revisions`}>历史版本</Link></Button><Button asChild><Link to={routePath(k)}>返回目录</Link></Button>
       {latest.active && <Button variant="danger" onClick={() => { setError(''); setConfirm(true) }}>停用{titles[k]}</Button>}

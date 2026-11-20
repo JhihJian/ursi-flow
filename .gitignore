@@ -4,8 +4,8 @@ target/
 /workbench/web/dist/
 /workbench/web/coverage/
 /workbench/web/test-results/
-/workbench/web/echo-acceptance/.run/
-/workbench/web/echo-acceptance/evidence/
+/workbench/web/patches-acceptance/.run/
+/workbench/web/patches-acceptance/evidence/
 /workbench/web/playwright-report/
 /workbench/web/.env
 /workbench/web/.env.*

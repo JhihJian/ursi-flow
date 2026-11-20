@@ -43,14 +43,11 @@ export function StartWork() {
     <ResourceState loading={catalog.loading && catalog.data.length === 0} error={catalog.error}
       empty={!catalog.loading && !catalog.error && dispatchable.length === 0 && !blocked}
       title={catalog.error ? undefined : '暂无可用派工模板'}
-      description={catalog.error ? undefined : '先发布一个启用中的派工模板版本，再从这里发起工作。'}
-      onRetry={catalog.reload}>
-      <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
-    </ResourceState>
+      description={catalog.error ? undefined : '请联系管理员发布或检查派工模板。'}
+      onRetry={catalog.reload} />
     {blocked && <section className="panel space-y-3 p-4 sm:p-5" role="alert">
       <h2 className="font-semibold text-txt">无法从该版本发起工作</h2>
       <p className="break-words text-sm text-txt2">派工模板 {requested} {blocked}，不能用于新的派工。已发出的工作项仍可在清单里查看。</p>
-      <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
     </section>}
     {dispatchable.length > 0 && <section className="panel space-y-4 p-4 sm:p-5">
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
@@ -80,9 +77,7 @@ function VersionPicker({ packageId, requestedRevision, onRevision }: {
   if (revisions.error) return <ResourceState error={revisions.error} onRetry={revisions.reload} />
   if (revisions.loading) return <ResourceState loading />
   if (!current || !revision) return <ResourceState empty title="该派工模板没有可派工的版本"
-    description="派工模板还没有发布修订，请到目录里发布后再发起。">
-    <Button asChild><Link to="/templates">进入派工模板目录</Link></Button>
-  </ResourceState>
+    description="请联系管理员检查该模板的修订。" />
   return <PackageForm key={`${packageId}:${revision}`} packageId={packageId} pkg={current} revision={revision}
     versions={versions.map(item => item.revision)} onRevision={onRevision} />
 }

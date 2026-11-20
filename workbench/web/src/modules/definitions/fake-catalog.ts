@@ -1,4 +1,4 @@
-import type { Collection, Definition, Executor, Package, Ports, Ref, Resource, Target } from './catalog'
+import type { Collection, Definition, Executor, Ref, Resource } from './catalog'
 
 /**
  * 按 server/src/work/catalog 的读写契约实现的测试替身：
@@ -8,7 +8,7 @@ type Body = Record<string, unknown>
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 export function createFakeCatalog() {
-  const store: Record<Collection, Definition[]> = { resources: [], executors: [], packages: [] }
+  const store: Record<Collection, Definition[]> = { resources: [], executors: [] }
   const disabled = new Set<string>()
   const received: { method: string; path: string; body?: Body }[] = []
   const pendingFailures: string[] = []
@@ -42,17 +42,6 @@ export function createFakeCatalog() {
       return ref
     })
   }
-  function ports(value: unknown, field: string): Ports | undefined {
-    if (value === undefined) return undefined
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${field} 必须是字段名到类型名的对象`)
-    const out: Ports = {}
-    for (const [name, type] of Object.entries(value as Record<string, unknown>)) {
-      if (!name.trim() || typeof type !== 'string') throw new Error(`${field} 的 ${name} 缺少类型名`)
-      if (name in out) throw new Error(`${field} 有重复字段 ${name}`)
-      out[name] = type
-    }
-    return out
-  }
   function text(value: unknown, field: string): string {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} 不能为空`)
     return value
@@ -75,43 +64,13 @@ export function createFakeCatalog() {
     return { id, revision: 0, resources: bindable(body.resources, '执行器资源'),
       ...(schema !== undefined ? { configSchema: schema as Executor['configSchema'] } : {}) }
   }
-  function pkg(id: string, body: Body): Package {
-    const sop = text(body.sop, '办理说明')
-    const acceptance = text(body.acceptance, '验收标准')
-    const actions = body.actions as Record<string, { executor?: unknown; resources?: unknown; inputs?: unknown; outputs?: unknown }> | undefined
-    if (!actions || typeof actions !== 'object' || !Object.keys(actions).length) throw new Error('至少需要一个具名动作')
-    const own = bindable(body.resources, '派工模板资源')
-    const built: Package['actions'] = {}
-    for (const [name, action] of Object.entries(actions)) {
-      const target = pin('executors', action.executor, `动作 ${name} 的执行器`)
-      const bound = find<Executor>('executors', target)
-      const pinnedTarget: Target = { id: bound.id, revision: bound.revision, ...(bound.configSchema ? { configSchema: bound.configSchema } : {}) }
-      const ownResources = bindable(action.resources, `动作 ${name} 资源`)
-      const merged: Ref[] = []
-      for (const ref of [...own, ...(bound.resources ?? []), ...ownResources]) {
-        const previous = merged.find(v => v.id === ref.id)
-        if (previous && previous.revision !== ref.revision) throw new Error(`动作 ${name} 同时引用了 ${ref.id} 的多个版本`)
-        if (!previous) merged.push(ref)
-      }
-      // 服务端快照只冻结合并后的执行器与资源，动作级输入输出声明不进入快照。
-      ports(action.inputs, `动作 ${name} 输入`)
-      ports(action.outputs, `动作 ${name} 输出`)
-      built[name] = { executor: pinnedTarget, resources: merged.map(ref => find<Resource>('resources', ref)) }
-    }
-    const inputs = ports(body.inputs, '输入声明'), outputs = ports(body.outputs, '输出声明')
-    const deliverables = Array.isArray(body.deliverables) ? body.deliverables as string[] : undefined
-    return { id, revision: 0, sop, acceptance,
-      ...(deliverables ? { deliverables } : {}), ...(body.goal === undefined ? {} : { goal: body.goal as Package['goal'] }),
-      resources: own, ...(inputs ? { inputs } : {}), ...(outputs ? { outputs } : {}), actions: built }
-  }
-
   function publish(k: Collection, body: Body) {
     const failure = pendingFailures.shift()
     if (failure) throw new Error(failure)
     const id = typeof body.id === 'string' ? body.id.trim() : ''
     if (!id) throw new Error('缺少定义 ID')
     if (off(k, id)) throw new Error(`${id} 已停用，不能发布新版`)
-    const value = k === 'resources' ? resource(id, body) : k === 'executors' ? executor(id, body) : pkg(id, body)
+    const value = k === 'resources' ? resource(id, body) : executor(id, body)
     const revision = versions(k, id).length + 1
     const stored = { ...value, revision } as Definition
     store[k].push(stored)
@@ -124,7 +83,7 @@ export function createFakeCatalog() {
     received.push({ method, path, body })
     const [head, ...rest] = path.split('/').filter(Boolean)
     const k = head as Collection
-    if (!['resources', 'executors', 'packages'].includes(k)) return Response.json({ error: '未知目录' }, { status: 404 })
+    if (!['resources', 'executors'].includes(k)) return Response.json({ error: '未知目录' }, { status: 404 })
     try {
       if (method === 'POST' && rest.length === 0) return Response.json(publish(k, body ?? {}))
       if (method === 'POST' && rest.length === 2 && rest[1] === 'deactivate') {

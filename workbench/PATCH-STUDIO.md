@@ -1,6 +1,6 @@
 # 工作包与配置包编辑台
 
-工作包和配置包各自是一条 `{id,name,directoryId}` 记录，分别持久化到 `workPatches` 与 `configPatches`。`directoryId` 指向独立的虚拟目录资源。虚拟目录可以单独创建和读写，不需要先有包。工作包的目录可自由整理；配置包目录中的 `AGENTS.md`、`skills/`、`mcp.json` 各有固定用途。两种包独立创建，以目录内容为准。Echo 工作区是另一个现有工具，其材料收存和执行记录独立保存。
+工作包和配置包各自是一条 `{id,name,directoryId}` 记录，分别持久化到 `workPatches` 与 `configPatches`。`directoryId` 指向独立的虚拟目录资源。虚拟目录可以单独创建和读写，不需要先有包。工作包的目录可自由整理；配置包目录中的 `AGENTS.md`、`skills/`、`mcp.json` 各有固定用途。两种包独立创建，以目录内容为准。
 
 ## 模块分工
 

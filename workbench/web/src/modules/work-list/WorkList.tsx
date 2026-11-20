@@ -25,7 +25,6 @@ function FilteredList({ status }: { status: ItemStatus | '' }) {
   return <div className="page-stack break-words">
     <PageHeader title="工作清单" description="按状态查找待办理和待验收的工作项" actions={<>
       <Button icon="refresh" onClick={result.reload} disabled={result.loading}>刷新</Button>
-      <Button asChild><Link to="/workspaces">报告工作区</Link></Button>
       <Button variant="primary" asChild><Link to="/items/new">发起工作</Link></Button>
     </>} />
     <nav aria-label="状态筛选" className="flex flex-wrap gap-2">

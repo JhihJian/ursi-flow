@@ -20,7 +20,7 @@ test.describe('JSON 来源派工', () => {
     const api = sourcesApi()
 
     // 管理员准备：派工模板有两个动作，来源配置只开放 inspect。
-    await api.publish('executors', { id: 'source-agent', kind: 'agent', environment: 'local' })
+    await api.publish('executors', { id: 'source-agent' })
     await api.publish('packages', {
       id: PACKAGE, sop: 'SOURCE-SOP-核对来源材料', acceptance: 'SOURCE-ACCEPTANCE-核对条目材料',
       deliverables: ['report.txt'],
@@ -60,7 +60,7 @@ test.describe('JSON 来源派工', () => {
 
     // 只允许快照里的固定动作：页面不出现 review，动作下拉只有一个选项且不可切换。
     const bindings = page.locator('section', { hasText: '固定动作与执行器' })
-    await expect(bindings).toContainText('inspect → source-agent v1（本地 Agent）')
+    await expect(bindings).toContainText('inspect → source-agent v1')
     await expect(bindings).not.toContainText('review')
     await page.getByLabel('经办人', { exact: true }).fill('Lin')
     await page.getByRole('button', { name: '开始办理' }).click()
@@ -69,7 +69,7 @@ test.describe('JSON 来源派工', () => {
     await expect(chosen.locator('option')).toHaveCount(1)
     await expect(chosen).toHaveValue('inspect')
     await expect(chosen).toBeDisabled()
-    await expect(page.getByText('绑定执行器：source-agent v1（本地 Agent）')).toBeVisible()
+    await expect(page.getByText('绑定执行器：source-agent v1')).toBeVisible()
 
     // 同一清单：来源派工单出现在工作清单里，来源列照样可读。
     await page.getByRole('link', { name: '返回工作清单' }).click()

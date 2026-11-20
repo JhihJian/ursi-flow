@@ -23,7 +23,7 @@ npx playwright test --config playwright.acceptance.config.ts --project mobile
 
 | 项目 | 用例 | 要证明的事 |
 | --- | --- | --- |
-| `desktop` | `tests/main.spec.ts` | 浏览器发布提示词、引用它的本地 Agent 执行器与工作包 r1；用 r1 派 A、B 两单；发布 r2 后旧单仍显示 r1；两单各执行一次并读到模型输出且状态仍为办理中；A 通过 v1，B 退回后原单提交 v2 并通过；刷新与深链核对文件、退回意见、通过版本与清单状态 |
+| `desktop` | `tests/main.spec.ts` | 浏览器发布提示词和引用它的执行器，通过 HTTP 发布派工模板 r1；在浏览器用 r1 派 A、B 两单；发布 r2 后旧单仍显示 r1；两单各执行一次并读到模型输出且状态仍为办理中；A 通过 v1，B 退回后原单提交 v2 并通过；刷新与深链核对文件、退回意见、通过版本与清单状态 |
 | `sources` | `tests/sources.spec.ts` | 另起配置 `json-file` 来源的 Server：来源列表派工进入同一清单，动作下拉只含获准动作 |
 | `mobile` | `tests/mobile.spec.ts` | 移动视口从抽屉进清单、打开待审报告、退回、重读旧版 |
 

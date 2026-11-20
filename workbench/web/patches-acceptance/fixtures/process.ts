@@ -7,7 +7,7 @@ import { closeSync, openSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import path from 'node:path'
 import { dataDir, homeDir, logDir, viteBin, webRoot, workspaceDir } from './paths'
-import { readPids, readRuntime, writePids, type Runtime, type Tracked } from './runtime'
+import { readPids, writePids, type Runtime, type Tracked } from './runtime'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -123,31 +123,20 @@ function launch(name: string, command: string, args: string[], options: { cwd: s
   return child
 }
 
-async function workspaceTypesReady(runtime: Runtime) {
-  const response = await fetch(`${runtime.apiBase}/api/v2/workspace-types`, {
+async function patchesReady(runtime: Runtime) {
+  const response = await fetch(`${runtime.apiBase}/api/v2/patches/work`, {
     headers: { Authorization: `Bearer ${runtime.token}` },
   })
   if (response.status === 200) return true
   if (response.status === 404) {
-    throw new Error('Server 没有 /api/v2/workspace-types；先在 workbench/ 执行 cargo build --locked -p ursi-server')
+    throw new Error('Server 没有 /api/v2/patches/work；先在 workbench/ 执行 cargo build --locked -p ursi-server')
   }
   throw new Error(`HTTP ${response.status}`)
 }
 
 export async function startServer(runtime: Runtime) {
   launch('server', runtime.serverBin, [], { cwd: logDir, env: { ...runtime.serverEnv } })
-  await waitFor('工作区 Server', () => workspaceTypesReady(runtime), 25_000)
-}
-
-export async function stopServer() {
-  await stopGroup('server')
-}
-
-export async function restartServer() {
-  const runtime = readRuntime()
-  await stopServer()
-  await assertPortFree(runtime.apiPort, '工作区 Server')
-  await startServer(runtime)
+  await waitFor('工作包 Server', () => patchesReady(runtime), 25_000)
 }
 
 export async function startWeb(runtime: Runtime) {

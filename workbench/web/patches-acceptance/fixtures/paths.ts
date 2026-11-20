@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
-/** web/echo-acceptance/，夹具、临时运行目录和证据都在这里。 */
+/** web/patches-acceptance/，夹具、临时运行目录和证据都在这里。 */
 export const acceptanceDir = fileURLToPath(new URL('..', import.meta.url))
 /** web/，构建与依赖所在目录。 */
 export const webRoot = path.resolve(acceptanceDir, '..')

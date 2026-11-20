@@ -4,6 +4,21 @@ import {
   expectEntry, expectText, PatchApi, patchIdFromUrl, shot,
 } from './patches-support'
 import { login } from './support'
+import { readRuntime } from '../fixtures/runtime'
+
+test('已移除的 Echo 和 SOP 接口返回 404', async ({ request }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', '接口行为与视口无关')
+  const { apiBase, token } = readRuntime()
+  for (const [method, path] of [
+    ['GET', '/workspace-types'], ['GET', '/workspaces'], ['POST', '/workspaces'],
+    ['PATCH', '/workspaces/old'], ['PUT', '/workspaces/old/materials/source'],
+    ['POST', '/workspaces/old/attempts'], ['GET', '/workspaces/old/attempts/old/receipt'],
+    ['GET', '/sops'], ['POST', '/sops'], ['GET', '/sops/old/revisions/1'],
+  ]) {
+    const response = await request.fetch(`${apiBase}/api/v2${path}`, { method, headers: { Authorization: `Bearer ${token}` } })
+    expect(response.status(), `${method} ${path}`).toBe(404)
+  }
+})
 
 const WORK_FOLDER = '材料'
 const WORK_FILE = `${WORK_FOLDER}/记录.md`
