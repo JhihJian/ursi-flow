@@ -2,9 +2,9 @@
 
 `flow-runtime/web` 是 Runtime 的独立控制台。操作者不经工作台和 CLI 就能维护 Flow 包、启动和停止运行、查看节点与路由记录、修改执行配置。页面使用 React 19、TypeScript、React Router、Tailwind CSS 3、shadcn 组件和 Vite，构建产物是静态文件，可单独发布，也可嵌入工作台。
 
-## 独立预览
+## 启动控制台
 
-在本目录使用 Node.js 22.19 或更高版本：
+先启动本机 `ursi-flowd`。在本目录使用 Node.js 22.19 或更高版本：
 
 ```sh
 npm ci
@@ -12,15 +12,13 @@ npm run build
 npm start
 ```
 
-打开 `http://127.0.0.1:4181/#/flows`。未配置 Runtime 时显示带“演示数据”标记的本地样例：两个 Flow 包、四条运行记录和一份配置。演示模式不发起 `/api` 请求，也不能写入。开发时 `npm run dev` 预览同一份样例。
+打开 `http://127.0.0.1:4181/#/flows`。页面通过 Runtime 读取本机已发布的 Flow 包和运行记录。开发时保持服务运行，再启动 `npm run dev`，Vite 会把配置和 API 请求转发到本机 `4181`。
 
-## 连接本机 Runtime
-
-先启动 `ursi-flowd`，再为控制台设置三个变量并重新运行 `npm start`：
+可选环境变量：
 
 | 变量 | 用途 |
 | --- | --- |
-| `URSI_FLOW_WORKDIR` | `default` 工作区的目录，用于判断是否连接 Runtime 并在页头显示；缺失时进入演示模式。运行实际落在哪个目录由 daemon 的工作区根目录或启动参数决定 |
+| `URSI_FLOW_WORKDIR` | 页头显示的工作区目录。实际运行目录由 daemon 的工作区根目录或启动参数决定 |
 | `URSI_FLOW_HOME` | 可选，daemon 的私有目录，默认 `~/.ursi-flow`，读取其中的 `runtime.sock` |
 | `URSI_FLOW_WEB_HOSTS` | 可选，允许的额外域名（逗号分隔）；IP 与 `localhost` 始终允许 |
 | `HOST` / `PORT` | 可选，监听地址与端口，默认 `0.0.0.0:4181` |
@@ -29,24 +27,18 @@ npm start
 URSI_FLOW_WORKDIR="$PWD" npm start
 ```
 
-`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。页面不做访问令牌验证，因此服务默认只接受 IP 字面量、`localhost` 或 `URSI_FLOW_WEB_HOSTS` 登记的域名作为 Host，并只接受同源页面发起的写请求，避免其他站点借浏览器改写本机数据。需要 HTTPS 时配置 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY`。daemon 故障返回 503 或 504，页面显示错误，不会退回演示数据。
+`server.mjs` 把同源 `/api/v1` 请求翻译成 daemon 的一次 Unix socket 请求，浏览器不直接接触 socket。页面不做访问令牌验证，因此服务默认只接受 IP 字面量、`localhost` 或 `URSI_FLOW_WEB_HOSTS` 登记的域名作为 Host，并只接受同源页面发起的写请求，避免其他站点借浏览器改写本机数据。需要 HTTPS 时配置 `URSI_FLOW_WEB_TLS_CERT` 和 `URSI_FLOW_WEB_TLS_KEY`。daemon 故障返回 503 或 504，页面显示连接错误。
 
 运行中的 Run 使用同一份历史：控制台和 `ursi-flow run history` 查询到的节点、路由和命令输出一致。
 
 ## 静态交付与嵌入
 
-`npm run build` 先做类型检查，再输出 `dist/`。把内容发布到静态目录（例如 `/apps/flow/`）即可在 `/apps/flow/#/flows` 打开演示。资源路径相对入口，路由使用 hash，直接打开或刷新详情都不需要 SPA 回退。
+`npm run build` 先做类型检查，再输出 `dist/`。资源路径相对入口，路由使用 hash，直接打开或刷新详情都不需要 SPA 回退。
 
-入口同级需要一个 `console-config.json`，静态预览由 `public/console-config.json` 提供：
-
-```json
-{"mode":"demo"}
-```
-
-实时模式由 `server.mjs` 动态返回，也可以由宿主站点提供：
+使用 `server.mjs` 时由服务提供配置。嵌入子目录时，宿主在入口同级提供 `console-config.json`，并提供同源 Runtime API：
 
 ```json
-{"mode":"live","apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
+{"apiBase":"/api/v1","workspace":{"name":"default","path":"/srv/project"}}
 ```
 
 嵌入工作台时复用同一份 `dist/`：`apiBase` 指向工作台的 `/api/v1`，页面只发送 `workspace: "default"`，认证交给工作台自己的会话。工作台需要提供 `flows`（`?detail=1` 返回包摘要）、`flows/validate`、`flows/:id`、`flows/:id/runs`、`runs`、`runs/:id`、`runs/:id/history`、`runs/:id/flow`、`runs/:id/nodes/:nodeId/trajectory`、`runs/:id/stop`、`flow-config` 这几组接口，请求与响应形状与本目录 `server.mjs` 相同。`workspace` 只作展示时可省略。
@@ -64,7 +56,7 @@ URSI_FLOW_WORKDIR="$PWD" npm start
 
 两个列表都是数据表格（`src/components/ui/data-table.tsx`）：TanStack Table 提供模型，标记与样式用本目录的 shadcn `Table`。表头可点击排序，筛选框按关键字匹配，行数超过一页时给出翻页；窄屏隐藏次要列，页面不产生横向滚动。
 
-- **Flow 包**：一次请求 `GET /api/v1/flows?detail=1` 取回每个包的名称、说明、节点数、启动变量数与修订（只返回标识的 `GET /api/v1/flows` 保留给工作台）。解析不了的包占一行并标为「不可用」，不影响其他行。行内提供「编辑」与「删除」，删除前弹确认框，成功后清空筛选并刷新列表；演示模式禁用删除按钮。
+- **Flow 包**：一次请求 `GET /api/v1/flows?detail=1` 取回每个包的名称、说明、节点数、启动变量数与修订（只返回标识的 `GET /api/v1/flows` 保留给工作台）。解析不了的包占一行并标为「不可用」，不影响其他行。行内提供「编辑」与「删除」，删除前弹确认框，成功后清空筛选并刷新列表。
 - **运行记录**：列出 Run、Flow、状态、修订与工作目录，行内「详情」进入运行页。
 
 删除只作用于当前修订的包目录，已启动的运行仍按各自固定的修订读取历史。
@@ -118,6 +110,6 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm test` 用临时目录里的假 daemon 覆盖协议映射、认证、错误码、请求上限和静态路径，并用纯函数测试覆盖运行事实到流转图的映射。`npm run test:e2e` 先构建 Runtime，再用真实 daemon 完成建包、校验、运行、停止、配置与冲突的闭环；`e2e/model-fixture.mjs` 提供本地 OpenAI 兼容模型，用来验收 Agent 节点的会话轨迹，测试还覆盖子目录静态演示、演示轨迹与窄屏布局。`dist/`、`node_modules/` 与端到端临时目录不在版本库中。
+`npm test` 用临时目录里的假 daemon 覆盖协议映射、认证、错误码、请求上限和静态路径，并用纯函数测试覆盖运行事实到流转图的映射。`npm run test:e2e` 先构建 Runtime，再用真实 daemon 完成建包、校验、运行、停止、配置与冲突的闭环；`e2e/model-fixture.mjs` 提供本地 OpenAI 兼容模型，用来验收 Agent 节点的会话轨迹，测试还覆盖静态子目录缺少后端配置时的错误提示，以及实时页面的窄屏布局。`dist/`、`node_modules/` 与端到端临时目录不在版本库中。
 
 `flow-runtime` 的 npm 包只包含引擎（`dist/`、`docs/`、`examples/`），不含本目录。

@@ -125,11 +125,7 @@ function Mode({ source }: { source?: Source }) {
   return (
     <span className="ml-auto flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
       <Server className="size-3.5 shrink-0" />
-      {source.mode === 'demo'
-        ? '演示数据'
-        : source.workspace
-          ? `Runtime · ${source.workspace.path}`
-          : '本地 Runtime'}
+      {source.workspace ? `Runtime · ${source.workspace.path}` : '本地 Runtime'}
     </span>
   )
 }

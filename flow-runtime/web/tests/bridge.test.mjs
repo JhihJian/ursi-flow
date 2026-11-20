@@ -56,17 +56,17 @@ async function liveConsole(t, daemon, extra = {}) {
 // 写请求需要同源标记，模拟浏览器自动携带的请求头。
 const writeHeaders = { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' }
 
-test('没有工作目录时是演示模式，不提供 Runtime 接口', async (t) => {
-  const base = await listen(t, await createConsole({}))
-  assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), { mode: 'demo' })
-  assert.equal((await fetch(base + '/api/v1/flows')).status, 404)
+test('没有展示用工作区时也读取 Runtime 目录', async (t) => {
+  const daemon = await fakeDaemon(t)
+  const base = await listen(t, await createConsole({ URSI_FLOW_HOME: daemon.home }))
+  assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), { apiBase: '/api/v1' })
+  assert.deepEqual(await (await fetch(base + '/api/v1/flows')).json(), { op: 'flow.list' })
 })
 
-test('配置工作目录后进入实时模式，不需要访问令牌', async (t) => {
+test('可选展示工作区，不需要访问令牌', async (t) => {
   const daemon = await fakeDaemon(t)
   const { base, workdir } = await liveConsole(t, daemon)
   assert.deepEqual(await (await fetch(base + '/console-config.json')).json(), {
-    mode: 'live',
     apiBase: '/api/v1',
     workspace: { name: 'default', path: workdir },
   })

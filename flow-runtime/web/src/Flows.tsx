@@ -87,7 +87,6 @@ export function Flows({ source }: { source: Source }) {
   const [resetKey, setResetKey] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const readOnly = source.mode === 'demo'
 
   const columns = useMemo<DataTableColumn<FlowSummary>[]>(() => {
     const helper = createColumnHelper<typeof dataTableFeatures, FlowSummary>()
@@ -169,8 +168,7 @@ export function Flows({ source }: { source: Source }) {
               variant="ghost"
               size="icon-sm"
               aria-label={`删除 ${row.original.id}`}
-              title={readOnly ? '演示数据不能删除' : '删除'}
-              disabled={readOnly}
+              title="删除"
               onClick={() => {
                 setError('')
                 setRemoving(row.original)
@@ -182,7 +180,7 @@ export function Flows({ source }: { source: Source }) {
         ),
       }),
     ])
-  }, [readOnly])
+  }, [])
 
   const remove = async () => {
     if (!removing) return
@@ -469,7 +467,6 @@ export function FlowEditor({ source }: { source: Source }) {
     )
     navigate(`/runs/${encodeURIComponent(created.id)}`)
   }
-  const readOnly = source.mode === 'demo'
   return (
     <main className="editor-page">
       <Link className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 mb-2')} to="/flows">
@@ -481,7 +478,7 @@ export function FlowEditor({ source }: { source: Source }) {
         description={`${editing ? `当前修订 ${revision ? revision.slice(0, 8) : '未知'}` : '即时校验包文件，创建后进入编辑'}${dirty ? ' · 有未保存修改' : ''}`}
         actions={
           <>
-            <Button onClick={() => run('validate')} disabled={readOnly || Boolean(busy)}>
+            <Button onClick={() => run('validate')} disabled={Boolean(busy)}>
               <ShieldCheck />
               校验
             </Button>
@@ -495,12 +492,12 @@ export function FlowEditor({ source }: { source: Source }) {
                 重新载入
               </Button>
             )}
-            <Button variant="primary" onClick={() => run('save')} disabled={readOnly || Boolean(busy) || !dirty}>
+            <Button variant="primary" onClick={() => run('save')} disabled={Boolean(busy) || !dirty}>
               <Save />
               保存
             </Button>
             {editing && (
-              <Button variant="destructive" onClick={() => setConfirm(true)} disabled={readOnly || Boolean(busy)}>
+              <Button variant="destructive" onClick={() => setConfirm(true)} disabled={Boolean(busy)}>
                 <Trash2 />
                 删除
               </Button>
@@ -559,7 +556,7 @@ export function FlowEditor({ source }: { source: Source }) {
               variant="primary"
               className="sm:ml-auto"
               onClick={() => setStartOpen(true)}
-              disabled={readOnly || dirty || busy === 'save' || missingProvider.length > 0}
+              disabled={dirty || busy === 'save' || missingProvider.length > 0}
               title={
                 dirty
                   ? '请先保存包文件'
@@ -574,10 +571,7 @@ export function FlowEditor({ source }: { source: Source }) {
           )}
         </CardContent>
       </Card>
-      {readOnly && (
-        <p className="mt-2 text-xs text-muted-foreground">演示数据不连接 Runtime，保存、校验与启动都不可用。</p>
-      )}
-      {!readOnly && missingProvider.length > 0 && (
+      {missingProvider.length > 0 && (
         <Alert variant="warning" className="mt-3">
           <CircleAlert />
           <AlertDescription>

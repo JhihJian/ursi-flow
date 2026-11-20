@@ -53,10 +53,10 @@ describe("节点会话轨迹", () => {
 	it("只读取运行修订的包，不回落当前目录", async () => {
 		const home = await tempDir();
 		const revision = "11111111-1111-4111-8111-111111111111";
-		const pkg = join(home, "versions", revision, "ordinary");
+		const catalog = new Catalog(home);
+		const pkg = join(catalog.root(revision), "ordinary");
 		await mkdir(pkg, { recursive: true });
 		await writeFile(join(pkg, "FLOW.md"), "flowchart TD\n");
-		const catalog = new Catalog(home);
 		expect((await catalog.at("ordinary", revision)).files["FLOW.md"]).toContain(
 			"flowchart TD",
 		);
@@ -75,7 +75,7 @@ describe("Flow 列表元信息", () => {
 		});
 		// 目录里的历史修订可能留有解析不了的包，列表不能因此整页失败。
 		const revision = await catalog.current();
-		const broken = join(home, "versions", revision!, "broken");
+		const broken = join(catalog.root(revision!), "broken");
 		await mkdir(broken, { recursive: true });
 		await writeFile(
 			join(broken, "FLOW.md"),

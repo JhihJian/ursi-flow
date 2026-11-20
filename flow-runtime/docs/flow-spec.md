@@ -1,6 +1,6 @@
 # Flow 规范
 
-本规范定义可运行 Flow 文件的格式。Flow 的用途和整体方式见[Flow 概览](flow-overview.md)。
+本规范定义可运行 Flow 文件的 `v1` 格式。Flow 的用途和整体方式见[Flow 概览](flow-overview.md)。
 
 每条可执行 Flow 都是一个目录包。使用`--flow`或`/flow run`时，只能传入包目录或包内的`FLOW.md`；运行时直接执行该入口，不生成运行副本。
 

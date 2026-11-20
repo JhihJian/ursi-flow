@@ -217,10 +217,8 @@ function safeDecode(value) {
 }
 
 export async function createConsole(env) {
-  // 页面不做访问令牌验证。工作目录缺失时进入演示模式。
-  const live = Boolean(env.URSI_FLOW_WORKDIR)
   let cwd
-  if (live) {
+  if (env.URSI_FLOW_WORKDIR) {
     try {
       cwd = await realpath(env.URSI_FLOW_WORKDIR)
       if (!(await stat(cwd)).isDirectory()) throw Error()
@@ -237,9 +235,7 @@ export async function createConsole(env) {
     .map((value) => value.trim())
     .filter(Boolean)
   let active = 0
-  const config = live
-    ? { mode: 'live', apiBase: '/api/v1', workspace: { name: 'default', path: cwd } }
-    : { mode: 'demo' }
+  const config = { apiBase: '/api/v1', ...(cwd && { workspace: { name: 'default', path: cwd } }) }
   const serve =
     env.URSI_FLOW_WEB_TLS_CERT || env.URSI_FLOW_WEB_TLS_KEY
       ? https.createServer.bind(https, {
@@ -298,8 +294,6 @@ export async function createConsole(env) {
     if (path === '/console-config.json' && req.method === 'GET')
       return send(200, JSON.stringify(config))
     if (path.startsWith('/api/')) {
-      if (!live)
-        return send(404, JSON.stringify({ error: { code: 'not_found', message: '演示模式没有 Runtime 接口' } }))
       const write = req.method !== 'GET' && req.method !== 'HEAD'
       let body = {}
       const text = write ? await readBody(req).catch((e) => e) : ''

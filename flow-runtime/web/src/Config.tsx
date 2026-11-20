@@ -139,7 +139,7 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
         </CardHeader>
         <CardContent>
           <fieldset
-            disabled={busy || source.mode === 'demo'}
+            disabled={busy}
             className="grid gap-4 disabled:opacity-70"
           >
             <legend className="mb-1 text-xs font-medium text-muted-foreground">模型 provider</legend>
@@ -287,15 +287,10 @@ function ConfigForm({ source, initial }: { source: Source; initial: FlowConfig }
                 <AlertDescription role="status">配置已保存。</AlertDescription>
               </Alert>
             )}
-            {source.mode === 'demo' && (
-              <Alert>
-                <AlertDescription>演示数据不能修改配置。</AlertDescription>
-              </Alert>
-            )}
           </fieldset>
         </CardContent>
         <CardFooter className="gap-2">
-          <Button type="submit" variant="primary" disabled={!dirty || busy || source.mode === 'demo'}>
+          <Button type="submit" variant="primary" disabled={!dirty || busy}>
             <Save />
             保存配置
           </Button>

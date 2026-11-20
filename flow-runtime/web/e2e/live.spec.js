@@ -451,6 +451,25 @@ test('总览保留已发布的目录结构，并可新增任意包内文本文�
   })
 })
 
+test('窄屏总览按文件列表、编辑区分步浏览', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 820 })
+  const id = 'e2e-mobile-files'
+  await seed(page, id, { 'FLOW.md': withDocs, 'references/checklist.md': '# 检查清单\n' })
+  await openFlow(page, id)
+  await page.reload()
+  const files = page.getByRole('complementary', { name: '包文件' })
+  const editor = page.getByRole('region', { name: '文件编辑区' })
+  await expect(files).toBeVisible()
+  await expect(editor).toBeHidden()
+  await expect(page.locator('.mermaid-figure svg')).toHaveCount(1)
+  await files.getByRole('button', { name: 'FLOW.md', exact: true }).click()
+  await expect(editor.locator('.mermaid-figure svg')).toBeVisible()
+  await editor.getByRole('button', { name: '返回包文件' }).click()
+  await files.getByRole('button', { name: 'references/checklist.md' }).click()
+  await expect(editor.getByRole('heading', { name: '检查清单' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
 test('目录修订过期时保存返回冲突并保留草稿', async ({ page }) => {
   await seed(page, 'e2e-conflict', { 'FLOW.md': quick })
   await openFlow(page, 'e2e-conflict')

@@ -174,12 +174,10 @@ export interface NodeTrajectory {
   omitted?: boolean
 }
 export interface ConsoleConfig {
-  mode: 'demo' | 'live'
   apiBase?: string
   workspace?: { name: string; path: string }
 }
 export interface Source {
-  mode: 'demo' | 'live'
   workspace?: { name: string; path: string }
   flows(signal?: AbortSignal): Promise<string[]>
   flowSummaries(signal?: AbortSignal): Promise<FlowSummary[]>
@@ -262,7 +260,6 @@ function createClient(apiBase: string): Source {
   const flowPath = (id: string) => `/flows/${encodeURIComponent(id)}`
   const runPath = (id: string) => `/runs/${encodeURIComponent(id)}`
   return {
-    mode: 'live',
     flows: (signal) => request('/flows', { signal }),
     flowSummaries: (signal) => request('/flows?detail=1', { signal }),
     flow: (id, signal) => request(flowPath(id), { signal }),
@@ -295,10 +292,8 @@ function createClient(apiBase: string): Source {
 
 export async function loadSource(signal?: AbortSignal): Promise<Source> {
   const response = await fetch('./console-config.json', { signal, cache: 'no-store' })
-  if (!response.ok) throw new Error('无法读取控制台配置')
+  if (!response.ok) throw new Error('无法读取控制台配置，请通过 Runtime 控制台服务访问')
   const config = (await response.json()) as ConsoleConfig
-  if (config.mode === 'demo') return (await import('./demo')).demoSource
-  if (config.mode !== 'live') throw new Error('控制台配置无效')
   const source = createClient(config.apiBase || '/api/v1')
   source.workspace = config.workspace
   return source

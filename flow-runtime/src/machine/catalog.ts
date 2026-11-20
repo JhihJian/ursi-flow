@@ -4,8 +4,10 @@ import {
 	mkdir,
 	readFile,
 	readdir,
+	readlink,
 	rename,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -76,20 +78,44 @@ async function filesAt(dir: string, prefix = ""): Promise<PackageFiles> {
 	}
 	return files;
 }
+const FLOW_FORMAT_VERSION = "v1";
+
 export class Catalog {
 	readonly home: string;
 	constructor(home: string) {
 		this.home = home;
 	}
+	private published() {
+		return join(this.home, "versions", FLOW_FORMAT_VERSION);
+	}
 	async current(): Promise<string | null> {
-		const revision = await optional(readJson(join(this.home, "catalog.json")), undefined);
-		if (revision === undefined) return null;
-		if (!validId(revision)) throw Error("已保存的目录修订无效");
+		const target = await optional(readlink(this.published()), null);
+		if (target === null) {
+			if (await optional(lstat(join(this.home, "catalog.json")), null))
+				throw Error("Flow 目录需要迁移到 versions/v1");
+			return null;
+		}
+		const revision = target.split("/").at(-1);
+		if (!validId(revision) || target !== `../.revisions/${revision}` ||
+			!(await lstat(this.root(revision))).isDirectory())
+			throw Error("已发布的 Flow 目录修订无效");
 		return revision;
 	}
-	root(version: string) {
-		if (!validId(version)) throw Error("目录修订无效");
-		return join(this.home, "versions", version);
+	root(revision: string) {
+		if (!validId(revision)) throw Error("目录修订无效");
+		return join(this.home, ".revisions", revision);
+	}
+	private async publish(revision: string) {
+		const versions = join(this.home, "versions");
+		await mkdir(versions, { recursive: true });
+		const pending = join(versions, `.${revision}.tmp`);
+		await symlink(`../.revisions/${revision}`, pending);
+		try {
+			await rename(pending, this.published());
+		} catch (e) {
+			await rm(pending, { force: true });
+			throw e;
+		}
 	}
 	async list() {
 		const v = await this.current();
@@ -100,7 +126,7 @@ export class Catalog {
 		const revision = await this.current();
 		if (!revision) return [];
 		const root = this.root(revision);
-		const names = (await optional(readdir(root), [])).sort();
+		const names = (await readdir(root)).sort();
 		return Promise.all(
 			names.map(async (id) => {
 				try {
@@ -166,6 +192,7 @@ export class Catalog {
 			root = this.root(next),
 			dir = join(root, name);
 		try {
+			await mkdir(join(this.home, ".revisions"), { recursive: true });
 			if (prev) await cp(this.root(prev), root, { recursive: true });
 			else await mkdir(root, { recursive: true });
 			const exists = await optional(
@@ -210,7 +237,7 @@ export class Catalog {
 				await rm(root, { recursive: true, force: true });
 				return { id: name, valid: true };
 			}
-			await save(join(this.home, "catalog.json"), next);
+			await this.publish(next);
 			return { id: name, revision: next };
 		} catch (e) {
 			await rm(root, { recursive: true, force: true });

@@ -12,6 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / 'client/target/debug/ursi-flow'
+PROVIDER = {'apiKey': 'fixture', 'baseUrl': 'http://127.0.0.1:1', 'model': 'fixture'}
 FLOW = '''---
 name: 测试
  description: 占位
@@ -76,6 +77,7 @@ class Acceptance(unittest.TestCase):
         def files(label):
             script = f"import fs from 'node:fs'; fs.appendFileSync('effects', '{label}\\n'); console.log('{label}')"
             return {'FLOW.md': FLOW, 'scripts/task.mjs': script}
+        data('config.update', provider=PROVIDER)
         start = 'run.startPinned'
         rev = data('flow.create', id='work', files=files('old'))['revision']
         args = dict(id='pinned', flow='work', cwd=str(home), variables={})
@@ -126,6 +128,7 @@ class Acceptance(unittest.TestCase):
         daemon.wait(timeout=8)
         self.start_daemon(home)
         self.assertEqual(data(start, **pin), history['job'])
+        self.assertEqual(data('run.flow', id='pinned')['files'], files('old'))
         self.assert_code(home, start, {**pin, 'id': 'deleted'}, 'conflict')
         cli_history = subprocess.check_output([CLI, 'run', 'history', 'pinned'],
                                               env=dict(os.environ, URSI_FLOW_HOME=str(home)), timeout=10)
@@ -147,10 +150,11 @@ class Acceptance(unittest.TestCase):
             p = self.start_daemon(home)
             for op in ('flow.get', 'flow.update', 'flow.delete', 'run.get', 'run.stop', 'run.history'):
                 self.assert_code(home, op, {'id': 'missing'}, 'not_found')
-            for bad in ([], {'model': None}, {'maxConcurrent': 0}, {'unknown': True}):
+            for bad in ([], {'provider': {'model': None}}, {'maxConcurrent': 0}):
                 self.assert_code(home, 'config.update', bad, 'invalid_input')
             self.assert_code(home, 'flow.get', {'id': '../invalid'}, 'invalid_input')
-            cli('config','set','{"maxConcurrent":1}');cli('config','set','{"maxConcurrent":0}',ok=False)
+            cli('config', 'set', json.dumps({'maxConcurrent': 1, 'provider': PROVIDER}))
+            cli('config','set','{"maxConcurrent":0}',ok=False)
             self.assertEqual(cli('config','get')['maxConcurrent'],1)
             pkg=home/'source'; (pkg/'scripts').mkdir(parents=True)
             (pkg/'FLOW.md').write_text(FLOW)
@@ -161,6 +165,9 @@ class Acceptance(unittest.TestCase):
             files = {'FLOW.md': FLOW, 'scripts/task.mjs': script.read_text()}
             args = {'id': 'work', 'files': files}
             rev = cli('flow', 'get', 'work')['revision']
+            published = home/'versions/v1'
+            self.assertEqual(published.readlink(), Path('../.revisions')/rev)
+            self.assertEqual((published/'work/FLOW.md').read_text(), FLOW)
             self.assert_code(home, 'flow.create', args, 'conflict')
             for bad in ({'FLOW.md': 'invalid'}, {'FLOW.md': FLOW},
                         {**files, 'scripts/task.mjs/child': ''}):
@@ -170,6 +177,9 @@ class Acceptance(unittest.TestCase):
             self.assertNotEqual(rev, updated)
             self.assert_code(home, 'flow.update', args, 'conflict')
             self.assertEqual(cli('flow', 'get', 'work')['revision'], updated)
+            self.assertEqual(published.readlink(), Path('../.revisions')/updated)
+            self.assertEqual(sorted(p.name for p in (home/'versions').iterdir()), ['v1'])
+            self.assertTrue((home/'.revisions'/rev/'work/FLOW.md').is_file())
             start = {'id': 'first', 'flow': 'work', 'cwd': temp, 'variables': {}}
             for patch in ({'variables': None}, {'variables': []}, {'cwd': str(home/'absent')}):
                 self.assert_code(home, 'run.start', {**start, **patch}, 'invalid_input')
@@ -198,7 +208,8 @@ class Acceptance(unittest.TestCase):
             # Broken persisted data is neither missing business data nor bad caller input.
             (home/'config.json').write_text('{"maxConcurrent":0}')
             self.assert_code(home, 'config.update', {'model': 'x'}, None)
-            (home/'catalog.json').write_text('"missing-generation"')
+            (home/'versions/v1').unlink()
+            (home/'versions/v1').symlink_to('../.revisions/missing-generation')
             self.assert_code(home, 'flow.get', {'id': 'work'}, None)
             (home/'runs/second/job.json').unlink()
             self.assert_code(home, 'run.get', {'id': 'second'}, None)
