@@ -1,6 +1,6 @@
 # Pi 执行环境镜像与 bundle
 
-`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。`runtime/image-browser` 在其上提供真实 Chromium、CDP、Xvfb、x11vnc、websockify 和 code-server，镜像级别为 2。browser bundle 组合后才开放 IDE、CDP 和桌面端点。
+`ursi-runtime-pi:local` 提供 `pi-execution` profile：Ubuntu 24.04（glibc 2.39）、Node 24.13.1、Pi 1.5.0、Git、SSH/SFTP、Python3、curl、证书和 supervisord。镜像入口为 `/ursi/bootstrap`，镜像级别为 1。`runtime/image-browser` 在其上提供真实 Chromium、CDP、Xvfb、x11vnc、websockify 和 code-server，镜像级别为 2。browser bundle 组合后开放 IDE 和桌面逻辑端点。CDP 保持在容器回环地址，由已认证 SSH 会话访问。
 
 ## 构建
 

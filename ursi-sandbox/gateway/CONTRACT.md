@@ -61,7 +61,7 @@ Endpoint 为 `{name,bundle,protocol,port,state,ready}` 逻辑对象，不包含 
 
 ## 可选 TCP over WebSocket
 
-`GET /api/v1/registry` 返回管理员注册表，`PUT /api/v1/registry` 先完整校验并原子替换注册文件。既有沙箱端点快照不受更新影响。`GET /api/v1/sandboxes/{id}/connect/{endpoint}`，子协议为 `ursi-tcp-v1`。这是本项目协议，帧行为参考 Grasp，未声明整个 Grasp API 兼容。端点参数为已声明端点名，不接受任意 host/URL。隧道关闭时返回 501。
+`GET /api/v1/registry` 返回管理员注册表，`PUT /api/v1/registry` 先完整校验并原子替换注册文件。既有沙箱端点快照不受更新影响。`GET /api/v1/sandboxes/{id}/connect/{endpoint}`，子协议为 `ursi-tcp-v1`。这是本项目协议，帧行为参考 Grasp，未声明整个 Grasp API 兼容。端点参数为已声明端点名，不接受任意 host/URL。可用正整数请求头 `X-Ursi-Generation` 约束拨号代际，代际不符时返回 409。隧道关闭时返回 501。
 
 升级前完成 Bearer 鉴权、子协议、目标身份和可达性校验。请求携带 Origin 或任何 query 被拒绝。直连和隧道使用相同 SSH/ACP/HTTP 等上层协议，Gateway 不解析这些业务内容。
 

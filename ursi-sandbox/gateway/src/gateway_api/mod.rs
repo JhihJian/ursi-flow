@@ -151,7 +151,7 @@ async fn create(
     if spec.bundle.is_some() {
         return Err(ApiError::invalid("bundle 只能由管理员注册表决定"));
     }
-    spec.validate()?;
+    // Lifecycle binds the registry runtime before validating the combined spec.
     let mut keys = headers.get_all("idempotency-key").iter();
     let key = keys
         .next()
@@ -280,7 +280,22 @@ async fn connect(
     validate_connect(&uri, &headers)?;
     let Path((id, endpoint)) = path.map_err(|_| ApiError::invalid("Invalid tunnel identifiers"))?;
     let upgrade = upgrade.map_err(|_| ApiError::invalid("Invalid WebSocket upgrade"))?;
-    let target = tunnel::connect(&state.service, &id, &endpoint)
+    let mut generations = headers.get_all("x-ursi-generation").iter();
+    let generation = generations
+        .next()
+        .map(|header| {
+            header
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .filter(|n| *n > 0)
+                .ok_or_else(|| ApiError::invalid("Invalid X-Ursi-Generation"))
+        })
+        .transpose()?;
+    if generations.next().is_some() {
+        return Err(ApiError::invalid("Duplicate X-Ursi-Generation"));
+    }
+    let target = tunnel::connect(&state.service, &id, &endpoint, generation)
         .await
         .map_err(|error| match error {
             ConnectError::Service(error) => ApiError::from(error),

@@ -2,11 +2,6 @@
   "bundles": {
     "pi-execution": {
       "version": "1",
-      "runtime": {
-        "url": "https://artifacts.example.invalid/ursi-runtime-pi.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "min_image_level": 1
-      },
       "endpoints": [
         {"name": "ssh", "protocol": "ssh", "port": 2222},
         {"name": "agent_session", "protocol": "acp", "port": 8765}
@@ -15,6 +10,16 @@
       "readiness": {
         "ssh": "authenticated exec",
         "agent_session": "GET /healthz"
+      }
+    },
+    "pi-runtime": {
+      "version": "1",
+      "requires": ["pi-execution"],
+      "endpoints": [],
+      "runtime": {
+        "url": "https://artifacts.example.invalid/ursi-runtime-pi.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "min_image_level": 1
       }
     },
     "browser": {
@@ -26,20 +31,18 @@
       },
       "endpoints": [
         {"name": "ide", "protocol": "http", "port": 8744},
-        {"name": "cdp", "protocol": "http", "port": 9222},
         {"name": "desktop", "protocol": "websocket", "port": 6080}
       ],
       "requires": ["pi-execution"],
       "services": ["browser-stack", "ide"],
       "readiness": {
         "ide": "GET /healthz",
-        "cdp": "GET /json/version",
         "desktop": "TCP connect"
       }
     }
   },
   "images": {
-    "ursi-runtime-pi:local": ["pi-execution"],
+    "ursi-runtime-pi:local": ["pi-runtime"],
     "ursi-runtime-browser:local": ["browser"]
   }
 }

@@ -475,9 +475,7 @@ export function CliTools() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <p className="muted">
-          当前 Web 控制台已覆盖沙箱生命周期、端点状态和日志。SSH、SFTP 与 ACP
-          是数据面协议，使用独立 Client 通过 Gateway bridge 访问，Gateway key
-          不会发送到浏览器。
+          通过独立 Client 使用 SSH 命令、SFTP 文件传输和 ACP 会话。
         </p>
         <dl>
           <div>

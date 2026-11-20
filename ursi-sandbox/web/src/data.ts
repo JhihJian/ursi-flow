@@ -52,6 +52,7 @@ const defaultCapabilities: Capabilities = {
 export interface Source {
   demo: boolean
   manage: boolean
+  sshSandboxes?: string[]
   capabilities: Capabilities
   create?: (spec: unknown, key: string) => Promise<Sandbox>
   action?: (id: string, action: 'start' | 'stop' | 'delete') => Promise<Sandbox>
@@ -94,7 +95,7 @@ async function json<T>(
   return r.json()
 }
 export async function loadSource(signal: AbortSignal): Promise<Source> {
-  const { mode, manage } = await json<{ mode: string; manage?: boolean }>(
+  const { mode, manage, sshSandboxes } = await json<{ mode: string; manage?: boolean; sshSandboxes?: string[] }>(
     './console-config.json',
     signal,
   )
@@ -131,6 +132,7 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
   return {
     demo: false,
     manage: manage === true,
+    sshSandboxes,
     capabilities,
     create: manage
       ? (spec, key) =>

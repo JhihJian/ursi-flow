@@ -15,14 +15,14 @@ references:
 
 ### 浏览器服务
 
-- 镜像构建完成后 `/etc/ursi-image-level` 为 2，Chromium 能通过 CDP 监听 9222，code-server 监听 8744，websockify 监听 6080。
+- 镜像构建完成后 `/etc/ursi-image-level` 为 2，Chromium 的 CDP 只监听沙箱回环端口 9222，code-server 监听 8744，websockify 监听 6080。
 - bundle 启动真实桌面会话并将 Chromium、IDE、CDP 和桌面进程纳入生命周期回收。
 
 #### 验收
 
 - 构建镜像并启动 browser bundle 后，三个服务均能从容器内实际建立连接。
 - Docker HEALTHCHECK 检查三个浏览器端口，任一端点不可用时不报告健康。
-- Gateway 仅从管理员注册表为该镜像生成 `ide`、`cdp`、`desktop` 逻辑端点。
+- Gateway 从管理员注册表为该镜像生成 `ide`、`desktop` 逻辑端点。Web 使用已认证 SSH 访问沙箱内部 CDP，CDP 不注册为 Gateway 端点。
 
 ### 就绪与边界
 

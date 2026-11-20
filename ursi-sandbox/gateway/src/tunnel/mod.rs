@@ -38,15 +38,23 @@ pub struct Target {
     resource: Resource,
 }
 
-/// 必须在通过 API 身份校验后调用。客户端只提供两个标识，不能传递地址。
-pub async fn connect(service: &Service, id: &str, endpoint: &str) -> Result<Target, ConnectError> {
+/// 必须在通过 API 身份校验后调用。客户端只提供标识和期望代际，不能传递地址。
+pub async fn connect(
+    service: &Service,
+    id: &str,
+    endpoint: &str,
+    generation: Option<u64>,
+) -> Result<Target, ConnectError> {
     if !valid_name(id) || !valid_name(endpoint) {
         return Err(ConnectError::Service(Error::Invalid(
             "invalid identifier".into(),
         )));
     }
     let before = service.get(id).map_err(ConnectError::Service)?;
-    if before.status != Status::Running || before.operation.is_some() {
+    if before.status != Status::Running
+        || before.operation.is_some()
+        || generation.is_some_and(|expected| expected != before.resource.generation)
+    {
         return Err(ConnectError::Service(Error::Conflict(
             "sandbox is not available".into(),
         )));

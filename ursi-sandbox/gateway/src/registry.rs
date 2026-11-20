@@ -549,6 +549,32 @@ mod tests {
     }
 
     #[test]
+    fn example_registry_binds_one_runtime_per_image() {
+        let registry =
+            Registry::from_json(include_str!("../../gateway-registry.example.json")).unwrap();
+        for (image, level) in [
+            ("ursi-runtime-pi:local", 1),
+            ("ursi-runtime-browser:local", 2),
+        ] {
+            assert_eq!(
+                registry
+                    .runtime_for_image(image)
+                    .unwrap()
+                    .unwrap()
+                    .min_image_level,
+                level
+            );
+            assert!(
+                registry
+                    .expand_image(image)
+                    .unwrap()
+                    .iter()
+                    .any(|endpoint| endpoint.name == "ssh")
+            );
+        }
+    }
+
+    #[test]
     fn rejects_untrusted_runtime_source() {
         let input = r#"{"bundles":{"ssh":{"runtime":{"url":"file:///tmp/bundle","sha256":"bad","min_image_level":1},"endpoints":[]}},"images":{}}"#;
         assert!(Registry::from_json(input).is_err());

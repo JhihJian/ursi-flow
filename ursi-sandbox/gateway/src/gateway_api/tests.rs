@@ -52,6 +52,54 @@ fn tunnel_rejects_origin_queries_and_wrong_protocol() {
     }
 }
 
+#[cfg(feature = "driver-fake")]
+#[tokio::test]
+async fn create_validates_profile_after_binding_admin_runtime() {
+    use crate::{driver::fake::FakeDriver, lifecycle::store::Store};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("gateway.sqlite")).unwrap());
+    let registry =
+        Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
+    let service =
+        Service::with_registry(store, Arc::new(FakeDriver::new()), Arc::new(registry), None);
+    let state = ApiState {
+        service,
+        api_key: "test-key".into(),
+        tunnel_enabled: true,
+    };
+    let spec = |image| {
+        serde_json::from_value(json!({"image": image, "runtime_profile": "browser"})).unwrap()
+    };
+    let result = create(
+        State(state.clone()),
+        HeaderMap::new(),
+        Ok(Json(spec("ursi-runtime-browser:local"))),
+    )
+    .await
+    .unwrap_or_else(|error| panic!("expected 202, got {}", error.into_response().status()));
+    assert_eq!(result.status(), StatusCode::ACCEPTED);
+    let body = axum::body::to_bytes(result.into_body(), 8192)
+        .await
+        .unwrap();
+    let row: Sandbox = serde_json::from_slice(&body).unwrap();
+    assert_eq!(row.spec.runtime_profile.as_deref(), Some("browser"));
+    assert!(row.spec.bundle.is_none());
+    assert!(row.endpoints.iter().any(|e| e.name == "desktop"));
+    assert!(!row.endpoints.iter().any(|e| e.name == "cdp"));
+
+    let result = create(
+        State(state),
+        HeaderMap::new(),
+        Ok(Json(spec("alpine:3.22"))),
+    )
+    .await;
+    assert_eq!(
+        result.err().unwrap().into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
 #[tokio::test]
 async fn error_mapping_is_structured_and_never_leaks_driver_details() {
     let cases = [
