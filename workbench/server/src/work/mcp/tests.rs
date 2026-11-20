@@ -125,7 +125,15 @@ async fn peer(
     }
 }
 fn item(id: &str, uri: &str, script: &str) -> Value {
-    json!({"id":"i","title":"本周","description":"","category":"active","revision":3,"recipe":{"script":script,"resources":[{"alias":"note","serverId":id,"uri":uri}]}})
+    json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active","revision":3,"recipe":{"script":script,"resources":[{"alias":"note","serverId":id,"uri":uri}]}})
+}
+
+#[test]
+fn python_item_snapshot_contains_category_and_status() {
+    assert_eq!(
+        item_snapshot(&item("s", "memo:a", "example")),
+        json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active"})
+    );
 }
 
 #[tokio::test]
@@ -304,7 +312,7 @@ fn rejects_invalid_package_wholesale() {
 async fn isolated_live_read_to_files() {
     let f = Fixture::new().await;
     let id = f.add().await;
-    let script = "def transform(item, resources):\n p=resources['note']['contents']\n return {'name':item['title'],'files':[{'path':'材料/a','text':p[0]['text']},{'path':'b','blob':p[1]['blob']}]}";
+    let script = "def transform(item, resources):\n assert (item['category'], item['status']) == ('continuous', 'active')\n p=resources['note']['contents']\n return {'name':item['title'],'files':[{'path':'材料/a','text':p[0]['text']},{'path':'b','blob':p[1]['blob']}]}";
     let g = convert(&f.store, &item(&id, "memo:a", script))
         .await
         .unwrap();

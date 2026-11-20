@@ -75,18 +75,28 @@ impl Store {
         if !db.is_object() {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "无效的工作数据"));
         }
-        let upgrade = legacy::present(&db);
+        let retire_dispatch = legacy::present(&db);
+        let split_categories = db["workListItems"]
+            .as_object()
+            .is_some_and(|rows| rows.values().any(|row| row.get("status").is_none()));
         let store = Self(Arc::new(Inner {
             dir,
             db: Mutex::new(Some(db)),
             _lock: lock,
         }));
-        if upgrade {
+        if retire_dispatch || split_categories {
             store
                 .update(|db| {
-                    legacy::retire(store.dir(), db).map_err(|e| Error::Internal(e.to_string()))
+                    if split_categories {
+                        legacy::split_categories(db)?;
+                    }
+                    if retire_dispatch {
+                        legacy::retire(store.dir(), db)
+                            .map_err(|e| Error::Internal(e.to_string()))?;
+                    }
+                    Ok(())
                 })
-                .map_err(|e| io::Error::other(format!("旧派工数据清理失败：{e:?}")))?;
+                .map_err(|e| io::Error::other(format!("工作数据升级失败：{e:?}")))?;
         }
         Ok(store)
     }

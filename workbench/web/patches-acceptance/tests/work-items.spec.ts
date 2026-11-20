@@ -6,6 +6,37 @@ import { expect, test } from '@playwright/test'
 import { readRuntime } from '../fixtures/runtime'
 import { login } from './support'
 
+test('只填标题创建工作项，类别和状态可分别修改并保存', async ({ page }, info) => {
+  await login(page, readRuntime().token)
+  await page.getByRole('link', { name: '新建工作项' }).click()
+  const title = `材料核查-${info.project.name}`
+  const category = page.getByRole('combobox', { name: '类别', exact: true })
+  const status = page.getByRole('combobox', { name: '状态', exact: true })
+  const save = page.getByRole('button', { name: '保存工作项' })
+  const edit = page.getByRole('link', { name: '编辑工作项' })
+  await expect(category).toHaveValue('one_time')
+  await expect(status).toHaveValue('pending')
+  await page.getByLabel('标题').fill(title)
+  await save.click()
+  await expect(page.getByText('一次性工作', { exact: true })).toBeVisible()
+  await expect(page.getByText('待开始', { exact: true })).toBeVisible()
+  await edit.click()
+  await status.selectOption('active')
+  await save.click()
+  await expect(page.getByText('一次性工作', { exact: true })).toBeVisible()
+  await expect(page.getByText('进行中', { exact: true })).toBeVisible()
+  await edit.click()
+  await expect(status).toHaveValue('active')
+  await category.selectOption('continuous')
+  await save.click()
+  await expect(page.getByText('持续工作', { exact: true })).toBeVisible()
+  await expect(page.getByText('进行中', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '返回工作清单' }).click()
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: title, exact: true }) })
+  await expect(row).toContainText('持续工作')
+  await expect(row).toContainText('进行中')
+})
+
 test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读取', async ({ page, request }, info) => {
   const { token, dataDir, apiBase } = readRuntime()
   const title = `每周反馈-${info.project.name}`
@@ -53,9 +84,13 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     expect(patch.workItemId).toEqual(detailUrl.split('/').at(-1))
     await page.goto(detailUrl)
     await page.getByRole('link', { name: '编辑工作项' }).click()
-    await page.getByRole('combobox', { name: '类别', exact: true }).selectOption('completed')
+    await expect(page.getByRole('combobox', { name: '类别', exact: true })).toHaveValue('continuous')
+    const status = page.getByRole('combobox', { name: '状态', exact: true })
+    await expect(status).toHaveValue('pending')
+    await status.selectOption('completed')
     await page.getByRole('button', { name: '保存工作项' }).click()
-    await expect(page.getByText('已完成工作', { exact: true })).toBeVisible()
+    await expect(page.getByText('持续工作', { exact: true })).toBeVisible()
+    await expect(page.getByText('已完成', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '删除工作项' }).click()
     await expect(page.getByRole('dialog')).toContainText('解除 1 个工作包')
     await page.getByRole('button', { name: '确认删除' }).click()

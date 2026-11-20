@@ -8,7 +8,7 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { categories, getWorkItem, saveWorkItem, workItemPath, type Category, type Recipe, type WorkItem } from '@/shared/api/work-items'
+import { categories, getWorkItem, saveWorkItem, statuses, workItemPath, type Category, type Recipe, type WorkItem, type WorkStatus } from '@/shared/api/work-items'
 import { RecipeEditor } from './RecipeEditor'
 
 export function ItemEditor() {
@@ -24,7 +24,8 @@ function Form({ item }: { item?: WorkItem }) {
   const mutation = useMutation()
   const [title, setTitle] = useState(item?.title ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
-  const [category, setCategory] = useState<Category>(item?.category ?? 'pending')
+  const [category, setCategory] = useState<Category>(item?.category ?? 'one_time')
+  const [status, setStatus] = useState<WorkStatus>(item?.status ?? 'pending')
   const [enabled, enable] = useState(Boolean(item?.recipe))
   const [draft, setDraft] = useState<Recipe>(item?.recipe ?? { resources: [], script: '' })
   const [validation, setValidation] = useState('')
@@ -37,7 +38,7 @@ function Form({ item }: { item?: WorkItem }) {
     if (enabled && (aliases.includes('') || new Set(aliases).size !== refs.length)) return setValidation('资源别名不能为空或重复。')
     setValidation('')
     const recipe = enabled ? { resources: refs, script: draft.script } : null
-    void mutation.run(signal => saveWorkItem({ title: title.trim(), description, category, recipe }, item, signal),
+    void mutation.run(signal => saveWorkItem({ title: title.trim(), description, category, status, recipe }, item, signal),
       saved => navigate(workItemPath(saved.id), { replace: true }))
   }
   return <div className="page-stack">
@@ -47,6 +48,9 @@ function Form({ item }: { item?: WorkItem }) {
       <label>工作说明<Textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} /></label>
       <label>类别<Select value={category} onChange={e => setCategory(e.target.value as Category)}>
         {Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </Select></label>
+      <label>状态<Select value={status} onChange={e => setStatus(e.target.value as WorkStatus)}>
+        {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select></label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={enabled} onChange={e => enable(e.target.checked)} />配置工作包来源</label>
       {enabled && <RecipeEditor recipe={draft} change={setDraft} />}

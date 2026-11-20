@@ -29,12 +29,19 @@ pub(super) fn routes(store: Store) -> Router {
 }
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 enum Category {
+    #[default]
+    OneTime,
+    Continuous,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Status {
     #[default]
     Pending,
     Active,
-    Continuous,
     Completed,
 }
 
@@ -59,14 +66,23 @@ struct Definition {
     title: String,
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    category: Category,
+    #[serde(default, deserialize_with = "present")]
+    category: Option<Category>,
+    #[serde(default, deserialize_with = "present")]
+    status: Option<Status>,
     recipe: Option<Recipe>,
     revision: Option<u64>,
 }
 
+// An omitted dimension is allowed, but an explicit null is not an enum value.
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
+}
+
 impl Definition {
-    fn row(&self, id: &str, revision: u64) -> Result<Value, Error> {
+    fn row(&self, id: &str, revision: u64, previous: Option<&Value>) -> Result<Value, Error> {
         let title = self.title.trim();
         if title.is_empty() || title.chars().any(char::is_control) {
             return Err(Error::Invalid("工作标题不能为空或包含控制字符".into()));
@@ -87,8 +103,18 @@ impl Definition {
                 }
             }
         }
+        let category = self
+            .category
+            .map(|v| json!(v))
+            .or_else(|| previous.map(|r| r["category"].clone()))
+            .unwrap_or_else(|| json!(Category::default()));
+        let status = self
+            .status
+            .map(|v| json!(v))
+            .or_else(|| previous.map(|r| r["status"].clone()))
+            .unwrap_or_else(|| json!(Status::default()));
         Ok(
-            json!({"id":id,"title":title,"description":self.description,"category":self.category,"recipe":self.recipe,"revision":revision}),
+            json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"recipe":self.recipe,"revision":revision}),
         )
     }
 }
@@ -112,14 +138,17 @@ pub(super) fn find<'a>(db: &'a Value, id: &str) -> Result<&'a Value, Error> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Filter {
     category: Option<Category>,
+    status: Option<Status>,
 }
 async fn list(
     State(store): State<Store>,
     Query(filter): Query<Filter>,
 ) -> Result<Json<Value>, Error> {
     let category = filter.category.map(|c| json!(c));
+    let status = filter.status.map(|s| json!(s));
     store.read(|db| {
         let Some(rows) = db.get(TABLE) else {
             return Ok(Json(json!([])));
@@ -129,6 +158,7 @@ async fn list(
             .ok_or_else(corrupt)?
             .values()
             .filter(|row| category.as_ref().is_none_or(|c| c == &row["category"]))
+            .filter(|row| status.as_ref().is_none_or(|s| s == &row["status"]))
             .collect();
         Ok(Json(json!(rows)))
     })
@@ -144,7 +174,7 @@ async fn create(
         return Err(Error::Invalid("新建工作项无需修订号".into()));
     }
     let id = Uuid::new_v4().to_string();
-    let row = input.row(&id, 1)?;
+    let row = input.row(&id, 1, None)?;
     store.update(|db| {
         table_mut(db)?.insert(id, row.clone());
         Ok(Json(row))
@@ -161,7 +191,7 @@ async fn replace(
         if input.revision.is_some_and(|expected| expected != revision) {
             return Err(Error::Conflict("工作项已被修改，请刷新".into()));
         }
-        let mut row = input.row(&id, revision)?;
+        let mut row = input.row(&id, revision, Some(old))?;
         if &row != old {
             row["revision"] = json!(revision.checked_add(1).ok_or_else(corrupt)?);
             table_mut(db)?.insert(id, row.clone());

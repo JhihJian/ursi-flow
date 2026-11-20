@@ -194,11 +194,15 @@ async fn convert_inner(store: &Store, item: &Value) -> Result<Generated, Error> 
         evidence.push(json!({"serverId":r.server_id,"uri":r.uri,"alias":r.alias,"sha256":format!("{:x}",Sha256::digest(&bytes)),"readAt":now}));
         snapshots[&r.alias] = json!({"serverId":r.server_id,"uri":r.uri,"contents":contents});
     }
-    let input = json!({"item":{"id":item["id"],"title":item["title"],"description":item["description"],"category":item["category"]},"resources":snapshots,"script":recipe.script});
+    let input = json!({"item":item_snapshot(item),"resources":snapshots,"script":recipe.script});
     let output = sandbox::run(&input).await?;
     let provenance = json!({"workItemId":item["id"],"workItemTitle":item["title"],"revision":item["revision"],"scriptSha256":format!("{:x}",Sha256::digest(recipe.script.as_bytes())),"resources":evidence});
     package(output, provenance)
 }
+fn item_snapshot(item: &Value) -> Value {
+    json!({"id":item["id"],"title":item["title"],"description":item["description"],"category":item["category"],"status":item["status"]})
+}
+
 fn package(output: Value, provenance: Value) -> Result<Generated, Error> {
     let name = output["name"].as_str().unwrap_or("").trim();
     if !label(name, 320) || name.chars().count() > 80 {

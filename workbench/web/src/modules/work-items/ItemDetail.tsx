@@ -7,7 +7,7 @@ import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
-import { categories, deleteWorkItem, generatePatch, getWorkItem, workItemPath, type WorkItem } from '@/shared/api/work-items'
+import { categories, deleteWorkItem, generatePatch, getWorkItem, statuses, workItemPath, type WorkItem } from '@/shared/api/work-items'
 
 export function ItemDetail() {
   const { id = '' } = useParams()
@@ -36,7 +36,7 @@ function Detail({ item }: { item: WorkItem }) {
   return <div className="page-stack break-words">
     <header className="space-y-2"><Link className="text-sm text-accent-2" to="/work-items">返回工作清单</Link>
       <h1 className="break-all text-xl font-semibold">{item.title}</h1>
-      <div className="flex flex-wrap items-center gap-3"><span>{categories[item.category]}</span>
+      <div className="flex flex-wrap items-center gap-3"><span>{categories[item.category]}</span><span>{statuses[item.status]}</span>
         <Button asChild><Link to={`${workItemPath(item.id)}/edit`}>编辑工作项</Link></Button>
         <Button variant="danger" disabled={patches.loading || !!patches.error || generation.busy} onClick={() => setDeleting(true)}>删除工作项</Button></div>
     </header>

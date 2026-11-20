@@ -1,12 +1,14 @@
 import { requestV2 } from '@/shared/http/client'
 
 export const categories = {
-  pending: '待开始工作', active: '正在进行中工作', continuous: '持续工作', completed: '已完成工作',
+  one_time: '一次性工作', continuous: '持续工作',
 }
 export type Category = keyof typeof categories
+export const statuses = { pending: '待开始', active: '进行中', completed: '已完成' }
+export type WorkStatus = keyof typeof statuses
 export type ResourceRef = { alias: string; serverId: string; uri: string }
 export type Recipe = { resources: ResourceRef[]; script: string }
-export type WorkDraft = { title: string; description: string; category: Category; recipe: Recipe | null }
+export type WorkDraft = { title: string; description: string; category: Category; status: WorkStatus; recipe: Recipe | null }
 export type WorkItem = WorkDraft & { id: string; revision: number }
 export type ServerDraft = { name: string; url: string; credentialEnv?: string }
 export type McpServer = ServerDraft & { id: string }

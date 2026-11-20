@@ -4,7 +4,7 @@ Server 的私有 `work/` 存储持有 v2 业务数据。工作清单回答「有
 
 ## 从清单项到文件包
 
-[工作清单](src/work/worklist/SPEC.md)保存标题、说明、类别和可选配方。保存配方时不读取外部资源。用户请求生成时，Server 读取[平台 MCP 服务](src/work/mcp/PLATFORM.md)的授权资源，将材料快照交给隔离的 Python 转换器。校验文件并复核清单项修订后，Server 发布一个关联到该项的工作包。同一生成请求的重试返回原包。
+[工作清单](src/work/worklist/SPEC.md)保存标题、说明、类别、状态和可选配方。保存配方时不读取外部资源。用户请求生成时，Server 读取[平台 MCP 服务](src/work/mcp/PLATFORM.md)的授权资源，将材料快照交给隔离的 Python 转换器。校验文件并复核清单项修订后，Server 发布一个关联到该项的工作包。同一生成请求的重试返回原包。
 
 [包记录](src/work/patches/HTTP.md)保存名称和 `directoryId`，文件归[虚拟目录](src/work/directories/HTTP.md)管理。工作包的当前归属可改，生成来源固定。删除清单项时只解除归属，文件和来源仍可查。配置包独立保存提示词、技能和 MCP 配置文件；这些文件与平台连接 MCP 服务的出站授权用途不同。
 
