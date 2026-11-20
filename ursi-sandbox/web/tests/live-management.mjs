@@ -20,15 +20,13 @@ try {
   await page.getByRole('button', { name: '创建沙箱' }).click()
   await page.getByRole('tab', { name: 'JSON 编辑' }).click()
   const name = 'web-smoke-' + Date.now()
-  await page
-    .getByRole('textbox', { name: 'SandboxSpec JSON' })
-    .fill(
-      JSON.stringify({
-        image: 'alpine:3.22',
-        command: ['sleep', '180'],
-        labels: { name },
-      }),
-    )
+  await page.getByRole('textbox', { name: 'SandboxSpec JSON' }).fill(
+    JSON.stringify({
+      image: 'alpine:3.22',
+      command: ['sleep', '180'],
+      labels: { name },
+    }),
+  )
   await page.getByRole('button', { name: '提交创建' }).click()
   await page.waitForURL(/#\/sandboxes\/[a-f0-9]{32}$/)
   id = page.url().split('/').pop()
@@ -36,22 +34,34 @@ try {
     ['运行中', '停止', '已停止'],
     ['已停止', '启动', '运行中'],
   ]) {
-    await expect(page.locator('.badge')).toHaveText(before, { timeout: 45000 })
+    await expect(page.getByTestId('instance-status')).toHaveText(before, {
+      timeout: 45000,
+    })
     await page.getByRole('button', { name: action, exact: true }).click()
-    await expect(page.locator('.badge')).toHaveText(after, { timeout: 45000 })
+    await expect(page.getByTestId('instance-status')).toHaveText(after, {
+      timeout: 45000,
+    })
   }
-  await page.getByRole('button', { name: '保留数据重建' }).click()
+  const choose = async (name) => {
+    await page.getByRole('button', { name: '更多操作' }).click()
+    await page.getByRole('menuitem', { name, exact: true }).click()
+  }
+  await choose('保留数据重建')
   await page.getByRole('button', { name: '确认重建' }).click()
-  await expect(page.locator('.badge')).toHaveText('运行中', { timeout: 45000 })
+  await expect(page.getByTestId('instance-status')).toHaveText('运行中', {
+    timeout: 45000,
+  })
   await expect(page.getByText('2 / 1')).toBeVisible()
-  await page.getByRole('button', { name: '销毁数据重建' }).click()
+  await choose('销毁数据重建')
   await page.getByRole('button', { name: '确认销毁并重建' }).click()
-  await expect(page.locator('.badge')).toHaveText('运行中', { timeout: 45000 })
+  await expect(page.getByTestId('instance-status')).toHaveText('运行中', {
+    timeout: 45000,
+  })
   await expect(page.getByText('3 / 3')).toBeVisible()
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await choose('删除')
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.getByRole('heading', { name })).toBeVisible()
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await choose('删除')
   await page.getByRole('button', { name: '确认永久删除' }).click()
   await page.waitForURL(/#\/sandboxes$/, { timeout: 45000 })
   const status = await page.evaluate(

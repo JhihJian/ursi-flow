@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  Play,
+  Plus,
+  RefreshCw,
+  Square,
+  Trash2,
+} from 'lucide-react'
 import type { Registry, Sandbox, Source } from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
@@ -16,11 +23,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from './shared/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './shared/ui/tabs'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from './shared/ui/collapsible'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './shared/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './shared/ui/alert-dialog'
 
 const template = JSON.stringify(
   {
@@ -74,7 +94,8 @@ export function RegistryAdmin({ source }: { source: Source }) {
     if (!load) return () => controller.abort()
     Promise.resolve(load(controller.signal)).then(
       (registry) => setValue(JSON.stringify(registry, null, 2)),
-      (reason: unknown) => setError(reason instanceof Error ? reason.message : '读取注册表失败'),
+      (reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : '读取注册表失败'),
     )
     return () => controller.abort()
   }, [source])
@@ -95,19 +116,30 @@ export function RegistryAdmin({ source }: { source: Source }) {
     }
   }
   return (
-    <main>
-      <div className="heading">
+    <main className="page-shell page-content space-y-4">
+      <div className="page-heading">
         <div>
           <h1>能力注册表</h1>
-          <p>维护管理员批准的镜像、Bundle、Runtime 摘要和端点组合。</p>
+          <p className="mt-1 text-sm text-txt3">镜像、Bundle、Runtime 与端点</p>
         </div>
-        <Button variant="primary" onClick={() => void save()} loading={busy} disabled={!source.manage}>
+        <Button
+          variant="primary"
+          onClick={() => void save()}
+          loading={busy}
+          disabled={!source.manage}
+        >
           保存并生效
         </Button>
       </div>
-      {!source.manage && <Alert className="border-warn/30 bg-warn/10 text-warn">当前账户只读，不能修改注册表。</Alert>}
+      {!source.manage && (
+        <Alert className="border-warn/30 bg-warn/10 text-warn">
+          当前账户只读，不能修改注册表。
+        </Alert>
+      )}
       {message && <Alert>{message}</Alert>}
-      {error && <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>}
+      {error && (
+        <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>
+      )}
       <Textarea
         aria-label="Gateway registry JSON"
         value={value}
@@ -167,7 +199,7 @@ export function CreateSandbox({ source }: { source: Source }) {
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant={source.manage ? 'primary' : 'outline'}>
           <Plus />
           创建沙箱
         </Button>
@@ -179,30 +211,6 @@ export function CreateSandbox({ source }: { source: Source }) {
             快速填写常用配置，提交时自动生成符合 SandboxSpec 规范的 JSON。
           </DialogDescription>
         </DialogHeader>
-        <div
-          className="flex gap-1 rounded-lg bg-elevated p-1"
-          role="tablist"
-          aria-label="创建方式"
-        >
-          {(
-            [
-              ['quick', '快速创建'],
-              ['json', 'JSON 编辑'],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              type="button"
-              variant={mode === value ? 'default' : 'ghost'}
-              role="tab"
-              aria-selected={mode === value}
-              onClick={() => updateMode(value)}
-              className="flex-1"
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
         <form
           className="space-y-4"
           onSubmit={(event) => {
@@ -210,8 +218,20 @@ export function CreateSandbox({ source }: { source: Source }) {
             void submit()
           }}
         >
-          {mode === 'quick' ? (
-            <div className="space-y-4">
+          <Tabs
+            value={mode}
+            onValueChange={(value) => updateMode(value as CreateMode)}
+            className="space-y-4"
+          >
+            <TabsList aria-label="创建方式" className="grid w-full grid-cols-2">
+              <TabsTrigger value="quick" disabled={busy}>
+                快速创建
+              </TabsTrigger>
+              <TabsTrigger value="json" disabled={busy}>
+                JSON 编辑
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="quick" className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="sandbox-image">镜像</Label>
@@ -273,9 +293,8 @@ export function CreateSandbox({ source }: { source: Source }) {
                   placeholder={'sleep\n3600'}
                 />
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
+            </TabsContent>
+            <TabsContent value="json" className="space-y-2">
               <Label htmlFor="sandbox-spec">SandboxSpec JSON</Label>
               <Textarea
                 id="sandbox-spec"
@@ -285,8 +304,8 @@ export function CreateSandbox({ source }: { source: Source }) {
                 onChange={(e) => edit(e.target.value)}
                 className="min-h-64 w-full resize-y font-mono text-xs leading-5"
               />
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
           {!source.manage && (
             <Alert className="border-warn/30 bg-warn/10 text-warn">
               {source.demo ? '演示数据不连接 Gateway。' : '当前账户只读。'}{' '}
@@ -330,14 +349,16 @@ export function Actions({
 }) {
   const [busy, wait] = useState(false),
     [error, fail] = useState(''),
-    [confirm, ask] = useState(false),
-    [rebuild, askRebuild] = useState<boolean | null>(null)
+    [confirmation, setConfirmation] = useState<
+      'delete' | 'preserve' | 'destroy' | null
+    >(null)
+  const menuTrigger = useRef<HTMLButtonElement>(null)
   const disabled = !source.manage || busy || Boolean(row.operation)
   async function run(action: 'start' | 'stop' | 'delete') {
     if (disabled || !source.action) return
     wait(true)
     fail('')
-    ask(false)
+    setConfirmation(null)
     try {
       refresh(await source.action(row.id, action))
     } catch (e) {
@@ -350,7 +371,7 @@ export function Actions({
     if (disabled || !source.rebuild) return
     wait(true)
     fail('')
-    askRebuild(null)
+    setConfirmation(null)
     try {
       refresh(await source.rebuild(row.id, preserveData))
     } catch (e) {
@@ -359,135 +380,149 @@ export function Actions({
       wait(false)
     }
   }
+  if (!source.manage) return null
+  const hasRebuild =
+    source.capabilities.rebuild_preserve_data ||
+    source.capabilities.rebuild_destroy_data
+  const destructive = confirmation !== 'preserve'
+  const title =
+    confirmation === 'delete'
+      ? '确认删除沙箱'
+      : confirmation === 'preserve'
+        ? '保留数据重建沙箱'
+        : '销毁数据重建沙箱'
   return (
-    <section aria-label="生命周期操作">
-      <div className="flex flex-wrap gap-2">
+    <div
+      aria-label="生命周期操作"
+      className="flex flex-wrap items-center gap-2"
+    >
+      {row.status === 'stopped' && (
         <Button
-          disabled={disabled || row.status !== 'stopped'}
-          loading={busy}
-          onClick={() => run('start')}
+          variant="primary"
+          disabled={disabled}
+          onClick={() => void run('start')}
         >
           <Play />
           启动
         </Button>
+      )}
+      {row.status === 'running' && (
         <Button
-          disabled={disabled || row.status !== 'running'}
-          loading={busy}
-          onClick={() => run('stop')}
+          variant="outline"
+          disabled={disabled}
+          onClick={() => void run('stop')}
         >
           <Square />
           停止
         </Button>
-        {source.capabilities.rebuild_preserve_data && (
+      )}
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
           <Button
+            ref={menuTrigger}
             variant="outline"
+            loading={busy}
             disabled={disabled}
-            onClick={() => askRebuild(true)}
           >
-            <RefreshCw />
-            保留数据重建
+            更多操作
+            <ChevronDown />
           </Button>
-        )}
-        {source.capabilities.rebuild_destroy_data && (
-          <Button
-            variant="outline"
-            disabled={disabled}
-            onClick={() => askRebuild(false)}
-          >
-            <RefreshCw />
-            销毁数据重建
-          </Button>
-        )}
-        <Button
-          variant="destructive"
-          disabled={disabled}
-          onClick={() => ask(true)}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(event) => {
+            if (confirmation) event.preventDefault()
+          }}
         >
-          <Trash2 />
-          删除
-        </Button>
-      </div>
-      <Dialog
-        open={rebuild !== null}
+          {source.capabilities.rebuild_preserve_data && (
+            <DropdownMenuItem onSelect={() => setConfirmation('preserve')}>
+              <RefreshCw />
+              保留数据重建
+            </DropdownMenuItem>
+          )}
+          {source.capabilities.rebuild_destroy_data && (
+            <DropdownMenuItem
+              className="text-err"
+              onSelect={() => setConfirmation('destroy')}
+            >
+              <RefreshCw />
+              销毁数据重建
+            </DropdownMenuItem>
+          )}
+          {hasRebuild && <DropdownMenuSeparator />}
+          <DropdownMenuItem
+            className="text-err"
+            onSelect={() => setConfirmation('delete')}
+          >
+            <Trash2 />
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AlertDialog
+        open={confirmation !== null}
         onOpenChange={(open) => {
-          if (!open) askRebuild(null)
+          if (!open) setConfirmation(null)
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {rebuild ? '保留数据重建沙箱' : '销毁数据重建沙箱'}
-            </DialogTitle>
-            <DialogDescription>
-              {rebuild
-                ? '容器会重新创建，工作区数据和数据代际保持不变。'
-                : '容器和工作区数据会重新创建，数据代际将递增，此操作不能撤销。'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => askRebuild(null)}>
-              取消
-            </Button>
-            <Button
-              variant={rebuild ? 'primary' : 'destructive'}
-              onClick={() => void runRebuild(rebuild === true)}
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            menuTrigger.current?.focus()
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmation === 'delete'
+                ? `删除 ${row.spec.labels.name || row.id} 将永久清除容器和工作卷，此操作不能撤销。`
+                : confirmation === 'preserve'
+                  ? '容器会重新创建，工作区数据和数据代际保持不变。'
+                  : '容器和工作区数据会重新创建，数据代际将递增，此操作不能撤销。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              destructive={destructive}
+              onClick={() => {
+                if (confirmation === 'delete') void run('delete')
+                else if (confirmation)
+                  void runRebuild(confirmation === 'preserve')
+              }}
             >
-              {rebuild ? '确认重建' : '确认销毁并重建'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={confirm} onOpenChange={ask}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认删除沙箱</DialogTitle>
-            <DialogDescription>
-              删除 {row.spec.labels.name || row.id}{' '}
-              将永久清除容器和工作卷，此操作不能撤销。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => ask(false)}>
-              取消
-            </Button>
-            <Button variant="destructive" onClick={() => run('delete')}>
-              确认永久删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {confirmation === 'delete'
+                ? '确认永久删除'
+                : confirmation === 'preserve'
+                  ? '确认重建'
+                  : '确认销毁并重建'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {error && (
-        <Alert className="mt-3 border-err/30 bg-err/10 text-err">{error}</Alert>
+        <Alert className="basis-full border-err/30 bg-err/10 text-err">
+          {error}
+        </Alert>
       )}
-      {row.operation && (
-        <p role="status" className="mt-3 text-sm text-txt3">
-          Gateway 正在处理：{row.operation.kind}
-        </p>
-      )}
-    </section>
+    </div>
   )
 }
 export function CliTools() {
   return (
-    <Collapsible className="mt-5">
-      <CollapsibleTrigger className="text-sm font-medium text-txt2">
-        端点访问（独立 CLI）
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <p className="muted">
-          通过独立 Client 使用 SSH 命令、SFTP 文件传输和 ACP 会话。
-        </p>
-        <dl>
-          <div>
-            <dt>ACP 会话</dt>
-            <dd>acp initialize / new / prompt / status / cancel / close。</dd>
-          </div>
-          <div>
-            <dt>工作区访问</dt>
-            <dd>ssh 执行脚本，sftp-put / sftp-get 传输文件。</dd>
-          </div>
-        </dl>
-      </CollapsibleContent>
-    </Collapsible>
+    <dl className="space-y-3 text-xs leading-5 text-txt3">
+      <div>
+        <dt className="font-medium text-txt2">ACP 会话</dt>
+        <dd>
+          <code>acp initialize / new / prompt / status / cancel / close</code>
+        </dd>
+      </div>
+      <div>
+        <dt className="font-medium text-txt2">工作区访问</dt>
+        <dd>
+          <code>ssh</code> · <code>sftp-put</code> · <code>sftp-get</code>
+        </dd>
+      </div>
+    </dl>
   )
 }

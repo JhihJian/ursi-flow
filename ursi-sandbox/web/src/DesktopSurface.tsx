@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react'
 import RFB from '@novnc/novnc/lib/rfb.js'
 
-export default function DesktopSurface({ url, control, status }: {
+export default function DesktopSurface({
+  url,
+  control,
+  status,
+}: {
   url: string
   control: boolean
   status: (state: 'connecting' | 'connected' | 'failed') => void
@@ -30,5 +34,11 @@ export default function DesktopSurface({ url, control, status }: {
       rfb.disconnect()
     }
   }, [url, status])
-  return <div ref={host} aria-label="远程画面" className="h-[clamp(20rem,60dvh,44rem)] min-w-0 overflow-hidden rounded bg-black" />
+  return (
+    <div
+      ref={host}
+      aria-label="远程画面"
+      className="size-full min-w-0 overflow-hidden"
+    />
+  )
 }

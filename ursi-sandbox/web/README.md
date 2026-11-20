@@ -1,6 +1,6 @@
 # 沙箱资源控制台
 
-`/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止、选择保留数据或销毁数据重建，或确认删除实例，请求受理后页面轮询最终状态。页面按 Gateway capabilities 展示可用的重建方式。可通过统计卡片按状态筛选。实例详情展示资源配额、代际、端点快照和最近 200 行日志。刷新按钮重新查询当前数据。
+`/sandboxes` 提供 Gateway 实例管理。管理员可通过快速创建表单填写镜像、命令和资源，页面会自动组装不含端点字段的 SandboxSpec JSON；也可切换到 JSON 编辑直接提交完整规格。端点由 Gateway 注册表决定。创建后可在详情页启动、停止、选择保留数据或销毁数据重建，或确认删除实例，请求受理后页面轮询最终状态。页面按 Gateway capabilities 展示可用的重建方式。列表可按状态筛选。详情页以工作台为主，旁边的检查区可展开规格、端点快照和最近 200 行日志，窄屏下检查区位于工作台下方。重建和删除在「更多操作」中确认。刷新详情时，仍然有效的同代际连接会保留。
 
 ## 独立预览
 
@@ -16,7 +16,7 @@ npm start
 
 ## 静态交付
 
-页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 内的 Button、Input、Select、Textarea、Label、Badge、Dialog、Collapsible、Alert 基于 Radix UI、CVA 和 Tailwind 封装，业务页面直接使用这些组件。`npm run build` 先做类型检查，再将 HTML、CSS、脚本及配置输出到 `dist/`。只需将其内容发布到静态目录，例如 `/apps/sandbox/`，即可在 `/apps/sandbox/#/sandboxes` 预览演示实例。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
+页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS、脚本及配置输出到 `dist/`。只需将其内容发布到静态目录，例如 `/apps/sandbox/`，即可在 `/apps/sandbox/#/sandboxes` 预览演示实例。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
 
 `src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。静态产物只包含演示数据。需要连接 Gateway 时可使用自带服务，也可由部署方在同一目录下提供 `console-config.json`（`{"mode":"gateway"}`）并将能力查询及实例请求交给鉴权代理。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
 

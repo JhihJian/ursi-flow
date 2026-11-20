@@ -1,34 +1,52 @@
-import React, { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type DependencyList,
+} from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity,
   ArrowLeft,
   Box,
   Boxes,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleStop,
-  Cpu,
   Layers3,
-  Network,
   RefreshCw,
   Server,
-  Terminal,
 } from 'lucide-react'
 import {
   HashRouter,
   Link,
+  NavLink,
   Route,
   Routes,
   useParams,
   useNavigate,
 } from 'react-router'
-import type { LucideIcon } from 'lucide-react'
 import { EndpointWorkbench } from './Workbench'
 import { CreateSandbox, Actions, CliTools, RegistryAdmin } from './Management'
-import { Button } from './shared/ui/button'
-import { Badge as UiBadge } from './shared/ui/badge'
+import { Button, buttonVariants } from './shared/ui/button'
+import { Badge } from './shared/ui/badge'
 import { Alert } from './shared/ui/alert'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from './shared/ui/collapsible'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './shared/ui/table'
+import { cn } from './shared/lib/utils'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
 import { initAppearance } from './theme'
 import './tokens.css'
@@ -47,24 +65,30 @@ const memory = (mb: number) =>
 type State<T> = { value?: T; loading?: boolean; error?: string }
 function useLoad<T>(
   load: (s: AbortSignal) => T | Promise<T>,
-  deps: React.DependencyList,
+  deps: DependencyList,
 ) {
-  const [seq, refresh] = React.useReducer((n) => n + 1, 0)
-  const run = React.useRef(0)
+  const [seq, refresh] = useReducer((n) => n + 1, 0)
+  const run = useRef(0)
   const [state, set] = useState<State<T>>({ loading: true })
   useEffect(() => {
     const ctl = new AbortController(),
       current = ++run.current
-    set({ loading: true })
+    set((previous) => ({ value: previous.value, loading: true }))
     Promise.resolve()
       .then(() => load(ctl.signal))
       .then(
         (value) => {
           if (!ctl.signal.aborted && current === run.current) set({ value })
         },
-        (e) => {
-          if (!ctl.signal.aborted && current === run.current)
-            set({ error: e.message })
+        (error) => {
+          if (ctl.signal.aborted || current !== run.current) return
+          const lost =
+            error instanceof GatewayError &&
+            [401, 403, 404].includes(error.status)
+          set((previous) => ({
+            value: lost ? undefined : previous.value,
+            error: error.message,
+          }))
         },
       )
     return () => ctl.abort()
@@ -79,12 +103,12 @@ function useLoad<T>(
 type RequestState = State<unknown> & { refresh: () => void }
 function AsyncState({ state }: { state: RequestState }) {
   return (
-    <div role="status" className="empty">
+    <div role="status" className="empty-state">
       {state.error ? (
         <>
-          <CircleAlert />
+          <CircleAlert className="size-4 text-err" />
           {state.error}
-          <Button variant="outline" onClick={state.refresh}>
+          <Button variant="outline" size="sm" onClick={state.refresh}>
             <RefreshCw />
             重试
           </Button>
@@ -95,90 +119,141 @@ function AsyncState({ state }: { state: RequestState }) {
     </div>
   )
 }
-function Badge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string }) {
   const tone =
-    status === 'error'
-      ? 'destructive'
-      : status === 'running'
-        ? 'default'
-        : 'secondary'
-  return <UiBadge variant={tone}>{statuses[status] || status}</UiBadge>
+    status === 'running'
+      ? 'bg-ok/10 text-ok'
+      : status === 'error'
+        ? 'bg-err/10 text-err'
+        : ['preparing', 'deleting'].includes(status)
+          ? 'bg-warn/10 text-warn'
+          : 'bg-elevated text-txt3'
+  return (
+    <Badge
+      variant="secondary"
+      data-testid="instance-status"
+      className={cn('gap-1.5 whitespace-nowrap', tone)}
+    >
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      {statuses[status] || status}
+    </Badge>
+  )
 }
 function Refresh({ state }: { state: RequestState }) {
   return (
-    <Button variant="outline" onClick={state.refresh} loading={state.loading}>
-      <RefreshCw />
+    <Button
+      variant="outline"
+      onClick={state.refresh}
+      disabled={state.loading}
+      aria-busy={state.loading}
+    >
+      <RefreshCw className={cn(state.loading && 'motion-safe:animate-spin')} />
       刷新
     </Button>
   )
 }
 function Header({ source }: { source?: Source }) {
   return (
-    <header>
-      <div className="bar">
-        <Link className="brand" to="/sandboxes">
-          <span className="logo">
-            <Boxes size={22} />
+    <header className="border-b border-line bg-surface">
+      <div className="page-shell flex min-h-14 flex-wrap items-center gap-x-5 gap-y-1">
+        <Link
+          className="inline-flex min-h-12 items-center gap-2 whitespace-nowrap font-semibold"
+          to="/sandboxes"
+        >
+          <span className="icon-tile size-7">
+            <Boxes className="size-4" />
           </span>
           Ursi Sandbox
         </Link>
-        <span className="sep">/</span>
-        <span className="crumb">资源控制台</span>
-        {source?.manage && (
-          <Link className="crumb" to="/registry">
-            能力注册表
-          </Link>
-        )}
-        {source && (
-          <span className="mode">
-            <Server size={14} />
-            {source.demo
-              ? '演示数据'
-              : source.manage
-                ? 'Gateway · 管理员'
-                : 'Gateway · 只读'}
-          </span>
-        )}
+        <nav
+          className="order-last flex w-full items-center gap-4 sm:order-none sm:w-auto"
+          aria-label="主导航"
+        >
+          <NavLink className="nav-link" to="/sandboxes">
+            沙箱
+          </NavLink>
+          {source?.manage && (
+            <NavLink className="nav-link" to="/registry">
+              能力注册表
+            </NavLink>
+          )}
+        </nav>
+        <Badge variant="outline" className="ml-auto whitespace-nowrap">
+          <Server className="size-3" />
+          {source?.demo
+            ? '演示数据'
+            : source?.manage
+              ? 'Gateway · 管理员'
+              : source
+                ? 'Gateway · 只读'
+                : 'Gateway'}
+        </Badge>
       </div>
     </header>
+  )
+}
+const filters = [
+  ['', '全部实例', Layers3],
+  ['running', '运行中', Activity],
+  ['stopped', '已停止', CircleStop],
+  ['error', '异常', CircleAlert],
+] as const
+function InstanceLink({ row }: { row: Sandbox }) {
+  return (
+    <Link
+      to={'/sandboxes/' + row.id}
+      aria-label={'查看 ' + nameOf(row)}
+      className="group flex min-w-0 items-center gap-3 rounded-md font-medium text-txt hover:text-accent-2"
+    >
+      <span className="icon-tile size-8 shrink-0">
+        <Box className="size-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block break-all">{nameOf(row)}</span>
+        {row.spec.labels.name && (
+          <span className="block font-mono text-xs text-txt3">
+            {row.id.slice(0, 12)}
+          </span>
+        )}
+      </span>
+      <ChevronRight
+        aria-hidden="true"
+        className="ml-auto size-4 shrink-0 text-txt3 md:hidden"
+      />
+    </Link>
   )
 }
 function List({ source }: { source: Source }) {
   const state = useLoad((s) => source.list(s), [source])
   const [status, filter] = useState('')
-  const rows = state.value || []
-  const result = rows.filter((r) => !status || r.status === status)
-  const stats: [string, string, LucideIcon][] = [
-    ['', '全部实例', Layers3],
-    ['running', '运行中', Activity],
-    ['stopped', '已停止', CircleStop],
-    ['error', '异常', CircleAlert],
-  ]
+  const rows = state.value ?? []
+  const result = rows.filter((row) => !status || row.status === status)
   return (
-    <main>
-      <div className="heading">
-        <div>
-          <h1>沙箱管理</h1>
-        </div>
+    <main className="page-shell page-content space-y-5">
+      <div className="page-heading">
+        <h1>沙箱管理</h1>
         <div className="flex items-center gap-2">
           <Refresh state={state} />
           <CreateSandbox source={source} />
         </div>
       </div>
-      <div className="stats">
-        {stats.map(([value, label, Icon]) => (
+      <div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3"
+        aria-label="按状态筛选"
+      >
+        {filters.map(([value, label, Icon]) => (
           <Button
             key={label}
             variant="outline"
             aria-pressed={status === value}
             onClick={() => filter(value)}
-            className={'stat ' + (value || 'all')}
+            className="h-auto min-h-14 justify-between gap-1.5 px-2.5 py-2.5 text-xs aria-pressed:border-accent/40 aria-pressed:bg-accent-dim aria-pressed:text-accent-2 sm:px-4 sm:text-sm"
           >
-            <span className="stat-title">
-              <Icon size={16} />
+            <span className="inline-flex items-center gap-1.5">
+              <Icon />
               {label}
             </span>
-            <strong>
+            <strong className="font-mono text-lg tabular-nums">
               {state.value
                 ? rows.filter((r) => !value || r.status === value).length
                 : '·'}
@@ -186,237 +261,303 @@ function List({ source }: { source: Source }) {
           </Button>
         ))}
       </div>
-      <section aria-label="沙箱实例">
-        <h2 className="mb-3">
-          <Box />
-          实例列表
-        </h2>
+      <section aria-labelledby="instances" className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 id="instances" className="font-semibold">
+            实例列表
+          </h2>
+          {state.value && (
+            <span className="text-xs text-txt3">
+              显示 {result.length} / {rows.length} 个实例
+            </span>
+          )}
+        </div>
+        {state.value && state.error && <AsyncState state={state} />}
         {!state.value ? (
           <AsyncState state={state} />
         ) : !result.length ? (
-          <div className="empty" role="status">
-            <Boxes />
+          <div className="empty-state" role="status">
+            <Boxes className="size-5" />
             {rows.length ? '没有匹配的实例' : '暂无沙箱实例'}
             {status && (
-              <Button variant="outline" onClick={() => filter('')}>
+              <Button variant="outline" size="sm" onClick={() => filter('')}>
                 显示全部
               </Button>
             )}
           </div>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  {[
-                    '实例名称 / ID',
-                    '运行状态',
-                    '容器镜像',
-                    '资源配额',
-                    '端点',
-                    '',
-                  ].map((c) => (
-                    <th key={c}>{c}</th>
+          <div className="overflow-hidden rounded-lg border border-line bg-surface">
+            <div className="hidden md:block">
+              <Table aria-labelledby="instances" className="table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[30%]">实例名称 / ID</TableHead>
+                    <TableHead className="w-28">运行状态</TableHead>
+                    <TableHead>容器镜像</TableHead>
+                    <TableHead className="w-44">资源配额</TableHead>
+                    <TableHead className="w-20 text-right">端点</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {result.map((row) => (
+                    <TableRow key={row.id} className="last:border-0">
+                      <TableCell>
+                        <InstanceLink row={row} />
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={row.status} />
+                      </TableCell>
+                      <TableCell className="break-all font-mono text-xs">
+                        {row.spec.image}
+                      </TableCell>
+                      <TableCell>
+                        {row.spec.cpus} CPU · {memory(row.spec.memory_mb)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {row.endpoints.length}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.map((r) => (
-                  <tr key={r.id}>
-                    <td className="identity">
-                      <Link to={'/sandboxes/' + r.id}>
-                        <span className="cube">
-                          <Box size={18} />
-                        </span>
-                        <span>
-                          <b>{nameOf(r)}</b>
-                          <small>{r.id.slice(0, 12)}</small>
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="state">
-                      <Badge status={r.status} />
-                    </td>
-                    <td className="image mono" data-label="镜像">
-                      {r.spec.image}
-                    </td>
-                    <td className="quota" data-label="资源">
-                      {r.spec.cpus} CPU · {memory(r.spec.memory_mb)}
-                    </td>
-                    <td className="count" data-label="端点">
-                      <Network size={14} />
-                      {r.endpoints.length}
-                    </td>
-                    <td className="action">
-                      <Link
-                        to={'/sandboxes/' + r.id}
-                        aria-label={'查看 ' + nameOf(r)}
-                        title="查看详情"
-                      >
-                        <ChevronRight size={17} />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </TableBody>
+              </Table>
+            </div>
+            <ul
+              className="divide-y divide-line md:hidden"
+              aria-labelledby="instances"
+            >
+              {result.map((row) => (
+                <li key={row.id} className="space-y-2.5 p-3">
+                  <InstanceLink row={row} />
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 pl-11 text-xs text-txt3">
+                    <StatusBadge status={row.status} />
+                    <span className="break-all font-mono">
+                      {row.spec.image}
+                    </span>
+                    <span>
+                      {row.spec.cpus} CPU · {memory(row.spec.memory_mb)}
+                    </span>
+                    <span>{row.endpoints.length} 个端点</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
-        )}
-        {state.value && (
-          <footer>
-            显示 {result.length} / {rows.length} 个实例
-          </footer>
         )}
       </section>
     </main>
   )
 }
+function InspectorSection({
+  title,
+  children,
+  defaultOpen,
+}: {
+  title: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  return (
+    <Collapsible
+      defaultOpen={defaultOpen}
+      className="border-b border-line last:border-0"
+    >
+      <h3>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            className="group h-11 w-full justify-between px-2 text-left"
+          >
+            <span>{title}</span>
+            <ChevronDown className="text-txt3 transition-transform group-data-[state=open]:rotate-180" />
+          </Button>
+        </CollapsibleTrigger>
+      </h3>
+      <CollapsibleContent className="px-2 pb-4 pt-1">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
 function Logs({ source, id }: { source: Source; id: string }) {
   const state = useLoad((s) => source.logs(id, s), [source, id])
   return (
-    <section>
-      <div className="tools">
-        <h2>
-          <Terminal />
-          实例日志 <small>最近 200 行</small>
-        </h2>
-        <Refresh state={state} />
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-txt3">最近 200 行</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={state.refresh}
+          disabled={state.loading}
+        >
+          <RefreshCw />
+          刷新日志
+        </Button>
       </div>
-      {state.error || state.loading ? (
+      {(state.error || state.value === undefined) && (
         <AsyncState state={state} />
-      ) : (
-        <pre>{state.value || '暂无日志'}</pre>
       )}
-    </section>
+      {state.value !== undefined && (
+        <pre
+          tabIndex={0}
+          aria-label="实例日志输出"
+          className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-elevated p-3 text-xs leading-5 text-txt2"
+        >
+          {state.value || '暂无日志'}
+        </pre>
+      )}
+    </div>
   )
 }
-function Endpoints({ source, id }: { source: Source; id: string }) {
-  const state = useLoad((s) => source.endpoints(id, s), [source, id])
-  return (
-    <section>
-      <div className="tools">
-        <h2>
-          <Network />
-          端点查询 <small>gateway endpoints</small>
-        </h2>
-        <Refresh state={state} />
-      </div>
-      {state.error || state.loading ? (
-        <AsyncState state={state} />
-      ) : (
-        <ul>
-          {(state.value || []).map((e) => (
-            <li key={e.name}>
-              <b>{e.name}</b>
-              <code>{e.protocol}</code>
-              <span>
-                {e.bundle} · {e.port} / {e.ready ? '就绪' : '不可用'}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
-function Details({ source }: { source: Source }) {
+function DetailsRoute({ source }: { source: Source }) {
   const id = useParams<'id'>().id!
+  return <Details key={id} source={source} id={id} />
+}
+function Details({ source, id }: { source: Source; id: string }) {
   const navigate = useNavigate(),
-    deleting = React.useRef(false)
+    deleting = useRef(false)
   const state = useLoad(
-      async (s) => {
-        try {
-          return await source.detail(id, s)
-        } catch (e) {
-          if (
-            !s.aborted &&
-            deleting.current &&
-            e instanceof GatewayError &&
-            e.status === 404
-          )
-            navigate('/sandboxes', { replace: true })
-          throw e
-        }
-      },
-      [source, id],
-    ),
-    r = state.value
+    async (signal) => {
+      try {
+        return await source.detail(id, signal)
+      } catch (error) {
+        if (
+          !signal.aborted &&
+          deleting.current &&
+          error instanceof GatewayError &&
+          error.status === 404
+        )
+          navigate('/sandboxes', { replace: true })
+        throw error
+      }
+    },
+    [source, id],
+  )
+  const row = state.value
   useEffect(() => {
-    if (source.demo || !r?.operation) return
-    deleting.current = r.operation.kind === 'delete'
+    if (source.demo || !row?.operation || state.loading) return
+    deleting.current = row.operation.kind === 'delete'
     const timer = setTimeout(state.refresh, 1000)
     return () => clearTimeout(timer)
-  }, [r, source, state.refresh])
+  }, [row, source, state.refresh, state.loading])
   return (
-    <main>
-      <Link className="back" to="/sandboxes">
-        <ArrowLeft size={16} />
+    <main className="page-shell page-content space-y-4">
+      <Link
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'sm' }),
+          '-ml-2',
+        )}
+        to="/sandboxes"
+      >
+        <ArrowLeft />
         实例列表
       </Link>
-      {!r ? (
+      {!row ? (
         <AsyncState state={state} />
       ) : (
         <>
-          <div className="heading">
-            <div>
-              <h1>{nameOf(r)}</h1>
-              <small>{r.id}</small>
+          <div className="page-heading pb-1">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="icon-tile size-10 shrink-0">
+                <Box className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="break-all">{nameOf(row)}</h1>
+                  <StatusBadge status={row.status} />
+                </div>
+                <code className="break-all text-xs text-txt3">
+                  {row.spec.labels.name ? row.id : row.spec.image}
+                </code>
+              </div>
             </div>
-            <Refresh state={state} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Refresh state={state} />
+              <Actions source={source} row={row} refresh={state.update} />
+            </div>
           </div>
-          <Badge status={r.status} />
-          <Actions source={source} row={r} refresh={state.update} />
-          {r.error && (
-            <Alert className="mt-3 border-err/30 bg-err/10 text-err">
-              {r.error}
+          {row.operation && (
+            <p role="status" className="text-sm text-txt3">
+              Gateway 正在处理：{row.operation.kind}
+            </p>
+          )}
+          {row.error && (
+            <Alert className="border-err/30 bg-err/10 text-err">
+              {row.error}
             </Alert>
           )}
-          <EndpointWorkbench key={`${r.id}:${r.resource.generation}:${r.status}:${r.operation?.kind || ''}`} row={r} source={source} />
-          <section>
-            <h2>
-              <Cpu />
-              实例规格
-            </h2>
-            <dl>
-              {Object.entries({
-                镜像: r.spec.image,
-                资源配额: `${r.spec.cpus} CPU · ${memory(r.spec.memory_mb)}`,
-                '资源 / 数据代际': `${r.resource.generation} / ${r.resource.data_generation}`,
-                修订号: r.revision,
-                当前操作: r.operation?.kind || '无',
-                运行配置: r.spec.runtime_profile || '默认',
-              }).map(([k, v]) => (
-                <div key={k}>
-                  <dt>{k}</dt>
-                  <dd>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-          <section>
-            <h2>
-              <Network />
-              服务端点
-            </h2>
-            {r.endpoints.length ? (
-              <ul>
-                {r.endpoints.map((e) => (
-                  <li key={e.name}>
-                    <b>{e.name}</b>
-                    <code>{e.protocol}</code>
-                    <span>
-                      {e.bundle} · {e.port} / {e.ready ? '就绪' : '不可用'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">暂无端点</p>
-            )}
-          </section>
-          <Logs source={source} id={id} />
-          <Endpoints source={source} id={id} />
-          <CliTools />
+          {state.error && <AsyncState state={state} />}
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_17.5rem] xl:grid-cols-[minmax(0,1fr)_19rem]">
+            <EndpointWorkbench
+              key={`${row.id}:${row.resource.generation}`}
+              row={row}
+              source={source}
+              snapshotFailed={Boolean(state.error)}
+            />
+            <aside
+              aria-label="实例检查"
+              className="min-w-0 self-start border-t border-line pt-2 lg:border-l lg:border-t-0 lg:pl-3 lg:pt-0"
+            >
+              <h2 className="px-2 pb-2 pt-1 text-xs font-semibold text-txt3">
+                实例检查
+              </h2>
+              <InspectorSection title="实例规格" defaultOpen>
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+                  {Object.entries({
+                    镜像: row.spec.image,
+                    资源配额: `${row.spec.cpus} CPU · ${memory(row.spec.memory_mb)}`,
+                    '资源 / 数据代际': `${row.resource.generation} / ${row.resource.data_generation}`,
+                    修订号: row.revision,
+                    当前操作: row.operation?.kind || '无',
+                    运行配置: row.spec.runtime_profile || '默认',
+                  }).map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="text-txt3">{k}</dt>
+                      <dd className="break-all text-txt2">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </InspectorSection>
+              <InspectorSection
+                title={`服务端点（${row.endpoints.length}）`}
+                defaultOpen
+              >
+                {row.endpoints.length ? (
+                  <ul className="divide-y divide-line">
+                    {row.endpoints.map((e) => (
+                      <li
+                        key={e.name}
+                        className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0 break-all">
+                          <div className="font-medium">{e.name}</div>
+                          <code className="text-xs text-txt3">
+                            {e.protocol} :{e.port} · {e.bundle}
+                          </code>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            e.ready ? 'border-ok/20 text-ok' : 'text-txt3'
+                          }
+                        >
+                          {e.ready ? '就绪' : '不可用'}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-txt3">暂无端点</p>
+                )}
+              </InspectorSection>
+              <InspectorSection title="实例日志">
+                <Logs source={source} id={id} />
+              </InspectorSection>
+              <InspectorSection title="端点访问（独立 CLI）">
+                <CliTools />
+              </InspectorSection>
+            </aside>
+          </div>
         </>
       )}
     </main>
@@ -428,20 +569,25 @@ function App() {
     <>
       <Header source={config.value} />
       {!config.value ? (
-        <AsyncState state={config} />
+        <main className="page-shell page-content">
+          <AsyncState state={config} />
+        </main>
       ) : (
         <Routes>
           <Route index element={<List source={config.value} />} />
           <Route path="sandboxes" element={<List source={config.value} />} />
-          <Route path="registry" element={<RegistryAdmin source={config.value} />} />
+          <Route
+            path="registry"
+            element={<RegistryAdmin source={config.value} />}
+          />
           <Route
             path="sandboxes/:id"
-            element={<Details source={config.value} />}
+            element={<DetailsRoute source={config.value} />}
           />
           <Route
             path="*"
             element={
-              <main>
+              <main className="page-shell page-content">
                 页面不存在 <Link to="/sandboxes">实例列表</Link>
               </main>
             }

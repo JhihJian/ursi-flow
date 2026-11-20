@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-for (const width of [390, 1280])
+for (const width of [320, 390, 1280])
   test(`列表、筛选和详情深链 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 820 })
     await page.goto('/sandboxes')
@@ -11,25 +11,37 @@ for (const width of [390, 1280])
     await expect(page.getByLabel('SandboxSpec JSON')).toBeVisible()
     await page.getByRole('button', { name: '取消' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
-    await expect(page.locator('tbody tr')).toHaveCount(6)
+    const links = page.getByRole('link', { name: /^查看 / })
+    await expect(links).toHaveCount(6)
+    if (width >= 768)
+      await expect(page.getByRole('table', { name: '实例列表' })).toBeVisible()
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
     await page.getByRole('button', { name: /运行中/ }).click()
-    await expect(page.locator('tbody tr')).toHaveCount(3)
+    await expect(links).toHaveCount(3)
     await page.getByRole('button', { name: /全部实例/ }).click()
-    await expect(page.locator('tbody tr')).toHaveCount(6)
+    await expect(links).toHaveCount(6)
     await page.getByRole('link', { name: '查看 hello-html' }).click()
     await page.reload()
     await expect(
       page.getByRole('heading', { name: 'hello-html' }),
     ).toBeVisible()
-    await expect(page.locator('pre')).toContainText('[status] running')
+    const workbench = page.getByRole('region', { name: '端点工作台' })
+    const inspector = page.getByRole('complementary', { name: '实例检查' })
+    const stage = await workbench.boundingBox()
+    const side = await inspector.boundingBox()
+    if (width < 1024) expect(side.y).toBeGreaterThan(stage.y + stage.height - 1)
+    else expect(side.x).toBeGreaterThan(stage.x + stage.width - 1)
+    await inspector.getByRole('button', { name: '实例日志' }).click()
+    await expect(page.getByLabel('实例日志输出')).toContainText(
+      '[status] running',
+    )
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
     await page.getByRole('link', { name: '实例列表' }).click()
-    await expect(page.locator('tbody tr')).toHaveCount(6)
+    await expect(links).toHaveCount(6)
   })
 test('快速创建会把表单转换为 SandboxSpec JSON', async ({ page }) => {
   await page.route('**/console-config.json', (r) =>
@@ -94,28 +106,41 @@ test('管理员可以选择保留数据重建并提交 Gateway 请求', async ({
     }),
   )
   let rebuildBody
-  await page.route('**/api/v1/sandboxes/' + 'a'.repeat(32) + '/rebuild', async (r) => {
-    rebuildBody = r.request().postDataJSON()
-    return r.fulfill({
-      status: 202,
-      json: {
-        id: 'a'.repeat(32),
-        spec: { image: 'node:22', labels: { name: 'rebuild-web' }, cpus: 1, memory_mb: 256 },
-        resource: { generation: 2, data_generation: 1 },
-        status: 'preparing',
-        operation: { kind: 'rebuild', preserve_data: true },
-        retired: [],
-        revision: 2,
-        endpoints: [],
-        error: null,
-      },
-    })
-  })
+  await page.route(
+    '**/api/v1/sandboxes/' + 'a'.repeat(32) + '/rebuild',
+    async (r) => {
+      rebuildBody = r.request().postDataJSON()
+      return r.fulfill({
+        status: 202,
+        json: {
+          id: 'a'.repeat(32),
+          spec: {
+            image: 'node:22',
+            labels: { name: 'rebuild-web' },
+            cpus: 1,
+            memory_mb: 256,
+          },
+          resource: { generation: 2, data_generation: 1 },
+          status: 'preparing',
+          operation: { kind: 'rebuild', preserve_data: true },
+          retired: [],
+          revision: 2,
+          endpoints: [],
+          error: null,
+        },
+      })
+    },
+  )
   await page.route('**/api/v1/sandboxes/' + 'a'.repeat(32), (r) =>
     r.fulfill({
       json: {
         id: 'a'.repeat(32),
-        spec: { image: 'node:22', labels: { name: 'rebuild-web' }, cpus: 1, memory_mb: 256 },
+        spec: {
+          image: 'node:22',
+          labels: { name: 'rebuild-web' },
+          cpus: 1,
+          memory_mb: 256,
+        },
         resource: { generation: 1, data_generation: 1 },
         status: 'running',
         operation: null,
@@ -126,8 +151,20 @@ test('管理员可以选择保留数据重建并提交 Gateway 请求', async ({
     }),
   )
   await page.goto('/sandboxes/' + 'a'.repeat(32))
-  await page.getByRole('button', { name: '保留数据重建' }).click()
-  await page.getByRole('button', { name: '确认重建' }).click()
+  const more = page.getByRole('button', { name: '更多操作' })
+  const choose = async () => {
+    await more.click()
+    await page.getByRole('menuitem', { name: '保留数据重建' }).click()
+  }
+  await choose()
+  const confirm = page.getByRole('alertdialog', { name: '保留数据重建沙箱' })
+  await expect(confirm.getByRole('button', { name: '取消' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(confirm).toBeHidden()
+  await expect(more).toBeFocused()
+  expect(rebuildBody).toBeUndefined()
+  await choose()
+  await confirm.getByRole('button', { name: '确认重建' }).click()
   await expect.poll(() => rebuildBody).toEqual({ preserve_data: true })
   await expect(page.getByText('Gateway 正在处理：rebuild')).toBeVisible()
 })

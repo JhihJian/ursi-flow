@@ -23,16 +23,19 @@ export interface Sandbox {
 }
 type Read<T> = T | Promise<T>
 export interface Registry {
-  bundles: Record<string, {
-    id?: string
-    version: string
-    runtime?: { url: string; sha256: string; min_image_level: number }
-    endpoints: { name: string; protocol: string; port: number }[]
-    requires?: string[]
-    conflicts?: string[]
-    services?: string[]
-    readiness?: Record<string, string>
-  }>
+  bundles: Record<
+    string,
+    {
+      id?: string
+      version: string
+      runtime?: { url: string; sha256: string; min_image_level: number }
+      endpoints: { name: string; protocol: string; port: number }[]
+      requires?: string[]
+      conflicts?: string[]
+      services?: string[]
+      readiness?: Record<string, string>
+    }
+  >
   images: Record<string, string[]>
 }
 export interface Capabilities {
@@ -60,7 +63,6 @@ export interface Source {
   list: (signal: AbortSignal) => Read<Sandbox[]>
   detail: (id: string, signal: AbortSignal) => Read<Sandbox>
   logs: (id: string, signal: AbortSignal) => Read<string>
-  endpoints: (id: string, signal: AbortSignal) => Read<Sandbox['endpoints']>
   registry?: (signal: AbortSignal) => Read<Registry>
   replaceRegistry?: (registry: Registry) => Promise<Registry>
 }
@@ -95,10 +97,11 @@ async function json<T>(
   return r.json()
 }
 export async function loadSource(signal: AbortSignal): Promise<Source> {
-  const { mode, manage, sshSandboxes } = await json<{ mode: string; manage?: boolean; sshSandboxes?: string[] }>(
-    './console-config.json',
-    signal,
-  )
+  const { mode, manage, sshSandboxes } = await json<{
+    mode: string
+    manage?: boolean
+    sshSandboxes?: string[]
+  }>('./console-config.json', signal)
   if (mode === 'demo') {
     const { rows } = await import('./demo')
     const item = (id: string) => {
@@ -112,7 +115,6 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
       capabilities: defaultCapabilities,
       list: () => rows,
       detail: item,
-      endpoints: (id) => item(id).endpoints,
       logs: (id) =>
         `[demo] ${item(id).spec.labels.name}\n[status] ${item(id).error || item(id).status}`,
     }
@@ -181,9 +183,6 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
     list: async (s) =>
       (await json<{ sandboxes: Sandbox[] }>(base, s)).sandboxes,
     detail: (id, s) => json<Sandbox>(`${base}/${encodeURIComponent(id)}`, s),
-    endpoints: async (id, s) =>
-      (await json<Sandbox>(`${base}/${encodeURIComponent(id)}/endpoints`, s))
-        .endpoints,
     logs: async (id, s) =>
       (
         await json<{ content: string }>(
