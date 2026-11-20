@@ -25,7 +25,7 @@ const catalog = (pkg: WorkPackage = typedV2, active = true) => [{ ...pkg, active
 
 function Detail() {
   const location = useLocation()
-  return <div><p>办理详情 {location.pathname}</p><Link to="/items">返回工作清单</Link></div>
+  return <div><p>办理详情 {location.pathname}</p><Link to="/items">返回派工记录</Link></div>
 }
 function mount(handler: (path: string, options: RequestInit) => unknown, url: string) {
   setToken('test-token')
@@ -40,7 +40,7 @@ function mount(handler: (path: string, options: RequestInit) => unknown, url: st
     <Routes>
       <Route path="/items/new" element={<StartWork />} />
       <Route path="/items/:id" element={<Detail />} />
-      <Route path="/items" element={<p>工作清单页</p>} />
+      <Route path="/items" element={<p>派工记录页</p>} />
     </Routes>
   </MemoryRouter>)
   return fetchMock

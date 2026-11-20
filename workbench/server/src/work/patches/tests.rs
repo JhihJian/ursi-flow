@@ -66,7 +66,8 @@ impl Http {
         let store = Store::open(dir.path("work")).unwrap();
         let app = directories::routes(store.clone())
             .unwrap()
-            .merge(routes(store.clone()));
+            .merge(routes(store.clone()))
+            .merge(worklist::routes(store.clone()));
         let listener = UnixListener::bind(dir.path("http.sock")).unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { dir, store, task }
@@ -226,7 +227,7 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
     assert_eq!(
         listed,
         json!([{"id":work_id,"name":"结算异常排查","directoryId":work,
-        "source":"manual","createdAt":created,"executionStatus":"not_started"}])
+        "source":"manual","createdAt":created,"executionStatus":"not_started","workItemId":null}])
     );
     assert_eq!(
         app.ok("GET", &format!("/v2/patches/work/{work_id}"), Value::Null)
@@ -295,6 +296,101 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
             .len(),
         1
     );
+}
+
+#[tokio::test]
+async fn failed_conversion_never_claims_request_or_creates_a_directory() {
+    let app = Http::new();
+    let item = app
+        .ok("POST", "/v2/work-items", json!({"title":"账单"}))
+        .await;
+    let path = format!("/v2/work-items/{}", item["id"].as_str().unwrap());
+    let action = format!("{path}/generate");
+    let request = json!({"requestId":"one-click"});
+    assert_eq!(app.call("POST", &action, request.clone()).await.0, 400);
+    let input = json!({"title":"账单", "revision":1,"recipe":{"resources":[{"alias":"bill","serverId":"missing","uri":"r://bill"}],"script":"example"}});
+    app.ok("PUT", &path, input).await;
+    assert_eq!(app.call("POST", &action, request).await.0, 404);
+    for list in ["/v2/patches/work", "/v2/directories"] {
+        assert_eq!(app.ok("GET", list, Value::Null).await, json!([]));
+    }
+    assert!(
+        app.store
+            .read(|db| Ok(db.get("workListGenerations").is_none()))
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn binds_moves_and_detaches_only_work_packages() {
+    let app = Http::new();
+    let a = app
+        .ok("POST", "/v2/work-items", json!({"title":"甲"}))
+        .await;
+    let b = app
+        .ok("POST", "/v2/work-items", json!({"title":"乙"}))
+        .await;
+    let created = app
+        .ok(
+            "POST",
+            "/v2/patches/work",
+            json!({"name":"材料","workItemId":a["id"]}),
+        )
+        .await;
+    let path = format!("/v2/patches/work/{}", created["id"].as_str().unwrap());
+    assert_eq!(created["workItemId"], a["id"]);
+    assert_eq!(app.call("PATCH", &path, json!({})).await.0, 422);
+    assert_eq!(
+        app.call("PATCH", &path, json!({"workItemId":"missing"}))
+            .await
+            .0,
+        404
+    );
+    assert_eq!(app.ok("GET", &path, Value::Null).await, created);
+    assert_eq!(
+        app.call(
+            "POST",
+            "/v2/patches/config",
+            json!({"name":"错类","workItemId":a["id"]})
+        )
+        .await
+        .0,
+        400
+    );
+    assert_eq!(
+        app.call(
+            "POST",
+            "/v2/patches/work",
+            json!({"name":"未知项","workItemId":"missing"})
+        )
+        .await
+        .0,
+        404
+    );
+    assert_eq!(
+        app.ok("PATCH", &path, json!({"workItemId":null})).await["workItemId"],
+        Value::Null
+    );
+    assert_eq!(
+        app.ok("PATCH", &path, json!({"workItemId":b["id"]})).await["workItemId"],
+        b["id"]
+    );
+    let dir = created["directoryId"].as_str().unwrap();
+    assert_eq!(
+        app.put(dir, "data", b"immutable reference", false).await,
+        204
+    );
+    let item_url = |v: &Value| format!("/v2/work-items/{}", v["id"].as_str().unwrap());
+    assert_eq!(app.call("DELETE", &item_url(&a), Value::Null).await.0, 204);
+    assert_eq!(
+        app.ok("GET", &path, Value::Null).await["workItemId"],
+        b["id"]
+    );
+    assert_eq!(app.call("DELETE", &item_url(&b), Value::Null).await.0, 204);
+    let mut expected = created.clone();
+    expected["workItemId"] = Value::Null;
+    assert_eq!(app.ok("GET", &path, Value::Null).await, expected);
+    assert_eq!(app.get(dir, "data").await.1, b"immutable reference");
 }
 
 /// 配置包创建即带三个锚点，锚点不能被移动或删除，mcp.json 只接受 JSON 对象。

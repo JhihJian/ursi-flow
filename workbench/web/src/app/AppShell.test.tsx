@@ -33,11 +33,11 @@ describe('应用壳', () => {
   it('侧边导航切换页面并更新标题、面包屑与当前项', async () => {
     const { router } = renderAt('/flows')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Flow 包')
-    expect(screen.getByRole('link', { name: 'ursi-flow 首页' })).toHaveAttribute('href', '/items')
+    expect(screen.getByRole('link', { name: 'ursi-flow 首页' })).toHaveAttribute('href', '/work-items')
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
-    for (const [name, href] of [['工作清单', '/items'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['外部来源', '/sources'], ['资源库', '/resources'], ['执行器', '/executors']]) {
+    for (const [name, href] of [['工作清单', '/work-items'], ['派工记录', '/items'], ['平台 MCP 服务', '/mcp-servers'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['外部来源', '/sources'], ['资源库', '/resources'], ['执行器', '/executors']]) {
       expect(within(mainNav).getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
@@ -60,7 +60,7 @@ describe('应用壳', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
-    expect(within(drawer).getByRole('link', { name: '工作清单' })).toHaveAttribute('href', '/items')
+    expect(within(drawer).getByRole('link', { name: '工作清单' })).toHaveAttribute('href', '/work-items')
     await userEvent.click(within(drawer).getByRole('link', { name: '运行配置' }))
 
     await waitFor(() => { expect(router.state.location.pathname).toBe('/flow-config') })
@@ -89,7 +89,7 @@ describe('应用壳', () => {
     vi.stubGlobal('fetch', vi.fn(async (path: string) => Response.json([], { status: path === '/api/v2/sources' ? 404 : 200 })))
     renderAt('/sources')
     expect(await screen.findByRole('heading', { name: '外部来源未启用' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/items')
+    expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
     const nav = within(screen.getByRole('navigation', { name: '主导航' }))
     expect(nav.queryByRole('link', { name: '外部来源' })).toBeNull()
     expect(nav.getByRole('link', { name: 'Flow 包' })).toBeInTheDocument()
@@ -101,12 +101,12 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '工作包', '外部来源', '配置包', '资源库', '执行器', 'Flow 包', '运行记录', '运行配置', '对话'])
+    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '派工记录', '工作包', '外部来源', '配置包', '资源库', '执行器', '平台 MCP 服务', 'Flow 包', '运行记录', '运行配置', '对话'])
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
     expect(entries(within(drawer).getByRole('navigation', { name: '主导航' }))).toEqual(desktopEntries)
-    for (const group of ['日常工作', '工作定义', '运行工具', '本地演示']) {
+    for (const group of ['日常工作', '工作定义', '平台设置', '运行工具', '本地演示']) {
       expect(within(drawer).getByRole('heading', { name: group })).toBeInTheDocument()
     }
   })
@@ -114,12 +114,12 @@ describe('应用壳', () => {
   it('可选模块探测失败时仍能使用工作清单并单独重试', async () => {
     let sourcesCalls = 0
     const fetch = vi.fn(async (path: string) => {
-      if (path === '/api/v2/items') return Response.json([])
+      if (path === '/api/v2/work-items' || path === '/api/v2/patches/work') return Response.json([])
       if (path === '/api/v2/sources') { sourcesCalls += 1; return sourcesCalls === 1 ? Response.json([], { status: 503 }) : Response.json([]) }
       return Response.json([], { status: 503 })
     })
     vi.stubGlobal('fetch', fetch)
-    renderAt('/items')
+    renderAt('/work-items')
     expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
     expect(await screen.findByText(/外部来源检查失败：HTTP 503/)).toBeInTheDocument()
     expect(screen.getByText(/Flow 工具检查失败：HTTP 503/)).toBeInTheDocument()
@@ -128,7 +128,7 @@ describe('应用壳', () => {
     await waitFor(() => { expect(screen.queryByText(/外部来源检查失败/)).toBeNull() })
     expect(screen.getByText(/Flow 工具检查失败/)).toBeInTheDocument()
     expect(screen.getByText('暂无工作项')).toBeInTheDocument()
-    expect(fetch.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v2/items', '/api/v2/sources', '/api/v1/flows']))
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v2/work-items', '/api/v2/sources', '/api/v1/flows']))
   })
 
   it('主题按钮同步 html 属性、存储与跨标签页变化', async () => {

@@ -10,7 +10,7 @@ export function AppSidebar({ groups, signedIn, onNavigate }: { groups: NavGroup[
   const mono = palette === 'mono'
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Link to="/items" aria-label="ursi-flow 首页" onClick={onNavigate} className="flex items-center gap-3 px-5 py-5">
+      <Link to="/work-items" aria-label="ursi-flow 首页" onClick={onNavigate} className="flex items-center gap-3 px-5 py-5">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-primary-foreground"><Icon name="workflow" size={23} /></span>
         <span><strong className="block text-[17px] font-semibold text-txt">ursi-flow</strong><span className="text-xs text-txt3">工作台</span></span>
       </Link>

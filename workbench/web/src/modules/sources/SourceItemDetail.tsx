@@ -95,7 +95,7 @@ function SourceItemPanel({ provider, id }: { provider: string; id: string }) {
       {missing
         ? <section className="panel space-y-3 p-6" role="status">
           <h2 className="font-semibold">条目已不可用</h2>
-          <p className="text-sm text-txt2">它已从当前导出中移除，或来源已不在配置中。已派出的单据仍保留当时的材料，可在工作清单查看。</p>
+          <p className="text-sm text-txt2">它已从当前导出中移除，或来源已不在配置中。已派出的单据仍保留当时的材料，可在派工记录查看。</p>
           <div className="flex flex-wrap items-center gap-3">
             <Button icon="refresh" onClick={result.reload}>重新读取</Button>
             <Link className="text-accent-2 hover:underline" to={sourceItemsPath(provider)}>返回条目列表</Link>

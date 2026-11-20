@@ -16,7 +16,7 @@ function Detail() {
   const status = new URLSearchParams(location.search).get('status')
   return <div>
     <p>办理详情 {location.pathname}</p>
-    <Link to={status ? `/items?status=${status}` : '/items'}>返回工作清单</Link>
+    <Link to={status ? `/items?status=${status}` : '/items'}>返回派工记录</Link>
   </div>
 }
 function mount(handler: (path: string, options: RequestInit) => unknown, url = '/items') {
@@ -62,7 +62,7 @@ it('从某行进入详情再返回，保留状态筛选', async () => {
 
   await user.click(await screen.findByRole('link', { name: /triage/ }))
   expect(await screen.findByText('办理详情 /items/I-1')).toBeVisible()
-  const back = screen.getByRole('link', { name: '返回工作清单' })
+  const back = screen.getByRole('link', { name: '返回派工记录' })
   expect(back).toHaveAttribute('href', '/items?status=review')
 
   await user.click(back)

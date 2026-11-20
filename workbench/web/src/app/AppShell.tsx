@@ -94,7 +94,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
               ))}
               {unavailable ? <section className="space-y-3">
                 <h1 className="text-xl font-semibold">{currentDomain.capability === 'flow' ? 'Flow 工具' : '外部来源'}未启用</h1>
-                <Link to="/items" className="text-accent-2">返回工作清单</Link>
+                <Link to="/work-items" className="text-accent-2">返回工作清单</Link>
               </section> : <Outlet />}
             </main>
           </div>

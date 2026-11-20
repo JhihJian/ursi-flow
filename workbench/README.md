@@ -20,13 +20,19 @@ npm run dev
 
 原先从仓库根启动的实例如需沿用原数据和受信工作目录，请将 `URSI_DATA_DIR`、`URSI_WORKSPACE_DIR` 显式设为原目录的绝对路径。两者的默认值均与启动目录有关。
 
+## 工作清单
+
+从 `/work-items` 新建工作项，按待开始、正在进行中、持续、已完成筛选。工作项可独立存在，也可多次生成工作包。修改或解除包的当前关联不会改变生成来源，删除工作项后保留包和文件。
+
+接入外部资源时，先在 `$URSI_DATA_DIR/work/mcp-policy.json` 授权服务地址和凭据变量名，再到「平台 MCP 服务」登记并查看资源。在工作项编辑页勾选具体资源、设置别名并保存 Python 脚本，回到详情点击「生成工作包」。脚本接口为 `transform(item, resources)`。授权示例、隔离依赖和脚本样例见[平台 MCP 接入契约](server/src/work/mcp/PLATFORM.md)。仅使用清单无需配置 MCP 或 Python。
+
 ## 目录编辑台
 
-从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。包记录只保存名称、标识和 `directoryId`。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](PATCH-STUDIO.md)。
+从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。工作包的业务记录保存目录引用、来源和可选的工作项归属。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](PATCH-STUDIO.md)。
 
 ## 派工与办理
 
-从工作清单打开「发起工作」（`/items/new`），选择已发布的派工模板及其修订。管理员通过 `/api/v2/packages` 发布模板，外部来源也可按配置指定模板和动作。工作项固定开单时的办理说明和验收标准，模板更新不影响已创建的工作项。
+从「派工记录」打开「发起工作」（`/items/new`），选择已发布的派工模板及其修订。管理员通过 `/api/v2/packages` 发布模板，外部来源也可按配置指定模板和动作。工作项固定开单时的办理说明和验收标准，模板更新不影响已创建的工作项。
 
 ## 检查
 

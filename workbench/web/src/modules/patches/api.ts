@@ -6,6 +6,11 @@ export interface Patch {
   id: string
   name: string
   directoryId: string
+  workItemId?: string | null // 仅文件型工作包有归属
+  provenance?: {
+    workItemId: string; workItemTitle: string; revision: number; scriptSha256: string
+    resources: { alias: string; serverId: string; uri: string; sha256: string; readAt: number }[]
+  } | null
   source?: string
   createdAt?: number // Unix 秒
   executionStatus?: 'not_started' | 'running' | 'succeeded' | 'failed'
@@ -16,6 +21,9 @@ export type ConfigPackageChoice = Pick<Patch, 'id' | 'name'>
 
 export const listPatches = (kind: PatchKind, signal?: AbortSignal) =>
   requestV2<Patch[]>(`/patches/${kind}`, { signal })
+
+export const setPatchOwner = (id: string, workItemId: string | null, signal: AbortSignal) =>
+  requestV2<void>(`/patches/work/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ workItemId }), signal })
 
 export async function listConfigPackageChoices(signal?: AbortSignal): Promise<ConfigPackageChoice[]> {
   const patches = await listPatches('config', signal)

@@ -1,6 +1,6 @@
 /**
  * 来源专项：另起一台配置 json-file 来源的真实 Server。
- * 证明来源列表派工进入同一工作清单，且页面只提供获准动作。
+ * 证明来源列表派工进入同一派工记录，且页面只提供获准动作。
  *
  * 来源配置与派工模板由管理员准备（真实 HTTP 接口，同一令牌），
  * 派工与办理在浏览器完成；没有 page.route 替身。
@@ -71,8 +71,8 @@ test.describe('JSON 来源派工', () => {
     await expect(chosen).toBeDisabled()
     await expect(page.getByText('绑定执行器：source-agent v1')).toBeVisible()
 
-    // 同一清单：来源派工单出现在工作清单里，来源列照样可读。
-    await page.getByRole('link', { name: '返回工作清单' }).click()
+    // 同一清单：来源派工单出现在派工记录里，来源列照样可读。
+    await page.getByRole('link', { name: '返回派工记录' }).click()
     await page.getByRole('link', { name: '办理中', exact: true }).click()
     const row = page.getByRole('link', { name: new RegExp(escapeRegExp(id)) })
     await expect(row).toContainText(PACKAGE)

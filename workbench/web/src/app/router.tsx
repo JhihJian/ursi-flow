@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 import { routes as chatRoutes } from '@/modules/chat/routes'
+import { workItemRoutes } from '@/modules/work-items/routes'
 import { workListRoutes } from '@/modules/work-list/routes'
 import { patchRoutes } from '@/modules/patches/routes'
 import { sourceRoutes } from '@/modules/sources/routes'
@@ -11,6 +12,7 @@ import { RouteErrorAlert } from './RouteErrorAlert'
 
 const workDetail = async () => ({ Component: (await import('@/modules/work-detail/WorkDetail')).WorkDetail })
 const protectedRoutes: RouteObject[] = [
+  ...workItemRoutes,
   ...workListRoutes,
   ...patchRoutes,
   { path: 'items/:id', handle: { title: '办理详情' }, lazy: workDetail },
@@ -26,7 +28,7 @@ const protectedRoutes: RouteObject[] = [
 ]
 export function createAppRoutes(): RouteObject[] {
   return [{ path: '/', element: <AppShell />, children: [
-    { index: true, element: <Navigate to="/items" replace /> },
+    { index: true, element: <Navigate to="/work-items" replace /> },
     { errorElement: <RouteErrorAlert />, children: [{ element: <LoginGate />, children: protectedRoutes }, ...chatRoutes] },
     { path: '*', element: <NotFoundView />, handle: { title: '页面未找到' } },
   ] }]

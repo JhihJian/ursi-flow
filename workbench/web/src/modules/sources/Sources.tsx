@@ -17,7 +17,7 @@ export function Sources() {
         <p className="text-sm text-txt2">当前服务没有配置来源目录，工作清单仍可独立使用。</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button icon="refresh" onClick={result.reload}>重新检查</Button>
-          <Link className="text-accent-2 hover:underline" to="/items">返回工作清单</Link>
+          <Link className="text-accent-2 hover:underline" to="/work-items">返回工作清单</Link>
         </div>
       </section>
       : <ResourceState

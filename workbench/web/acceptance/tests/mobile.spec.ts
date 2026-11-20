@@ -45,12 +45,12 @@ test.describe('移动视口验收', () => {
       expect(sizes.document, `${label} 横向溢出：${JSON.stringify(sizes)}`).toBeLessThanOrEqual(sizes.viewport)
       expect(sizes.body, `${label} 横向溢出：${JSON.stringify(sizes)}`).toBeLessThanOrEqual(sizes.viewport)
     }
-    await expectNoOverflow('工作清单')
+    await expectNoOverflow('派工记录')
 
     // 抽屉进清单：先去资源库，再从抽屉回到清单。
     await viaDrawer(page, '资源库')
     await expect(page).toHaveURL(/\/resources$/)
-    await viaDrawer(page, '工作清单')
+    await viaDrawer(page, '派工记录')
     await expect(page).toHaveURL(/\/items$/)
 
     // 打开待审报告。

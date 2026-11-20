@@ -249,7 +249,7 @@ pub(super) fn freeze(db: &mut Value, id: &str) -> Result<(), Error> {
 }
 
 /// 先建目录并执行 seed，再在同一笔更新中登记目录元信息和调用方记录。
-/// 任一步失败都会删除磁盘目录，不留下未登记的半成品。
+/// 已确认未提交时清理目录；若存储替换后的同步失败，保留目录供重启恢复。
 pub(super) fn allocate<T>(
     store: &Store,
     rules: Rules,
@@ -269,7 +269,11 @@ pub(super) fn allocate<T>(
             register(db, &id)
         })
     })();
-    if result.is_err() {
+    if result.is_err()
+        && store
+            .read(|db| Ok(db[RECORDS].get(&id).is_none()))
+            .unwrap_or(false)
+    {
         let _ = host_fs::remove_dir_all(&root);
     }
     result

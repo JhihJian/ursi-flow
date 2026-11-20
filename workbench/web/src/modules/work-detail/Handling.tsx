@@ -18,7 +18,7 @@ export function Handling({ item, busy, visible, start, execute }: {
   return <div className="space-y-5">
     {review?.decision === 'reject' && <aside className="border-l-2 border-warn pl-3"><strong>退回意见</strong><p className="whitespace-pre-wrap">{review.comment}</p></aside>}
     <section className="grid gap-4 md:grid-cols-2"><div><h2 className="font-semibold">本次输入</h2><pre className="whitespace-pre-wrap break-words">{JSON.stringify(item.input, null, 2)}</pre></div>
-      <div><h2 className="font-semibold">来源</h2>{source.type === 'builtin' ? <p>工作清单</p> : <ul className="space-y-1">
+      <div><h2 className="font-semibold">来源</h2>{source.type === 'builtin' ? <p>内置派工</p> : <ul className="space-y-1">
         <li>类型：{source.type === 'connector' ? '外部来源' : source.type}</li>
         {source.provider && <li>来源：{source.provider}</li>}
         {source.itemId && <li>条目：{source.itemId}</li>}

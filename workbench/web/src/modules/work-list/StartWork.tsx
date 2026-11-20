@@ -39,7 +39,7 @@ export function StartWork() {
 
   return <div className="page-stack break-words">
     <PageHeader title="发起工作" description="选择已发布的派工模板版本，按声明填写材料后创建一张待办理工作项"
-      actions={<Button asChild><Link to="/items">返回工作清单</Link></Button>} />
+      actions={<Button asChild><Link to="/items">返回派工记录</Link></Button>} />
     <ResourceState loading={catalog.loading && catalog.data.length === 0} error={catalog.error}
       empty={!catalog.loading && !catalog.error && dispatchable.length === 0 && !blocked}
       title={catalog.error ? undefined : '暂无可用派工模板'}

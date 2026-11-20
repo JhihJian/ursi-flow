@@ -7,5 +7,5 @@ export async function login(page: Page, token: string) {
   await expect(field).toBeVisible()
   await field.fill(token)
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: '工作清单' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '派工记录' })).toBeVisible()
 }

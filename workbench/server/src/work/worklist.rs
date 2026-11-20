@@ -1,0 +1,178 @@
+//! 工作清单是可独立编辑的事项；派工记录仍由 items 管理。
+mod generate;
+#[cfg(test)]
+mod tests;
+
+use super::{Error, Store, patches};
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::{get, post},
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+use std::collections::HashSet;
+use uuid::Uuid;
+
+const TABLE: &str = "workListItems";
+
+pub(super) fn routes(store: Store) -> Router {
+    Router::new()
+        .route("/v2/work-items", get(list).post(create))
+        .route(
+            "/v2/work-items/{id}",
+            get(detail).put(replace).delete(remove),
+        )
+        .route("/v2/work-items/{id}/generate", post(generate::handle))
+        .with_state(store)
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Category {
+    #[default]
+    Pending,
+    Active,
+    Continuous,
+    Completed,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Resource {
+    alias: String,
+    server_id: String,
+    uri: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Recipe {
+    resources: Vec<Resource>,
+    script: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Definition {
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    category: Category,
+    recipe: Option<Recipe>,
+    revision: Option<u64>,
+}
+
+impl Definition {
+    fn row(&self, id: &str, revision: u64) -> Result<Value, Error> {
+        let title = self.title.trim();
+        if title.is_empty() || title.chars().any(char::is_control) {
+            return Err(Error::Invalid("工作标题不能为空或包含控制字符".into()));
+        }
+        if let Some(recipe) = &self.recipe {
+            if recipe.script.trim().is_empty() || recipe.resources.is_empty() {
+                return Err(Error::Invalid("配方需要脚本和至少一个资源".into()));
+            }
+            let mut aliases = HashSet::new();
+            for r in &recipe.resources {
+                if [&r.alias, &r.server_id, &r.uri].into_iter().any(|s| {
+                    s.trim().is_empty() || s.trim() != s || s.chars().any(char::is_control)
+                }) {
+                    return Err(Error::Invalid("资源别名、服务标识和 URI 必须有效".into()));
+                }
+                if !aliases.insert(&r.alias) {
+                    return Err(Error::Invalid("配方资源别名重复".into()));
+                }
+            }
+        }
+        Ok(
+            json!({"id":id,"title":title,"description":self.description,"category":self.category,"recipe":self.recipe,"revision":revision}),
+        )
+    }
+}
+
+fn corrupt() -> Error {
+    Error::Internal("工作清单记录损坏".into())
+}
+fn missing() -> Error {
+    Error::NotFound("工作清单项不存在".into())
+}
+fn table_mut(db: &mut Value) -> Result<&mut Map<String, Value>, Error> {
+    db.as_object_mut()
+        .ok_or_else(corrupt)?
+        .entry(TABLE)
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(corrupt)
+}
+pub(super) fn find<'a>(db: &'a Value, id: &str) -> Result<&'a Value, Error> {
+    db[TABLE].get(id).ok_or_else(missing)
+}
+
+#[derive(Deserialize)]
+struct Filter {
+    category: Option<Category>,
+}
+async fn list(
+    State(store): State<Store>,
+    Query(filter): Query<Filter>,
+) -> Result<Json<Value>, Error> {
+    let category = filter.category.map(|c| json!(c));
+    store.read(|db| {
+        let Some(rows) = db.get(TABLE) else {
+            return Ok(Json(json!([])));
+        };
+        let rows: Vec<_> = rows
+            .as_object()
+            .ok_or_else(corrupt)?
+            .values()
+            .filter(|row| category.as_ref().is_none_or(|c| c == &row["category"]))
+            .collect();
+        Ok(Json(json!(rows)))
+    })
+}
+async fn detail(State(store): State<Store>, Path(id): Path<String>) -> Result<Json<Value>, Error> {
+    store.read(|db| Ok(Json(find(db, &id)?.clone())))
+}
+async fn create(
+    State(store): State<Store>,
+    Json(input): Json<Definition>,
+) -> Result<Json<Value>, Error> {
+    if input.revision.is_some() {
+        return Err(Error::Invalid("新建工作项无需修订号".into()));
+    }
+    let id = Uuid::new_v4().to_string();
+    let row = input.row(&id, 1)?;
+    store.update(|db| {
+        table_mut(db)?.insert(id, row.clone());
+        Ok(Json(row))
+    })
+}
+async fn replace(
+    State(store): State<Store>,
+    Path(id): Path<String>,
+    Json(input): Json<Definition>,
+) -> Result<Json<Value>, Error> {
+    store.update(|db| {
+        let old = find(db, &id)?;
+        let revision = old["revision"].as_u64().ok_or_else(corrupt)?;
+        if input.revision.is_some_and(|expected| expected != revision) {
+            return Err(Error::Conflict("工作项已被修改，请刷新".into()));
+        }
+        let mut row = input.row(&id, revision)?;
+        if &row != old {
+            row["revision"] = json!(revision.checked_add(1).ok_or_else(corrupt)?);
+            table_mut(db)?.insert(id, row.clone());
+        }
+        Ok(Json(row))
+    })
+}
+async fn remove(State(store): State<Store>, Path(id): Path<String>) -> Result<StatusCode, Error> {
+    store.update(|db| {
+        table_mut(db)?.remove(&id).ok_or_else(missing)?;
+        patches::detach_item(db, &id)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+}

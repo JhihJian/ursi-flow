@@ -89,7 +89,7 @@ test('未知地址回到工作清单，登录后清单可用', async ({ page }) 
   await page.goto('/not-a-page')
   await expect(page.getByRole('heading', { name: '页面未找到' })).toBeVisible()
   await page.getByRole('link', { name: '返回工作清单' }).click()
-  await expect(page).toHaveURL(/\/items$/)
+  await expect(page).toHaveURL(/\/work-items$/)
   await page.getByLabel('访问令牌').fill(token)
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByText('暂无工作项')).toBeVisible()
@@ -122,7 +122,7 @@ test('只有集合 404 收起入口，空集合仍保留入口', async ({ page }
   await page.goto('/sources')
   await expect(page.getByRole('heading', { name: '外部来源未启用' })).toBeVisible()
   await page.getByRole('link', { name: '返回工作清单' }).click()
-  await expect(page).toHaveURL(/\/items$/)
+  await expect(page).toHaveURL(/\/work-items$/)
 })
 
 test('可选模块故障可单独重试且不阻塞清单', async ({ page }) => {

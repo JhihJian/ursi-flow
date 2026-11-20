@@ -23,7 +23,7 @@ function FilteredList({ status }: { status: ItemStatus | '' }) {
   const failed = Boolean(result.error)
 
   return <div className="page-stack break-words">
-    <PageHeader title="工作清单" description="按状态查找待办理和待验收的工作项" actions={<>
+    <PageHeader title="派工记录" description="按状态查找待办理和待验收的工作项" actions={<>
       <Button icon="refresh" onClick={result.reload} disabled={result.loading}>刷新</Button>
       <Button variant="primary" asChild><Link to="/items/new">发起工作</Link></Button>
     </>} />

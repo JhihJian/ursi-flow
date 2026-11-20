@@ -7,7 +7,8 @@ export interface NavGroup { title: string; items: NavItem[] }
 
 export const navigationGroups: NavGroup[] = [
   { title: '日常工作', items: [
-    { path: '/items', title: '工作清单', icon: 'board' },
+    { path: '/work-items', title: '工作清单', icon: 'board' },
+    { path: '/items', title: '派工记录', icon: 'runs' },
     { path: '/work-patches', title: '工作包', icon: 'folder' },
     { path: '/sources', title: '外部来源', icon: 'connector', capability: 'sources' },
   ] },
@@ -16,6 +17,7 @@ export const navigationGroups: NavGroup[] = [
     { path: '/resources', title: '资源库', icon: 'layers' },
     { path: '/executors', title: '执行器', icon: 'robot' },
   ] },
+  { title: '平台设置', items: [{ path: '/mcp-servers', title: '平台 MCP 服务', icon: 'connector' }] },
   { title: '运行工具', items: [
     { path: '/flows', title: 'Flow 包', icon: 'workflow', capability: 'flow' },
     { path: '/runs', title: '运行记录', icon: 'runs', capability: 'flow' },

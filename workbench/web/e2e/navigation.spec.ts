@@ -27,5 +27,5 @@ test('导航可跳过，亮暗和主色偏好独立保持', async ({ page }) => 
   await page.keyboard.press('Enter'); await expect(page.locator('#main-content')).toBeFocused()
   await openNavigation(page); await page.getByRole('button', { name: '切换到暗色主题' }).click(); await page.getByRole('button', { name: '切换到黑白主题' }).click()
   await page.reload(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); await expect(page.locator('html')).toHaveAttribute('data-palette', 'mono')
-  await page.getByRole('link', { name: '返回工作清单' }).click(); await expect(page).toHaveURL(/\/items$/)
+  await page.getByRole('link', { name: '返回工作清单' }).click(); await expect(page).toHaveURL(/\/work-items$/)
 })

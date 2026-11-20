@@ -22,7 +22,7 @@ function SourceItemsList({ provider }: { provider: string }) {
     {!firstLoad && fault === 'unconfigured'
       ? <section className="panel space-y-3 p-6" role="status">
         <h2 className="font-semibold">来源未配置</h2>
-        <p className="text-sm text-txt2">服务端没有这个来源，或来源已从配置中移除。已派出的单据仍可在工作清单查看。</p>
+        <p className="text-sm text-txt2">服务端没有这个来源，或来源已从配置中移除。已派出的单据仍可在派工记录查看。</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button icon="refresh" onClick={result.reload}>重新检查</Button>
           <Link className="text-accent-2 hover:underline" to="/sources">返回来源列表</Link>

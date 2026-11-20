@@ -15,7 +15,7 @@ export function WorkPatchRow({ patch }: { patch: Patch }) {
       <small className="mt-1 block break-all font-mono text-xs text-txt3">{patch.id}</small>
     </div>
     <dl className="grid min-w-0 flex-1 basis-full grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4 lg:basis-auto lg:flex-[3]">
-      <div><dt className="text-txt3">来源</dt><dd>{patch.source === 'manual' ? '手动创建' : patch.source || '未记录'}</dd></div>
+      <div><dt className="text-txt3">来源</dt><dd>{patch.source === 'manual' ? '手动创建' : patch.source === 'generated' ? '工作项生成' : patch.source || '未记录'}</dd></div>
       <div><dt className="text-txt3">创建时间</dt><dd>{date && Number.isFinite(date.getTime()) ? <time dateTime={date.toISOString()}>{localTime.format(date)}</time> : '未记录'}</dd></div>
       <div><dt className="text-txt3">是否已执行</dt><dd>{status === 'not_started' ? '未执行' : status && status in results ? '已执行' : '未记录'}</dd></div>
       <div><dt className="text-txt3">执行结果</dt><dd>{status ? results[status] ?? '未知' : '未记录'}</dd></div>

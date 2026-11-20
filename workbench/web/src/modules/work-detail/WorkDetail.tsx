@@ -91,7 +91,7 @@ function Detail({ base, version }: { base: string; version?: string }) {
   return <div className="page-stack break-words">
     <header className="toolbar"><div className="min-w-0"><h1 className="break-all text-xl font-semibold">{item ? `${item.package} v${item.revision}` : '工作项详情'}</h1>
       {item && <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-txt2"><span>单号：{item.id}</span><span>经办人：{item.assignee || '未指定'}</span><strong>工作项状态：{itemStatus[item.status]}</strong></p>}</div>
-      <div className="flex flex-wrap gap-2"><Button asChild><Link to={`/items${listStatus ? `?${new URLSearchParams({ status: listStatus })}` : ''}`}>返回工作清单</Link></Button><Button disabled={loading || saving} icon="refresh" onClick={() => void reload()}>刷新</Button></div>
+      <div className="flex flex-wrap gap-2"><Button asChild><Link to={`/items${listStatus ? `?${new URLSearchParams({ status: listStatus })}` : ''}`}>返回派工记录</Link></Button><Button disabled={loading || saving} icon="refresh" onClick={() => void reload()}>刷新</Button></div>
     </header>
     <ResourceState loading={!item && loading} error={readError} onRetry={reload} />
     {notice && <p role="alert" className="text-err">{notice}</p>}

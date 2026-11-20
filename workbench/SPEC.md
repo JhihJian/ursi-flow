@@ -3,6 +3,7 @@ parent: ../SPEC.md
 references:
   - README.md
   - PATCH-STUDIO.md
+  - WORK-LIST-DESIGN.md
   - EXECUTOR-DESIGN.md
 ---
 
@@ -10,11 +11,20 @@ references:
 
 执行器的项目概念、版本结构、资源关系与运行边界见[执行器设计](EXECUTOR-DESIGN.md)。
 
+工作清单的四类工作项、平台 MCP 来源和 Python 生成文件包见[工作清单与工作包来源](WORK-LIST-DESIGN.md)。
+
 ## 功能意图
 
 工作台将[服务端](server/SPEC.md)与[浏览器界面](web/SPEC.md)组织为同一项目。服务端保存业务记录，界面通过同源 API 提供从派工到验收的操作入口。
 
 ## 关键功能与验收
+
+### 工作清单与资源转包
+
+#### 验收
+
+- 未接入外部服务也能创建、筛选、编辑和删除四类工作项。旧派工记录仍使用原办理流程。
+- 从平台登记的 MCP 服务选择资源，在工作项保存 Python 配方。每次主动生成一个文件型工作包，重试同一次请求只发布一个包。删除工作项时保留包、文件及生成来源，每包当前至多归属一个工作项。
 
 ### 工作包与配置包目录
 

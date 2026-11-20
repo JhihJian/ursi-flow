@@ -3,9 +3,11 @@ mod catalog;
 mod directories;
 mod execute;
 mod items;
+mod mcp;
 mod patches;
 mod sources;
 mod store;
+mod worklist;
 use axum::{
     Json, Router,
     http::StatusCode,
@@ -48,6 +50,8 @@ pub(crate) fn routes(
     let external = sources::routes(store.clone())?;
     Ok(catalog::routes(store.clone())
         .merge(items::routes(store.clone()))
+        .merge(worklist::routes(store.clone()))
+        .merge(mcp::routes(store.clone()))
         .merge(directories::routes(store.clone())?)
         .merge(patches::routes(store.clone()))
         .merge(external)

@@ -7,6 +7,7 @@ import { Icon } from '@/shared/ui/icon'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
 import { directoryClient } from '@/modules/directories/api'
 import { listPatches, type Patch, type PatchKind } from './api'
+import { PatchOwner } from './PatchOwner'
 import { ConfigEditor } from './ConfigEditor'
 import { Explorer } from './Explorer'
 import { PatchCreateDialog } from './PatchCreate'
@@ -108,6 +109,7 @@ export function PatchStudio({ kind }: { kind: PatchKind }) {
           <Button size="sm" variant="ghost" icon="refresh" onClick={patches.reload}>重试</Button>
         </div>
       ) : null}
+      {kind === 'work' && patch && <PatchOwner key={patch.id} patch={patch} onSaved={patches.reload} />}
       <div className="patch-studio__body">
         {dir
           ? kind === 'work'
