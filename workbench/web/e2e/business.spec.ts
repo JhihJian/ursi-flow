@@ -17,7 +17,6 @@ test('完整包往返、运行启停与历史、配置更新均遵循 v1 契约'
     const ok = (json: unknown) => route.fulfill({ json })
     const body = req.postDataJSON()
     switch (op) {
-      case 'GET /api/v2/sources': return ok([])
       case 'GET /api/v1/flows': return ok(files ? ['example'] : [])
       case 'POST /api/v1/flows/validate':
         expect(body.id).toBe('example'); expect(body.files['references/guide.md']).toBe('初稿'); validated = true

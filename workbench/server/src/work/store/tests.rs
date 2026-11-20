@@ -23,6 +23,115 @@ fn snapshot(store: &Store) -> Value {
 }
 
 #[test]
+fn upgrade_removes_only_dispatch_records_and_exclusively_owned_trees() {
+    use std::os::unix::fs::symlink;
+    let dir = Dir::new();
+    let store = dir.open();
+    let base = dir.0.join("directories");
+    DirBuilder::new().mode(0o700).create(&base).unwrap();
+    let [
+        artifact,
+        frozen,
+        work,
+        config,
+        standalone,
+        unknown,
+        unregistered,
+    ] = std::array::from_fn(|_| Uuid::new_v4().to_string());
+    for id in [
+        &artifact,
+        &frozen,
+        &work,
+        &config,
+        &standalone,
+        &unknown,
+        &unregistered,
+    ] {
+        fs::create_dir_all(base.join(id).join("sub")).unwrap();
+        fs::write(base.join(id).join("sub/file"), id).unwrap();
+    }
+    for path in [base.join(&frozen).join("sub"), base.join(&frozen)] {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o500)).unwrap();
+    }
+    symlink(base.join(&standalone), base.join(&artifact).join("link")).unwrap();
+    let mut kept = json!({
+        "catalog":{"resources":{"r":1},"executors":{"e":2},"other":true},
+        "workPatches":{"p":{"directoryId":work}},"configPatches":{"p":{"directoryId":config}},
+        "workListItems":{"i":{"title":"keep"}},"workListGenerations":{"i":{"request":"p"}},"mcpServers":{"s":{}},
+        "future":{"directory":unknown}, "attempts":{"unrelated":"keep"}
+    });
+    for id in [&work, &config, &standalone, &unknown] {
+        kept["directories"][id] = json!({"id":id,"state":"frozen"});
+    }
+    kept["directories"]["../outside"] = json!({"id":"../outside"});
+    let mut old = kept.clone();
+    old["catalog"]["packages"] = json!({"p":{"revisions":[{}]}});
+    old["directories"][&artifact] = json!({"id":artifact});
+    old["directories"][&frozen] = json!({"id":frozen});
+    old["items"]["i"] = json!({"deliveries":[{"files":{"report":"old"}}], "attempts":[
+        {"artifactDirectory":{"id":artifact},"configPackage":{"snapshotRef":{"id":standalone}}},
+        {"artifactDirectory":{"id":work}},{"artifactDirectory":{"id":unknown}},
+        {"artifactDirectory":{"id":"../outside"}},{"artifactDirectory":{"id":unregistered}}
+    ]});
+    old["configPackageSnapshots"] =
+        json!({"orphan":{"snapshotDirectoryId":frozen},"shared":{"snapshotDirectoryId":config}});
+    fs::create_dir(dir.0.join("outside")).unwrap();
+    store
+        .update(|db| {
+            *db = old;
+            Ok(())
+        })
+        .unwrap();
+    drop(store);
+    assert_eq!(snapshot(&dir.open()), kept);
+    assert_eq!(serde_json::from_slice::<Value>(&dir.bytes()).unwrap(), kept);
+    for id in [&artifact, &frozen] {
+        assert!(!base.join(id).exists());
+    }
+    for id in [&work, &config, &standalone, &unknown, &unregistered] {
+        assert_eq!(
+            fs::read_to_string(base.join(id).join("sub/file")).unwrap(),
+            *id
+        );
+    }
+    assert!(dir.0.join("outside").is_dir());
+    assert_eq!(snapshot(&dir.open()), kept);
+}
+
+#[test]
+fn upgrade_refuses_redirected_tree_and_retries_from_original_json() {
+    use std::os::unix::fs::symlink;
+    let dir = Dir::new();
+    let store = dir.open();
+    let first = "00000000-0000-4000-8000-000000000001";
+    let second = "00000000-0000-4000-8000-000000000002";
+    let base = dir.0.join("directories");
+    DirBuilder::new().mode(0o700).create(&base).unwrap();
+    fs::create_dir(base.join(first)).unwrap();
+    let outside = dir.0.join("outside");
+    fs::create_dir(&outside).unwrap();
+    fs::write(outside.join("keep"), b"outside").unwrap();
+    symlink(&outside, base.join(second)).unwrap();
+    store
+        .update(|db| {
+            for id in [first, second] {
+                db["directories"][id] = json!({"id":id});
+                db["items"][id] = json!({"attempts":[{"artifactDirectory":{"id":id}}]});
+            }
+            Ok(())
+        })
+        .unwrap();
+    drop(store);
+    let before = dir.bytes();
+    assert!(Store::open(dir.0.clone()).is_err());
+    assert_eq!(dir.bytes(), before);
+    assert!(!base.join(first).exists());
+    assert_eq!(fs::read(outside.join("keep")).unwrap(), b"outside");
+    fs::remove_file(base.join(second)).unwrap();
+    assert_eq!(snapshot(&dir.open()), json!({"directories":{}}));
+}
+
+#[test]
 fn open_resolves_relative_store_directory() {
     let relative = PathBuf::from(format!(".work-store-relative-{}", Uuid::new_v4()));
     let absolute = std::env::current_dir().unwrap().join(&relative);
@@ -141,17 +250,8 @@ fn directory_sync_failure_blocks_every_handle_until_restart_recovery() {
     drop(store);
 
     let reopened = dir.open();
-    // Run the same recovery transaction as service startup, without dispatching any work.
-    drop(super::super::execute::routes(
-        reopened.clone(),
-        dir.0.clone(),
-        None,
-    ));
     let recovered = snapshot(&reopened);
-    let attempts = recovered["items"]["a"]["attempts"].as_array().unwrap();
-    assert_eq!(attempts.len(), 1);
-    assert_eq!(attempts[0]["status"], "unverified");
-    assert_eq!(attempts[0]["interruptedStatus"], "running");
+    assert!(recovered.get("items").is_none());
     drop(reopened);
     assert_eq!(snapshot(&dir.open()), recovered);
 }

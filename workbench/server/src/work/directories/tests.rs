@@ -536,7 +536,12 @@ async fn frozen_directories_stay_readable_but_refuse_writes_moves_and_removals()
         |_, id| Ok(id.to_owned()),
     )
     .unwrap();
-    store.update(|db| freeze(db, &id)).unwrap();
+    store
+        .update(|db| {
+            db[RECORDS][&id]["state"] = json!("frozen");
+            Ok(())
+        })
+        .unwrap();
     let base = Http::base(&id);
 
     assert_eq!(http.put(&id, "迟到.md", b"x", false).await, 409);
@@ -565,7 +570,7 @@ async fn frozen_directories_stay_readable_but_refuse_writes_moves_and_removals()
         409
     );
 
-    // 冻结只影响写入；文件正文和清单仍可读，重复冻结保持幂等。
+    // 升级后保留下来的只读目录仍可读取。
     assert_eq!(
         http.get(&id, "报告.md").await,
         (200, "正文".as_bytes().to_vec())
@@ -574,11 +579,6 @@ async fn frozen_directories_stay_readable_but_refuse_writes_moves_and_removals()
         {"path": "报告.md", "kind": "file", "size": 6},
         {"path": "证据", "kind": "dir"},
     ]);
-    assert_eq!(
-        http.ok("GET", &format!("{base}/tree"), Value::Null).await,
-        tree
-    );
-    store.update(|db| freeze(db, &id)).unwrap();
     assert_eq!(
         http.ok("GET", &format!("{base}/tree"), Value::Null).await,
         tree

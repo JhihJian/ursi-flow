@@ -1,11 +1,8 @@
-//! 工作管理与持久化。后端不会直接改变工作项的验收状态。
+//! 工作清单、包、资源定义及其持久化。
 mod catalog;
 mod directories;
-mod execute;
-mod items;
 mod mcp;
 mod patches;
-mod sources;
 mod store;
 mod worklist;
 use axum::{
@@ -16,7 +13,6 @@ use axum::{
 use serde_json::json;
 use std::{io, path::PathBuf};
 use store::Store;
-use ursi_flow_client::FlowClient;
 
 #[derive(Debug)]
 enum Error {
@@ -41,19 +37,11 @@ impl IntoResponse for Error {
         (code, Json(json!({"error":message}))).into_response()
     }
 }
-pub(crate) fn routes(
-    dir: PathBuf,
-    workspace: PathBuf,
-    flow: Option<FlowClient>,
-) -> io::Result<Router> {
+pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     let store = Store::open(dir)?;
-    let external = sources::routes(store.clone())?;
     Ok(catalog::routes(store.clone())
-        .merge(items::routes(store.clone()))
         .merge(worklist::routes(store.clone()))
         .merge(mcp::routes(store.clone()))
         .merge(directories::routes(store.clone())?)
-        .merge(patches::routes(store.clone()))
-        .merge(external)
-        .merge(execute::routes(store, workspace, flow)))
+        .merge(patches::routes(store)))
 }

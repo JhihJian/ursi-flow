@@ -38,12 +38,3 @@ references:
 
 - 手动工作包引用空目录，生成包引用本次转换写入的目录。配置包创建时写入空 `AGENTS.md`、`skills/` 与包含 `{"mcpServers":{}}` 的 `mcp.json`。
 - 为配置目录声明固定路径和 JSON 对象约束，通过目录接口也不能移动、删除锚点或用非法 JSON 替换 MCP 文件。普通目录无需这些约定。
-
-### 尝试级配置包快照
-
-#### 验收
-
-- `snapshot_config_package(store, attempt_id, package_id)` 是供 execute 调用的内部 API。它只接受配置包记录，复制源目录内容到新的服务端目录，并立即冻结新目录。
-- 快照记录保存 `sourcePackageId`、内容摘要 `contentDigest` 和冻结目录 `snapshotDirectoryId`，以尝试 ID 唯一登记。相同尝试重复调用返回同一快照，不能改绑其他配置包。
-- 复制过程不返回宿主路径，不把源目录直接交给执行器。快照目录与源配置包目录物理独立；执行器只应使用快照目录标识，源配置包仍可继续编辑。
-- 当前原语在 patches 与 execute 之间提供目录复制和冻结边界。execute 在交给执行器前必须调用该 API，完整执行记录的工作项、尝试及执行器字段由 execute 保存，本模块不修改 execute 模型。

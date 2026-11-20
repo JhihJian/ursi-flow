@@ -2,7 +2,6 @@
 parent: ../../SPEC.md
 references:
   - ../../DESIGN.md
-  - ../../DESIGN-v2.md
 ---
 # Web 共享层
 
@@ -16,8 +15,8 @@ references:
 
 #### 验收
 
-- `requestJson<T>` 读取 `/api/v1`，`requestV2<T>` 读取 `/api/v2`，均直接返回业务 JSON；`204` 返回无内容。`requestV2Text` 读取 `/api/v2` 的交付文件，保留原始文本与换行。
-- `requestV2Text` 只接受 `text/plain` 且非空的正文。`200 text/html`、空正文、仅空白正文和 `204` 均报告读取失败；代理首页或静态页不能被当成交付材料。
+- `requestJson<T>` 读取 `/api/v1`，`requestV2<T>` 读取 `/api/v2`，均直接返回业务 JSON；`204` 返回无内容。
+- `requestV2File` 按 `application/octet-stream` 读取目录文件，保留原始字节，允许空文件。
 - 三种请求使用同源相对路径，保留请求方法、正文与 AbortSignal。仅通过 Bearer 请求头发送会话令牌，拒绝无令牌请求和绝对地址。
 - 错误保留 HTTP 状态并从消息中隐藏令牌。仅当前令牌的 401 清除会话；其他错误或旧会话的迟到响应不影响新登录。浏览器地址和 localStorage 均不记录令牌。
 - 资源重新加载时旧响应不能覆盖新数据，组件卸载取消读取。

@@ -16,7 +16,7 @@ type Collection = (Store, &'static str);
 
 pub fn routes(store: Store) -> Router {
     let mut api = Router::new();
-    for kind in ["resources", "executors", "packages"] {
+    for kind in ["resources", "executors"] {
         let collection = Router::new()
             .route("/", get(index).post(create))
             .route("/{id}", get(detail))
@@ -114,34 +114,6 @@ fn list_latest(db: &Value, k: &str) -> Result<Value, Error> {
         .collect::<Result<Vec<_>, _>>()
         .map(Value::Array)
 }
-pub(super) fn validate_delivery_name(name: &str) -> Result<(), Error> {
-    if name.trim().is_empty()
-        || matches!(name, "." | "..")
-        || name.contains(['/', '\\'])
-        || name.chars().any(char::is_control)
-    {
-        return Err(Error::Invalid("expected a plain file name".into()));
-    }
-    Ok(())
-}
-
-fn validate_deliverables(files: &Value) -> Result<(), Error> {
-    let files = files
-        .as_array()
-        .ok_or_else(|| Error::Invalid("deliverables must be an array of file names".into()))?;
-    let mut seen = std::collections::BTreeSet::new();
-    for entry in files {
-        let name = entry
-            .as_str()
-            .ok_or_else(|| Error::Invalid("deliverable name must be a string".into()))?;
-        validate_delivery_name(name)?;
-        if !seen.insert(name) {
-            return Err(Error::Invalid(format!("duplicate deliverable: {name}")));
-        }
-    }
-    Ok(())
-}
-
 fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
     let id = definitions::id(&body)?;
     let n = match category(db, k)?.and_then(|map| map.get(id)) {
@@ -151,11 +123,6 @@ fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
         }
         None => 0,
     };
-    if k == "packages" {
-        if let Some(files) = body.get("deliverables") {
-            validate_deliverables(files)?;
-        }
-    }
     let mut value = definitions::build(db, k, &body)?;
     value["revision"] = (n as u64 + 1).into();
     // All fallible validation precedes the first write. No other db namespace is touched.
@@ -174,58 +141,4 @@ fn deactivate(db: &mut Value, k: &str, id: &str) -> Result<Value, Error> {
     db["catalog"][k][id]["active"] = false.into();
     detail["active"] = false.into();
     Ok(detail)
-}
-
-/// 返回发布时冻结的快照。新派工检查整个依赖链的当前状态，不重解析任何版本内容。
-pub fn resolve(db: &Value, package: &str, revision: u64, for_new: bool) -> Result<Value, Error> {
-    let frozen = version(db, "packages", package, revision)?;
-    if for_new {
-        require_active(db, "packages", package)?;
-        for binding in frozen["actions"].as_object().ok_or_else(corrupt)?.values() {
-            require_active(
-                db,
-                "executors",
-                binding["executor"]["id"].as_str().ok_or_else(corrupt)?,
-            )?;
-            for resource in binding["resources"].as_array().ok_or_else(corrupt)? {
-                require_active(
-                    db,
-                    "resources",
-                    resource["id"].as_str().ok_or_else(corrupt)?,
-                )?;
-            }
-        }
-    }
-    Ok(frozen.clone())
-}
-
-#[test]
-fn invalid_deliverables_preserve_the_previous_package_revision() {
-    let mut db = json!({});
-    publish(&mut db, "executors", json!({"id":"pi"})).unwrap();
-    let mut pkg = json!({"id":"p","sop":"work","acceptance":"review",
-        "deliverables":["核查 报告.txt"],"actions":{"a":{"executor":{"id":"pi","revision":1}}}});
-    publish(&mut db, "packages", pkg.clone()).unwrap();
-    let before = db.clone();
-    for bad in [
-        json!(null),
-        json!("file.txt"),
-        json!(["ok", 7]),
-        json!([" "]),
-        json!(["."]),
-        json!([".."]),
-        json!(["../x"]),
-        json!(["dir\\x"]),
-        json!(["x\0y"]),
-        json!(["x", "x"]),
-    ] {
-        pkg["deliverables"] = bad;
-        assert!(matches!(
-            publish(&mut db, "packages", pkg.clone()),
-            Err(Error::Invalid(_))
-        ));
-        assert_eq!(db, before);
-    }
-    pkg["deliverables"] = json!(["report.txt"]);
-    assert_eq!(publish(&mut db, "packages", pkg).unwrap()["revision"], 2);
 }

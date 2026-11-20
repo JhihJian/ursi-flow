@@ -4,7 +4,6 @@ depends-on:
   - ../../shared/SPEC.md
   - ../../../../server/src/work/catalog/SPEC.md
 references:
-  - ../../../DESIGN-v2.md
   - ../../../../EXECUTOR-DESIGN.md
 ---
 # 工作定义
@@ -22,7 +21,7 @@ references:
 - `/resources` 和 `/executors` 列出最新版本及对象启停状态。执行器目录额外展示固定契约 `workspace + workInstruction → artifactDirectory`、固定资源摘要和配置字段数量；资源可按 Skill、提示词和 MCP 引用筛选。读取失败提供重试，成功但无结果显示空态。
 - `/:id` 读取最新详情，`/:id/revisions` 展示历史，`/:id/revisions/:revision` 直接打开冻结正文。查看旧版本时同一行同时显示正在阅读的修订号、最新修订号和对象启停状态，并标明历史版本只读。
 - 执行器详情展示 `workspace + workInstruction → artifactDirectory` 契约、资源依赖、configSchema 动态表单和日志记录位置。
-- 确认停用前告知对新引用的影响。停用后仍可打开历史版本，已有工作项的派工快照保持不变。
+- 确认停用前告知对新引用的影响。停用后仍可打开历史版本。
 
 ### 表单发布
 

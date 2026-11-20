@@ -18,20 +18,6 @@ fn executor(db: &mut Value, id: &str, extra: Value) -> Value {
     publish(db, "executors", body).unwrap()
 }
 
-fn package(db: &mut Value, id: &str, executor: Value, resources: Value) -> Value {
-    publish(
-        db,
-        "packages",
-        json!({
-            "id":id,
-            "sop":"按步骤处理",
-            "acceptance":"结果可核查",
-            "actions":{"analyze":{"executor":executor,"resources":resources}}
-        }),
-    )
-    .unwrap()
-}
-
 #[test]
 fn executor_config_schema_accepts_field_arrays_and_config_packages() {
     let mut db = json!({});
@@ -134,141 +120,34 @@ fn secret_schema_accepts_only_redacted_or_internal_reference() {
 }
 
 #[test]
-fn action_config_package_is_validated_and_frozen_into_package_snapshot() {
-    let mut db = json!({
-        "configPatches": {
-            "shared": {"id":"shared", "directoryId":"directory-shared"}
-        }
-    });
-    let exec = executor(
-        &mut db,
-        "assistant",
-        json!({"configSchema":[{"key":"agentConfig","label":"执行配置","type":"configPackage"}]}),
-    );
-    let published = package_with_action(
-        &mut db,
-        "configured",
-        json!({"id":"assistant","revision":exec["revision"]}),
-        json!([]),
-        Some(json!({"id":"shared"})),
-    );
-    assert_eq!(
-        published["actions"]["analyze"]["configPackage"],
-        json!({"id":"shared"})
-    );
-    let before = db.clone();
-    let mut invalid = before.clone();
-    assert!(publish(
-        &mut invalid,
-        "packages",
-        json!({
-            "id":"invalid",
-            "sop":"按步骤处理",
-            "acceptance":"结果可核查",
-            "actions":{"analyze":{"executor":{"id":"assistant","revision":1},"configPackage":{"id":"missing"}}}
-        })
-    ).is_err());
-    assert!(publish(
-        &mut invalid,
-        "packages",
-        json!({
-            "id":"invalid-extra",
-            "sop":"按步骤处理",
-            "acceptance":"结果可核查",
-            "actions":{"analyze":{"executor":{"id":"assistant","revision":1},"configPackage":{"id":"shared","directoryId":"/host/path"}}}
-        })
-    ).is_err());
-    assert_eq!(invalid, before);
-}
-
-fn package_with_action(
-    db: &mut Value,
-    id: &str,
-    executor: Value,
-    resources: Value,
-    config_package: Option<Value>,
-) -> Value {
-    let mut action = json!({"executor":executor,"resources":resources});
-    if let Some(config_package) = config_package {
-        action["configPackage"] = config_package;
-    }
-    publish(
-        db,
-        "packages",
-        json!({
-            "id":id,
-            "sop":"按步骤处理",
-            "acceptance":"结果可核查",
-            "actions":{"analyze":action}
-        }),
-    )
-    .unwrap()
-}
-
-#[test]
-fn publication_freezes_generic_executor_and_resolves_dependencies() {
-    let mut db = json!({});
-    let first = resource(&mut db, "prompt", "prompt", "初版提示".into());
-    let exec = executor(
-        &mut db,
-        "assistant",
-        json!({"resources":[{"id":"prompt","revision":first["revision"]}]}),
-    );
-    let published = package(
-        &mut db,
-        "triage",
-        json!({"id":"assistant","revision":exec["revision"]}),
-        json!([]),
-    );
-    assert_eq!(published["revision"], 1);
-    assert_eq!(
-        resolve(&db, "triage", 1, true).unwrap()["actions"]["analyze"]["executor"],
-        json!({"id":"assistant","revision":1})
-    );
-    assert_eq!(
-        resolve(&db, "triage", 1, true).unwrap()["actions"]["analyze"]["resources"][0]["content"],
-        "初版提示"
-    );
-
-    resource(&mut db, "prompt", "prompt", "新版提示".into());
-    executor(
-        &mut db,
-        "assistant",
-        json!({"resources":[{"id":"prompt","revision":2}]}),
-    );
-    assert_eq!(
-        resolve(&db, "triage", 1, true).unwrap()["actions"]["analyze"]["resources"][0]["content"],
-        "初版提示"
-    );
-}
-
-#[test]
-fn package_ports_are_independent_from_executor_and_dependencies_are_frozen() {
+fn executor_references_fixed_resource_revisions() {
     let mut db = json!({});
     resource(&mut db, "guide", "skill", "v1".into());
     resource(&mut db, "guide", "skill", "v2".into());
-    executor(
-        &mut db,
-        "generic",
-        json!({"resources":[{"id":"guide","revision":1}]}),
-    );
-    let definition = json!({"id":"p","sop":"步骤","acceptance":"有报告","inputs":{"ticket":"string"},"outputs":{"report":"string"},"actions":{"run":{"executor":{"id":"generic","revision":1}}}});
-    let frozen = publish(&mut db, "packages", definition.clone()).unwrap();
+    let deps = json!({"resources":[{"id":"guide","revision":1}]});
+    let e = executor(&mut db, "assistant", deps.clone());
+    assert_eq!(e["resources"], deps["resources"]);
+    deactivate(&mut db, "resources", "guide").unwrap();
+    assert!(matches!(
+        publish(&mut db, "executors", e),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        publish(
+            &mut db,
+            "executors",
+            json!({"id":"another","resources":deps["resources"]})
+        ),
+        Err(Error::Conflict(_))
+    ));
     assert_eq!(
-        frozen["actions"]["run"]["resources"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
-    assert_eq!(
-        resolve(&db, "p", 1, true).unwrap()["actions"]["run"]["resources"][0]["content"],
+        version(&db, "resources", "guide", 1).unwrap()["content"],
         "v1"
     );
 }
 
 #[test]
-fn invalid_dependencies_and_mcp_secrets_are_rejected_without_writes() {
+fn mcp_rejects_inline_credentials() {
     let mut db = json!({});
     assert!(matches!(
         publish(
@@ -279,12 +158,4 @@ fn invalid_dependencies_and_mcp_secrets_are_rejected_without_writes() {
         Err(Error::Invalid(_))
     ));
     assert_eq!(db, json!({}));
-    assert!(matches!(
-        publish(
-            &mut db,
-            "packages",
-            json!({"id":"bad","sop":"按步骤处理","acceptance":"结果可核查","actions":{"analyze":{"executor":{"id":"missing","revision":1},"resources":[]}}})
-        ),
-        Err(Error::NotFound(_))
-    ));
 }

@@ -9,7 +9,7 @@ import { Modal } from '@/shared/ui/modal'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
 import { AppSidebar } from './AppSidebar'
 import { cn } from '@/shared/lib/utils'
-import { navigationGroups, useCapability } from './navigation'
+import { navigationGroups, useFlowAvailability } from './navigation'
 
 
 function routeTitle(matches: { handle?: unknown }[]): string | undefined {
@@ -28,11 +28,9 @@ export default function AppShell() {
 function Workspace({ signedIn }: { signedIn: boolean }) {
   const location = useLocation()
   const matches = useMatches()
-  const sources = useCapability('sources', signedIn)
-  const flow = useCapability('flow', signedIn)
-  const capabilities = { sources, flow }
+  const flow = useFlowAvailability(signedIn)
   const groups = navigationGroups.map(group => ({ ...group,
-    items: group.items.filter(item => !item.capability || capabilities[item.capability].data),
+    items: group.items.filter(item => !item.requiresFlow || flow.data),
   })).filter(group => group.items.length > 0)
   const toasts = useFeedbackStore((state) => state.toasts)
   const dismissToast = useFeedbackStore((state) => state.dismissToast)
@@ -45,7 +43,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
   const currentDomain = navigationGroups
     .flatMap((group) => group.items)
     .find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
-  const unavailable = currentDomain?.capability && !capabilities[currentDomain.capability].data
+  const unavailable = currentDomain?.requiresFlow && !flow.data
   // 页面标题优先取路由 handle.title，未声明时退回当前导航项标题。
   const pageTitle = useMemo(() => routeTitle(matches) ?? currentDomain?.title ?? '工作台', [matches, currentDomain])
 
@@ -86,14 +84,14 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
           </header>
           <div className="shell-scroll">
             <main id="main-content" tabIndex={-1} className="shell-content">
-              {([['外部来源', sources], ['Flow 工具', flow]] as const).map(([label, probe]) => probe.error && (
-                <div key={label} role="alert" className="mb-3 flex flex-wrap items-center gap-3 border-b border-line pb-3 text-sm text-txt2">
-                  <span>{label}检查失败：{probe.error}</span>
-                  <Button icon="refresh" onClick={probe.reload}>重试{label}</Button>
+              {flow.error && (
+                <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 border-b border-line pb-3 text-sm text-txt2">
+                  <span>Flow 工具检查失败：{flow.error}</span>
+                  <Button icon="refresh" onClick={flow.reload}>重试Flow 工具</Button>
                 </div>
-              ))}
+              )}
               {unavailable ? <section className="space-y-3">
-                <h1 className="text-xl font-semibold">{currentDomain.capability === 'flow' ? 'Flow 工具' : '外部来源'}未启用</h1>
+                <h1 className="text-xl font-semibold">Flow 工具未启用</h1>
                 <Link to="/work-items" className="text-accent-2">返回工作清单</Link>
               </section> : <Outlet />}
             </main>

@@ -75,11 +75,11 @@ function EditForm({ k, initial, revision, storageKey, resources }: {
       {k === 'resources' && <>
         <Choice label="资源类型" value={d.resourceKind} change={v => change('resourceKind', v)} options={[["skill", "Skill"], ["prompt", "提示词"], ["mcp", "MCP 引用"]]} />
         {d.resourceKind === 'mcp' ? <>
-          <Hint>MCP 只登记服务与凭据的命名引用，连接参数和凭据由管理员管理；本页不提供注入设置，当前执行后端也不支持运行时注入，因此不能绑定到执行器或派工模板。</Hint>
+          <Hint>MCP 只登记服务与凭据的命名引用，连接参数和凭据由管理员管理；本页不提供注入设置，当前执行后端也不支持运行时注入，因此不能绑定到执行器。</Hint>
           <TextField label="服务引用" value={d.serverRef} change={v => change('serverRef', v)} required />
           <TextField label="凭据引用（可选）" value={d.credentialRef} change={v => change('credentialRef', v)} />
         </> : <TextField label="资源内容" value={d.text} change={v => change('text', v)} multiline required />}
-        <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被 Agent 或派工模板引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
+        <Hint>{d.resourceKind === 'skill' ? 'Skill 按纯文本发布，使用它的执行器固定这一版本。' : d.resourceKind === 'prompt' ? '提示词按纯文本发布，被执行器引用时固定这一版本。' : '已有执行器若引用了 MCP 版本，绑定会在目录中显示为不可执行。'}</Hint>
       </>}
       {k === 'executors' && <>
         <section className="space-y-3 border-y border-line py-4" aria-labelledby="executor-contract">
@@ -89,7 +89,7 @@ function EditForm({ k, initial, revision, storageKey, resources }: {
           <p className="text-sm text-txt3">平台记录日志和执行器记录日志都会保存在执行详情中，日志查看器暂未实现。</p>
         </section>
         <ResourceRefs label="执行器资源" choices={resources} value={d.resources} change={v => change('resources', v)} />
-        <Hint>资源按固定版本冻结到派工快照。执行程序、工作目录、环境变量和命令由服务端管理。</Hint>
+        <Hint>执行器引用所选的资源版本。执行程序、工作目录、环境变量和命令由服务端管理。</Hint>
         {d.configSchema.fields.length > 0 && <ConfigFields schema={d.configSchema} values={d.config} packageChoices={configPackages.data}
           packageLoading={needsConfigPackages && configPackages.loading} packageError={needsConfigPackages ? configPackages.error : ''} onReloadPackages={configPackages.reload}
           onValueChange={() => {}} readOnly />}

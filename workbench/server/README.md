@@ -1,6 +1,14 @@
 # ursi-server
 
-`ursi-server` 提供两个共用 Bearer 令牌的 HTTP 入口：`/api/v2` 从发布工作包到办理、交付和验收，`/api/v1` 管理 Flow 包、运行和配置。Server 不提供页面；现有 [Web 工作台](../web/README.md) 面向 Flow 管理。受信本地执行使用服务账户权限，只向可信操作者分发令牌。
+`ursi-server` 提供两个共用 Bearer 令牌的 HTTP 入口：`/api/v2` 管理工作清单、目录、包、平台 MCP 服务及版本化定义，`/api/v1` 管理 Flow 包、运行和配置。[Web 工作台](../web/README.md) 由独立的静态服务提供。受信本地 Flow 使用服务账户权限，只向可信操作者分发令牌。
+
+## 旧数据升级
+
+**迁移不可逆。首次用新版打开旧数据目录前，停止旧实例，备份整个 `$URSI_DATA_DIR/work/`，包括 `work.json` 和目录文件。** Server 取得 `work.lock` 后自动迁移，关闭 Flow 也会触发：
+
+- 删除旧派工单 `items`（含执行尝试、交付文本与验收记录）、派工模板 `catalog.packages` 和尝试级配置快照 `configPackageSnapshots`。旧单不会转换为 `/work-items` 清单项。
+- 仅清理旧制品与配置快照引用的、已登记且无其他引用的目录及其文件。现有工作清单、工作包、配置包及其目录、资源和执行器定义、平台 MCP 服务均保留。独立的 Flow Runtime 数据不受影响。
+- 目录清理失败时服务拒绝启动。修复存储问题后可重试；要恢复旧派工数据，须停服并用升级前的完整备份配合旧版程序恢复。仅回退程序或只还原 `work.json` 无法找回已删除的文件。
 
 ## 安装与启动
 
@@ -11,7 +19,7 @@
 command -v ursi-flowd
 ```
 
-仅办理工作项、不使用 Flow 时，可跳过 daemon 安装并设置 `export URSI_FLOW_ENABLED=0`。通过服务环境注入令牌，本地用 Bash 启动时可静默输入：
+只使用 v2 时，可跳过 daemon 安装并设置 `export URSI_FLOW_ENABLED=0`。通过服务环境注入令牌，本地用 Bash 启动时可静默输入：
 
 ```bash
 read -rsp 'API token: ' URSI_API_TOKEN && printf '\n'
@@ -27,30 +35,25 @@ cargo run --locked -p ursi-server
 | `URSI_LISTEN_ADDR` | `0.0.0.0:8080` | HTTP 监听地址。 |
 | `URSI_DATA_DIR` | `data` | 服务账户控制的持久化根目录，工作数据与 Flow 数据分开存放。 |
 | `URSI_WORKSPACE_DIR` | 当前目录 | 已存在的受信本地项目目录，对应工作区别名 `default`。 |
-| `URSI_FLOW_ENABLED` | `1` | `1` 启动本机 daemon 并挂载 v1；`0` 不启动 daemon，v2 的 Flow 动作不可执行。 |
-| `URSI_FLOWD_BIN` | `PATH` 中的 `ursi-flowd` | 启用 Flow 时由 Server 启动的 daemon。Flow 包使用 Agent 节点时还需配置 `pi` 和模型。 |
-| `URSI_AGENT_BIN` | 未设置 | v2 本地 Agent 使用的可信 Pi CLI 绝对路径；由部署者提供模型和认证配置。 |
-| `URSI_WORK_SOURCES` | 未设置 | 私有来源配置 JSON 的绝对路径。启用后从本地 JSON 导出文件读取材料；未设置时不挂载来源接口。 |
+| `URSI_FLOW_ENABLED` | `1` | `1` 启动本机 daemon 并挂载 v1；`0` 仅提供 v2。 |
+| `URSI_FLOWD_BIN` | `PATH` 中的 `ursi-flowd` | 启用 Flow 时由 Server 启动的 daemon。Flow 包使用 Agent 节点时还需配置 Pi 和模型。 |
 
-`<URSI_DATA_DIR>/work/` 是服务账户的私有目录（`0700`）。Server 独占 `work.lock`，通过原子替换 `work.json` 保存定义版本、工作项、执行尝试、交付文本和验收记录。`<URSI_DATA_DIR>/flow-runtime/` 是 daemon 的私有目录，保存 Flow 包、配置、运行历史和 `runtime.sock`。这两个目录都不应作为工作区或静态文件目录公开。
-
-沙箱适配器只连接管理员预配给单个工作项的独占 ACP 沙箱和卷。部署环境提供 `URSI_SANDBOX_CLIENT_BIN`、`URSI_ACP_URL`、`URSI_SESSION_TOKEN_FILE`、`URSI_SANDBOX_CWD`、`URSI_SANDBOX_ITEM_ID` 和 `URSI_SANDBOX_ALIAS`，并保持 `URSI_SESSION_TOKEN` 未设置。凭据文件权限、独占要求和收尾步骤见[预配说明](src/work/execute/SANDBOX.md)。未配置时不会回退到宿主机执行。
+`$URSI_DATA_DIR/work/` 是服务账户的私有目录（`0700`）。Server 独占 `work.lock`，通过原子替换 `work.json` 保存业务记录，包内文件存于独立的虚拟目录。`$URSI_DATA_DIR/flow-runtime/` 是 daemon 的私有目录，保存 Flow 包、配置、运行历史和 `runtime.sock`。这两个目录都不应作为工作区或静态文件目录公开。
 
 ## API 索引
 
 | 入口 | 用途与契约 |
 | --- | --- |
 | `/api/v1/flows`、`/api/v1/runs`、`/api/v1/flow-config` | [Flow 包、运行及配置](src/transport/SPEC.md)，仅在启用 Flow 时挂载。 |
-| `/api/v2/resources`、`/api/v2/executors`、`/api/v2/packages` | [发布、查版本和停用定义](src/work/catalog/SPEC.md)。 |
-| `/api/v2/items` | [派工、开始办理、提交交付、读取版本文件及验收](src/work/items/HTTP.md)。 |
-| `/api/v2/items/{id}/attempts` | [发起、查询、取消及人工核实](src/work/execute/API.md)。Flow 动作使用固定目录修订（pinned）启动。 |
-| `/api/v2/sources` | [从 JSON 文件列出材料并按固定动作派工](src/work/sources/README.md)。没有外部平台 SDK、平台授权或定制列表页面。 |
-
-工作项文件接口只读回已提交的交付文本，不提供 PTY、浏览器或通用文件管理。[两阶段 HTTP 验收](tests/WORK-ACCEPTANCE.md) 使用真实 Pi CLI 配模拟模型，以及真实 Flow daemon 和 CLI。预配沙箱的自动测试仅验证模拟 CLI 的 ACP 契约，真实沙箱会话需单独验收。
+| `/api/v2/work-items` | [工作清单](src/work/worklist/SPEC.md)：增删改查、按类别筛选、按保存的配方生成工作包。 |
+| `/api/v2/mcp-servers` | [平台 MCP 服务](src/work/mcp/PLATFORM.md)：登记、发现资源。使用资源生成工作包前须配置出站授权及 Python 隔离环境。 |
+| `/api/v2/directories` | [虚拟目录](src/work/directories/HTTP.md)：创建目录并按目录 ID 读写文件。 |
+| `/api/v2/patches/work`、`/api/v2/patches/config` | [工作包与配置包](src/work/patches/HTTP.md)：创建、查询包记录，修改工作包的当前归属。 |
+| `/api/v2/resources`、`/api/v2/executors` | [资源与执行器定义](src/work/catalog/HTTP.md)：发布、查版本和停用。 |
 
 ## 检查服务与停机
 
-在另一终端设置同一令牌，运行 `curl -fsS -H "Authorization: Bearer $URSI_API_TOKEN" http://127.0.0.1:8080/api/v2/items`。新数据目录应返回 `[]`；不带令牌时返回 401。此检查不依赖 Flow。
+在另一终端设置同一令牌，运行 `curl -fsS -H "Authorization: Bearer $URSI_API_TOKEN" http://127.0.0.1:8080/api/v2/work-items`。新数据目录应返回 `[]`；不带令牌时返回 401。此检查不依赖 Flow。
 
 收到 `SIGINT`（Ctrl-C）或 `SIGTERM` 后，Server 停止 HTTP 服务。若启用了 Flow，还会等待自己的 daemon 退出。启用 Flow 时若已有 `runtime.sock`，Server 拒绝启动，不接管已有 socket 或进程。先核实原实例是否仍在运行，仅在确认它已退出后清理残留 socket。
 

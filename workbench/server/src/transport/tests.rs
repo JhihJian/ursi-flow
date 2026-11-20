@@ -48,7 +48,8 @@ impl Fixture {
             crate::flow::FlowClient::new(FlowClient::new(socket)),
             root.clone(),
         );
-        let app = router(service, token.into());
+        let work = crate::work::routes(root.join("work")).unwrap();
+        let app = combined(Some(service), work, token.into());
         let listener = UnixListener::bind(root.join("http.sock")).unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
@@ -95,6 +96,54 @@ impl Fixture {
     }
 }
 const AUTH: &str = "Authorization: Bearer test-token\r\n";
+
+#[tokio::test]
+async fn retired_dispatch_routes_are_not_mounted() {
+    let app = Fixture::new("test-token");
+    for (method, path) in [
+        ("GET", "items"),
+        ("POST", "items"),
+        ("POST", "items/i/start"),
+        ("POST", "items/i/attempts"),
+        ("GET", "items/i/attempts/a"),
+        ("POST", "items/i/attempts/a/verify"),
+        ("POST", "items/i/attempts/a/cancel"),
+        ("POST", "items/i/deliveries"),
+        ("POST", "items/i/deliveries/1/review"),
+        ("GET", "items/i/deliveries/1/files/report"),
+        ("GET", "sources"),
+        ("POST", "sources/s/items/i/dispatch"),
+        ("POST", "packages"),
+        ("GET", "packages"),
+        ("GET", "packages/p/revisions/1"),
+    ] {
+        let (status, _, body) = app
+            .request(method, &format!("/api/v2/{path}"), AUTH, json!({}))
+            .await;
+        assert_eq!(status, 404, "{method} {path}: {body}");
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap()["error"]["code"],
+            "not_found"
+        );
+    }
+    for path in [
+        "resources",
+        "executors",
+        "work-items",
+        "directories",
+        "patches/work",
+        "patches/config",
+        "mcp-servers",
+    ] {
+        assert_eq!(
+            app.request("GET", &format!("/api/v2/{path}"), AUTH, Value::Null)
+                .await
+                .0,
+            200,
+            "{path}"
+        );
+    }
+}
 
 #[tokio::test]
 async fn http_forwards_sdk_operations_and_returns_raw_data() {

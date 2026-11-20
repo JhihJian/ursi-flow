@@ -2,6 +2,8 @@
 
 工作台由 [Server](server/README.md) 和 [Web](web/README.md) 组成。Server 提供 API，Web 在开发时通过 Vite 将同源 `/api` 请求转发给 Server。`workbench/` 是 Cargo 工作区根目录，`web/` 使用自己的 npm 锁文件。请从完整仓库检出构建，Server 编译时依赖仓库内的 [Flow SDK](../flow-runtime/client/README.md)。
 
+**旧实例升级前：先停服，备份整个 `$URSI_DATA_DIR/work/`。** 新版首次打开旧存储时会不可逆地删除派工记录、模板及专属制品和配置快照。旧单不会转换为工作清单项。保留范围和恢复条件见 [Server 使用说明](server/README.md#旧数据升级)。
+
 ## 本地开发
 
 以下命令从 `workbench/` 执行。先在服务环境中设置 `URSI_API_TOKEN`。只使用工作清单时可关闭 Flow：
@@ -30,9 +32,9 @@ npm run dev
 
 从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。工作包的业务记录保存目录引用、来源和可选的工作项归属。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](PATCH-STUDIO.md)。
 
-## 派工与办理
+## 资源库与执行器
 
-从「派工记录」打开「发起工作」（`/items/new`），选择已发布的派工模板及其修订。管理员通过 `/api/v2/packages` 发布模板，外部来源也可按配置指定模板和动作。工作项固定开单时的办理说明和验收标准，模板更新不影响已创建的工作项。
+在 `/resources` 发布资源，在 `/executors` 发布引用指定提示词或技能修订的执行器。两种目录都能打开历史修订。发布执行器只保存定义，不会启动运行。
 
 ## 检查
 
@@ -41,4 +43,4 @@ cargo test --locked --workspace
 (cd web && npm run check)
 ```
 
-[派工与办理联合验收](web/acceptance/README.md)和[工作包与配置包联合验收](web/patches-acceptance/README.md)均使用工作台构建的 Server 和 Web。Flow 和本地 Agent 的运行条件见 [Server 使用说明](server/README.md)。
+[资源库与执行器联合验收](web/acceptance/README.md)和[工作清单与包目录联合验收](web/patches-acceptance/README.md)均使用工作台构建的 Server 和 Web。两套验收共用端口，应分别运行。Flow 的运行条件见 [Server 使用说明](server/README.md)。

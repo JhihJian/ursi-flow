@@ -8,7 +8,7 @@ references:
 
 ## 功能意图
 
-ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。Server v2 的 HTTP 工作清单以已发布的工作包派工，将动作交给 Agent 或固定修订的 Flow 执行，并独立记录交付和验收结果。
+ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。工作台另通过 Server v2 管理工作清单、文件型工作包、配置包以及资源和执行器定义。
 
 ## 模块地图
 
@@ -17,18 +17,17 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 | [flow-runtime](flow-runtime/SPEC.md) | Node.js 引擎与本地执行器。`ursi-flowd` 管理包修订、执行配置、后台运行与历史；`ursi-flow-local` 用于单次本地执行。 |
 | [flow-runtime/client](flow-runtime/client/SPEC.md) | Rust `FlowClient` 与 `ursi-flow` CLI，通过 Unix socket 访问 daemon。 |
 | [flow-runtime/web](flow-runtime/web/SPEC.md) | 独立 Flow 控制台。静态包加同源桥，完成建包、运行、历史与配置闭环。 |
-| [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 办理工作项；启用 Flow 时可管理流程包、运行与配置。 |
+| [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 维护工作清单与包目录；启用 Flow 时可管理流程包、运行与配置。 |
 | [ursi-sandbox](ursi-sandbox/SPEC.md) | 独立交付的沙箱 Gateway、Runtime 和 Client。本地 Flow 执行不依赖该工作区。 |
 
 ## 关键功能与验收
 
-### 按工作包办理与交付
+### 从工作清单生成文件包
 
 #### 验收
 
-- `/api/v2` 按发布版本固定包、资源及执行器。同一包派出的两单分别保存输入、尝试、交付文本和验收意见，重启后仍可按单查回。关闭 Flow 时，配置了本地 Pi 的 Agent 动作仍可执行。
-- Flow 动作按固定目录修订启动（pinned）；修订已变更时在运行节点前返回 409。成功启动后，CLI 可按尝试 ID 查询同一份运行历史。
-- 可选来源是管理员配置的本地 JSON 导出文件，可按固定动作派工。预配 ACP 沙箱适配器仅有模拟客户端的契约测试，Server 没有 PTY、浏览器或通用文件管理接口。
+- 关闭 Flow 时仍可创建工作项、更改类别并按类别筛选，也可独立维护工作包和配置包的文件。
+- 配置平台 MCP 服务后，可按工作项保存的资源与 Python 配方生成工作包。删除工作项后，包、文件与生成来源仍可读取。
 
 ### 校验与发布流程包
 

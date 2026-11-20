@@ -104,7 +104,7 @@ export function Detail({ k, id, revision }: { k: Collection; id: string; revisio
       {latest.active && <Button variant="danger" onClick={() => { setError(''); setConfirm(true) }}>停用{titles[k]}</Button>}
     </nav><VersionBody v={v} />
     <Modal open={confirm} title={`停用${titles[k]} ${id}？`} onClose={() => { if (!busy) setConfirm(false) }}>
-      <p>停用作用于整个 ID：用它的新派工和新引用会失败，也不再发布新版。已发布的历史版本、已有单据及其派工快照不受影响，仍可查看。</p>
+      <p>停用后不能再引用此 ID 或发布新版。已发布的历史版本仍可查看。</p>
       {error && <p className="text-err" role="alert">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-2"><Button disabled={busy} onClick={() => setConfirm(false)}>取消</Button><Button loading={busy} variant="danger" onClick={disable}>确认停用</Button></div>
     </Modal></article>

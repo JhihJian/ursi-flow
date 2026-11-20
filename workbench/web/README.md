@@ -1,17 +1,15 @@
 # Flow 工作台
 
-工作台连接同源服务的 `/api/v2`（工作清单、定义、办理与验收）和 `/api/v1`（Flow 工具）。工作包、工作项、交付与验收都以服务端数据为准。侧栏的「本地演示 → 对话」单独使用浏览器里的示例数据。
+工作台连接同源服务的 `/api/v2`（工作清单、包目录、资源和执行器定义、平台 MCP 服务）和 `/api/v1`（Flow 工具）。登录后从工作清单开始。侧栏的「本地演示 → 对话」单独使用浏览器里的示例数据。
 
 ## 页面
 
 | 页面 | 作用 |
 | --- | --- |
-| `/items` | 工作清单，默认首页。按全部、待办理、办理中、待验收、已交付筛选；行内可读工作包版本、单号、来源、经办人与状态。 |
-| `/items/new` | 从已发布的工作包版本发起待办理工作项，按输入声明填写材料。 |
-| `/items/:id` | 办理详情：办理、执行记录、交付与验收三个页签。 |
-| `/items/:id/deliveries/:version` | 固定打开某一交付版本，旧版只读并保留退回意见。 |
-| `/packages`、`/resources`、`/executors` | 工作包、资源库与执行器目录，可发布新版并查看历史版本。 |
-| `/sources` | 管理员配置的外部来源，按固定动作派工进入同一工作清单；未配置时入口收起。 |
+| `/work-items` | 默认首页。新建或编辑事项，按待开始、正在进行中、持续、已完成筛选。在工作项详情按已保存的配方生成工作包。 |
+| `/work-patches`、`/config-patches` | 新建工作包并整理文件，或编辑配置包中的提示词、Skills 和 MCP 配置。 |
+| `/resources`、`/executors` | 发布资源与执行器定义，查看历史修订及固定版本的资源依赖。 |
+| `/mcp-servers` | 登记获准的 MCP 服务并发现资源，供工作项配方选择。 |
 | `/flows`、`/runs`、`/flow-config` | Flow 工具，保留原有深链。 |
 | `/chat` | 本地演示对话，不使用令牌也不调用模型。 |
 
@@ -50,10 +48,12 @@ npm run test:e2e
 
 ### 真实浏览器联合验收
 
-用真实 Web（构建产物 + 同源代理）、真实 `ursi-server` 和真实 Pi CLI 验证完整业务链路。只有模型是模拟的：本机固定回复端点。
+先在 `workbench/` 构建 Server，再从 `web/` 依次运行两套验收。两者共用回环端口和临时运行目录。
 
 ```sh
+(cd .. && cargo build --locked -p ursi-server)
 npm run test:acceptance
+npm run test:patches-acceptance
 ```
 
-该命令自动构建产物、启动隔离的服务与预览实例，跑主场景双单链路、JSON 来源派工与移动视口三个场景，结束后清理临时数据。环境变量、目录结构与限制见 [联合验收说明](acceptance/README.md)，签收结论见 [签收报告](acceptance/REPORT.md)。
+[定义验收](acceptance/README.md)在桌面和移动浏览器中发布提示词和执行器，再从旧版深链读取固定资源。[工作包与配置包验收](patches-acceptance/README.md)验证清单、MCP 配方生成和包文件编辑；生成需要 Server 所在主机具备 [Python 隔离环境](../server/src/work/mcp/PLATFORM.md)。两套验收均不需要 Pi 或模型。

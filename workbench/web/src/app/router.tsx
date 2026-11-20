@@ -1,23 +1,16 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 import { routes as chatRoutes } from '@/modules/chat/routes'
 import { workItemRoutes } from '@/modules/work-items/routes'
-import { workListRoutes } from '@/modules/work-list/routes'
 import { patchRoutes } from '@/modules/patches/routes'
-import { sourceRoutes } from '@/modules/sources/routes'
 import { definitionRoutes } from '@/modules/definitions/routes'
 import AppShell from './AppShell'
 import { LoginGate } from './LoginGate'
 import NotFoundView from './NotFoundView'
 import { RouteErrorAlert } from './RouteErrorAlert'
 
-const workDetail = async () => ({ Component: (await import('@/modules/work-detail/WorkDetail')).WorkDetail })
 const protectedRoutes: RouteObject[] = [
   ...workItemRoutes,
-  ...workListRoutes,
   ...patchRoutes,
-  { path: 'items/:id', handle: { title: '办理详情' }, lazy: workDetail },
-  { path: 'items/:id/deliveries/:version', handle: { title: '交付与验收' }, lazy: workDetail },
-  ...sourceRoutes,
   ...definitionRoutes,
   { path: 'flows', handle: { title: 'Flow 包' }, lazy: async () => ({ Component: (await import('@/modules/flows/Flows')).Flows }) },
   { path: 'flows/new', handle: { title: '创建 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },

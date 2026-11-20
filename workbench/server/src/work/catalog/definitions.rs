@@ -1,4 +1,4 @@
-//! 发布请求的允许字段、版本引用与冻结快照投影。
+//! 资源与执行器发布请求、配置字段和版本引用校验。
 use super::{Error, require_active, version};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -57,7 +57,6 @@ pub(super) fn build(db: &Value, k: &str, b: &Value) -> Result<Value, Error> {
     match k {
         "resources" => resource(b),
         "executors" => executor(db, b),
-        "packages" => package(db, b),
         _ => Err(Error::Internal("未知目录类型".into())),
     }
 }
@@ -79,22 +78,6 @@ fn resource(b: &Value) -> Result<Value, Error> {
         _ => return Err(Error::Invalid("未知资源 kind".into())),
     }
     Ok(b.clone())
-}
-fn ports<'a>(b: &'a Value, k: &str) -> Result<Option<&'a Map<String, Value>>, Error> {
-    let Some(v) = b.get(k) else { return Ok(None) };
-    let map = v
-        .as_object()
-        .ok_or_else(|| Error::Invalid(format!("{k} 必须是字段名到类型的对象")))?;
-    for (key, ty) in map {
-        name(key)?;
-        if !matches!(
-            ty.as_str(),
-            Some("string" | "number" | "integer" | "boolean" | "object" | "array")
-        ) {
-            return Err(Error::Invalid(format!("{k} 类型无效")));
-        }
-    }
-    Ok(Some(map))
 }
 
 fn is_url(s: &str) -> bool {
@@ -359,20 +342,13 @@ fn executor(db: &Value, b: &Value) -> Result<Value, Error> {
     if let Some(schema) = b.get("configSchema") {
         value["configSchema"] = validate_config_schema(schema)?;
     }
-    let mut budget = MAX_SNAPSHOT_BYTES;
-    resources(db, deps.iter(), &mut budget)?;
+    validate_resources(db, deps)?;
     Ok(value)
 }
 
-// Expanded references must not turn a tiny publish request into an unbounded snapshot.
-const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
-fn resources<'a>(
-    db: &Value,
-    refs: impl Iterator<Item = &'a Value>,
-    budget: &mut usize,
-) -> Result<Vec<Value>, Error> {
+fn validate_resources(db: &Value, refs: &[Value]) -> Result<(), Error> {
     let mut seen = BTreeMap::new();
-    let mut resolved = Vec::new();
+    let mut budget: usize = 2 * 1024 * 1024;
     for r in refs {
         let (id, rev) = reference(r)?;
         if let Some(prior) = seen.insert(id, rev) {
@@ -387,87 +363,9 @@ fn resources<'a>(
             return Err(Error::Invalid(format!("执行器暂不支持注入 MCP 资源 {id}")));
         }
         let size = v["content"].as_str().ok_or_else(super::corrupt)?.len() + id.len() + 64;
-        *budget = budget
+        budget = budget
             .checked_sub(size)
             .ok_or_else(|| Error::Invalid("展开的资源超过 2 MiB".into()))?;
-        resolved.push(v.clone());
     }
-    Ok(resolved)
-}
-fn package(db: &Value, b: &Value) -> Result<Value, Error> {
-    fields(
-        b,
-        &[
-            "id",
-            "sop",
-            "acceptance",
-            "actions",
-            "resources",
-            "goal",
-            "inputs",
-            "outputs",
-            "deliverables",
-        ],
-    )?;
-    text(b, "sop")?;
-    text(b, "acceptance")?;
-    let common = array(b, "resources")?;
-    ports(b, "inputs")?;
-    ports(b, "outputs")?;
-    let actions = b["actions"]
-        .as_object()
-        .filter(|m| !m.is_empty())
-        .ok_or_else(|| Error::Invalid("工作包需要至少一个 action".into()))?;
-    let mut frozen = Map::new();
-    let mut budget = MAX_SNAPSHOT_BYTES;
-    for (action, binding) in actions {
-        name(action)?;
-        fields(
-            binding,
-            &[
-                "executor",
-                "resources",
-                "inputs",
-                "outputs",
-                "configPackage",
-            ],
-        )?;
-        if let Some(config_package) = binding.get("configPackage") {
-            fields(config_package, &["id"])?;
-            let package_id = config_package
-                .get("id")
-                .and_then(Value::as_str)
-                .filter(|id| name(id).is_ok())
-                .ok_or_else(|| Error::Invalid("configPackage.id 必须是有效标识".into()))?;
-            if db
-                .get("configPatches")
-                .and_then(|packages| packages.get(package_id))
-                .is_none()
-            {
-                return Err(Error::NotFound(format!("配置包 {package_id} 不存在")));
-            }
-        }
-        ports(binding, "inputs")?;
-        ports(binding, "outputs")?;
-        let (id, rev) = reference(&binding["executor"])?;
-        require_active(db, "executors", id)?;
-        let exec = version(db, "executors", id, rev)?;
-        let refs = common
-            .iter()
-            .chain(array(binding, "resources")?)
-            .chain(array(exec, "resources")?);
-        let deps = resources(db, refs, &mut budget)?;
-        let mut target = json!({"id":id,"revision":rev});
-        if let Some(schema) = exec.get("configSchema") {
-            target["configSchema"] = schema.clone();
-        }
-        let mut action_snapshot = json!({"executor":target,"resources":deps});
-        if let Some(config_package) = binding.get("configPackage") {
-            action_snapshot["configPackage"] = config_package.clone();
-        }
-        frozen.insert(action.clone(), action_snapshot);
-    }
-    let mut snapshot = b.clone();
-    snapshot["actions"] = Value::Object(frozen);
-    Ok(snapshot)
+    Ok(())
 }

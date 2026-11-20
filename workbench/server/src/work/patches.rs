@@ -242,16 +242,6 @@ async fn create(
     .map_err(|_| Error::Internal("包创建任务中断".into()))?
 }
 
-const CONFIG_SNAPSHOTS: &str = "configPackageSnapshots";
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ConfigPackageSnapshot {
-    pub(super) source_package_id: String,
-    pub(super) content_digest: String,
-    pub(super) snapshot_directory_id: String,
-}
-
 fn config_package_directory(db: &Value, package_id: &str) -> Result<String, Error> {
     let value = db
         .get(Kind::Config.table())
@@ -264,62 +254,4 @@ fn config_package_directory(db: &Value, package_id: &str) -> Result<String, Erro
         .as_str()
         .map(str::to_owned)
         .ok_or_else(corrupt)
-}
-
-fn existing_snapshot(db: &Value, attempt_id: &str) -> Result<Option<ConfigPackageSnapshot>, Error> {
-    let Some(value) = db
-        .get(CONFIG_SNAPSHOTS)
-        .and_then(|snapshots| snapshots.get(attempt_id))
-    else {
-        return Ok(None);
-    };
-    serde_json::from_value(value.clone())
-        .map(Some)
-        .map_err(|_| corrupt())
-}
-
-/// 为一次尝试建立独立、已冻结的配置包目录，并持久化快照元信息。
-///
-/// execute 只应把返回的 `snapshot_directory_id` 作为目录能力引用交给执行器，不能调用
-/// `directories::path` 后自行使用源包目录。`attempt_id` 在一次尝试内只允许成功快照一次。
-pub(super) fn snapshot_config_package(
-    store: &Store,
-    attempt_id: &str,
-    package_id: &str,
-) -> Result<ConfigPackageSnapshot, Error> {
-    if attempt_id.trim().is_empty() {
-        return Err(Error::Invalid("尝试标识不能为空".into()));
-    }
-    if let Some(existing) = store.read(|db| existing_snapshot(db, attempt_id))? {
-        if existing.source_package_id == package_id {
-            return Ok(existing);
-        }
-        return Err(Error::Conflict("尝试已绑定其他配置包".into()));
-    }
-    let source_directory = store.read(|db| config_package_directory(db, package_id))?;
-    directories::validate_rules(store, &source_directory, Kind::Config.rules())?;
-    directories::snapshot(
-        store,
-        &source_directory,
-        Kind::Config.rules(),
-        |db, snapshot| {
-            let result = ConfigPackageSnapshot {
-                source_package_id: package_id.to_owned(),
-                content_digest: snapshot.content_digest,
-                snapshot_directory_id: snapshot.directory_id,
-            };
-            let table = db
-                .as_object_mut()
-                .ok_or_else(corrupt)?
-                .entry(CONFIG_SNAPSHOTS)
-                .or_insert_with(|| json!({}))
-                .as_object_mut()
-                .ok_or_else(corrupt)?;
-            if table.contains_key(attempt_id) {
-                return Err(Error::Conflict("尝试已建立配置包快照".into()));
-            }
-            table.insert(attempt_id.to_owned(), json!(&result));
-            Ok(result)
-        },
-    )
 }

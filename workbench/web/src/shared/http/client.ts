@@ -4,8 +4,6 @@ export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message) }
 }
 
-const textMediaType = 'text/plain'
-
 function httpFailure(status: number, reason: string): ApiError {
   return new ApiError(status, `HTTP ${status}${reason ? `：${reason}` : ''}`)
 }
@@ -50,18 +48,4 @@ export async function requestV2File(path: string, options: RequestInit = {}): Pr
   const response = await request('v2', path, 'application/octet-stream', options)
   if (response.headers.get('content-type')?.split(';')[0] !== 'application/octet-stream') throw new Error('服务未返回文件内容。')
   return response.blob()
-}
-
-/**
- * 读取交付正文。只有 `text/plain` 且非空的响应才算成功：
- * 代理首页（`text/html`）、空正文和 `204` 都按读取失败报告，避免把非交付内容当成验收材料。
- */
-export async function requestV2Text(path: string, options: RequestInit = {}): Promise<string> {
-  const response = await request('v2', path, textMediaType, options)
-  if (response.status === 204) throw httpFailure(204, '交付文件为空，无法读取。')
-  const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? ''
-  if (type !== textMediaType) throw httpFailure(response.status, `交付文件必须是纯文本，服务返回了 ${type || '未声明类型'}。`)
-  const text = await response.text()
-  if (text.trim() === '') throw httpFailure(response.status, '交付文件为空，无法读取。')
-  return text
 }

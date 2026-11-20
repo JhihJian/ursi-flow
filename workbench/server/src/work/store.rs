@@ -12,6 +12,7 @@ use std::{
 };
 use uuid::Uuid;
 
+mod legacy;
 #[cfg(test)]
 mod tests;
 
@@ -74,11 +75,20 @@ impl Store {
         if !db.is_object() {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "无效的工作数据"));
         }
-        Ok(Self(Arc::new(Inner {
+        let upgrade = legacy::present(&db);
+        let store = Self(Arc::new(Inner {
             dir,
             db: Mutex::new(Some(db)),
             _lock: lock,
-        })))
+        }));
+        if upgrade {
+            store
+                .update(|db| {
+                    legacy::retire(store.dir(), db).map_err(|e| Error::Internal(e.to_string()))
+                })
+                .map_err(|e| io::Error::other(format!("旧派工数据清理失败：{e:?}")))?;
+        }
+        Ok(store)
     }
 
     pub fn read<T>(&self, f: impl FnOnce(&Value) -> Result<T, Error>) -> Result<T, Error> {

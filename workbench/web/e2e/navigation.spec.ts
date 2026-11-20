@@ -6,7 +6,7 @@ test('深链保留、401 后重新登录、刷新和退出', async ({ page }) =>
     count++
     // 登录后的可选模块探测用替身返回空集合，本用例只验证 flow-config 的 401 处理。
     const path = new URL(route.request().url()).pathname
-    if (path === '/api/v2/sources' || path === '/api/v1/flows') return route.fulfill({ json: [] })
+    if (path === '/api/v1/flows') return route.fulfill({ json: [] })
     expect(path).toBe('/api/v1/flow-config')
     if (route.request().headers().authorization !== 'Bearer test-canary') return route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } })
     return route.fulfill({ json: { model: 'configured', executor: 'local-pi', maxConcurrent: 2 } })

@@ -37,7 +37,7 @@ describe('应用壳', () => {
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
-    for (const [name, href] of [['工作清单', '/work-items'], ['派工记录', '/items'], ['平台 MCP 服务', '/mcp-servers'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['外部来源', '/sources'], ['资源库', '/resources'], ['执行器', '/executors']]) {
+    for (const [name, href] of [['工作清单', '/work-items'], ['平台 MCP 服务', '/mcp-servers'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['资源库', '/resources'], ['执行器', '/executors']]) {
       expect(within(mainNav).getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
@@ -68,31 +68,14 @@ describe('应用壳', () => {
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('运行配置')
   })
 
-  it('只有集合 404 收起对应模块，空集合仍可进入；故障保留入口并可单独重试', async () => {
-    let status = 503
-    const fetch = vi.fn(async (path: string) => Response.json([], { status: path === '/api/v1/flows' ? 404 : status }))
-    vi.stubGlobal('fetch', fetch)
-    renderAt('/missing')
-    const nav = within(screen.getByRole('navigation', { name: '主导航' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 503')
-    for (const name of ['Flow 包', '运行记录', '运行配置']) expect(nav.queryByRole('link', { name })).toBeNull()
-    expect(nav.getByRole('link', { name: '工作清单' })).toBeInTheDocument()
-    expect(nav.getByRole('link', { name: '外部来源' })).toBeInTheDocument()
-    status = 200
-    await userEvent.click(screen.getByRole('button', { name: '重试外部来源' }))
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
-    expect(nav.getByRole('link', { name: '外部来源' })).toBeInTheDocument()
-    expect(fetch.mock.calls.map(([path]) => path).sort()).toEqual(['/api/v1/flows', '/api/v2/sources', '/api/v2/sources'])
-  })
-
-  it('来源未挂载时保留 Flow 工具，来源深链提供返回清单入口', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (path: string) => Response.json([], { status: path === '/api/v2/sources' ? 404 : 200 })))
-    renderAt('/sources')
-    expect(await screen.findByRole('heading', { name: '外部来源未启用' })).toBeInTheDocument()
+  it('Flow 集合 404 时收起运行工具，深链仍能返回工作清单', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => Response.json([], { status: path === '/api/v1/flows' ? 404 : 200 })))
+    renderAt('/runs/r1')
+    expect(await screen.findByRole('heading', { name: 'Flow 工具未启用' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
     const nav = within(screen.getByRole('navigation', { name: '主导航' }))
-    expect(nav.queryByRole('link', { name: '外部来源' })).toBeNull()
-    expect(nav.getByRole('link', { name: 'Flow 包' })).toBeInTheDocument()
+    for (const name of ['Flow 包', '运行记录', '运行配置']) expect(nav.queryByRole('link', { name })).toBeNull()
+    expect(nav.getByRole('link', { name: '工作清单' })).toBeInTheDocument()
   })
 
   it('桌面侧栏与移动抽屉提供相同分组和入口', async () => {
@@ -101,7 +84,7 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '派工记录', '工作包', '外部来源', '配置包', '资源库', '执行器', '平台 MCP 服务', 'Flow 包', '运行记录', '运行配置', '对话'])
+    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '工作包', '配置包', '资源库', '执行器', '平台 MCP 服务', 'Flow 包', '运行记录', '运行配置', '对话'])
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
@@ -112,23 +95,22 @@ describe('应用壳', () => {
   })
 
   it('可选模块探测失败时仍能使用工作清单并单独重试', async () => {
-    let sourcesCalls = 0
+    let flowCalls = 0
     const fetch = vi.fn(async (path: string) => {
       if (path === '/api/v2/work-items' || path === '/api/v2/patches/work') return Response.json([])
-      if (path === '/api/v2/sources') { sourcesCalls += 1; return sourcesCalls === 1 ? Response.json([], { status: 503 }) : Response.json([]) }
-      return Response.json([], { status: 503 })
+      if (path === '/api/v1/flows') return Response.json([], { status: ++flowCalls === 1 ? 503 : 200 })
+      throw Error(`意外 API：${path}`)
     })
     vi.stubGlobal('fetch', fetch)
     renderAt('/work-items')
     expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
-    expect(await screen.findByText(/外部来源检查失败：HTTP 503/)).toBeInTheDocument()
-    expect(screen.getByText(/Flow 工具检查失败：HTTP 503/)).toBeInTheDocument()
+    expect(await screen.findByText(/Flow 工具检查失败：HTTP 503/)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '重试外部来源' }))
-    await waitFor(() => { expect(screen.queryByText(/外部来源检查失败/)).toBeNull() })
-    expect(screen.getByText(/Flow 工具检查失败/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '重试Flow 工具' }))
+    await waitFor(() => { expect(screen.queryByText(/Flow 工具检查失败/)).toBeNull() })
+    expect(screen.getByRole('link', { name: 'Flow 包' })).toBeInTheDocument()
     expect(screen.getByText('暂无工作项')).toBeInTheDocument()
-    expect(fetch.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v2/work-items', '/api/v2/sources', '/api/v1/flows']))
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining(['/api/v2/work-items', '/api/v2/patches/work', '/api/v1/flows']))
   })
 
   it('主题按钮同步 html 属性、存储与跨标签页变化', async () => {

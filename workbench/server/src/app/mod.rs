@@ -18,11 +18,7 @@ pub async fn run() -> io::Result<()> {
     let client = config
         .flow_enabled
         .then(|| FlowClient::new(config.home.join("runtime.sock")));
-    let work = crate::work::routes(
-        config.home.with_file_name("work"),
-        config.workspace.clone(),
-        client.clone(),
-    )?;
+    let work = crate::work::routes(config.home.with_file_name("work"))?;
     let mut child = if config.flow_enabled {
         Some(daemon::start(&config).await?)
     } else {

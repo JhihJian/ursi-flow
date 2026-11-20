@@ -488,67 +488,6 @@ async fn work_package_accepts_only_config_package_reference() {
 
 /// 配置包快照使用独立冻结目录，源目录与快照目录互不授予对方写权限。
 #[tokio::test]
-async fn snapshots_config_package_for_attempt_without_exposing_host_path() {
-    let app = Http::new();
-    let source_directory = app.create("config", "配置源").await;
-    let config = app.ok("GET", "/v2/patches/config", Value::Null).await;
-    let package_id = config[0]["id"].as_str().unwrap().to_owned();
-    assert_eq!(
-        app.put(&source_directory, "AGENTS.md", b"source", true)
-            .await,
-        204
-    );
-
-    let snapshot = super::snapshot_config_package(&app.store, "attempt-1", &package_id).unwrap();
-    assert_eq!(snapshot.source_package_id, package_id);
-    assert!(!snapshot.content_digest.is_empty());
-    assert_ne!(snapshot.snapshot_directory_id, source_directory);
-    assert_eq!(
-        app.get(&snapshot.snapshot_directory_id, "AGENTS.md")
-            .await
-            .1,
-        b"source"
-    );
-    assert_eq!(
-        app.put(
-            &snapshot.snapshot_directory_id,
-            "AGENTS.md",
-            b"changed",
-            true
-        )
-        .await,
-        409
-    );
-    assert_eq!(
-        app.put(&source_directory, "AGENTS.md", b"updated", true)
-            .await,
-        204
-    );
-    assert_eq!(
-        app.get(&snapshot.snapshot_directory_id, "AGENTS.md")
-            .await
-            .1,
-        b"source"
-    );
-    assert_eq!(
-        app.store
-            .read(|db| Ok(db["configPackageSnapshots"]["attempt-1"].clone()))
-            .unwrap(),
-        json!({
-            "sourcePackageId": package_id,
-            "contentDigest": snapshot.content_digest,
-            "snapshotDirectoryId": snapshot.snapshot_directory_id
-        })
-    );
-    let repeated = super::snapshot_config_package(&app.store, "attempt-1", &package_id).unwrap();
-    assert_eq!(
-        repeated.snapshot_directory_id,
-        snapshot.snapshot_directory_id
-    );
-}
-
-/// 文件按原始字节读写，默认只新建，覆盖必须显式确认。
-#[tokio::test]
 async fn round_trips_bytes_and_requires_explicit_replace() {
     let app = Http::new();
     let id = app.create("work", "材料").await;
