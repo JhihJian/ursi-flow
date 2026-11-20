@@ -24,4 +24,9 @@ pub trait Driver: Send + Sync {
     /// 仅明确不存在时返回 NotFound，网络/daemon错误必须区分。
     async fn observe(&self, sandbox: &Sandbox) -> Result<Observed>;
     async fn logs(&self, sandbox: &Sandbox, tail: usize) -> Result<String>;
+    async fn capture_target(&self, _sandbox: &Sandbox) -> Result<serde_json::Value> {
+        Err(crate::models::Error::Unsupported(
+            "network observations".into(),
+        ))
+    }
 }

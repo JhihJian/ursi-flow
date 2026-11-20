@@ -27,10 +27,13 @@ export URSI_GATEWAY_TUNNEL=true
 | `URSI_GATEWAY_NAMESPACE` | `ursi` | 容器和数据卷归属范围 |
 | `URSI_GATEWAY_DRIVER` | `docker` | `docker` 或仅用于测试的 `fake` |
 | `URSI_GATEWAY_TUNNEL` | `false` | 是否启用隧道 |
+| `URSI_GATEWAY_OBSERVER_SOCKET` | 未配置 | 配对的宿主 Observer 的 Unix socket 路径，仅 Docker 驱动支持 |
 | `URSI_GATEWAY_RUNTIME_PROFILES` | 未配置 | 管理员白名单 JSON 路径，允许受控的只读 Runtime 配置挂载 |
 | `URSI_GATEWAY_REGISTRY` | `./gateway-registry.json` | 管理员维护的 bundle 定义与 `image -> bundles` 注册表 |
 
 Docker 首版支持本机绝对路径 Unix socket，TCP/TLS/SSH daemon 和 Kubernetes/E2B 驱动尚未支持。默认编译 Docker 与 fake，生产可使用 `--no-default-features --features driver-docker`。fake 的实际资源保存在内存，仅供测试。
+
+启用网络观测时，每个 Gateway 实例单独配对一个 Observer，使用专用目录和访问组。Gateway 重启后读取 socket 配置；`observer_enabled` 表示已配置，不反映服务在线状态。权限准备、启停和下载示例见 [Observer 使用说明](../observer/README.md)。
 
 ## HTTP 使用
 

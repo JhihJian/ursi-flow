@@ -1,5 +1,7 @@
 ---
 parent: ../SPEC.md
+depends-on:
+  - ../observer/SPEC.md
 references:
   - ./CONTRACT.md
   - ../DESIGN.md
@@ -10,7 +12,7 @@ references:
 
 ## 功能意图
 
-Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、端口地址返回及公开/内部端口隔离。可选 tunnel 为客户端提供受鉴权保护的字节中继。
+Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、端口地址返回及公开/内部端口隔离。可选 tunnel 为客户端提供受鉴权保护的字节中继。可选网络观测接口经同一管理身份转交宿主 Observer，Gateway 不自行抓包。
 
 一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。沙箱客户端通过网络契约调用 Gateway，agent 会话在沙箱内处理。首个真实驱动对接本机 Unix socket Docker daemon，进程独占 SQLite 数据库并固定 namespace 和 daemon 身份。
 
@@ -45,3 +47,12 @@ Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止
 - 内部端口不会被发布为宿主公网监听或公共负载均衡入口。
 - 关闭 tunnel 时直连方式可用；启用后 SSH、ACP 等上层协议无需改变。
 - 非法凭据、未知端点和任意目标地址转发请求被拒绝。
+
+### 可选网络观测
+
+管理员按沙箱 ID 发起观测，Gateway 从本机 Docker 获取该代容器的启动身份。观测历史由配对的 Observer 管理。
+
+#### 验收
+
+- 未配置观测 socket 或使用 fake 驱动时，`observer_enabled` 为 false。配置接入但 Observer 离线时，转发请求返回 503，不改变沙箱状态。
+- lifecycle 快照不是 `running` 或已有操作进行中的沙箱不能开始观测；随后还需由 Docker driver 核对当前容器仍属于该代且处于运行中。该检查与受理之间存在并发变化窗口，观测服务会继续用 PID、启动时间和容器 ID 固定一次运行。已删除沙箱的历史仍能按原沙箱 ID 和观测 ID 查询，前提是观测文件仍在。

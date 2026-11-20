@@ -11,7 +11,7 @@
 | 方法与路径 | 请求 | 响应 |
 |---|---|---|
 | `GET /healthz` | 无 | 200，HTTP 进程健康，不代表所有沙箱就绪 |
-| `GET /api/v1/capabilities` | 无 | 200，driver、capabilities、tunnel_enabled |
+| `GET /api/v1/capabilities` | 无 | 200，driver、capabilities、tunnel_enabled、observer_enabled |
 | `POST /api/v1/sandboxes` | SandboxSpec，可选 `Idempotency-Key` | 202，Sandbox |
 | `GET /api/v1/sandboxes` | 无 | 200，`{sandboxes:[...]}` |
 | `GET /api/v1/sandboxes/{id}` | 无 | 200，Sandbox |
@@ -58,6 +58,28 @@ Endpoint 为 `{name,bundle,protocol,port,state,ready}` 逻辑对象，不包含 
 命名数据卷挂载 `/ursi/workspace`，驱动只处理具有匹配 scope、id 与代际标签的资源。真实 Docker 驱动固定本地 Unix socket，首版不支持远程 daemon。
 
 准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及每个声明端口的真实 TCP readiness 检查。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。实例保留创建时的端点声明。停止或对账失败时标记端点为 `unavailable`、`ready: false`，重新就绪后更新状态。注册表更新不改变既有实例的端点声明。
+
+## 网络观测
+
+`observer_enabled` 为 true 表示使用 `docker` 驱动且 Gateway 已配置 Observer socket 客户端，不检测服务在线或抓包权限。以下路径相对于 `/api/v1/sandboxes/{id}/observations`，均需同一 Gateway 管理员 Bearer key。两个 POST 均无需请求体，容器、PID、目录和过滤条件不属于公共请求参数。
+
+| 方法与相对路径 | 成功响应 | 前提与冲突 |
+| --- | --- | --- |
+| `POST` 集合本身 | 202，初始记录，含 `observation_id`，状态为 `starting` | lifecycle 快照为 `running` 且无操作进行中，随后由 Docker driver 核对目标仍在运行；目标启动身份发生变化或已有活动观测时返回 409。快照读取与受理之间存在并发变化窗口。 |
+| `GET /{run}` | 200，观测状态快照 | `run` 为观测 UUID。查询不要求沙箱仍存在。 |
+| `POST /{run}/stop` | 活动时 202 并返回当前快照；已结束或 `interrupted` 时 200 | 受理停止后仍需查询，等待读取最终结果。 |
+| `GET /{run}/segments/{number}` | 200，`application/vnd.tcpdump.pcap`，按段流式返回 | 文件从 1 编号。活动中返回 409，已结束但段不存在返回 404。 |
+
+每条记录包含以下字段：
+
+- `sandbox_id`、`observation_id`、`generation`、`container`、`container_started_at` 标识具体沙箱及该次容器运行。`started_ms`、`ended_ms` 是 Unix 毫秒时间戳，未记录结束时 `ended_ms` 为 null。
+- `state` 为 `starting`、`running`、`degraded`、`stopped`、`limited`、`error` 或 `interrupted`。`degraded` 表示发生丢包或截断，收尾后也可能保留这一状态。`limited` 表示配额不能容纳下一批记录。`ended_ms` 非空或 `state == "interrupted"` 时，可下载已有分段。
+- `reason` 可为 `requested`、`container_exited`、`observer_interrupted` 或 null。`error` 为可空诊断信息；正常返回的状态记录也可能包含采集错误。
+- `segments`、`packets`、`bytes` 分别统计 PCAP 段数、已写报文数、文件字节数（含各类头部）。`kernel_drops` 与 `queue_drops` 分别统计内核缓冲与用户态队列丢包。无过滤不保证零丢失，两个计数为零也不排除报文截断。
+
+中断后若租约已释放但没有结束时间，查询返回 `interrupted`。`segments` 从目录恢复，其余计数来自最后一次快照，可能落后于实际文件，最后一段的末条记录可能不完整。可下载已有段，服务不会续采。调用方应保存两个 ID；接口不提供历史列表或删除操作。重建或删除沙箱不会清理历史。
+
+未认证返回 401；非法标识返回 400；记录不存在返回 404；未启用或驱动不支持返回 501；无法连接 Observer 返回 503。部署配对、socket 权限与完整 curl 示例见 [Observer 使用说明](../observer/README.md)。
 
 ## 可选 TCP over WebSocket
 

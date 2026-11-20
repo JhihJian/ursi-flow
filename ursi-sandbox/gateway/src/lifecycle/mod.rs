@@ -231,6 +231,14 @@ impl Service {
         self.store.update(&mut sandbox)?;
         Ok(sandbox)
     }
+    pub async fn capture_target(&self, id: &str) -> Result<serde_json::Value> {
+        let sandbox = self.get(id)?;
+        if sandbox.operation.is_some() || sandbox.status != Status::Running {
+            return Err(Error::Conflict("沙箱未就绪".into()));
+        }
+        self.driver.capture_target(&sandbox).await
+    }
+
     pub async fn logs(&self, id: &str, tail: usize) -> Result<String> {
         if tail == 0 || tail > 5000 {
             return Err(Error::Invalid("tail 必须为1..5000".into()));

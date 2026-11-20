@@ -3,6 +3,7 @@ parent: ../../SPEC.md
 depends-on:
   - ../lifecycle/SPEC.md
   - ../tunnel/SPEC.md
+  - ../../../observer/SPEC.md
 references:
   - ../../CONTRACT.md
 ---
@@ -34,3 +35,12 @@ Gateway 的网络接入层，负责 HTTP 路由、鉴权、参数校验、错误
 - 错误子协议、非法端口及未授权请求在升级前被拒绝。
 - 内部端口查询不产生公开端口映射。
 - 相同业务错误在控制面与隧道升级前具有一致错误类别。
+
+### 观测接入
+
+四个观测路由使用 Gateway 的 Bearer 鉴权。仅开始请求通过 lifecycle 解析目标；查询、停止和分段下载按沙箱 ID、观测 UUID 转发至配置的 Unix socket。
+
+#### 验收
+
+- 未鉴权不能创建观测、读取状态、停止或下载；调用方不能用 PID、容器 ID 或宿主路径替换服务端解析的目标。
+- 能力关闭时合法请求返回 501，无法连接 Observer 时返回 503。活动期间请求分段返回 409，结束后已有分段以 PCAP 流返回。

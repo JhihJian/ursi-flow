@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gateway", "runtime/bundle/session-service", "client"]
+members = ["gateway", "runtime/bundle/session-service", "client", "observer"]
 
 [workspace.package]
 version = "0.1.0"

@@ -590,6 +590,18 @@ impl Driver for DockerDriver {
         Ok(())
     }
 
+    async fn capture_target(&self, sandbox: &Sandbox) -> Result<Value> {
+        let object = self.container(sandbox).await?;
+        if object["State"]["Running"] != true {
+            return Err(Error::Conflict("容器未运行".into()));
+        }
+        Ok(serde_json::json!({
+            "container": Self::container_id(&object)?, "generation": sandbox.resource.generation,
+            "pid": object["State"]["Pid"], "started_at": object["State"]["StartedAt"],
+            "docker_host": self.docker_host,
+        }))
+    }
+
     async fn observe(&self, sandbox: &Sandbox) -> Result<Observed> {
         let mut observed = self.observed(sandbox, &self.container(sandbox).await?)?;
         if observed.running {

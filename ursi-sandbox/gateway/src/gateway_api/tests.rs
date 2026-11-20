@@ -64,6 +64,7 @@ async fn create_validates_profile_after_binding_admin_runtime() {
     let service =
         Service::with_registry(store, Arc::new(FakeDriver::new()), Arc::new(registry), None);
     let state = ApiState {
+        observer: None,
         service,
         api_key: "test-key".into(),
         tunnel_enabled: true,

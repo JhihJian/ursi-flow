@@ -5,6 +5,7 @@
 //! 错误固定为 `{error: {code, message}}`，不向调用方输出底层错误原文。
 //! Gateway key 只授权资源控制和隧道，不替代沙箱中上层服务的身份认证。
 
+mod observations;
 use std::sync::Arc;
 
 use axum::{
@@ -34,10 +35,24 @@ struct ApiState {
     service: Arc<Service>,
     api_key: Arc<str>,
     tunnel_enabled: bool,
+    observer: Option<reqwest::Client>,
 }
 
 pub fn router(service: Arc<Service>, api_key: String, tunnel_enabled: bool) -> Router {
+    #[cfg(not(unix))]
+    let observer = None;
+    #[cfg(unix)]
+    let observer = std::env::var_os("URSI_GATEWAY_OBSERVER_SOCKET").and_then(|path| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .unix_socket(std::path::PathBuf::from(path))
+            .redirect(reqwest::redirect::Policy::none())
+            .read_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .ok()
+    });
     let state = ApiState {
+        observer,
         service,
         api_key: api_key.into(),
         tunnel_enabled,
@@ -53,6 +68,7 @@ pub fn router(service: Arc<Service>, api_key: String, tunnel_enabled: bool) -> R
         .route("/api/v1/sandboxes/{id}/logs", get(logs))
         .route("/api/v1/sandboxes/{id}/endpoints", get(endpoints))
         .route("/api/v1/sandboxes/{id}/connect/{endpoint}", get(connect))
+        .merge(observations::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn_with_state(state.clone(), authenticate))
@@ -124,6 +140,7 @@ async fn capabilities(State(state): State<ApiState>) -> Json<serde_json::Value> 
         "driver": state.service.driver_name(),
         "capabilities": state.service.capabilities(),
         "tunnel_enabled": state.tunnel_enabled,
+        "observer_enabled": state.observer.is_some() && state.service.driver_name() == "docker",
     }))
 }
 
