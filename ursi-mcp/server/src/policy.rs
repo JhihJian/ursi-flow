@@ -1,6 +1,5 @@
 //! 页面登记绑定平台变量。只有文件策略登记可使用宿主凭据。
-use super::super::environment;
-use super::{Binding, Config, Error, Store, invalid, unavailable};
+use super::{Binding, Config, Error, McpPlatform, invalid, unavailable};
 use reqwest::{Url, header::HeaderValue};
 use serde::Deserialize;
 use std::{
@@ -19,12 +18,12 @@ struct Grant {
     allowed_tools: Vec<String>,
 }
 
-pub(super) fn authorize(store: &Store, cfg: &Config) -> Result<Url, Error> {
+pub(super) fn authorize(store: &McpPlatform, cfg: &Config) -> Result<Url, Error> {
     authorize_operation(store, cfg, None)
 }
 
 pub(super) fn authorize_operation(
-    store: &Store,
+    store: &McpPlatform,
     cfg: &Config,
     tool: Option<&str>,
 ) -> Result<Url, Error> {
@@ -46,7 +45,7 @@ pub(super) fn authorize_operation(
         return Err(bad_url());
     }
     if let Some(key) = cfg.credential_env.as_deref() {
-        if !environment::valid_name(key) {
+        if !valid_credential_name(key) {
             return Err(invalid("凭据变量名无效"));
         }
         let local = url
@@ -60,7 +59,7 @@ pub(super) fn authorize_operation(
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(store.dir().join("mcp-policy.json"))
+        .open(&store.0.policy_file)
     {
         Ok(file) => file,
         Err(e) if cfg.binding == Binding::Platform && e.kind() == std::io::ErrorKind::NotFound => {
@@ -94,14 +93,17 @@ pub(super) fn valid_bearer(value: &str) -> bool {
     !value.is_empty() && value.len() <= 8192 && value.bytes().all(|b| b.is_ascii_graphic())
 }
 
-pub(super) fn endpoint(store: &Store, cfg: &Config) -> Result<(Url, Option<HeaderValue>), Error> {
+pub(super) fn endpoint(
+    store: &McpPlatform,
+    cfg: &Config,
+) -> Result<(Url, Option<HeaderValue>), Error> {
     let url = authorize(store, cfg)?;
     let auth = cfg
         .credential_env
         .as_ref()
         .map(|key| {
             let err = || unavailable("管理员配置的 MCP 凭据不可用");
-            let value = match environment::lookup(store, key)? {
+            let value = match store.0.credentials.lookup(key)? {
                 Some(value) => value,
                 None if cfg.binding == Binding::Policy => std::env::var(key).map_err(|_| err())?,
                 None => {
@@ -119,4 +121,12 @@ pub(super) fn endpoint(store: &Store, cfg: &Config) -> Result<(Url, Option<Heade
         })
         .transpose()?;
     Ok((url, auth))
+}
+
+pub fn valid_credential_name(name: &str) -> bool {
+    name.len() <= 128
+        && name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
 }

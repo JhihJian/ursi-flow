@@ -2,8 +2,7 @@
 mod catalog;
 mod http;
 
-use super::{Config, Error, SNAPSHOT_LIMIT, STANDARD, Store, label, policy, unavailable};
-use crate::work::mcp_client_info;
+use super::{Config, Error, McpPlatform, SNAPSHOT_LIMIT, STANDARD, label, policy, unavailable};
 use base64::Engine;
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt, RoleClient,
@@ -31,19 +30,24 @@ pub(super) struct Session(
 );
 
 impl Session {
-    pub(super) async fn open(store: &Store, cfg: &Config) -> Result<Self, Error> {
+    pub(super) async fn open(store: &McpPlatform, cfg: &Config) -> Result<Self, Error> {
         let (url, authorization) = policy::endpoint(store, cfg)?;
         let mut options = StreamableHttpClientTransportConfig::with_uri(url.as_str())
             .max_sse_event_size(SNAPSHOT_LIMIT);
         options.reinit_on_expired_session = false;
         options.allow_stateless = true;
         options.retry_config = Arc::new(NeverRetry::default());
-        let http = http::BoundedHttp::new(url, authorization, &cfg.settings)?;
+        let http = http::BoundedHttp::new(
+            url,
+            authorization,
+            cfg.settings.as_ref().unwrap_or(&Default::default()),
+        )?;
         let discovery = http.discovery.clone();
         let diagnostic = http.diagnostic.clone();
         let transport = StreamableHttpClientTransport::with_client(http, options);
         let session = Self(
-            mcp_client_info(ProtocolVersion::V_2025_11_25)
+            ClientConfig::new(Default::default(), store.0.identity.clone())
+                .with_protocol_version(ProtocolVersion::V_2025_11_25)
                 .serve_with_lifecycle(
                     transport,
                     ClientLifecycleMode::Auto {

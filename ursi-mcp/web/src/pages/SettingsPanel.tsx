@@ -1,19 +1,21 @@
 import { useState } from 'react'
-import { saveSettings, type McpSettings, type McpServer } from '@/shared/api/mcp'
-import { useMutation } from '@/shared/hooks/use-mutation'
-import { Switch } from '@/shared/ui/switch'
-import { DataTable } from '@/shared/ui/data-table'
-import { Input } from '@/shared/ui/input'
-import { Button } from '@/shared/ui/button'
+import type { McpSettings, McpServer } from '../client'
+import { useMcp } from '../context'
+import { useMutation } from '../lib/use-mutation'
+import { Switch } from '../ui/switch'
+import { DataTable } from '../ui/data-table'
+import { Input } from '../ui/input'
+import { Button } from '../ui/button'
 
 export type SettingsProps = { server: McpServer; settings: McpSettings; saved: (s: McpSettings) => void }
 // Provider catalog, not a capability returned by MCP server/discover.
 const known = 'actions code_quality code_security copilot copilot_automations copilot_issue_intents dependabot discussions gists git governance issues labels notifications orgs projects pull_requests repos secret_protection security_advisories stargazers users copilot_spaces github_support_docs_search'.split(' ')
 export function SettingsPanel({ server, settings, saved }: SettingsProps) {
+  const { client } = useMcp()
   const mutation = useMutation()
   const [filter, setFilter] = useState('')
   const [custom, setCustom] = useState('')
-  function update(patch: Partial<McpSettings>) { void mutation.run(signal => saveSettings(server.id, { ...settings, ...patch }, signal), saved) }
+  function update(patch: Partial<McpSettings>) { void mutation.run(signal => client.saveSettings(server.id, { ...settings, ...patch }, signal), saved) }
   const sets = settings.githubToolsets
   const ids = [...new Set([...known, ...sets])].filter(id => id.includes(filter.trim().toLowerCase()))
   return <section className="scroll-area grid min-h-0 content-start gap-3 overflow-auto py-3">

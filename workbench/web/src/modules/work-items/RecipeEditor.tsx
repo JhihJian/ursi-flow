@@ -6,13 +6,13 @@ import { Input } from '@/shared/ui/input'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { listResources, listServers } from '@/shared/api/mcp'
+import { mcpClient } from '@/shared/api/mcp'
 import type { Recipe, ResourceRef } from '@/shared/api/work-items'
 
 function ResourceChoices({ serverId, selected, change }: {
   serverId: string; selected: ResourceRef[]; change: (refs: ResourceRef[]) => void
 }) {
-  const resources = useResource(signal => listResources(serverId, signal), [])
+  const resources = useResource(signal => mcpClient.listResources(serverId, signal), [])
   return <div className="space-y-2">
     <ResourceState loading={resources.loading} error={resources.error} onRetry={resources.reload}
       empty={!resources.data.length} title={resources.error ? undefined : '此服务暂无资源'} />
@@ -28,7 +28,7 @@ function ResourceChoices({ serverId, selected, change }: {
 }
 
 export function RecipeEditor({ recipe, change }: { recipe: Recipe; change: (next: Recipe) => void }) {
-  const servers = useResource(listServers, [])
+  const servers = useResource(mcpClient.listServers, [])
   const [serverId, setServerId] = useState('')
   const setResources = (resources: ResourceRef[]) => change({ ...recipe, resources })
   return <div className="grid gap-3 border-l-2 border-line pl-4">

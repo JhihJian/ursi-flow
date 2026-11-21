@@ -11,15 +11,8 @@ use serde_json::{Map, Value, json};
 const TABLE: &str = "platformEnvironment";
 const MAX_VALUE: usize = 8192;
 
-pub(super) fn valid_name(name: &str) -> bool {
-    name.len() <= 128
-        && name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-}
 fn check_name(name: &str) -> Result<(), Error> {
-    if valid_name(name) {
+    if ursi_mcp::valid_credential_name(name) {
         Ok(())
     } else {
         Err(Error::Invalid(

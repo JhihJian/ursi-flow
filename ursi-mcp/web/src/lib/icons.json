@@ -1,0 +1,98 @@
+{
+  "dot": {
+    "body": "<circle cx=\"12\" cy=\"12\" r=\"4\"/>",
+    "duration": 430,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "圆点轻亮一次后恢复静态"
+  },
+  "spinner": {
+    "body": "<g class=\"motion-target\"><circle cx=\"12\" cy=\"12\" r=\"9\" opacity=\"0.25\"/><path d=\"M21 12a9 9 0 0 1-9 9\"/></g>",
+    "duration": 1150,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "演示单圈；实际加载期间才持续旋转"
+  },
+  "refresh": {
+    "body": "<g class=\"motion-target\"><path d=\"M21 12a9 9 0 1 1-3-6.7L21 8\"/><path d=\"M21 3v5h-5\"/></g>",
+    "duration": 1150,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "刷新箭头完整转动一圈"
+  },
+  "plus": {
+    "body": "<path d=\"M12 5v14\"/><path d=\"M5 12h14\"/>",
+    "duration": 475,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "两条加号线从中心先后舒展"
+  },
+  "connector": {
+    "body": "<path d=\"M9 7V3M15 7V3\"/><path d=\"M8 7h8v4a4 4 0 0 1-8 0z\"/><path d=\"M12 15v6\"/>",
+    "duration": 460,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "插头外壳固定，双插脚向接入方向伸出"
+  },
+  "trash": {
+    "body": "<g class=\"lid\"><path d=\"M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2\"/></g><path class=\"bin\" d=\"M6 7l1 13h10l1-13\"/>",
+    "duration": 1100,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "桶身固定，桶盖和把手一起抬起再合上"
+  },
+  "stage-resources": {
+    "body": "<rect x=\"3.2\" y=\"3.2\" width=\"7\" height=\"7\" rx=\"1.6\"/><rect x=\"13.8\" y=\"3.2\" width=\"7\" height=\"7\" rx=\"1.6\"/><rect x=\"3.2\" y=\"13.8\" width=\"7\" height=\"7\" rx=\"1.6\"/><rect x=\"13.8\" y=\"13.8\" width=\"7\" height=\"7\" rx=\"1.6\"/>",
+    "duration": 1250,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "四个资源格依次轻亮并复位"
+  },
+  "chevron-left": {
+    "body": "<path d=\"M15 6l-6 6 6 6\"/>",
+    "duration": 440,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "箭头沿指向轻移一次后复位"
+  },
+  "warning": {
+    "body": "<g class=\"motion\"><path class=\"p0\" d=\"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z\" pathLength=\"100\"/><line class=\"p1\" x1=\"12\" y1=\"9\" x2=\"12\" y2=\"13\"/><line class=\"p2\" x1=\"12\" y1=\"17\" x2=\"12.01\" y2=\"17\"/></g>",
+    "duration": 650,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 2,
+    "note": "错误横幅首次出现时强调一次，历史错误保持静止。"
+  },
+  "folder": {
+    "body": "<path d=\"M3 17V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8\"/><path class=\"front\" d=\"M3 10h18v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>",
+    "duration": 1150,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "后侧标签固定，前侧面板展开再合上"
+  },
+  "copy": {
+    "body": "<rect class=\"front\" x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"/><path class=\"back\" d=\"M5 15V5a2 2 0 0 1 2-2h10\"/>",
+    "duration": 1050,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "前后两页分离，再贴合复位"
+  },
+  "close": {
+    "body": "<path d=\"M6 6l12 12M18 6L6 18\"/>",
+    "duration": 430,
+    "viewBox": "0 0 24 24",
+    "filled": false,
+    "strokeWidth": 1.7,
+    "note": "交叉线轻转一次后复位"
+  }
+}

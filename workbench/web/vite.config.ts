@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
-import { loadEnv } from 'vite'
+import { defaultClientConditions, loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import { apiProxy } from './src/app/dev-proxy'
 
@@ -15,7 +15,12 @@ export default defineConfig(({ mode }) => {
   ]
   return {
     plugins: [react()],
-    resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+    resolve: {
+      alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+      conditions: ['ursi-source', ...defaultClientConditions],
+      dedupe: ['react', 'react-dom', 'react-router'],
+    },
+    ssr: { resolve: { conditions: ['ursi-source', 'module', 'node', 'development|production'] }, noExternal: ['@ursi/mcp-web'] },
     server: {
       host: '0.0.0.0',
       port: 5173,

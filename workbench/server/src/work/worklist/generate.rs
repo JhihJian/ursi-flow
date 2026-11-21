@@ -1,7 +1,7 @@
-use super::{Error, Store, find};
+use super::{Error, Store, convert, find};
 use crate::work::{
     directories::{self, fs},
-    mcp, patches,
+    patches,
 };
 use axum::{
     Json,
@@ -38,7 +38,7 @@ fn replay(db: &Value, id: &str, request: &str) -> Result<Option<Value>, Error> {
 }
 
 pub(super) async fn handle(
-    State(store): State<Store>,
+    State((store, platform)): State<(Store, ursi_mcp::McpPlatform)>,
     Path(id): Path<String>,
     Json(input): Json<Generate>,
 ) -> Result<Json<Value>, Error> {
@@ -61,7 +61,7 @@ pub(super) async fn handle(
         Start::Replay(patch) => return Ok(Json(patch)),
         Start::Convert(item) => item,
     };
-    let generated = mcp::convert(&store, &item).await?;
+    let generated = convert::convert(&platform, &item).await?;
     tokio::task::spawn_blocking(move || {
         publish(&store, &id, &request, &item["revision"], generated)
     })
@@ -75,9 +75,9 @@ pub(super) fn publish(
     id: &str,
     request: &str,
     revision: &Value,
-    generated: mcp::Generated,
+    generated: convert::Generated,
 ) -> Result<Value, Error> {
-    let mcp::Generated {
+    let convert::Generated {
         name,
         files,
         provenance,

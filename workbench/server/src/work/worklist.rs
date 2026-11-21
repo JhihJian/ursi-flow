@@ -1,4 +1,5 @@
 //! 工作清单管理可独立编辑的事项及生成工作包的配方。
+mod convert;
 mod generate;
 #[cfg(test)]
 mod tests;
@@ -17,15 +18,19 @@ use uuid::Uuid;
 
 const TABLE: &str = "workListItems";
 
-pub(super) fn routes(store: Store) -> Router {
+pub(super) fn routes(store: Store, platform: ursi_mcp::McpPlatform) -> Router {
     Router::new()
         .route("/v2/work-items", get(list).post(create))
         .route(
             "/v2/work-items/{id}",
             get(detail).put(replace).delete(remove),
         )
-        .route("/v2/work-items/{id}/generate", post(generate::handle))
-        .with_state(store)
+        .with_state(store.clone())
+        .merge(
+            Router::new()
+                .route("/v2/work-items/{id}/generate", post(generate::handle))
+                .with_state((store, platform)),
+        )
 }
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]

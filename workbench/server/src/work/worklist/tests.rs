@@ -1,5 +1,5 @@
+use super::convert::Generated;
 use super::*;
-use crate::work::mcp::Generated;
 use std::{fs, path::PathBuf};
 
 struct Temp(PathBuf);
@@ -297,7 +297,7 @@ async fn races_publish_one_directory_and_replay_survives_restart_and_rebinding()
     drop(store);
     let store = temp.open();
     let replay = generate::handle(
-        State(store.clone()),
+        State((store.clone(), crate::work::mcp::platform(&store))),
         Path(id.into()),
         Json(serde_json::from_value(json!({"requestId":"retry"})).unwrap()),
     )

@@ -51,11 +51,12 @@ impl IntoResponse for Error {
 }
 pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     let store = Store::open(dir)?;
+    let platform = mcp::platform(&store);
     let agents = agent_backends::Registry::from_env()?;
     Ok(catalog::routes(store.clone(), agents.clone())
         .merge(agents.routes(store.clone()))
-        .merge(worklist::routes(store.clone()))
-        .merge(mcp::routes(store.clone()))
+        .merge(worklist::routes(store.clone(), platform.clone()))
+        .nest("/v2", platform.routes())
         .merge(environment::routes(store.clone()))
         .merge(executor::routes(store.clone(), agents))
         .merge(directories::routes(store.clone())?)

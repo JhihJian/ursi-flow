@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { useResource } from '@/shared/hooks/use-resource'
-import { copyText } from '@/shared/lib/clipboard'
-import { notify } from '@/shared/stores/feedback'
-import { readResource, type McpResource, type ResourceContent } from '@/shared/api/mcp'
-import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
-import { ResourceState } from '@/shared/ui/resource-state'
+import { useResource } from '../lib/use-resource'
+import { copyText } from '../lib/clipboard'
+import { useFeedback } from '../ui/feedback'
+import { useMcp } from '../context'
+import type { McpResource, ResourceContent } from '../client'
+import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
+import { ResourceState } from '../ui/resource-state'
 
 /** 页面只显示正文前 16 KiB 字符，完整内容仍可复制。 */
 const PREVIEW_LIMIT = 16_384
@@ -21,10 +22,12 @@ function formatBytes(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MiB`
 }
 
-async function copy(text: string, message: string) {
-  const done = await copyText(text)
-  if (done) notify(message)
-  else notify('浏览器未允许写入剪贴板，请手动选中后复制', 'error')
+function useCopy() {
+  const { notify } = useFeedback()
+  return async (text: string, message: string) => {
+    if (await copyText(text)) notify(message)
+    else notify('浏览器未允许写入剪贴板，请手动选中后复制', 'error')
+  }
 }
 
 function ContentMeta({ content, children }: { content: ResourceContent; children?: ReactNode }) {
@@ -39,6 +42,7 @@ function ContentMeta({ content, children }: { content: ResourceContent; children
 
 /** 单个内容分片：文本按原文显示，二进制只说明大小，不解析也不渲染 HTML。 */
 export function ResourceContentBlock({ content }: { content: ResourceContent }) {
+  const copy = useCopy()
   const text = content.text
   if (text !== undefined) {
     const overflow = text.length > PREVIEW_LIMIT
@@ -79,7 +83,9 @@ export interface ResourcePreviewPanelProps {
 
 /** 右侧预览：每次选中资源都重新读取一次，读取失败时保留失败原因并允许重试。 */
 export function ResourcePreviewPanel({ serverId, resource }: ResourcePreviewPanelProps) {
-  const read = useResource(signal => readResource(serverId, resource.uri, signal), { contents: [] })
+  const { client } = useMcp()
+  const copy = useCopy()
+  const read = useResource(signal => client.readResource(serverId, resource.uri, signal), { contents: [] })
   return (
     <div className="flex min-h-0 flex-col gap-3">
       <header className="flex flex-wrap items-start gap-2 border-b border-line pb-3">

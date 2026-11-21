@@ -1,0 +1,31 @@
+@config '../tailwind.config.cjs';
+
+/* Include defaults locally rather than running Tailwind's document-wide preflight. */
+.ursi-mcp { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; font: 14px/1.5 system-ui, sans-serif; color: rgb(var(--c-txt, 24 24 27)); }
+.ursi-mcp-portal { display: contents; }
+.ursi-mcp :where(*, *::before, *::after) { box-sizing: border-box; border: 0 solid; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: transparent; --tw-ring-offset-shadow: 0 0 #0000; --tw-ring-shadow: 0 0 #0000; --tw-shadow: 0 0 #0000; }
+.ursi-mcp :where(h1, h2, h3, p, pre, ul, dl, dd, fieldset) { margin: 0; padding: 0; }
+.ursi-mcp :where(h1, h2, h3) { font-size: inherit; }
+.ursi-mcp ul { list-style: none; }
+.ursi-mcp table { border-collapse: collapse; }
+.ursi-mcp a { color: inherit; text-decoration: inherit; }
+.ursi-mcp :where(button, input, select, textarea) { font: inherit; color: inherit; background: transparent; }
+.ursi-mcp button:not(:disabled) { cursor: pointer; }
+.ursi-mcp :focus-visible { outline: 2px solid rgb(var(--c-accent, 123 97 255)); outline-offset: 2px; }
+.ursi-mcp .panel { @apply min-w-0 rounded-xl border border-line bg-surface shadow-card; }
+.ursi-mcp :is(.input, .select, .search-input) { @apply block w-full min-w-0 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-txt; }
+.ursi-mcp .page-stack { @apply flex min-w-0 flex-col gap-5; }
+.ursi-mcp .skeleton { @apply rounded-md bg-elevated; }
+.ursi-mcp .scroll-area { scrollbar-width: thin; overscroll-behavior: contain; }
+.ursi-mcp .app-icon { display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.ursi-mcp .app-switch-thumb { transition: transform .18s; }
+.ursi-mcp .app-switch-thumb[data-state='checked'] { transform: translateX(16px); }
+@media (prefers-reduced-motion: no-preference) {
+  .ursi-mcp .icon-spinner { animation: ursi-mcp-spin .85s linear infinite; }
+  @keyframes ursi-mcp-spin { to { transform: rotate(360deg); } }
+}
+@media (min-width: 1024px) {
+  .ursi-mcp .page-stack { flex: 1 0 auto; min-height: 0; }
+  .ursi-mcp .page-stack-fill { flex: 1 1 auto; overflow: hidden; }
+}
+@tailwind utilities;

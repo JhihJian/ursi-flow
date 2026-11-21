@@ -18,6 +18,7 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 | [flow-runtime/client](flow-runtime/client/SPEC.md) | Rust `FlowClient` 与 `ursi-flow` CLI，通过 Unix socket 访问 daemon。 |
 | [flow-runtime/web](flow-runtime/web/SPEC.md) | 独立 Flow 控制台。静态包加同源桥，完成建包、运行、历史与配置闭环。 |
 | [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 维护工作清单与包目录；启用 Flow 时可管理流程包、运行与配置。 |
+| [ursi-mcp](ursi-mcp/SPEC.md) | 可嵌入的 Streamable HTTP MCP 后端库与管理界面。 |
 | [ursi-sandbox](ursi-sandbox/SPEC.md) | 独立交付的沙箱 Gateway、Runtime 和 Client。本地 Flow 执行不依赖该工作区。 |
 
 ## 关键功能与验收

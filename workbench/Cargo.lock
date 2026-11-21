@@ -1446,7 +1446,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ursi-server"
+name = "ursi-mcp"
 version = "0.1.0"
 dependencies = [
  "axum",
@@ -1455,13 +1455,29 @@ dependencies = [
  "libc",
  "reqwest",
  "rmcp",
+ "serde",
+ "serde_json",
+ "sse-stream",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "ursi-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "libc",
+ "reqwest",
+ "rmcp",
  "rustix",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "sse-stream",
  "tokio",
  "ursi-flow-client",
+ "ursi-mcp",
  "uuid",
 ]
 

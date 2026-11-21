@@ -20,6 +20,7 @@
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "@ursi/mcp-web": "file:../../ursi-mcp/web",
     "@radix-ui/react-collapsible": "^1.2.1",
     "@radix-ui/react-dialog": "^1.3.1",
     "@radix-ui/react-label": "^2.1.17",

@@ -1,5 +1,7 @@
 use super::*;
 use axum::{
+    Json, Router,
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
@@ -13,9 +15,44 @@ use std::{
 };
 use tokio::{net::TcpListener, task::JoinHandle};
 
+#[derive(Default)]
+struct Memory(Mutex<std::collections::BTreeMap<String, ServerRecord>>);
+impl ServerRepository for Memory {
+    fn list(&self) -> Result<Vec<ServerRecord>, Error> {
+        Ok(self.0.lock().unwrap().values().cloned().collect())
+    }
+    fn get(&self, id: &str) -> Result<Option<ServerRecord>, Error> {
+        Ok(self.0.lock().unwrap().get(id).cloned())
+    }
+    fn insert(&self, row: &ServerRecord) -> Result<(), Error> {
+        let mut rows = self.0.lock().unwrap();
+        if rows.len() >= MAX_SERVERS {
+            return Err(invalid("最多登记 128 个 MCP 服务"));
+        }
+        rows.insert(row.id.clone(), row.clone());
+        Ok(())
+    }
+    fn remove(&self, id: &str) -> Result<bool, Error> {
+        Ok(self.0.lock().unwrap().remove(id).is_some())
+    }
+    fn replace_settings(&self, id: &str, s: &Settings) -> Result<bool, Error> {
+        let mut rows = self.0.lock().unwrap();
+        let Some(row) = rows.get_mut(id) else {
+            return Ok(false);
+        };
+        row.config.settings = Some(s.clone());
+        Ok(true)
+    }
+}
+impl Credentials for Memory {
+    fn lookup(&self, _: &str) -> Result<Option<String>, Error> {
+        Ok(None)
+    }
+}
+
 struct Fixture {
     dir: PathBuf,
-    store: Store,
+    store: McpPlatform,
     server: JoinHandle<()>,
     url: String,
     calls: Arc<Mutex<Vec<String>>>,
@@ -29,7 +66,15 @@ impl Drop for Fixture {
 impl Fixture {
     async fn new() -> Self {
         let dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
-        let store = Store::open(dir.clone()).unwrap();
+        fs::create_dir(&dir).unwrap();
+        let memory = Arc::new(Memory::default());
+        let store = McpPlatform::new(
+            memory.clone(),
+            memory,
+            dir.join("mcp-policy.json"),
+            "fixture-client",
+            "1",
+        );
         let calls = Arc::new(Mutex::new(vec![]));
         let app = Router::new()
             .route(
@@ -79,13 +124,7 @@ impl Fixture {
     }
     async fn add(&self) -> String {
         self.permit();
-        register(State(self.store.clone()), Json(self.cfg()))
-            .await
-            .unwrap()
-            .0["id"]
-            .as_str()
-            .unwrap()
-            .to_string()
+        self.store.register(self.cfg()).unwrap().id
     }
 }
 async fn peer(
@@ -100,7 +139,7 @@ async fn peer(
         return StatusCode::BAD_REQUEST.into_response();
     }
     if method == "initialize" {
-        assert_eq!(q["params"]["clientInfo"]["name"], "ursi-workbench");
+        assert_eq!(q["params"]["clientInfo"]["name"], "fixture-client");
         assert_eq!(q["params"]["protocolVersion"], "2025-11-25");
         return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"}})))).into_response();
     }
@@ -150,25 +189,13 @@ async fn peer(
         _ => StatusCode::BAD_REQUEST.into_response(),
     }
 }
-fn item(id: &str, uri: &str, script: &str) -> Value {
-    json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active","revision":3,"recipe":{"script":script,"resources":[{"alias":"note","serverId":id,"uri":uri}]}})
-}
-
-#[test]
-fn python_item_snapshot_contains_category_and_status() {
-    assert_eq!(
-        item_snapshot(&item("s", "memo:a", "example")),
-        json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active"})
-    );
-}
-
 #[tokio::test]
 async fn api_discovers_live_pages_and_persists_without_credentials() {
     let f = Fixture::new().await;
     f.permit();
-    let app = routes(f.store.clone());
+    let app = f.store.routes();
     let sock = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}/v2/mcp-servers", sock.local_addr().unwrap());
+    let url = format!("http://{}/mcp-servers", sock.local_addr().unwrap());
     let http = tokio::spawn(async move { axum::serve(sock, app).await.unwrap() });
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let row: Value = client
@@ -260,16 +287,10 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
 async fn api_reads_one_resource_for_preview_and_hides_remote_errors() {
     let f = Fixture::new().await;
     let id = f.add().await;
-    let read = |uri: &str| {
-        read_resource(
-            State(f.store.clone()),
-            Path(id.clone()),
-            Json(ReadRequest { uri: uri.into() }),
-        )
-    };
+    let read = |uri: &'static str| f.store.preview(&id, uri);
     assert_eq!(
-        read("memo:a").await.unwrap().0,
-        json!({"contents":[{"uri":"memo:a","text":"来自服务"},{"uri":"memo:a","blob":"AP8="}]})
+        read("memo:a").await.unwrap(),
+        json!([{"uri":"memo:a","text":"来自服务"},{"uri":"memo:a","blob":"AP8="}])
     );
     let remote = read("memo:missing").await.unwrap_err();
     assert!(matches!(remote, Error::Unavailable(_)));
@@ -293,10 +314,7 @@ async fn admin_grants_bind_secret_to_exact_endpoint() {
     f.policy(json!([{"url":cfg.url,"credentialEnv":"HOME"}]));
     let (_, h) = policy::endpoint(&f.store, &cfg).unwrap();
     assert!(h.unwrap().is_sensitive());
-    let value = register(State(f.store.clone()), Json(cfg.clone()))
-        .await
-        .unwrap()
-        .0;
+    let value = json!(f.store.register(cfg.clone()).unwrap());
     assert_eq!(value["credentialEnv"], "HOME");
     assert_eq!(
         value,
@@ -312,17 +330,6 @@ async fn admin_grants_bind_secret_to_exact_endpoint() {
     .unwrap();
     assert!(policy::authorize(&f.store, &cfg).is_err());
     assert!(f.calls.lock().unwrap().is_empty());
-}
-#[tokio::test]
-async fn read_error_and_missing_sandbox_are_terminal() {
-    let f = Fixture::new().await;
-    let id = f.add().await;
-    let result = convert(&f.store, &item(&id, "memo:missing", "raise Exception()")).await;
-    assert!(matches!(result,Err(Error::Unavailable(s)) if s.contains("memo:missing")));
-    assert!(matches!(
-        sandbox::execute("/nonexistent/bwrap", &json!({})).await,
-        Err(Error::Unavailable(_))
-    ));
 }
 #[tokio::test]
 async fn credentialed_request_never_follows_redirect() {
@@ -424,6 +431,133 @@ async fn catalog_errors_preserve_phase_not_remote_body() {
 }
 
 #[tokio::test]
+async fn modern_discovery_reports_versions_and_skips_undeclared_resources() {
+    use rmcp::model::{DiscoverResult, Implementation, ProtocolVersion, ServerCapabilities};
+    let f = Fixture::new().await;
+    let calls = f.calls.clone();
+    let peer = Router::new().route(
+        "/mcp",
+        post(move |h: HeaderMap, Json(q): Json<Value>| {
+            let calls = calls.clone();
+            async move {
+                let method = q["method"].as_str().unwrap();
+                calls.lock().unwrap().push(method.into());
+                if method != "server/discover" {
+                    return StatusCode::BAD_REQUEST.into_response();
+                }
+                assert_eq!(h["mcp-protocol-version"], "2026-07-28");
+                let result = DiscoverResult::new(
+                    vec![ProtocolVersion::V_2026_07_28, ProtocolVersion::V_2025_11_25],
+                    ServerCapabilities::default(),
+                )
+                .with_server_info(Implementation::new("modern-peer", "1"));
+                Json(json!({"jsonrpc":"2.0","id":q["id"],"result":result})).into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = f.cfg();
+    cfg.url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    f.policy(json!([{"url":cfg.url}]));
+    let id = f.store.register(cfg).unwrap().id;
+    let peer = tokio::spawn(async move { axum::serve(listener, peer).await.unwrap() });
+    let report = f.store.inspect(&id).await.unwrap();
+    assert_eq!(report["server"]["name"], "modern-peer");
+    assert_eq!(report["server"]["discoveryMethod"], "server/discover");
+    assert_eq!(
+        report["server"]["supportedVersions"],
+        json!(["2026-07-28", "2025-11-25"])
+    );
+    assert_eq!(report["resources"], json!([]));
+    assert_eq!(*f.calls.lock().unwrap(), ["server/discover"]);
+    peer.abort();
+}
+
+#[tokio::test]
+async fn operation_uses_one_slot_for_multiple_reads_and_shares_with_preview() {
+    let f = Fixture::new().await;
+    let id = f.add().await;
+    let mut conversion = f.store.operation().unwrap();
+    let other = f.store.clone();
+    let held: Vec<_> = (0..3).map(|_| other.operation().unwrap()).collect();
+    assert!(matches!(
+        other.preview(&id, "memo:a").await,
+        Err(Error::Unavailable(_))
+    ));
+    assert!(f.calls.lock().unwrap().is_empty());
+    for _ in 0..2 {
+        assert_eq!(
+            conversion.read_resource(&id, "memo:a").await.unwrap()[0]["text"],
+            "来自服务"
+        );
+    }
+    drop(held);
+    assert!(other.preview(&id, "memo:a").await.is_ok());
+}
+
+#[tokio::test]
+async fn revoked_tool_is_not_sent_after_handshake() {
+    let f = Fixture::new().await;
+    let (ready, mut started) = tokio::sync::mpsc::unbounded_channel();
+    let resume = Arc::new(tokio::sync::Notify::new());
+    let resume_peer = resume.clone();
+    let peer = Router::new().route("/mcp", post(move |Json(q): Json<Value>| {
+        let ready = ready.clone();
+        let resume = resume_peer.clone();
+        async move {
+            match q["method"].as_str().unwrap() {
+                "server/discover" => StatusCode::BAD_REQUEST.into_response(),
+                "initialize" => {
+                    ready.send("initialize").unwrap();
+                    resume.notified().await;
+                    Json(json!({"jsonrpc":"2.0","id":q["id"],"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1"}}})).into_response()
+                }
+                "notifications/initialized" => StatusCode::ACCEPTED.into_response(),
+                "tools/call" => {
+                    ready.send("tools/call").unwrap();
+                    StatusCode::BAD_REQUEST.into_response()
+                }
+                _ => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
+    }));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = f.cfg();
+    cfg.url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    f.policy(json!([{"url":cfg.url,"allowedTools":["echo"]}]));
+    cfg.settings = Some(Settings {
+        allowed_tools: vec!["echo".into()],
+        ..Settings::default()
+    });
+    let id = f.store.register(cfg).unwrap().id;
+    let peer = tokio::spawn(async move { axum::serve(listener, peer).await.unwrap() });
+    let platform = f.store.clone();
+    let call_id = id.clone();
+    let call = tokio::spawn(async move {
+        platform
+            .call_tool(
+                &call_id,
+                Input {
+                    name: "echo".into(),
+                    arguments: Default::default(),
+                },
+            )
+            .await
+    });
+    assert_eq!(
+        timeout(Duration::from_secs(5), started.recv())
+            .await
+            .unwrap(),
+        Some("initialize")
+    );
+    f.store.replace_settings(&id, Settings::default()).unwrap();
+    resume.notify_one();
+    assert!(matches!(call.await.unwrap(), Err(Error::Invalid(s)) if s == "此工具尚未授权调用"));
+    assert!(started.try_recv().is_err());
+    peer.abort();
+}
+
+#[tokio::test]
 async fn file_policy_is_a_separate_ceiling_on_tool_calls() {
     let f = Fixture::new().await;
     f.permit();
@@ -432,67 +566,4 @@ async fn file_policy_is_a_separate_ceiling_on_tool_calls() {
     f.policy(json!([{"url":cfg.url,"allowedTools":["echo"]}]));
     assert!(policy::authorize_operation(&f.store, &cfg, Some("echo")).is_ok());
     assert!(policy::authorize_operation(&f.store, &cfg, Some("write")).is_err());
-}
-
-#[test]
-fn rejects_invalid_package_wholesale() {
-    let ok = json!({"path":"有效/a","text":"hi"});
-    for bad in [
-        ok.clone(),
-        json!({"path":"有效","text":""}),
-        json!({"path":"有效/a/b","text":""}),
-        json!({"path":"../a","text":""}),
-        json!({"path":"a","blob":"!"}),
-        json!({"path":"a","text":"","blob":null}),
-    ] {
-        assert!(package(json!({"name":"结果","files":[ok,bad]}), Value::Null).is_err());
-    }
-    assert!(package(json!({"name":"结果","files":vec![ok;129]}), Value::Null).is_err());
-}
-#[tokio::test]
-#[ignore = "需要可用的 Linux bwrap 用户命名空间与 libseccomp"]
-async fn isolated_live_read_to_files() {
-    let f = Fixture::new().await;
-    let id = f.add().await;
-    let script = "def transform(item, resources):\n assert (item['category'], item['status']) == ('continuous', 'active')\n p=resources['note']['contents']\n return {'name':item['title'],'files':[{'path':'材料/a','text':p[0]['text']},{'path':'b','blob':p[1]['blob']}]}";
-    let g = convert(&f.store, &item(&id, "memo:a", script))
-        .await
-        .unwrap();
-    assert_eq!(g.name, "本周");
-    assert_eq!(
-        g.files,
-        vec![
-            ("材料/a".into(), "来自服务".as_bytes().to_vec()),
-            ("b".into(), vec![0, 255])
-        ]
-    );
-    assert_eq!(g.provenance["revision"], 3);
-    assert_eq!(g.provenance["resources"][0]["serverId"], id);
-    assert!(g.provenance["resources"][0]["readAt"].as_u64().is_some());
-    assert_eq!(
-        g.provenance["scriptSha256"],
-        format!("{:x}", Sha256::digest(script))
-    );
-}
-#[tokio::test]
-#[ignore = "需要可用的 Linux bwrap 用户命名空间与 libseccomp"]
-async fn isolated_script_has_no_host_files_processes_or_unbounded_output() {
-    let probe = "def transform(i,r):\n import ctypes, errno\n libc=ctypes.CDLL(None,use_errno=True)\n return libc.socket(2,1,0) == -1 and ctypes.get_errno() == errno.EPERM";
-    let input = json!({"item":{}, "resources":{}, "script":probe});
-    assert_eq!(sandbox::run(&input).await.unwrap(), json!(true));
-    for command in [
-        "open('/usr/bin/python3', 'rb')",
-        "import os; os.fork()",
-        "import os; assert 'HOME' in os.environ",
-        "raise RuntimeError('private')",
-        "while True: pass",
-        "return 'x' * (7 << 20)",
-    ] {
-        let v =
-            json!({"item":{},"resources":{},"script":format!("def transform(i,r):\n {command}")});
-        assert!(
-            matches!(sandbox::run(&v).await, Err(Error::Invalid(_))),
-            "{command}"
-        );
-    }
 }

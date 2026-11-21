@@ -1,25 +1,27 @@
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { inspectServer, listServers, type Inspection, type McpServer } from '@/shared/api/mcp'
-import { useResource } from '@/shared/hooks/use-resource'
-import { cn } from '@/shared/lib/utils'
-import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
-import { Icon } from '@/shared/ui/icon'
-import { PageHeader } from '@/shared/ui/page-header'
-import { ResourceState } from '@/shared/ui/resource-state'
+import type { Inspection, McpServer } from '../client'
+import { useMcp } from '../context'
+import { useResource } from '../lib/use-resource'
+import { cn } from '../lib/utils'
+import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
+import { Icon } from '../ui/icon'
+import { PageHeader } from '../ui/page-header'
+import { ResourceState } from '../ui/resource-state'
 import { OperationsPanel } from './OperationsPanel'
 import { SettingsPanel } from './SettingsPanel'
-import { DataTable } from '@/shared/ui/data-table'
-import type { CatalogKind } from '@/shared/api/mcp'
+import { DataTable } from '../ui/data-table'
+import type { CatalogKind } from '../client'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
 
 export function ResourceBrowser() {
   const { id } = useParams()
-  const registry = useResource(listServers, [])
+  const { client } = useMcp()
+  const registry = useResource(client.listServers, [])
   const server = registry.data.find(entry => entry.id === id)
   return <div className="page-stack page-stack-fill">
-    <PageHeader title="MCP 服务检查" actions={<Button asChild icon="chevron-left"><Link to="/mcp-servers">返回服务列表</Link></Button>} />
+    <PageHeader title="MCP 服务检查" actions={<Button asChild icon="chevron-left"><Link to=".." relative="path">返回服务列表</Link></Button>} />
     {server ? <Inspector key={server.id} server={server} /> : <ResourceState loading={registry.loading}
       error={registry.error} onRetry={registry.reload} empty title={registry.error ? undefined : '未找到该服务'} />}
   </div>
@@ -30,7 +32,8 @@ const capabilityNames = { resources: '资源', tools: '工具', prompts: '提示
 function Inspector({ server }: { server: McpServer }) {
   const [view, setView] = useState<'resources' | CatalogKind | 'settings'>('resources')
   const [settings, setSettings] = useState(server.settings ?? { allowedTools: [], githubToolsets: [], githubReadOnly: false })
-  const discovery = useResource<Inspection | null>(signal => inspectServer(server.id, signal), null)
+  const { client } = useMcp()
+  const discovery = useResource<Inspection | null>(signal => client.inspectServer(server.id, signal), null)
   const result = !discovery.loading && !discovery.error ? discovery.data : null
   const peer = result?.server
   const resources = result?.resources ?? []

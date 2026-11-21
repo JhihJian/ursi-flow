@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMemoryRouter, RouterProvider, useLocation } from 'react-router'
+import { createMemoryRouter, RouterProvider, Outlet, useLocation } from 'react-router'
 
 import { setToken } from '@/shared/http/session'
-import { ResourceBrowser } from './ResourceBrowser'
+import { mcpRoutes } from './routes'
 
 const servers = [{ id: 's1', name: '反馈服务', url: 'http://127.0.0.1:1/mcp' }]
 const resources = [
@@ -33,7 +33,7 @@ function LocationProbe() {
 
 function mount(path: string) {
   const router = createMemoryRouter(
-    [{ path: '/mcp-servers/:id', element: <><ResourceBrowser /><LocationProbe /></> }],
+    [{ element: <><Outlet /><LocationProbe /></>, children: mcpRoutes }],
     { initialEntries: [path] },
   )
   render(<RouterProvider router={router} />)

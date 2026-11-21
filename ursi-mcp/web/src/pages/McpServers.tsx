@@ -1,30 +1,31 @@
 import { useId, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { useMutation } from '@/shared/hooks/use-mutation'
-import { useResource } from '@/shared/hooks/use-resource'
-import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
-import { Icon } from '@/shared/ui/icon'
-import { Input } from '@/shared/ui/input'
-import { Modal } from '@/shared/ui/modal'
-import { PageHeader } from '@/shared/ui/page-header'
-import { ResourceState } from '@/shared/ui/resource-state'
-import { addServer, listServers, removeServer, serverBrowsePath, type McpServer } from '@/shared/api/mcp'
-import { listVariables } from '@/shared/api/platform-env'
-import { Select } from '@/shared/ui/select'
-import { notify } from '@/shared/stores/feedback'
+import { useMutation } from '../lib/use-mutation'
+import { useResource } from '../lib/use-resource'
+import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
+import { Icon } from '../ui/icon'
+import { Input } from '../ui/input'
+import { Modal } from '../ui/modal'
+import { PageHeader } from '../ui/page-header'
+import { ResourceState } from '../ui/resource-state'
+import type { McpServer } from '../client'
+import { useMcp } from '../context'
+import { Select } from '../ui/select'
+import { useFeedback } from '../ui/feedback'
 
 function RegisterDialog({ close, registered }: { close: () => void; registered: (server: McpServer) => void }) {
+  const { client, listVariableNames, variableManagementPath } = useMcp()
   const formId = useId()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [env, setEnv] = useState('')
-  const variables = useResource(listVariables, [])
+  const variables = useResource(listVariableNames, [])
   const creation = useMutation()
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim() || !url.trim()) return
-    void creation.run(signal => addServer({ name: name.trim(), url: url.trim(), ...(env.trim() && { credentialEnv: env.trim() }) }, signal), registered)
+    void creation.run(signal => client.addServer({ name: name.trim(), url: url.trim(), ...(env.trim() && { credentialEnv: env.trim() }) }, signal), registered)
   }
   return <Modal open title="登记 MCP 服务" onClose={() => { if (!creation.busy) close() }} closeOnEsc={!creation.busy} closeOnBackdrop={false} footer={<>
     <Button disabled={creation.busy} onClick={close}>取消</Button>
@@ -40,7 +41,7 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
         </Select></label>
         {variables.loading && <p role="status">正在读取变量名…</p>}
         {variables.error && <p role="alert">{variables.error} <Button type="button" onClick={variables.reload}>重试</Button></p>}
-        <p className="text-xs leading-5 text-txt3"><Link to="/platform-env" className="text-accent-2 underline">管理平台变量</Link></p>
+        <p className="text-xs leading-5 text-txt3"><Link to={variableManagementPath} className="text-accent-2 underline">管理平台变量</Link></p>
         {env && url.trim() && <p className="break-all text-sm">连接时将把 <strong>{env}</strong> 的值作为 Bearer 令牌发送到 <strong>{url.trim()}</strong>。请确认地址可信。</p>}
         {creation.error && <p role="alert" className="text-err">{creation.error}</p>}
       </fieldset>
@@ -49,10 +50,11 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
 }
 
 function DeleteDialog({ server, close, removed }: { server: McpServer; close: () => void; removed: () => void }) {
+  const { client } = useMcp()
   const deletion = useMutation()
   return <Modal open title="删除 MCP 服务" onClose={() => { if (!deletion.busy) close() }} closeOnEsc={!deletion.busy} closeOnBackdrop={false} footer={<>
     <Button disabled={deletion.busy} onClick={close}>取消</Button>
-    <Button variant="danger" loading={deletion.busy} onClick={() => void deletion.run(signal => removeServer(server.id, signal), removed)}>确认删除</Button>
+    <Button variant="danger" loading={deletion.busy} onClick={() => void deletion.run(signal => client.removeServer(server.id, signal), removed)}>确认删除</Button>
   </>}>
     <p className="break-words text-sm">移除「{server.name}」后，引用它的配方将无法读取资源。已生成的工作包会保留。</p>
     <p className="mt-2 break-all font-mono text-xs text-txt3">{server.url}</p>
@@ -63,7 +65,9 @@ function DeleteDialog({ server, close, removed }: { server: McpServer; close: ()
 const rowLayout = 'grid min-w-0 gap-3 px-4 py-3 md:grid-cols-[minmax(9rem,1fr)_minmax(12rem,1.6fr)_minmax(7rem,.8fr)_auto] md:items-center'
 
 export function McpServers() {
-  const servers = useResource(listServers, [])
+  const { client } = useMcp()
+  const { notify } = useFeedback()
+  const servers = useResource(client.listServers, [])
   const [search, setSearch] = useState('')
   const [registering, setRegistering] = useState(false)
   const [deleting, setDeleting] = useState<McpServer | null>(null)
@@ -94,7 +98,7 @@ export function McpServers() {
           <ul className="divide-y divide-line">
             {visible.map(s => <li key={s.id} className={rowLayout}>
               <div className="min-w-0">
-                <Link to={serverBrowsePath(s.id)} className="break-words text-sm font-semibold hover:text-accent-2 hover:underline">{s.name}</Link>
+                <Link to={encodeURIComponent(s.id)} className="break-words text-sm font-semibold hover:text-accent-2 hover:underline">{s.name}</Link>
                 <div className="mt-1 text-xs text-txt3 md:hidden">Streamable HTTP</div>
               </div>
               <code className="min-w-0 break-all text-xs leading-5 text-txt2">{s.url}</code>
@@ -102,7 +106,7 @@ export function McpServers() {
                 {s.credentialEnv ? <code className="break-all text-xs text-txt2">{s.credentialEnv}</code> : <Badge variant="outline">无凭据</Badge>}
               </div>
               <div className="flex items-center gap-2 md:justify-end">
-                <Button asChild size="sm" icon="stage-resources"><Link to={serverBrowsePath(s.id)}>浏览资源</Link></Button>
+                <Button asChild size="sm" icon="stage-resources"><Link to={encodeURIComponent(s.id)}>浏览资源</Link></Button>
                 <Button variant="ghost" size="icon" icon="trash" title="删除登记" aria-label={`删除 ${s.name}`} onClick={() => setDeleting(s)} />
               </div>
             </li>)}
