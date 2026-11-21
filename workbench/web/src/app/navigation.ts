@@ -14,7 +14,10 @@ export const navigationGroups: NavGroup[] = [
     { path: '/resources', title: '资源库', icon: 'layers' },
     { path: '/executors', title: '执行器', icon: 'robot' },
   ] },
-  { title: '平台设置', items: [{ path: '/mcp-servers', title: '平台 MCP 服务', icon: 'connector' }] },
+  { title: '平台设置', items: [
+    { path: '/mcp-servers', title: '平台 MCP 服务', icon: 'connector' },
+    { path: '/platform-env', title: '环境变量', icon: 'settings' },
+  ] },
   { title: '运行工具', items: [
     { path: '/flows', title: 'Flow 包', icon: 'workflow', requiresFlow: true },
     { path: '/runs', title: '运行记录', icon: 'runs', requiresFlow: true },

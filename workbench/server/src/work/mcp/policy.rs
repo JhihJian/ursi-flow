@@ -1,4 +1,5 @@
 //! 登记不能授予出站权限。只有服务账户私有目录中的管理员策略能授权地址与凭据组合。
+use super::super::environment;
 use super::{Config, Error, Store, invalid, unavailable};
 use reqwest::{Url, header::HeaderValue};
 use serde::Deserialize;
@@ -34,13 +35,7 @@ pub(super) fn authorize(store: &Store, cfg: &Config) -> Result<Url, Error> {
         return Err(denied());
     }
     if let Some(key) = cfg.credential_env.as_deref() {
-        if key.is_empty()
-            || key.len() > 128
-            || !key.as_bytes()[0].is_ascii_uppercase()
-            || !key
-                .bytes()
-                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
-        {
+        if !environment::valid_name(key) {
             return Err(denied());
         }
         let local = url
@@ -84,7 +79,10 @@ pub(super) fn endpoint(store: &Store, cfg: &Config) -> Result<(Url, Option<Heade
         .as_ref()
         .map(|key| {
             let err = || unavailable("管理员配置的 MCP 凭据不可用");
-            let value = std::env::var(key).map_err(|_| err())?;
+            let value = match environment::lookup(store, key)? {
+                Some(value) => value,
+                None => std::env::var(key).map_err(|_| err())?,
+            };
             if value.is_empty()
                 || value.len() > 8192
                 || !value.bytes().all(|b| b.is_ascii_graphic())

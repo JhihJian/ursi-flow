@@ -32,7 +32,7 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
         <label>服务名称<Input required maxLength={240} value={name} onChange={e => setName(e.target.value)} /></label>
         <label>服务地址<Input type="url" required maxLength={2048} placeholder="https://mcp.example.org/mcp" value={url} onChange={e => setUrl(e.target.value)} /></label>
         <label>凭据环境变量名（可选）<Input autoComplete="off" spellCheck={false} pattern="[A-Z][A-Z0-9_]*" maxLength={128} placeholder="MCP_READ_TOKEN" value={env} onChange={e => setEnv(e.target.value)} /></label>
-        <p className="text-xs leading-5 text-txt3">地址与变量名由管理员授权。令牌值保留在服务端。</p>
+        <p className="text-xs leading-5 text-txt3">地址与变量名由管理员授权。令牌值可在<Link to="/platform-env" className="text-accent-2 underline">平台环境变量</Link>中设置。</p>
         {creation.error && <p role="alert" className="text-err">{creation.error}</p>}
       </fieldset>
     </form>

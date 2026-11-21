@@ -95,6 +95,8 @@ impl Fixture {
         serde_json::from_str(&text).unwrap()
     }
 }
+mod platform_env;
+
 const AUTH: &str = "Authorization: Bearer test-token\r\n";
 
 #[tokio::test]
