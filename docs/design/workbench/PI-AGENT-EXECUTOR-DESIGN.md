@@ -4,13 +4,13 @@
 
 ## 选择 Agent 后端
 
-「平台设置 → Agent 后端」列出管理员登记的运行器、能力和最近的连通性检查。检查只验证控制接口，不调用模型或业务工具。Pi 是内置适配器，其他后端遵循同一[执行器契约](../docs/EXECUTOR-MCP.md)，按[部署说明](server/src/work/agent_backends/README.md)登记。
+「平台设置 → Agent 后端」列出管理员登记的运行器、能力和最近的连通性检查。检查只验证控制接口，不调用模型或业务工具。Pi 是内置适配器，其他后端遵循同一[执行器契约](../../EXECUTOR-MCP.md)，按[部署说明](../../../workbench/server/src/work/agent_backends/README.md)登记。
 
 新建执行器先选配置包。平台从检查通过且支持该包所需能力的后端中匹配，只有一个时自动选择，有多个时由配置人员选择。发布时固定实际后端，运行旧版不会受候选列表或平台重启后检查状态的影响；原绑定被移除或变更时，按版本启动会报错。
 
 ## 配置包里维护什么
 
-通过[包接口](server/src/work/patches/HTTP.md)创建配置包后，使用返回的 `directoryId` 在[目录接口](server/src/work/directories/HTTP.md)编辑以下文件。界面可复用[配置包编辑器](PATCH-STUDIO.md)。
+通过[包接口](../../../workbench/server/src/work/patches/HTTP.md)创建配置包后，使用返回的 `directoryId` 在[目录接口](../../../workbench/server/src/work/directories/HTTP.md)编辑以下文件。界面可复用[配置包编辑器](PATCH-STUDIO.md)。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -44,10 +44,10 @@
 
 试跑和按版本运行都将 `workPatchId` 指定的工作包文件放入 `inputs/`。Pi 为每次尝试创建隔离会话，把固定指令和 Skill 放入系统上下文，将 `workInstruction` 单独作为用户消息。成功后，Workbench 将报告发布到只读制品目录。业务工具调用时仍须核验当前授权和快照内的 schema 摘要。
 
-Workbench 按[执行器协议](../docs/EXECUTOR-MCP.md)将启动、查询和取消路由到该尝试绑定的运行器。相同 `attemptId` 和参数复用原尝试，更换修订或指令返回 409。启动回执丢失后可按 ID 查询；已经发出但无法核实的模型请求标记为 `unverified`，不自动重发。
+Workbench 按[执行器协议](../../EXECUTOR-MCP.md)将启动、查询和取消路由到该尝试绑定的运行器。相同 `attemptId` 和参数复用原尝试，更换修订或指令返回 409。启动回执丢失后可按 ID 查询；已经发出但无法核实的模型请求标记为 `unverified`，不自动重发。
 
 ## 版本隔离验收
 
-[Pi 端到端用例](server/tests/pi_executor_e2e.py)先发布 `ticket-review@1`，再编辑原包的三个文件，以同一个定义试跑并发布 `@2`。工作包始终提供同一份工单，另引用一份带不同固定指令和 Skill 的配置包。
+[Pi 端到端用例](../../../workbench/server/tests/pi_executor_e2e.py)先发布 `ticket-review@1`，再编辑原包的三个文件，以同一个定义试跑并发布 `@2`。工作包始终提供同一份工单，另引用一份带不同固定指令和 Skill 的配置包。
 
 验收以本机模型服务收到的请求为准：新启动的 `@1` 应收到首版固定指令和 Skill、显式指定的模型和工具；新试跑和 `@2` 应收到修改后的正文，并在省略模型和工具选项时使用策略首个模型、只保留材料读取工具。三次尝试的系统消息都应排除工作包所引用配置的指令和 Skill，同时 `read_input` 都应读到该工作包里的工单。

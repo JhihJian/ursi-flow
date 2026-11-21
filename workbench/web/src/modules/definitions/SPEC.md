@@ -6,8 +6,8 @@ depends-on:
   - ../agent-executor/SPEC.md
   - ../../../../server/src/work/catalog/SPEC.md
 references:
-  - ../../../../EXECUTOR-DESIGN.md
-  - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 # 工作定义
 

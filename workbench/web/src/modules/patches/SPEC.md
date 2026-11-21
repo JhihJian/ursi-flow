@@ -6,10 +6,10 @@ depends-on:
   - ../agent-executor/SPEC.md
   - ../../../../server/src/work/patches/SPEC.md
 references:
-  - ../../../../PATCH-STUDIO.md
-  - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
-  - ../../../../WORK-LIST-DESIGN.md
-  - ../../../../WORK-PATCH-GENERATOR-DESIGN.md
+  - ../../../../../docs/design/workbench/PATCH-STUDIO.md
+  - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-LIST-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
 ---
 # 工作包与配置包编辑器
 

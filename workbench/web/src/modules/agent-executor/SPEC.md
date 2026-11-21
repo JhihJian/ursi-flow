@@ -5,7 +5,7 @@ depends-on:
   - ../directories/SPEC.md
   - ../../../../server/src/work/executor/SPEC.md
 references:
-  - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 # 执行尝试面板
 

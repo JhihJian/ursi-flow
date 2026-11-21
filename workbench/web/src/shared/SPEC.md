@@ -1,7 +1,7 @@
 ---
 parent: ../../SPEC.md
 references:
-  - ../../DESIGN.md
+  - ../../../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
 ---
 # Web 共享层
 

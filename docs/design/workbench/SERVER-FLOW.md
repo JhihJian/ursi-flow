@@ -1,6 +1,6 @@
 # Server 与 Flow Runtime
 
-本页描述 v1 的 Flow 管理入口。独立工作清单、包与定义的数据归属见 [Server v2 设计](DESIGN-v2.md)。
+本页描述 v1 的 Flow 管理入口。独立工作清单、包与定义的数据归属见 [Server v2 设计](SERVER-WORK-MANAGEMENT.md)。
 
 `ursi-server` 管理 HTTP 入口和本机 daemon 的生命周期。`ursi-flowd` 是包目录、运行配置、活动任务与历史的唯一管理者。HTTP 和本机 CLI 共用 Rust `FlowClient` 协议，因此同一运行 ID 经两个入口查询时指向同一条记录。
 
@@ -22,4 +22,4 @@ Server 启动自己的 daemon，确认子进程和 socket 就绪后开放 HTTP�
 
 HTTP 只暴露受鉴权的管理 API，不提供 Web 静态资源。Web 独立提供页面，生产环境可通过反向代理将页面和 API 放在同一来源。工作目录由部署者选择，但其中的流程命令仍以服务账户权限执行。API token 应仅发给有权在该账户下运行受信包的操作者。本机 CLI 依靠操作系统的私有目录权限访问同一 socket。
 
-部署选项与启动命令见 [使用说明](README.md)，路由和错误映射见 [HTTP 规格](src/transport/SPEC.md)。
+部署选项与启动命令见 [使用说明](../../../workbench/server/README.md)，路由和错误映射见 [HTTP 规格](../../../workbench/server/src/transport/SPEC.md)。

@@ -6,7 +6,7 @@ depends-on:
   - ../mcp/SPEC.md
   - ../work-patch-generators/SPEC.md
 references:
-  - ../../../../WORK-LIST-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-LIST-DESIGN.md
 ---
 # 工作清单与平台资源
 

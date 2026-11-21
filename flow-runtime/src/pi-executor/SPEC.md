@@ -2,7 +2,7 @@
 parent: ../../SPEC.md
 references:
   - ../../../docs/EXECUTOR-MCP.md
-  - ../../../workbench/PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 
 # Pi 执行器

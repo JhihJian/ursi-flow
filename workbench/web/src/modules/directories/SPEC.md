@@ -3,7 +3,7 @@ parent: ../../../SPEC.md
 depends-on:
   - ../../shared/SPEC.md
 references:
-  - ../../../../PATCH-STUDIO.md
+  - ../../../../../docs/design/workbench/PATCH-STUDIO.md
 ---
 # 虚拟目录
 

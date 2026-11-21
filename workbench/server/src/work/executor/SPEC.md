@@ -7,8 +7,8 @@ depends-on:
   - ../directories/SPEC.md
 references:
   - ../../../../../docs/EXECUTOR-MCP.md
-  - ../../../../FLOW-EXECUTOR-DESIGN.md
-  - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/FLOW-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 
 # 执行器尝试

@@ -1,6 +1,6 @@
 # ursi-sandbox
 
-为独立客户端或工作流引擎提供 Docker 执行环境。Gateway 管理沙箱和端点，catalog 校验 bundle 注册表，builder 构建镜像与服务归档。Pi 通过普通 ACP 端点提供会话，通用客户端可独立于 ACP 构建。可选的 Observer 在宿主机记录指定沙箱的网络报文。设计与责任划分见 [整体架构](DESIGN.md)。
+为独立客户端或工作流引擎提供 Docker 执行环境。Gateway 管理沙箱和端点，catalog 校验 bundle 注册表，builder 构建镜像与服务归档。Pi 通过普通 ACP 端点提供会话，通用客户端可独立于 ACP 构建。可选的 Observer 在宿主机记录指定沙箱的网络报文。设计与责任划分见 [整体架构](../docs/design/ursi-sandbox/SANDBOX-PLATFORM.md)。
 
 主验收场景是[用 ursi-sandbox-client 开发 Hello World 页面](examples/hello-html/README.md)：创建沙箱，通过 SSH 编写 HTML，通过 SFTP 下载并用浏览器打开。验收不调用 Python 脚本，不需要模型密钥。此前的[发布工具检查](examples/release-review/README.md)和[门店日结](examples/daily-close/README.md)作为历史示例保留。
 

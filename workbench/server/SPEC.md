@@ -3,8 +3,8 @@ parent: ../SPEC.md
 depends-on:
   - ../../flow-runtime/client/SPEC.md
 references:
-  - DESIGN.md
-  - DESIGN-v2.md
+  - ../../docs/design/workbench/SERVER-FLOW.md
+  - ../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
   - README.md
 ---
 
@@ -12,7 +12,7 @@ references:
 
 ## 功能意图
 
-Server 通过 `/api/v2` 管理工作清单、包目录、平台 MCP 服务及版本化定义。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。数据边界见 [Server v2 设计](DESIGN-v2.md)。
+Server 通过 `/api/v2` 管理工作清单、包目录、平台 MCP 服务及版本化定义。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
 
 ## 关键功能与验收
 

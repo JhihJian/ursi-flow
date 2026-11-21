@@ -2,7 +2,7 @@
 parent: ../SPEC.md
 references:
   - README.md
-  - ../workbench/MCP-MODULE-DESIGN.md
+  - ../docs/design/ursi-mcp/MCP-MODULE-DESIGN.md
 ---
 
 # ursi-mcp

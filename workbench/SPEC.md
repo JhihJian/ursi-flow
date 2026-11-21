@@ -2,12 +2,13 @@
 parent: ../SPEC.md
 references:
   - README.md
-  - PATCH-STUDIO.md
-  - WORK-LIST-DESIGN.md
-  - WORK-PATCH-GENERATOR-DESIGN.md
-  - EXECUTOR-DESIGN.md
-  - EXECUTOR-MCP.md
-  - FLOW-EXECUTOR-DESIGN.md
+  - ../docs/design/workbench/PATCH-STUDIO.md
+  - ../docs/design/workbench/WORK-LIST-DESIGN.md
+  - ../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
+  - ../docs/design/workbench/EXECUTOR-DESIGN.md
+  - ../docs/EXECUTOR-MCP.md
+  - EXECUTOR-INTEGRATION.md
+  - ../docs/design/workbench/FLOW-EXECUTOR-DESIGN.md
 ---
 
 # 工作台
@@ -23,7 +24,7 @@ references:
 #### 验收
 
 - 未接入外部服务也能创建、编辑和删除一次性或持续工作，按类别与进度状态组合筛选。
-- 从平台登记的 MCP 服务选择资源，在工作项保存 Python 配方。每次主动生成一个文件型工作包，重试同一次请求只发布一个包。删除工作项时保留包、文件及生成来源，每包当前至多归属一个工作项。详见[工作清单与工作包来源](WORK-LIST-DESIGN.md)。
+- 从平台登记的 MCP 服务选择资源，在工作项保存 Python 配方。每次主动生成一个文件型工作包，重试同一次请求只发布一个包。删除工作项时保留包、文件及生成来源，每包当前至多归属一个工作项。详见[工作清单与工作包来源](../docs/design/workbench/WORK-LIST-DESIGN.md)。
 
 ### 工作包生成器
 
@@ -43,11 +44,11 @@ references:
 #### 验收
 
 - 从工作台 Cargo 工作区构建 Server，从 `web/` 构建界面。浏览器可通过真实服务发布提示词及引用它的执行器，打开历史执行器修订后仍能查到当时引用的资源版本。
-- 执行器目录只管理定义，发布定义不会启动运行。[通用执行器设计](EXECUTOR-DESIGN.md)区分了现行尝试接口与后续定义绑定方案。
+- 发布执行器定义不会启动运行。Agent 按版本运行时使用发布时保存的配置快照和后端绑定。执行路径见[执行器设计](../docs/design/workbench/EXECUTOR-DESIGN.md)。
 
 ### 通过 MCP 执行一次尝试
 
 #### 验收
 
-- 配置管理员固定的执行器后，已认证的调用方可按小写 UUID 提交指令和可选工作包。同 ID 重复提交相同输入只对应一次运行，改动输入返回 409。
-- 可按原 ID 查询或取消。启动回执丢失后，GET 可查回原尝试，不发起运行。确认终态并收集输出后，可通过只读目录列出和读取文件。见[模块规格](server/src/work/executor/SPEC.md)与[执行器 MCP 契约](EXECUTOR-MCP.md)。
+- 已认证的调用方可按小写 UUID 提交指令和可选工作包：省略目标使用部署固定的 Flow，指定 Agent 修订则按版本运行，也可提交草稿试跑。试跑不发布修订。同 ID 重复提交相同参数只对应一次运行，改动参数返回 409。
+- 可按原 ID 查询或取消。启动回执丢失后，GET 可查回原尝试，不发起运行。确认终态并收集输出后，可通过只读目录列出和读取文件。见[模块规格](server/src/work/executor/SPEC.md)与[执行器接入说明](EXECUTOR-INTEGRATION.md)。

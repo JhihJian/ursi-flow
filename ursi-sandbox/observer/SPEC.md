@@ -4,7 +4,7 @@ references:
   - ./README.md
   - ./ACCEPTANCE.md
   - ../gateway/CONTRACT.md
-  - ../DESIGN.md
+  - ../../docs/design/ursi-sandbox/SANDBOX-PLATFORM.md
 ---
 
 # 沙箱网络观测服务

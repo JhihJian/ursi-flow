@@ -1,7 +1,7 @@
 ---
 parent: ../SPEC.md
 references:
-  - DESIGN.md
+  - ../docs/design/ursi-sandbox/SANDBOX-PLATFORM.md
   - README.md
 ---
 

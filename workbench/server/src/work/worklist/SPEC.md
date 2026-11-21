@@ -5,8 +5,8 @@ depends-on:
   - ../directories/SPEC.md
   - ../../../../../ursi-mcp/server/SPEC.md
 references:
-  - ../../../../WORK-LIST-DESIGN.md
-  - ../../../../WORK-PATCH-GENERATOR-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-LIST-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
   - HTTP.md
   - GENERATORS-HTTP.md
   - CONVERSION.md

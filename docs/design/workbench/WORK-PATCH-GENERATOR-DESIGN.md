@@ -13,7 +13,7 @@
 ## 运行与发布
 
 1. **登记。** 调用方提供 `runId`。Workbench 在取数前登记运行，固定生成器修订、输入引用和适用的工作项快照。同一 `runId` 提交相同请求返回原记录，提交不同请求返回 `409`。主动再生成时使用新 `runId`。
-2. **转换。** Workbench 通过平台 MCP 授权读取资源，将当次快照交给隔离的 `transform(item, resources)`。独立试运行的 `item` 为 `None`。脚本按别名读取快照，返回包名 `name` 和文件列表 `files`。授权读取、隔离和文件限额沿用[现有转换契约](server/src/work/worklist/CONVERSION.md)。
+2. **转换。** Workbench 通过平台 MCP 授权读取资源，将当次快照交给隔离的 `transform(item, resources)`。独立试运行的 `item` 为 `None`。脚本按别名读取快照，返回包名 `name` 和文件列表 `files`。授权读取、隔离和文件限额沿用[现有转换契约](../../../workbench/server/src/work/worklist/CONVERSION.md)。
 3. **发布。** 校验并落盘文件后，在同一笔存储更新中登记结果目录、运行结果及工作包（仅工作项生成），发布前复核工作项修订。登记完成后文件才可访问。读取、转换、校验或修订检查失败时，运行保留失败阶段，无可见半成品。服务重启后，未完成的运行记为中断，已发布结果按原 `runId` 查回。
 
 ## 生成记录与结果
@@ -22,7 +22,7 @@
 
 从记录可打开当时的生成器修订，也可查看试运行的只读文件列表或跳到生成的工作包。包的来源面板可返回原运行。修改或清除生成器绑定只影响后续运行。包的当前归属单独维护，删除工作项会解除当前归属，生成记录保持原样。工作包可编辑，包链接打开的是当前内容，记录中的文件清单描述生成时的结果。
 
-API 提供[定义与运行](server/src/work/worklist/GENERATORS-HTTP.md)两个入口：`/api/v2/work-patch-generators` 管理定义和修订，`/api/v2/work-patch-generation-runs` 提交运行、查询列表和详情。试运行和工作项生成走同一个运行入口。
+API 提供[定义与运行](../../../workbench/server/src/work/worklist/GENERATORS-HTTP.md)两个入口：`/api/v2/work-patch-generators` 管理定义和修订，`/api/v2/work-patch-generation-runs` 提交运行、查询列表和详情。试运行和工作项生成走同一个运行入口。
 
 ## 验收
 

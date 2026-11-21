@@ -4,11 +4,11 @@ depends-on:
   - ../patches/SPEC.md
   - ../directories/SPEC.md
 references:
-  - ../../../DESIGN-v2.md
+  - ../../../../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
   - HTTP.md
   - ../worklist/GENERATORS-HTTP.md
-  - ../../../../EXECUTOR-DESIGN.md
-  - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/EXECUTOR-DESIGN.md
+  - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 
 # 工作定义目录

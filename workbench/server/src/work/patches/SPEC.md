@@ -3,8 +3,8 @@ parent: ../../../SPEC.md
 depends-on:
   - ../directories/SPEC.md
 references:
-  - ../../../../PATCH-STUDIO.md
-  - ../../../../WORK-LIST-DESIGN.md
+  - ../../../../../docs/design/workbench/PATCH-STUDIO.md
+  - ../../../../../docs/design/workbench/WORK-LIST-DESIGN.md
   - HTTP.md
 ---
 # 工作包与配置包

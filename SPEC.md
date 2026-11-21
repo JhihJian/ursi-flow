@@ -1,5 +1,6 @@
 ---
 references:
+  - ARCHITECHTURE.md
   - workbench/README.md
   - flow-runtime/docs/flow-spec.md
 ---
@@ -10,16 +11,7 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。工作台另通过 Server v2 管理工作清单、文件型工作包、配置包以及资源和执行器定义。
 
-## 模块地图
-
-| 模块 | 职责 |
-| --- | --- |
-| [flow-runtime](flow-runtime/SPEC.md) | Node.js 引擎与本地执行器。`ursi-flowd` 管理包修订、执行配置、后台运行与历史；`ursi-flow-local` 用于单次本地执行。 |
-| [flow-runtime/client](flow-runtime/client/SPEC.md) | Rust `FlowClient` 与 `ursi-flow` CLI，通过 Unix socket 访问 daemon。 |
-| [flow-runtime/web](flow-runtime/web/SPEC.md) | 独立 Flow 控制台。静态包加同源桥，完成建包、运行、历史与配置闭环。 |
-| [workbench](workbench/SPEC.md) | 工作台项目。Web 通过 Server 的同源 API 维护工作清单与包目录；启用 Flow 时可管理流程包、运行与配置。 |
-| [ursi-mcp](ursi-mcp/SPEC.md) | 可嵌入的 Streamable HTTP MCP 后端库与管理界面。 |
-| [ursi-sandbox](ursi-sandbox/SPEC.md) | 管理沙箱、bundle 和逻辑端点，独立构建 bundle 镜像。Agent 是通过端点接入的可选服务。本地 Flow 执行不依赖该工作区。 |
+模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 
 ## 关键功能与验收
 

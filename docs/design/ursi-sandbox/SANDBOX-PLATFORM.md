@@ -9,11 +9,11 @@
 | 端点管理 | `gateway/src/gateway_api`、`gateway/src/tunnel` | 发现实例的逻辑端点、检查就绪与代际、授权转发 TCP 字节。地址由驱动解析。 |
 | Bundle 镜像构建 | `builder` | 按目标构建镜像并打包服务归档；清单记录能力和内容校验值。 |
 
-`runtime` 是镜像内的启动支持，`client` 和 `web` 是控制面消费者。`observer` 是可选宿主服务，通过配对的 Gateway 对已运行的实例观测。[网络观测契约](gateway/CONTRACT.md)规定其独立于工作卷的历史与下载权限。
+`runtime` 是镜像内的启动支持，`client` 和 `web` 是控制面消费者。`observer` 是可选宿主服务，通过配对的 Gateway 对已运行的实例观测。[网络观测契约](../../../ursi-sandbox/gateway/CONTRACT.md)规定其独立于工作卷的历史与下载权限。
 
 ## 构建到使用
 
-1. 构建者选择 SSH、Pi 或 browser 组合，构建镜像和匹配的归档。凭据由管理员在运行时注入。SSH 基线只需要公钥。Pi 对令牌、模型和会话的约束见 [Pi 服务契约](bundles/pi-agent/AGENT-CONTRACT.md)。
+1. 构建者选择 SSH、Pi 或 browser 组合，构建镜像和匹配的归档。凭据由管理员在运行时注入。SSH 基线只需要公钥。Pi 对令牌、模型和会话的约束见 [Pi 服务契约](../../../ursi-sandbox/bundles/pi-agent/AGENT-CONTRACT.md)。
 2. 管理员将已批准的镜像、bundle 引用与端点声明登记到 Gateway。创建实例时冻结声明，启动程序按归档摘要验证内容并启动服务。
 3. 调用方通过同一 Gateway 查询和连接 SSH、ACP 或桌面端点。ACP 客户端负责发送 prompt、查询会话和取消执行，Gateway 不持有会话。停止或重建会结束连接；是否重试任务由调用方决定。
 

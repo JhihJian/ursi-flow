@@ -4,15 +4,15 @@ depends-on:
   - ../server/SPEC.md
   - ./acceptance/SPEC.md
 references:
-  - DESIGN.md
-  - DESIGN-v2.md
+  - ../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
+  - ../../docs/design/workbench/WEB-WORK-MANAGEMENT.md
   - README.md
 ---
 # Flow 工作台
 
 ## 功能意图
 
-使用同源 HTTP 服务维护 Flow 包、运行和配置，通过独立的本地对话入口保留演示体验。登录后的首页是工作清单。用户可维护事项、从资源生成文件包，并独立发布资源和执行器定义。结构与边界见 [Web v2 界面设计](DESIGN-v2.md)。
+使用同源 HTTP 服务维护 Flow 包、运行和配置，通过独立的本地对话入口保留演示体验。登录后的首页是工作清单。用户可维护事项、从资源生成文件包，并独立发布资源和执行器定义。结构与边界见 [Web v2 界面设计](../../docs/design/workbench/WEB-WORK-MANAGEMENT.md)。
 
 ## 关键功能与验收
 

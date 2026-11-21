@@ -12,7 +12,7 @@ depends-on:
   - ../modules/config/SPEC.md
   - ../modules/chat/SPEC.md
 references:
-  - ../../DESIGN.md
+  - ../../../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
 ---
 # 应用装配
 

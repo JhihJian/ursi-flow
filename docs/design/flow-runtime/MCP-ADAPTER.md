@@ -1,6 +1,6 @@
 # MCP 集成边界
 
-`ursi-flow-executor-mcp` 是 Flow Runtime 的本机 MCP stdio adapter。它通过独立的[执行器 SDK](../../../../executor-sdk/README.md)提供 MCP 发现和三个执行器工具：
+`ursi-flow-executor-mcp` 是 Flow Runtime 的本机 MCP stdio adapter。它通过独立的[执行器 SDK](../../../executor-sdk/README.md)提供 MCP 发现和三个执行器工具：
 
 - `executor_start`：以 `attemptId` 作为 daemon Run ID，调用 `run.startPinned`。
 - `executor_inspect`：调用 `run.get`，只返回该管理员绑定 Flow 的状态。

@@ -6,7 +6,7 @@ depends-on:
   - ../patches/SPEC.md
   - ../mcp/SPEC.md
 references:
-  - ../../../../WORK-PATCH-GENERATOR-DESIGN.md
+  - ../../../../../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
 ---
 # 工作包生成器与生成记录
 
