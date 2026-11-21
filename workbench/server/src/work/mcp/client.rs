@@ -6,7 +6,7 @@ use super::{Config, Error, SNAPSHOT_LIMIT, STANDARD, Store, label, policy, unava
 use crate::work::mcp_client_info;
 use base64::Engine;
 use rmcp::{
-    RoleClient, ServiceExt,
+    ClientLifecycleMode, ClientServiceExt, RoleClient,
     model::{
         ClientConfig, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
         ResourceContents,
@@ -24,7 +24,10 @@ fn rpc_err() -> Error {
     unavailable("MCP 服务连接失败或协议响应无效")
 }
 
-pub(super) struct Session(RunningService<RoleClient, ClientConfig>);
+pub(super) struct Session(
+    RunningService<RoleClient, ClientConfig>,
+    Arc<std::sync::OnceLock<Value>>,
+);
 
 impl Session {
     pub(super) async fn open(store: &Store, cfg: &Config) -> Result<Self, Error> {
@@ -34,20 +37,26 @@ impl Session {
         options.reinit_on_expired_session = false;
         options.allow_stateless = true;
         options.retry_config = Arc::new(NeverRetry::default());
-        let transport = StreamableHttpClientTransport::with_client(
-            http::BoundedHttp::new(url, authorization, &cfg.settings)?,
-            options,
-        );
+        let http = http::BoundedHttp::new(url, authorization, &cfg.settings)?;
+        let discovery = http.discovery.clone();
+        let transport = StreamableHttpClientTransport::with_client(http, options);
         let session = Self(
             mcp_client_info(ProtocolVersion::V_2025_11_25)
-                .serve(transport)
+                .serve_with_lifecycle(
+                    transport,
+                    ClientLifecycleMode::Auto {
+                        preferred_versions: vec![ProtocolVersion::V_2026_07_28],
+                        legacy_version: Some(ProtocolVersion::V_2025_11_25),
+                    },
+                )
                 .await
                 .map_err(|_| rpc_err())?,
+            discovery,
         );
         let supported = session.0.peer_info().is_some_and(|info| {
             matches!(
                 info.protocol_version.as_str(),
-                "2025-11-25" | "2025-06-18" | "2025-03-26"
+                "2026-07-28" | "2025-11-25" | "2025-06-18" | "2025-03-26"
             )
         });
         if !supported {
@@ -59,13 +68,18 @@ impl Session {
 
     pub(super) fn info(&self) -> Result<Value, Error> {
         let info = self.0.peer_info().ok_or_else(rpc_err)?;
-        let implementation = info.server_info.as_ref().ok_or_else(rpc_err)?;
-        if !label(&implementation.name, 512) || !label(&implementation.version, 256) {
+        let implementation = info.server_info.as_ref();
+        if implementation.is_some_and(|i| !label(&i.name, 512) || !label(&i.version, 256)) {
             return Err(rpc_err());
         }
         Ok(json!({
-            "name": implementation.name,
-            "version": implementation.version,
+            "name": implementation.map(|i| &i.name),
+            "version": implementation.map(|i| &i.version),
+            "title": implementation.and_then(|i| i.title.as_ref()),
+            "discoveryMethod": if self.1.get().is_some() { "server/discover" } else { "initialize" },
+            "supportedVersions": self.1.get().map(|r| &r["supportedVersions"]),
+            "declaredCapabilities": self.1.get().map(|r| r["capabilities"].clone()).unwrap_or_else(|| json!(info.capabilities)),
+            "instructions": info.instructions,
             "protocolVersion": info.protocol_version,
             "capabilities": {
                 "resources": info.capabilities.resources.is_some(),
@@ -115,6 +129,12 @@ impl Session {
                     return Err(rpc_err());
                 }
                 let mut entry = json!({"name":resource.name,"uri":resource.uri});
+                if let Some(title) = resource.title.filter(|s| label(s, 512)) {
+                    entry["title"] = json!(title);
+                }
+                if let Some(size) = resource.size {
+                    entry["size"] = json!(size);
+                }
                 if let Some(mime) = resource.mime_type {
                     if !label(&mime, 256) {
                         return Err(rpc_err());

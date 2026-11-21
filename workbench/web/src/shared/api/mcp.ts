@@ -5,10 +5,10 @@ export type McpSettings = { allowedTools: string[]; githubToolsets: string[]; gi
 export type McpServer = ServerDraft & { id: string; settings?: McpSettings }
 export type CatalogKind = 'tools' | 'prompts' | 'templates'
 export type CatalogEntry = { name: string; description?: string; inputSchema?: object; arguments?: object[]; uriTemplate?: string }
-export type McpResource = { name: string; uri: string; mimeType?: string; description?: string }
+export type McpResource = { name: string; title?: string; size?: number; uri: string; mimeType?: string; description?: string }
 export type ResourceContent = { uri: string; mimeType?: string } & ({ text: string; blob?: never } | { blob: string; text?: never })
 export type Inspection = {
-  server: { name: string; version: string; protocolVersion: string; capabilities: { resources: boolean; tools: boolean; prompts: boolean } }
+  server: { name: string | null; version: string | null; title?: string; discoveryMethod: 'initialize' | 'server/discover'; supportedVersions: string[] | null; declaredCapabilities: Record<string, unknown>; instructions?: string; protocolVersion: string; capabilities: { resources: boolean; tools: boolean; prompts: boolean } }
   resources: McpResource[]
 }
 

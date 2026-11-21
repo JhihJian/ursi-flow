@@ -96,6 +96,9 @@ async fn peer(
     let method = q["method"].as_str().unwrap();
     calls.lock().unwrap().push(method.into());
     let reply = |result: Value| json!({"jsonrpc":"2.0","id":q["id"],"result":result});
+    if method == "server/discover" {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
     if method == "initialize" {
         assert_eq!(q["params"]["clientInfo"]["name"], "ursi-workbench");
         assert_eq!(q["params"]["protocolVersion"], "2025-11-25");
@@ -200,6 +203,7 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
     assert_eq!(
         *f.calls.lock().unwrap(),
         [
+            "server/discover",
             "initialize",
             "notifications/initialized",
             "resources/list",
@@ -219,7 +223,7 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
         .unwrap();
     assert_eq!(
         report["server"],
-        json!({"name":"fixture","version":"1","protocolVersion":"2025-06-18","capabilities":{"resources":true,"tools":false,"prompts":false}})
+        json!({"name":"fixture","version":"1","title":null,"protocolVersion":"2025-06-18","discoveryMethod":"initialize","supportedVersions":null,"declaredCapabilities":{"resources":{}},"instructions":null,"capabilities":{"resources":true,"tools":false,"prompts":false}})
     );
     assert_eq!(report["resources"], resources);
     fs::remove_file(f.dir.join("mcp-policy.json")).unwrap();

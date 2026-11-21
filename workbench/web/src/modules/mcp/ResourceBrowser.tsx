@@ -8,7 +8,9 @@ import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
-import { OperationsPanel, SettingsPanel } from './OperationsPanel'
+import { OperationsPanel } from './OperationsPanel'
+import { SettingsPanel } from './SettingsPanel'
+import { DataTable } from '@/shared/ui/data-table'
 import type { CatalogKind } from '@/shared/api/mcp'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
 
@@ -35,7 +37,7 @@ function Inspector({ server }: { server: McpServer }) {
   const [params, setParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const keyword = search.trim().toLowerCase()
-  const matches = resources.filter(resource => [resource.name, resource.uri, resource.mimeType].some(value => value?.toLowerCase().includes(keyword)))
+  const matches = resources.filter(resource => [resource.name, resource.title, resource.description, resource.uri, resource.mimeType].some(value => value?.toLowerCase().includes(keyword)))
   const selectedUri = params.get('uri')
   const selected = resources.find(resource => resource.uri === selectedUri)
   function select(uri: string) {
@@ -59,8 +61,10 @@ function Inspector({ server }: { server: McpServer }) {
         </dd></div>
       </dl>
       {peer && <dl aria-label="协商信息" className="flex min-w-0 flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3 text-xs text-txt2">
-        <div className="flex min-w-0 gap-2"><dt className="shrink-0 text-txt3">协议版本</dt><dd className="font-mono">{peer.protocolVersion}</dd></div>
-        <div className="flex min-w-0 gap-2"><dt className="shrink-0 text-txt3">服务实现</dt><dd className="break-all">{peer.name} · {peer.version}</dd></div>
+        <div className="flex min-w-0 gap-2"><dt className="shrink-0 text-txt3">本次协议版本</dt><dd className="font-mono">{peer.protocolVersion}</dd></div>
+        <div><dt className="text-txt3">发现方式</dt><dd>{peer.discoveryMethod}</dd></div>
+        <div><dt className="text-txt3">支持的协议版本</dt><dd>{peer.supportedVersions?.join('、') || '未报告版本列表'}</dd></div>
+        <div><dt className="text-txt3">服务身份（自报）</dt><dd className="break-all">{[peer.title, peer.name, peer.version].filter(Boolean).join(' · ') || '未报告'}</dd></div>
         <div className="flex min-w-0 flex-wrap items-center gap-2"><dt className="text-txt3">声明能力</dt>
           <dd className="flex flex-wrap gap-1">
             {(Object.keys(capabilityNames) as (keyof typeof capabilityNames)[]).filter(key => peer.capabilities[key])
@@ -69,6 +73,8 @@ function Inspector({ server }: { server: McpServer }) {
           </dd>
         </div>
       </dl>}
+      {peer?.declaredCapabilities && <details className="text-xs"><summary>全部能力声明</summary><dl className="max-h-40 overflow-auto">{Object.entries(peer.declaredCapabilities).map(([name, flags]) => <div key={name} className="flex flex-wrap gap-2 p-1"><dt className="font-semibold">{name}</dt><dd className="break-all">{flags && typeof flags === 'object' && !Array.isArray(flags) ? Object.entries(flags).map(([k,v]) => `${k === 'listChanged' ? '列表变更通知' : k === 'subscribe' ? '订阅' : k}：${v === true ? '支持' : v === false ? '不支持' : JSON.stringify(v)}`).join('，') || '已声明' : JSON.stringify(flags)}</dd></div>)}</dl></details>}
+      {peer?.instructions && <details className="text-xs"><summary>服务器说明</summary><p className="max-h-32 overflow-auto whitespace-pre-wrap break-words">{peer.instructions}</p></details>}
     </section>
     <nav aria-label="服务功能" className="flex flex-wrap gap-2">
       {([['resources','资源浏览'],['tools','工具目录'],['prompts','提示词目录'],['templates','资源模板'],['settings','工具设置']] as const).map(([key,title]) =>
@@ -77,7 +83,7 @@ function Inspector({ server }: { server: McpServer }) {
     {view === 'settings' ? <SettingsPanel server={server} settings={settings} saved={s => { setSettings(s); discovery.reload() }} /> : view !== 'resources' ?
       <OperationsPanel key={view} kind={view} server={server} settings={settings} saved={setSettings} /> :
       !result ? <ResourceState loading={discovery.loading} error={discovery.error} onRetry={discovery.reload} /> :
-      <div className="grid min-h-0 min-w-0 gap-4 lg:flex-1 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[21rem_minmax(0,1fr)]">
+      <div className="grid min-h-0 min-w-0 gap-4 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section aria-label="资源列表" className="panel flex min-w-0 max-h-[45vh] flex-col overflow-hidden rounded-lg lg:max-h-none">
           <div className="space-y-2 border-b border-line px-3 py-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -89,16 +95,12 @@ function Inspector({ server }: { server: McpServer }) {
             <input type="search" className="search-input w-full" aria-label="搜索资源" placeholder="搜索名称、URI 或 MIME" value={search}
               disabled={!resources.length} onChange={event => setSearch(event.target.value)} />
           </div>
-          {matches.length ? <ul className="scroll-area min-h-0 flex-1 divide-y divide-line overflow-y-auto">
-            {matches.map(resource => <li key={resource.uri}>
-              <button type="button" aria-current={resource.uri === selectedUri ? 'true' : undefined} onClick={() => select(resource.uri)}
-                className={cn('min-w-0 w-full border-l-2 px-3 py-2 text-left transition-colors',
-                  resource.uri === selectedUri ? 'border-accent-2 bg-accent-dim text-txt' : 'border-transparent text-txt2 hover:bg-elevated')}>
-                <span className="block truncate text-sm font-medium">{resource.name}</span>
-                <span className="block truncate font-mono text-xs text-txt3" title={resource.uri}>{resource.uri}</span>
-              </button>
-            </li>)}
-          </ul> : <p className="p-3 text-sm text-txt3">{!peer?.capabilities.resources ? '服务未声明资源能力' : resources.length ? '没有匹配的资源' : '资源列表为空'}</p>}
+          {matches.length ? <div className="scroll-area min-h-0 overflow-auto"><DataTable key={keyword} label="资源列表" data={matches} selected={selectedUri} rowId={r => r.uri} columns={[
+            { id: 'name', header: '资源名称', cell: ({ row: { original: r } }) => <><button type="button" className="break-all text-left font-medium text-accent-2" aria-current={r.uri === selectedUri || undefined} onClick={() => select(r.uri)}>{r.title || r.name}</button>{r.title && <small className="block">{r.name}</small>}{r.description && <p className="line-clamp-2 text-xs text-txt3">{r.description}</p>}</> },
+            { accessorKey: 'uri', header: 'URI', cell: ({ row }) => <span className="break-all font-mono text-xs">{row.original.uri}</span> },
+            { id: 'mime', header: '媒体类型', cell: ({ row }) => row.original.mimeType || '未提供' },
+            { id: 'size', header: '大小', cell: ({ row }) => row.original.size == null ? '未提供' : `${row.original.size} B` },
+          ]} /></div> : <p className="p-3 text-sm text-txt3">{!peer?.capabilities.resources ? '服务未声明资源能力' : resources.length ? '没有匹配的资源' : '资源列表为空'}</p>}
         </section>
         <section aria-label="资源预览" className="panel flex min-h-[14rem] min-w-0 flex-col overflow-hidden rounded-lg p-4 lg:min-h-0">
           {selected ? <ResourcePreviewPanel key={selected.uri} serverId={server.id} resource={selected} /> :

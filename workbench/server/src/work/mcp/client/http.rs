@@ -50,6 +50,7 @@ fn validate_result(value: &Value, is_read: bool) -> io::Result<()> {
 
 #[derive(Clone)]
 pub(super) struct BoundedHttp {
+    pub(super) discovery: Arc<std::sync::OnceLock<Value>>,
     client: Client,
     endpoint: Url,
     authorization: Option<HeaderValue>,
@@ -72,6 +73,7 @@ impl BoundedHttp {
             .build()
             .map_err(|_| rpc_err())?;
         Ok(Self {
+            discovery: Default::default(),
             client,
             endpoint,
             authorization,
@@ -132,8 +134,19 @@ impl StreamableHttpClient for BoundedHttp {
             .send()
             .await
             .map_err(|_| bad_response())?;
+        let discover_id = match &message {
+            JsonRpcMessage::Request(r)
+                if matches!(r.request, ClientRequest::DiscoverRequest(_)) =>
+            {
+                Some(r.id.clone())
+            }
+            _ => None,
+        };
         let status = response.status();
-        if !status.is_success() {
+        let legacy_rejection = discover_id.is_some()
+            && session.is_none()
+            && matches!(status.as_u16(), 400 | 404 | 405);
+        if !status.is_success() && !legacy_rejection {
             return Err(bad_response());
         }
         if matches!(status.as_u16(), 202 | 204) {
@@ -171,6 +184,34 @@ impl StreamableHttpClient for BoundedHttp {
                     None => Err(io::Error::other("MCP response exceeds body budget")),
                 })
             });
+        if legacy_rejection {
+            let mut bytes = Vec::new();
+            while let Some(chunk) = body.try_next().await.map_err(|_| bad_response())? {
+                bytes.extend_from_slice(&chunk);
+            }
+            let error = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|v| serde_json::from_value(v["error"].clone()).ok())
+                .unwrap_or_else(|| {
+                    rmcp::model::ErrorData::invalid_request("Discovery rejected", None)
+                });
+            return Ok(StreamableHttpPostResponse::Json(
+                JsonRpcMessage::error(error, discover_id),
+                None,
+            ));
+        }
+        // The SDK retains the selected version but discards the advertised version list.
+        let snapshot = self.discovery.clone();
+        let inspect = move |value: &Value| -> io::Result<()> {
+            validate_result(value, is_read)?;
+            if let Some(id) = &discover_id
+                && value["id"] == serde_json::json!(id)
+                && value["result"]["supportedVersions"].is_array()
+            {
+                let _ = snapshot.set(serde_json::json!({"supportedVersions":value["result"]["supportedVersions"],"capabilities":value["result"]["capabilities"]}));
+            }
+            Ok(())
+        };
         match media.as_str() {
             "application/json" => {
                 let mut bytes = Vec::new();
@@ -178,7 +219,7 @@ impl StreamableHttpClient for BoundedHttp {
                     bytes.extend_from_slice(&chunk);
                 }
                 let value = serde_json::from_slice(&bytes).map_err(|_| bad_response())?;
-                validate_result(&value, is_read).map_err(HttpError::Client)?;
+                inspect(&value).map_err(HttpError::Client)?;
                 Ok(StreamableHttpPostResponse::Json(
                     serde_json::from_value(value).map_err(|_| bad_response())?,
                     id,
@@ -194,8 +235,7 @@ impl StreamableHttpClient for BoundedHttp {
                                 .as_deref()
                                 .and_then(|text| serde_json::from_str(text).ok())
                             {
-                                validate_result(&value, is_read)
-                                    .map_err(|err| SseError::Body(Box::new(err)))?;
+                                inspect(&value).map_err(|err| SseError::Body(Box::new(err)))?;
                             }
                         }
                         Ok(event)
