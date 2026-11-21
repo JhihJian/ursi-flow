@@ -2,37 +2,11 @@ import { connect, type Socket } from "node:net";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize } from "node:path";
 
-export const MCP_PROTOCOL_VERSION = "2025-06-18";
+import { ExecutorError, type ExecutorErrorCode, type ExecutorResult, type ExecutorStartRequest, type ExecutorStatus } from "ursi-executor-sdk";
+export { ExecutorError, LEGACY_VERSION as MCP_PROTOCOL_VERSION, parseAttemptRequest, parseStartRequest } from "ursi-executor-sdk";
+export type { ExecutorErrorCode, ExecutorResult, ExecutorStartRequest, ExecutorStatus } from "ursi-executor-sdk";
 export const EXECUTOR_SERVER_NAME = "ursi-flow-executor";
 export const EXECUTOR_SERVER_VERSION = "0.1.0";
-
-export type ExecutorStatus =
-	| "running"
-	| "succeeded"
-	| "failed"
-	| "cancelled"
-	| "unverified";
-export type ExecutorErrorCode =
-	| "invalid"
-	| "conflict"
-	| "not_found"
-	| "busy"
-	| "unavailable";
-
-export interface ExecutorResult {
-	attemptId: string;
-	status: ExecutorStatus;
-	artifactDirectoryRef: string;
-	backendRunRef?: string;
-}
-
-export interface ExecutorStartRequest {
-	attemptId: string;
-	workspaceRef: `workspace:${string}`;
-	artifactDirectoryRef: `artifacts:${string}`;
-	workInstruction: string;
-	runConfig?: Record<string, unknown>;
-}
 
 export interface RuntimeJob {
 	id: string;
@@ -55,15 +29,6 @@ export interface RuntimeClient {
 	stop(id: string): Promise<RuntimeJob>;
 }
 
-export class ExecutorError extends Error {
-	readonly code: ExecutorErrorCode;
-	constructor(code: ExecutorErrorCode) {
-		super(code);
-		this.name = "ExecutorError";
-		this.code = code;
-	}
-}
-
 class RuntimeError extends Error {
 	readonly code: ExecutorErrorCode;
 	constructor(code: ExecutorErrorCode) {
@@ -74,50 +39,6 @@ class RuntimeError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isLowerUuid(value: unknown): value is string {
-	return (
-		typeof value === "string" &&
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
-	);
-}
-
-function hasOnly(value: Record<string, unknown>, keys: readonly string[]) {
-	return Object.keys(value).every((key) => keys.includes(key));
-}
-
-function invalidRequest(): never {
-	throw new ExecutorError("invalid");
-}
-
-export function parseStartRequest(value: unknown): ExecutorStartRequest {
-	if (!isRecord(value) || !hasOnly(value, ["attemptId", "workspaceRef", "artifactDirectoryRef", "workInstruction", "runConfig"]))
-		return invalidRequest();
-	if (!isLowerUuid(value.attemptId)) return invalidRequest();
-	if (typeof value.workspaceRef !== "string" || value.workspaceRef !== `workspace:${value.attemptId}`)
-		return invalidRequest();
-	if (
-		typeof value.artifactDirectoryRef !== "string" ||
-		value.artifactDirectoryRef !== `artifacts:${value.attemptId}`
-	)
-		return invalidRequest();
-	if (value.runConfig !== undefined && !isRecord(value.runConfig)) return invalidRequest();
-	if (typeof value.workInstruction !== "string" || Buffer.byteLength(value.workInstruction, "utf8") > 4 * 1024 * 1024)
-		return invalidRequest();
-	return {
-		attemptId: value.attemptId,
-		workspaceRef: value.workspaceRef as `workspace:${string}`,
-		artifactDirectoryRef: value.artifactDirectoryRef as `artifacts:${string}`,
-		workInstruction: value.workInstruction,
-		...(value.runConfig === undefined ? {} : { runConfig: value.runConfig }),
-	};
-}
-
-export function parseAttemptRequest(value: unknown): { attemptId: string } {
-	if (!isRecord(value) || !hasOnly(value, ["attemptId"]) || !isLowerUuid(value.attemptId))
-		return invalidRequest();
-	return { attemptId: value.attemptId };
 }
 
 function job(value: unknown): RuntimeJob {

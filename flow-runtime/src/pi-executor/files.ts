@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, type Stats } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { ExecutorError, parseAttemptRequest } from "../integrations/mcp/executor.ts";
+import { ExecutorError, parseAttemptRequest } from "ursi-executor-sdk";
 import type { PiConfig } from "./session.ts";
 
 function unavailable(): never { throw new ExecutorError("unavailable"); }

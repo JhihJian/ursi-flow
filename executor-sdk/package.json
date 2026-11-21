@@ -1,0 +1,27 @@
+{
+  "name": "ursi-executor-sdk",
+  "version": "0.1.0",
+  "description": "Node.js stdio server for executor MCP protocol v1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "*.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "license": "MIT"
+}

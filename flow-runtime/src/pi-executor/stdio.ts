@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-import { McpStdioServer, runStdio } from "../integrations/mcp/stdio.ts";
-import { PiJobs } from "./jobs.ts";
+import { serveExecutor } from 'ursi-executor-sdk';
+import { PiJobs } from './jobs.ts';
 
 if (import.meta.main) {
-	runStdio(process.stdin, process.stdout, new McpStdioServer(new PiJobs(), "ursi-pi-executor"))
-		.catch(() => { process.exitCode = 1; });
+	const jobs = new PiJobs();
+	serveExecutor({
+		name: 'ursi-pi-executor', version: '0.1.0',
+		start: req => jobs.start(req), inspect: req => jobs.inspect(req), cancel: req => jobs.cancel(req),
+	}).catch(() => { process.exitCode = 1; });
 }

@@ -6,6 +6,18 @@
 
 一次执行称为一次**尝试**，由调用方分配唯一的 `attemptId`。执行器支持按这个 ID 启动、查询和取消尝试。任务独立于连接：启动回执丢失后，调用方可以重新连接并查询原尝试。
 
+## 协议发现
+
+实现 MCP `2026-07-28` 的执行器服务端库在 [`server/discover`](https://modelcontextprotocol.io/specification/2026-07-28/server/discover) 响应的 `result._meta` 中自动加入 `ursi/executorProtocol`。字符串 `"1"` 表示服务声明遵循本执行器协议第 1 版，与 MCP 版本及服务软件版本分别管理。
+
+```json
+{"ursi/executorProtocol":"1"}
+```
+
+上例是自定义元数据项，与标准 `io.modelcontextprotocol/serverInfo` 并列。客户端识别该版本后可通过 `tools/list` 检查三个工具及启动配置的 schema，无需启动任务。字段缺失或版本未知时，客户端不据此认定服务符合第 1 版。该声明不授予执行权限。
+
+使用 MCP `2026-07-28` 时，每次请求通过 `_meta` 携带协议版本和客户端能力，可直接调用工具。使用 `2025-06-18` 时，通过 `initialize` 建立会话。`supportedVersions` 只列服务实际实现的 MCP 版本。
+
 ## 操作
 
 | MCP 工具 | 参数（仅接受所列字段） | 执行器的行为 |
@@ -36,7 +48,7 @@
 
 ## stdio 消息
 
-使用 MCP `2025-06-18`，每行一条 UTF-8 JSON-RPC 2.0 消息，换行后及时刷新。stdout 专用于协议。一次会话执行一次工具调用：
+每行一条 UTF-8 JSON-RPC 2.0 消息，换行后及时刷新。stdout 专用于协议。MCP `2025-06-18` 会话执行一次工具调用：
 
 1. 调用方发送 `initialize`，含协议版本、`capabilities: {}` 和 `clientInfo: {name,version}`。执行器以相同请求 ID 返回同一版本、`capabilities: {tools: {}}` 和 `serverInfo: {name,version}`。
 2. 调用方发送无 ID 的 `notifications/initialized`，随后发送 `tools/call`。标准 `_meta` 由 MCP 层处理，不属于工具参数。探测接口时只发 `tools/list`，首个列表响应须包含上述三个工具各一次，探测不创建尝试。

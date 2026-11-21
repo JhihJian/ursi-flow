@@ -31,6 +31,7 @@ async function fixture() {
 async function host() {
 	const f = await fixture();
 	await writeFile(join(f.dir, "package.json"), '{"type":"module"}');
+	await symlink(new URL('../node_modules/', import.meta.url), join(f.dir, 'node_modules'), 'dir');
 	const pi = join(f.dir, "pi-executor");
 	await mkdir(pi);
 	await cp(new URL("integrations/mcp", src), join(f.dir, "integrations/mcp"), { recursive: true });

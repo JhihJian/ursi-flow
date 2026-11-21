@@ -1,7 +1,7 @@
 import { closeSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { ExecutorError, type ExecutorStatus } from "../integrations/mcp/executor.ts";
+import { ExecutorError, type ExecutorStatus } from "ursi-executor-sdk";
 import { privateFile } from "./files.ts";
 
 export const CAPACITY = 8;

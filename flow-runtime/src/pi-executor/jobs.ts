@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
-import { ExecutorError, type ExecutorResult, type ExecutorStartRequest, type ExecutorStatus } from "../integrations/mcp/executor.ts";
+import { ExecutorError, type ExecutorResult, type ExecutorStartRequest, type ExecutorStatus } from "ursi-executor-sdk";
 import { layout, policyFile, snapshot } from "./files.ts";
 import { status, withLedger } from "./ledger.ts";
 
