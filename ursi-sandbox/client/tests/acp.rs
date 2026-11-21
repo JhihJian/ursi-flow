@@ -5,6 +5,113 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 use ursi_sandbox_client::{Acp, Error, PromptOutcome, Secret};
 
+// 用内层 ACP 握手验证默认 CLI 将两种身份发给各自的服务。
+#[tokio::test]
+#[allow(clippy::result_large_err)]
+async fn cli_initializes_through_gateway_with_or_without_service_auth() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+
+    for authenticated in [true, false] {
+        let gateway = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let url = format!("http://127.0.0.1:{}", gateway.local_addr().unwrap().port());
+        let server = tokio::spawn(async move {
+            let (mut http, _) = gateway.accept().await.unwrap();
+            let mut headers = Vec::new();
+            while !headers.ends_with(b"\r\n\r\n") {
+                headers.push(http.read_u8().await.unwrap());
+            }
+            let body = json!({"endpoints":[{"name":"agent_session","bundle":"pi-execution",
+                "protocol":"acp","port":8765,"ready":true,"state":"ready"}]})
+            .to_string();
+            http.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+            let (tcp, _) = gateway.accept().await.unwrap();
+            let mut tunnel =
+                tokio_tungstenite::accept_hdr_async(tcp, |req: &Request, mut res: Response| {
+                    assert_eq!(
+                        req.uri().path(),
+                        "/api/v1/sandboxes/s1/connect/agent_session"
+                    );
+                    assert_eq!(req.headers()["authorization"], "Bearer gateway-key");
+                    res.headers_mut()
+                        .insert("sec-websocket-protocol", "ursi-tcp-v1".parse().unwrap());
+                    Ok(res)
+                })
+                .await
+                .unwrap();
+            let (service, mut relay) = tokio::io::duplex(8192);
+            let forward = tokio::spawn(async move {
+                let mut buf = [0; 4096];
+                loop {
+                    tokio::select! {
+                        msg = tunnel.next() => match msg {
+                            Some(Ok(Message::Binary(data))) => relay.write_all(&data).await.unwrap(),
+                            Some(Ok(Message::Ping(_))) => tunnel.flush().await.unwrap(),
+                            _ => break,
+                        },
+                        n = relay.read(&mut buf) => match n.unwrap() {
+                            0 => break,
+                            n => tunnel.send(Message::Binary(buf[..n].to_vec().into())).await.unwrap(),
+                        },
+                    }
+                }
+            });
+            let mut acp = tokio_tungstenite::accept_hdr_async(service, |req: &Request, res| {
+                assert_eq!(req.uri().path(), "/acp");
+                assert_eq!(
+                    req.headers()
+                        .get("authorization")
+                        .map(|h| h.to_str().unwrap()),
+                    authenticated.then_some("Bearer service-key")
+                );
+                Ok(res)
+            })
+            .await
+            .unwrap();
+            let request: Value =
+                serde_json::from_str(acp.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            assert_eq!(request["method"], "initialize");
+            acp.send(Message::Text(
+                json!({"jsonrpc":"2.0", "id":request["id"], "result":{"protocolVersion":1}})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+            drop(acp);
+            forward.await.unwrap();
+        });
+        let mut cmd = tokio::process::Command::new(env!("CARGO_BIN_EXE_ursi-sandbox-client"));
+        cmd.args(["acp", "initialize"])
+            .env_clear()
+            .env("URSI_SANDBOX_ID", "s1")
+            .env("URSI_CLIENT_TIMEOUT_SECS", "3")
+            .env("URSI_GATEWAY_URL", url)
+            .env("URSI_GATEWAY_KEY", "gateway-key");
+        if authenticated {
+            cmd.env("URSI_SESSION_TOKEN", "service-key");
+        }
+        let out = cmd.output().await.unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let value: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(value["result"]["protocolVersion"], 1);
+        server.await.unwrap();
+    }
+}
+
 async fn peer() -> (String, TcpListener) {
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     (

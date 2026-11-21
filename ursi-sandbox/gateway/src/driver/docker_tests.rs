@@ -1,6 +1,7 @@
 use super::*;
-use crate::models::{BundleRef, Endpoint, EndpointState, SandboxSpec, Status};
+use crate::models::{Endpoint, EndpointState, SandboxSpec, Status};
 use serde_json::json;
+use ursi_catalog::BundleRef;
 
 fn sandbox() -> Sandbox {
     Sandbox {

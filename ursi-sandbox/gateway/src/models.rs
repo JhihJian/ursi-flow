@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use ursi_catalog::BundleRef;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -51,14 +52,6 @@ fn default_memory() -> u64 {
 }
 fn default_cpus() -> f64 {
     1.0
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BundleRef {
-    pub url: String,
-    pub sha256: String,
-    pub min_image_level: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

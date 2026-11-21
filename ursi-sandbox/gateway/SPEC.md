@@ -1,6 +1,7 @@
 ---
 parent: ../SPEC.md
 depends-on:
+  - ../catalog/SPEC.md
   - ../observer/SPEC.md
 references:
   - ./CONTRACT.md
@@ -12,7 +13,7 @@ references:
 
 ## 功能意图
 
-Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、端口地址返回及公开/内部端口隔离。可选 tunnel 为客户端提供受鉴权保护的字节中继。可选网络观测接口经同一管理身份转交宿主 Observer，Gateway 不自行抓包。
+Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止、删除、重建、状态查询、元数据保存、启动时资源对账、逻辑端点发现及受控访问。可选 tunnel 为客户端提供受鉴权保护的字节中继。可选网络观测接口经同一管理身份转交宿主 Observer，Gateway 不自行抓包。
 
 一个 crate 内划分 gateway-api、lifecycle、driver、tunnel。lifecycle 是唯一沙箱业务状态管理方，driver 将统一规格翻译为基础设施操作。沙箱客户端通过网络契约调用 Gateway，agent 会话在沙箱内处理。首个真实驱动对接本机 Unix socket Docker daemon，进程独占 SQLite 数据库并固定 namespace 和 daemon 身份。
 
@@ -40,12 +41,12 @@ Gateway 是独立沙箱资源管理服务。统一负责创建、启动、停止
 
 ### 端点与可选隧道
 
-返回服务端点及公开/内部属性。内部端口保持在受控网络中，tunnel 只中继已授权端点的 TCP 字节。
+按注册表冻结的声明返回逻辑端点与就绪状态；tunnel 只中继已授权端点的 TCP 字节。
 
 #### 验收
 
 - 内部端口不会被发布为宿主公网监听或公共负载均衡入口。
-- 关闭 tunnel 时直连方式可用；启用后 SSH、ACP 等上层协议无需改变。
+- 关闭 tunnel 时连接接口返回 501；启用后 SSH、ACP 等上层协议无需改变。
 - 非法凭据、未知端点和任意目标地址转发请求被拒绝。
 
 ### 可选网络观测

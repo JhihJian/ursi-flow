@@ -14,4 +14,4 @@
 2. **资源生命周期**。在同一导出目录设置 `CARGO_PROFILE_TEST_DEBUG=0`，执行 `cargo test --offline --locked -p ursi-gateway --test docker_acceptance -- --ignored --test-threads=1`。3 项通过、0 忽略，覆盖启停与重建、内部端点隧道、强杀后恢复、删除失败后的资源回收。
 3. **公共客户端接入**。正式 Pi 镜像中运行独立 bundle 的 session-service。Flow Runner 和独立 CLI 各自提交请求并确认关闭，在两个新容器中复验。真实 Pi 连接本地确定性模型端点。精确产物摘要、断言、清理结果和复验入口见[联合验收记录](INTEGRATION-ACCEPTANCE.md)。
 
-本轮复用已验收的 Runtime 镜像，不涉及重新构建镜像或真实模型推理；也未从 Flow HTTP API 创建并驱动一个完整工作流。此前包含真实模型修改 Git 仓库、回归测试、取消及资源清理的验证见[历史验收记录](runtime/ACCEPTANCE.md)，其中的 bundle 与本轮不同。
+本轮复用已验收的 Runtime 镜像，不涉及重新构建镜像或真实模型推理；也未从 Flow HTTP API 创建并驱动一个完整工作流。此前包含真实模型修改 Git 仓库、回归测试、取消及资源清理的验证见[历史验收记录](bundles/pi-agent/ACCEPTANCE.md)，其中的 bundle 与本轮不同。

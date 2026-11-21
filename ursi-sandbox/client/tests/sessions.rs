@@ -3,7 +3,10 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
-use ursi_sandbox_client::{Acp, PromptOutcome, Secret};
+use ursi_sandbox_client::{
+    Secret,
+    acp::{Acp, PromptOutcome},
+};
 
 #[tokio::test]
 async fn another_connection_cancels_pending_prompt_then_status_and_close_work() {

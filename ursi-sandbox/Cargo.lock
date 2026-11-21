@@ -1424,6 +1424,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ursi-catalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ursi-gateway"
 version = "0.1.0"
 dependencies = [
@@ -1439,6 +1448,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-tungstenite",
+ "ursi-catalog",
  "uuid",
 ]
 

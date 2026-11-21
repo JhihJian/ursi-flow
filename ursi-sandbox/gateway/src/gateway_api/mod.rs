@@ -22,11 +22,11 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use ursi_catalog::{Registry, RegistryConfig};
 
 use crate::{
     lifecycle::{Action, Service},
     models::{Error, Sandbox, SandboxSpec, valid_name},
-    registry::{Registry, RegistryConfig},
     tunnel::{self, ConnectError},
 };
 

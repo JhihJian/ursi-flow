@@ -43,7 +43,7 @@ npm start
 
 ### 端点工作台
 
-管理员从沙箱详情切换终端、IDE、桌面或应用预览。启用 Gateway 隧道（`URSI_GATEWAY_TUNNEL=true`），并使用支持代际约束的 Gateway。桌面、IDE 和预览还需部署 [browser 镜像与 bundle](../runtime/IMAGE-README.md)，并从 HTTPS 或 localhost 访问 Web。
+管理员从沙箱详情切换终端、IDE、桌面或应用预览。启用 Gateway 隧道（`URSI_GATEWAY_TUNNEL=true`），并使用支持代际约束的 Gateway。桌面、IDE 和预览还需部署 [browser 镜像与 bundle](../builder/README.md)，并从 HTTPS 或 localhost 访问 Web。
 
 | 入口 | 组件与条件 |
 | --- | --- |

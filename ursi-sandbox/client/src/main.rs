@@ -4,33 +4,27 @@ use std::{
     path::Path,
     time::Duration,
 };
-use ursi_sandbox_client::{Acp, Error, Gateway, PromptOutcome, Result, Secret, Ssh};
+use ursi_sandbox_client::{Error, Gateway, Result, Secret, Ssh};
 
-const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP、ACP 客户端
+#[cfg(feature = "acp")]
+#[path = "../consumers/acp/cli.rs"]
+mod acp_cli;
+
+const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP 客户端
 
 命令（固定位置参数，文件内容使用 UTF-8）：
   gateway capabilities | list
   gateway create SPEC_JSON_FILE
   gateway status|start|stop|delete|endpoints SANDBOX_ID
   forward SANDBOX_ID ENDPOINT_NAME [LOCAL_ADDR]
-  acp initialize
-  acp new WORKSPACE_CWD
-  acp prompt SESSION_ID PROMPT_TEXT_FILE
-  acp status|close|cancel SESSION_ID
   ssh SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE SCRIPT_FILE
   sftp-put|sftp-get SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE LOCAL_FILE REMOTE_FILE
 
 配置：
   URSI_GATEWAY_URL                  例如 http://127.0.0.1:8899
   URSI_GATEWAY_KEY[_FILE]           二选一，值或凭据文件
-  URSI_SANDBOX_ID                    ACP、SSH、SFTP 通过 Gateway bridge 的沙箱 ID
-  URSI_ACP_ENDPOINT                  可选，默认 agent_session
   URSI_CLIENT_TIMEOUT_SECS          每操作总期限，默认 120 秒
 
-输出：JSONL，ACP update 为通知，result 才是请求结果。
-prompt 仅 end_turn 返回 0，cancelled 返回 2，错误/超时返回 1。
-cancel 是通知，输出仅表示已发送。应等待原 prompt 的 cancelled 并查询 status。
-断线/超时不会自动取消或重放远端任务。另一个进程可查询/取消同一会话。
 SSH 固定 agent 用户、仅公钥，独立 known_hosts 首次信任，之后拒绝密钥变化。
 "#;
 
@@ -67,6 +61,8 @@ async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || matches!(args[0].as_str(), "help" | "--help" | "-h") {
         print!("{HELP}");
+        #[cfg(feature = "acp")]
+        print!("{}", acp_cli::HELP);
         return;
     }
     match run(&args).await {
@@ -183,77 +179,8 @@ async fn run(args: &[String]) -> Result<i32> {
             bridge.run_until(receiver).await?;
             return Ok(0);
         }
-        "acp" => {
-            let operation = arg(args, 1)?;
-            count(
-                args,
-                match operation {
-                    "initialize" => 2,
-                    "prompt" => 4,
-                    "new" | "cancel" | "status" | "close" => 3,
-                    _ => return Err(Error::Invalid("未知 ACP 命令".into())),
-                },
-            )?;
-            let sandbox_id = env("URSI_SANDBOX_ID")?;
-            let gateway = Gateway::new(
-                &env("URSI_GATEWAY_URL")?,
-                Secret::from_env("URSI_GATEWAY_KEY")?,
-                timeout,
-            )?;
-            let endpoint =
-                std::env::var("URSI_ACP_ENDPOINT").unwrap_or_else(|_| "agent_session".into());
-            let bridge = gateway
-                .bridge(&sandbox_id, &endpoint, "127.0.0.1:0".parse().unwrap())
-                .await?;
-            let address = bridge.local_addr()?;
-            let (bridge_control, receiver) = tokio::sync::watch::channel(false);
-            let bridge_task = tokio::spawn(bridge.run_until(receiver));
-            let acp_url = format!("ws://{address}/acp");
-            let mut acp = Acp::connect_without_auth(&acp_url, timeout).await?;
-            let initialized = acp.initialize().await?;
-            if operation == "initialize" {
-                result(initialized);
-                let _ = bridge_control.send(true);
-                let _ = bridge_task.await;
-                return Ok(0);
-            }
-            let session = arg(args, 2)?;
-            let (method, params) = match operation {
-                "new" => ("session/new", json!({"cwd":session,"mcpServers":[]})),
-                "prompt" => (
-                    "session/prompt",
-                    json!({"sessionId":session,"prompt":[{"type":"text","text":std::fs::read_to_string(arg(args, 3)?)?}]}),
-                ),
-                "status" => ("_ursi/session/status", json!({"sessionId":session})),
-                "close" => ("_ursi/session/close", json!({"sessionId":session})),
-                "cancel" => {
-                    acp.notify("session/cancel", json!({"sessionId":session}))
-                        .await?;
-                    result(json!({"cancelSent":true,"sessionId":session}));
-                    let _ = bridge_control.send(true);
-                    let _ = bridge_task.await;
-                    return Ok(0);
-                }
-                _ => unreachable!(),
-            };
-            let value = acp
-                .request(method, params, |update| {
-                    emit(json!({"type":"update","params":update}))
-                })
-                .await?;
-            let code = if operation == "prompt" {
-                match PromptOutcome::from_result(&value)? {
-                    PromptOutcome::Completed => 0,
-                    PromptOutcome::Cancelled => 2,
-                }
-            } else {
-                0
-            };
-            result(value);
-            let _ = bridge_control.send(true);
-            let _ = bridge_task.await;
-            return Ok(code);
-        }
+        #[cfg(feature = "acp")]
+        "acp" => return acp_cli::run(args, timeout).await,
         "ssh" | "sftp-put" | "sftp-get" => {
             let operation = arg(args, 0)?;
             count(args, if operation == "ssh" { 6 } else { 7 })?;

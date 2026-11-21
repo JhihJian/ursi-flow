@@ -68,6 +68,30 @@ class CleanupTests(unittest.TestCase):
         self.assertIn("URSI_AGENT_ACCEPTANCE=1", result.stderr)
 
 
+class GatewayContractTests(unittest.TestCase):
+    def test_create_and_ssh_use_registered_logical_endpoints(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            case = acceptance.Acceptance(types.SimpleNamespace(image="pi:local"), temporary)
+            endpoints = [{"name": name, "state": "ready", "ready": True}
+                         for name in ("ssh", "agent_session")]
+            with mock.patch.object(case, "gateway_call", return_value={"id": "s1"}) as gateway, \
+                 mock.patch.object(case, "state", return_value={"endpoints": endpoints}):
+                case.create()
+            command, path = gateway.call_args.args
+            self.assertEqual(command, "create")
+            self.assertEqual(set(json.loads(path.read_text())),
+                             {"image", "runtime_profile", "memory_mb", "cpus", "labels"})
+            self.assertEqual(case.env["URSI_SANDBOX_ID"], "s1")
+            self.assertEqual(case.env["URSI_ACP_ENDPOINT"], "agent_session")
+            case.identity, case.known_hosts = "private-key", "known-hosts"
+            with mock.patch.object(case, "cli") as cli:
+                case.ssh("true")
+            self.assertEqual(cli.call_args.args[:3], ("ssh", "s1", "ssh"))
+            endpoints[-1]["ready"] = False
+            with self.assertRaisesRegex(acceptance.AcceptanceError, "agent_session"):
+                case.connect_endpoints({"endpoints": endpoints})
+
+
 class ProcessEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

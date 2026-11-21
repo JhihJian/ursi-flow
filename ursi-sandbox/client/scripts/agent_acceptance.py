@@ -204,7 +204,7 @@ class Acceptance:
 
     def ssh(self, script, check=True):
         path = private_write(self.root / "command.sh", script)
-        return self.cli("ssh", self.host, str(self.port), self.identity, self.known_hosts,
+        return self.cli("ssh", self.sandbox, "ssh", self.identity, self.known_hosts,
                         path, check=check)
 
     def acp(self, command, *args):
@@ -264,11 +264,19 @@ class Acceptance:
         require(not any(c in host for c in "/@?# \r\n"), "bundle host 无效")
         host_url = f"[{host}]" if ":" in host and not host.startswith("[") else host
         self.bundle_url = f"http://{host_url}:{self.server.server_port}/bundle.tar.gz"
+        registry = private_write(self.root / "registry.json", json.dumps({
+            "images": {self.args.image: ["pi-execution"]},
+            "bundles": {"pi-execution": {
+                "runtime": {"url": self.bundle_url, "sha256": sha(self.args.bundle), "min_image_level": 1},
+                "endpoints": [{"name": "ssh", "protocol": "ssh", "port": 2222},
+                              {"name": "agent_session", "protocol": "acp", "port": 8765}],
+            }},
+        }))
         gateway_env = self.env.copy()
         gateway_env.update(URSI_GATEWAY_KEY=self.gateway_key, URSI_GATEWAY_DRIVER="docker",
                            URSI_GATEWAY_NAMESPACE=self.scope, URSI_GATEWAY_DB=str(self.root / "gateway.sqlite"),
-                           URSI_GATEWAY_BIND="0.0.0.0:0", URSI_GATEWAY_PUBLIC_BIND="0.0.0.0",
-                           URSI_GATEWAY_ADVERTISE_HOST="127.0.0.1", URSI_GATEWAY_TUNNEL="false",
+                           URSI_GATEWAY_BIND="0.0.0.0:0", URSI_GATEWAY_REGISTRY=str(registry),
+                           URSI_GATEWAY_TUNNEL="true",
                            URSI_GATEWAY_RUNTIME_PROFILES=str(profiles))
         log = self.root / "gateway.log"
         with log.open("w", encoding="utf-8") as output:
@@ -287,20 +295,17 @@ class Acceptance:
 
     def connect_endpoints(self, sandbox):
         endpoints = {item["name"]: item for item in sandbox["endpoints"]}
-        require(endpoints["ssh"]["visibility"] == "public", "SSH 应为 public")
-        require(endpoints["session"]["visibility"] == "internal", "session 应为 internal")
-        self.host, port = endpoints["ssh"]["address"].rsplit(":", 1)
-        self.host = self.host.strip("[]")
-        self.port = int(port)
-        self.env["URSI_ACP_URL"] = "ws://" + endpoints["session"]["address"] + "/acp"
+        for name in ("ssh", "agent_session"):
+            endpoint = endpoints.get(name, {})
+            require(endpoint.get("state") == "ready" and endpoint.get("ready") is True,
+                    f"逻辑端点 {name} 尚未就绪")
+        self.env["URSI_SANDBOX_ID"] = self.sandbox
+        self.env["URSI_ACP_ENDPOINT"] = "agent_session"
 
     def create(self):
         self.stage = "create"
-        spec = {"image": self.args.image, "runtime_profile": "pi", "ports": [
-            {"name": "ssh", "port": 2222, "visibility": "public", "ready": True},
-            {"name": "session", "port": 8765, "visibility": "internal", "ready": True}],
-            "memory_mb": 2048, "cpus": 2.0, "labels": {"acceptance": self.scope},
-            "bundle": {"url": self.bundle_url, "sha256": sha(self.args.bundle), "min_image_level": 1}}
+        spec = {"image": self.args.image, "runtime_profile": "pi", "memory_mb": 2048,
+                "cpus": 2.0, "labels": {"acceptance": self.scope}}
         path = private_write(self.root / "spec.json", json.dumps(spec))
         self.sandbox = self.gateway_call("create", path)["id"]
         self.connect_endpoints(self.state("running"))
@@ -317,7 +322,7 @@ class Acceptance:
         }
         for name, content in fixtures.items():
             local = private_write(self.root / name, content)
-            self.cli("sftp-put", self.host, str(self.port), self.identity, self.known_hosts,
+            self.cli("sftp-put", self.sandbox, "ssh", self.identity, self.known_hosts,
                      local, "/ursi/workspace/repo/" + name)
         self.ssh("cd /ursi/workspace/repo\ngit init -q\ngit config user.name Acceptance\ngit config user.email acceptance@localhost\ngit add .\ngit commit -qm baseline\npython3 -m unittest -v\n")
         self.record("通过 SSH agent 与 SFTP 准备 Git 仓库")
@@ -336,7 +341,7 @@ class Acceptance:
         self.before = {}
         for name in ("calculator.py", "test_calculator.py"):
             path = self.root / ("verified-" + name)
-            self.cli("sftp-get", self.host, str(self.port), self.identity, self.known_hosts,
+            self.cli("sftp-get", self.sandbox, "ssh", self.identity, self.known_hosts,
                      path, "/ursi/workspace/repo/" + name)
             self.before[name] = sha(path)
         self.record("真实 Pi end_turn 后独立验证函数、补测和 Git 差异", files=self.before,
@@ -359,7 +364,7 @@ class Acceptance:
                 "time.sleep(600)\n")
         self.substage = "tool_upload"
         local = private_write(self.root / "sleep.py", code)
-        self.cli("sftp-put", self.host, str(self.port), self.identity, self.known_hosts, local, helper)
+        self.cli("sftp-put", self.sandbox, "ssh", self.identity, self.known_hosts, local, helper)
         prompt = private_write(self.root / "sleep-prompt.txt", f"Use the bash tool now to run exactly: python3 {helper} {marker} {pidfile}\nRun it in the foreground and wait for it. Do not read files, background it, set a short timeout, or terminate it. This is an operator cancellation test.")
         events = self.root / "cancel-events.jsonl"
         errors = self.root / "cancel-errors.txt"
@@ -452,7 +457,7 @@ class Acceptance:
         # 同一资源重启仍使用原 known_hosts，不能通过清空文件绕过主机密钥校验。
         for name, expected in self.before.items():
             local = self.root / ("restarted-" + name)
-            self.cli("sftp-get", self.host, str(self.port), self.identity, self.known_hosts,
+            self.cli("sftp-get", self.sandbox, "ssh", self.identity, self.known_hosts,
                      local, "/ursi/workspace/repo/" + name)
             require(sha(local) == expected, "停止再启动后仓库内容改变")
         self.ssh("cd /ursi/workspace/repo\npython3 -m unittest -v\ngit diff --check\n")

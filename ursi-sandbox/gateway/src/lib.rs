@@ -7,5 +7,4 @@ pub mod driver;
 pub mod gateway_api;
 pub mod lifecycle;
 pub mod models;
-pub mod registry;
 pub mod tunnel;

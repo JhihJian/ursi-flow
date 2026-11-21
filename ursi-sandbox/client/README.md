@@ -1,6 +1,6 @@
 # 独立沙箱客户端与真实 Agent 验收
 
-`ursi-sandbox-client` 通过 Gateway HTTP 管理沙箱，并用 Gateway 的逻辑 endpoint WebSocket bridge 转发 SSH/SFTP、ACP 等上层字节协议。它与 server、FSM、Web 和 session-service crate 独立，仅使用 [Gateway 契约](../gateway/CONTRACT.md) 与 [Agent 契约](../runtime/AGENT-CONTRACT.md)。客户端只使用 Gateway Bearer，不要求用户输入 endpoint 级凭据。
+`ursi-sandbox-client` 按 [Gateway 契约](../gateway/CONTRACT.md) 管理沙箱，通过逻辑端点转发 TCP，并提供 SSH/SFTP 工作区访问。只需这些能力时，使用 `cargo build -p ursi-sandbox-client --no-default-features` 构建。默认构建另含 [ACP 消费方](consumers/acp/SPEC.md)，按 [Agent 契约](../bundles/pi-agent/AGENT-CONTRACT.md) 驱动会话；两种构建均独立于 Gateway 和 session-service crate。
 
 ## 构建与定向验证
 
@@ -9,6 +9,7 @@
 ```bash
 cargo build -p ursi-sandbox-client
 cargo test -p ursi-sandbox-client
+cargo test -p ursi-sandbox-client --no-default-features
 cargo clippy -p ursi-sandbox-client --all-targets -- -D warnings
 python3 -B -m unittest discover -s client/scripts -p 'test_*.py' -v
 ./target/debug/ursi-sandbox-client --help
@@ -27,10 +28,11 @@ python3 -B -m unittest discover -s client/scripts -p 'test_*.py' -v
 | `URSI_GATEWAY_URL` | Gateway HTTP(S) 根地址 |
 | `URSI_GATEWAY_KEY` 或 `URSI_GATEWAY_KEY_FILE` | Gateway Bearer 身份 |
 | `URSI_SANDBOX_ID` | ACP 通过 Gateway bridge 时的沙箱 ID |
-| `URSI_ACP_ENDPOINT` | ACP endpoint 名，默认 `session` |
+| `URSI_ACP_ENDPOINT` | ACP endpoint 名，默认 `agent_session` |
+| `URSI_SESSION_TOKEN` 或 `URSI_SESSION_TOKEN_FILE` | Pi 会话服务的 Bearer 身份，仅 ACP 消费方读取 |
 | `URSI_CLIENT_TIMEOUT_SECS` | 每次操作总期限，默认 120 秒，范围 1..86400 |
 
-Gateway HTTP 和 bridge WebSocket 支持 TLS。明文 HTTP/WS 适用于受控网络。URL 拒绝用户信息、query 和 fragment，HTTP 请求关闭重定向。客户端对配置的 Gateway Bearer 做输出脱敏。ACP、SSH 和 SFTP 都必须先通过逻辑 endpoint bridge，使用 Gateway Bearer，不要求 endpoint 级凭据。
+Gateway HTTP 和 bridge WebSocket 支持 TLS。明文 HTTP/WS 适用于受控网络。URL 拒绝用户信息、query 和 fragment，HTTP 请求关闭重定向。客户端对配置的 Gateway Bearer 做输出脱敏。CLI 的 ACP、SSH 和 SFTP 都通过逻辑端点。bridge 握手使用 Gateway Bearer；转发后的 SSH 公钥和 ACP 会话认证由各自协议处理。
 
 ```bash
 export URSI_GATEWAY_URL=http://127.0.0.1:8899
@@ -54,16 +56,11 @@ $CLIENT gateway delete SANDBOX_ID
   "image": "ursi-runtime-pi:local",
   "runtime_profile": "pi",
   "memory_mb": 2048,
-  "cpus": 2.0,
-  "bundle": {
-    "url": "http://CONTAINER_REACHABLE_HOST:PORT/bundle.tar.gz",
-    "sha256": "REPLACE_WITH_64_HEX_DIGITS",
-    "min_image_level": 1
-  }
+  "cpus": 2.0
 }
 ```
 
-Gateway 的创建、启停、删除返回受理结果。调用方继续查询，直到目标 `status` 且 `operation:null`。删除完成后查询为 404。
+镜像、逻辑端点和 Runtime 包来源由管理员预先绑定到 Gateway 注册表。Gateway 的创建、启停、删除返回受理结果。调用方继续查询，直到目标 `status` 且 `operation:null`。删除完成后查询为 404。
 
 ### 逻辑 endpoint bridge
 
@@ -84,7 +81,6 @@ WebSocket 二进制帧承载 TCP 字节，文本 `eof` 进行半关闭，Ping/Po
 $CLIENT ssh SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts /private/prepare.sh
 $CLIENT sftp-put SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
 $CLIENT sftp-get SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
-$CLIENT sftp-get SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calculator.py /ursi/workspace/repo/calculator.py
 ```
 
 SSH 固定使用 `agent` 用户、公钥和指定私钥，禁用密码及交互认证。客户端会为 SSH/SFTP 自动创建本地临时 bridge；命令本身不解析 bridge 内的 SSH 协议。命令文件经 stdin 交给远端 `sh -se`。专用 known_hosts 使用首次连接信任（TOFU），后续主机密钥变化拒绝连接。每个沙箱使用独立 known_hosts，stop/start 复用同一文件。
@@ -94,7 +90,8 @@ SSH 固定使用 `agent` 用户、公钥和指定私钥，禁用密码及交互�
 ```bash
 # Gateway bridge 模式：不需要 endpoint address
 export URSI_SANDBOX_ID=SANDBOX_ID
-export URSI_ACP_ENDPOINT=session
+export URSI_ACP_ENDPOINT=agent_session
+export URSI_SESSION_TOKEN_FILE=/private/session-token
 export URSI_GATEWAY_URL=http://127.0.0.1:8899
 export URSI_GATEWAY_KEY_FILE=/private/gateway-key
 $CLIENT acp initialize
@@ -115,9 +112,11 @@ $CLIENT acp close SESSION_ID
 
 `cancel` 是通知。它返回 0 仅表示已发送，完成取消需要原 prompt 返回 `cancelled`，随后查询 `status`。取消可从另一终端运行。断线和超时保留远端会话，调用方应重新连接查询状态并按需取消。客户端不重放请求。
 
-Rust 库暴露 `Gateway`、`Acp`、`Ssh`、`Secret` 和 `PromptOutcome`。每条 `Acp` 连接串行执行请求，通知由回调接收，按请求 ID 和 JSON 类型严格关联响应。并发控制使用另一个连接，适合执行中查询、取消和关闭会话。ACP 单帧与消息上限均为 1 MiB。
+通用库暴露 `Gateway`、`Bridge`、`Endpoint`、`Ssh` 和 `Secret`。启用 `acp` 后可使用 `acp::{Acp, PromptOutcome}`，原有的 crate 根导入路径也可用。每条 `Acp` 连接串行执行请求，通知由回调接收，按请求 ID 和 JSON 类型严格关联响应。并发控制使用另一个连接，适合执行中查询、取消和关闭会话。ACP 单帧与消息上限均为 1 MiB。
 
 ## 真实验收输入
+
+从 `ursi-sandbox/` 运行 `builder/build-image.sh pi` 构建镜像。用 `cargo build -p ursi-session-service` 编译 Pi 会话服务，再运行 `builder/scripts/build-bundle.sh target/debug/ursi-session-service dist` 生成 `dist/runtime-bundle.tar.gz`，作为下文 `--bundle` 的输入。
 
 验收脚本启动独立 Gateway，并将正式 bundle 发布到监听 `0.0.0.0` 的临时 HTTP 端口。Gateway 同样监听 `0.0.0.0` 临时端口，命名空间为随机 scope。SSH 和 ACP 通过逻辑 endpoint bridge 连接，不读取 endpoint address。本验收覆盖 Gateway tunnel 路径。
 

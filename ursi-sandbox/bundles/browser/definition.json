@@ -1,0 +1,15 @@
+{
+  "bundles": ["browser"],
+  "profile": "pi-execution",
+  "required_capabilities": ["chromium", "xvfb", "x11vnc", "websockify", "code-server"],
+  "services": ["browser-stack", "ide"],
+  "endpoints": [
+    {"name": "ide", "protocol": "http", "port": 8744},
+    {"name": "desktop", "protocol": "websocket", "port": 6080}
+  ],
+  "readiness": {
+    "ide": "TCP connect",
+    "desktop": "TCP connect"
+  },
+  "min_image_level": 2
+}

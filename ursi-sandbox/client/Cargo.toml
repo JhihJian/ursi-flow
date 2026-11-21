@@ -5,6 +5,22 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = ["acp"]
+acp = []
+
+[[test]]
+name = "acp"
+required-features = ["acp"]
+
+[[test]]
+name = "sessions"
+required-features = ["acp"]
+
+[[test]]
+name = "real_agent"
+required-features = ["acp"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

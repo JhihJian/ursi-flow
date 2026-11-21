@@ -10,8 +10,8 @@
 
 ```bash
 cargo build --locked --bins
-docker build -t ursi-runtime-pi:local runtime/image
-runtime/scripts/build-bundle.sh target/debug/ursi-session-service dist
+builder/build-image.sh pi
+builder/scripts/build-bundle.sh target/debug/ursi-session-service dist
 ```
 
 `examples/daily-close/` 下应有 `run.py`、`close.py`、示例订单 `orders.csv` 和独立的参考报表 `expected.csv`。后者只在宿主机校验时使用。

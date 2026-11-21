@@ -1,7 +1,7 @@
 //! 元数据先于外部副作用提交，按沙箱互斥执行，并以稳定代际接回中断操作。
 pub mod store;
 
-use crate::{driver::Driver, models::*, registry::Registry};
+use crate::{driver::Driver, models::*};
 use std::{
     collections::HashMap,
     fs,
@@ -14,6 +14,7 @@ use tokio::{
     sync::{Mutex as AsyncMutex, watch},
     task::JoinSet,
 };
+use ursi_catalog::Registry;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Action {

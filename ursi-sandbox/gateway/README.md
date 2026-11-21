@@ -53,7 +53,7 @@ curl -sS http://127.0.0.1:8899/api/v1/sandboxes \
 
 ## 镜像与安全边界
 
-容器默认使用内存/CPU/pids 限制、`cap-drop ALL` 和 `no-new-privileges`，不提供特权容器、任意宿主目录或 Docker socket 挂载接口。`runtime_profile` 可引用管理员白名单中的 root 所有、0700 配置目录，只读挂载到 `/run/ursi/config`。Runtime profile 使用固定七项 SSH/降权/回收能力，Agent 仍以 UID 1000 零 capabilities 运行。配置格式和凭据目录布局见 [Agent 执行契约](../runtime/AGENT-CONTRACT.md)。镜像只能声明 `/ursi/workspace` 数据卷，额外匿名卷被拒绝，防止重建泄漏数据资源。
+容器默认使用内存/CPU/pids 限制、`cap-drop ALL` 和 `no-new-privileges`，不提供特权容器、任意宿主目录或 Docker socket 挂载接口。`runtime_profile` 可引用管理员白名单中的 root 所有、0700 配置目录，只读挂载到 `/run/ursi/config`。Runtime profile 使用固定七项 SSH/降权/回收能力，Agent 仍以 UID 1000 零 capabilities 运行。配置格式和凭据目录布局见 [Agent 执行契约](../bundles/pi-agent/AGENT-CONTRACT.md)。镜像只能声明 `/ursi/workspace` 数据卷，额外匿名卷被拒绝，防止重建泄漏数据资源。
 
 容器端口不发布到宿主机，受管端点只通过 Gateway bridge 访问。端点能力来自管理员 `image -> bundles` 注册表，未注册镜像没有受管端点。CDP/noVNC 只能走可信 Gateway 路径。受控网络隔离取决于部署网络配置，Docker 默认 bridge 不是沙箱间防火墙，也不是恶意代码的强安全边界。
 

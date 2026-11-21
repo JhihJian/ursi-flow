@@ -1,10 +1,10 @@
 use std::{future::IntoFuture, path::Path, process::ExitCode, sync::Arc, time::Duration};
+use ursi_catalog::{Registry, RegistryError};
 use ursi_gateway::{
     driver::Driver,
     gateway_api,
     lifecycle::{Service, store::Store},
     models::{Error, Result},
-    registry::{Registry, RegistryError},
 };
 
 fn env(name: &str, default: &str) -> String {

@@ -1,0 +1,8 @@
+{
+  "bundles": ["pi-execution"],
+  "profile": "pi-execution",
+  "required_capabilities": ["pi-cli"],
+  "services": ["session-service"],
+  "endpoints": [{"name": "agent_session", "protocol": "acp", "port": 8765}],
+  "readiness": {"agent_session": "GET /healthz"}
+}

@@ -1,60 +1,35 @@
 ---
 parent: ../SPEC.md
 references:
-  - ../runtime/AGENT-CONTRACT.md
   - ../gateway/CONTRACT.md
   - README.md
 ---
 
-# 独立沙箱客户端
+# 通用沙箱客户端
 
 ## 功能意图
 
-以独立调用方身份接入 Gateway 和沙箱服务，验证沙箱 Agent 执行能力，脱离 server、工作流和 Web 页面使用。客户端通过 Gateway Bearer 查询逻辑 endpoint，并以 `ursi-tcp-v1` bridge 转发上层 TCP 协议。
+为工具和操作者提供 Gateway 控制面、逻辑端点转发和 SSH/SFTP 工作区访问。仅使用 SSH 的沙箱可以独立使用这些能力。需要 Agent 会话时，由[可选 ACP 消费方](consumers/acp/SPEC.md)在 bridge 之上实现会话协议。
 
 ## 关键功能与验收
 
 ### 独立控制与仓库访问
 
-提供独立 CLI 与库 API，经 Gateway HTTP 创建、查询、启动、停止和删除沙箱，经 agent 公钥 SSH/SFTP 准备和读取仓库。
+CLI 与库 API 经 Gateway HTTP 创建、查询、启动、停止和删除沙箱，经指定公钥身份访问 `agent` 工作区。
 
 #### 验收
 
-- Gateway 身份和 session token 由环境变量或文件提供，URL 和 argv 不携带凭据，输出过滤已知身份。
-- HTTP 202 保留受理状态，由调用方查询实际完成状态，错误具有明确非零退出码。
-- SSH 禁用密码认证，使用独立 known_hosts 和指定私钥，每次操作有期限。
-- 主用户验收只通过 `ursi-sandbox-client` 操作沙箱，不通过 Python 脚本执行。新建沙箱并等待就绪，通过 SSH 在空工作目录编写 `index.html`，通过 SFTP 下载并核对 SHA-256。删除后确认 404，下载页面在浏览器中显示 `Hello World`。
+- 关闭默认 Cargo features 后仍可构建库和 CLI，并通过 Gateway 和 bridge 测试；帮助仍列出 `gateway`、`forward`、`ssh` 和 SFTP，调用 `acp` 返回未知命令。通用操作无需 ACP 配置或 Pi 服务。
+- Gateway Bearer 从环境变量或文件读取，URL、argv 和输出不含凭据。创建请求使用管理员已注册的镜像，调用方按 HTTP 202 返回的实际状态轮询完成，失败返回非零退出码。
+- SSH 使用指定私钥和独立 known_hosts，禁用密码认证，每次操作有期限。
+- 主用户验收只使用 CLI：新建沙箱并等待就绪，通过 SSH 在空工作目录编写 `index.html`，通过 SFTP 下载并核对 SHA-256。删除后确认 404，下载页面在浏览器中显示 `Hello World`。
 
-### 逻辑 endpoint bridge
+### 逻辑端点 bridge
 
-提供最小 `forward` CLI 和 `Bridge` 库 API。endpoint DTO 严格只包含 `name`、`bundle`、`protocol`、`port`、`state`、`ready`，拒绝 `address`、`visibility` 以及其他未知字段。调用方只提供 sandbox ID、endpoint name 和可选本地监听地址，不能指定任意远端 host/port。
-
-#### 验收
-
-- bridge 先调用 `/api/v1/sandboxes/{id}/endpoints`，只允许 `ready` endpoint。
-- 每个本地 TCP 连接独立连接 `/api/v1/sandboxes/{id}/connect/{endpoint_name}`，携带 Gateway Bearer 和 `ursi-tcp-v1`，不向用户索要 endpoint 级 token。
-- 二进制消息有限大小双向转发，文本 `eof` 实现半关闭，处理 Ping/Pong，连接错误、Ctrl-C 和生命周期取消都能回收本地与 WebSocket 连接。
-- fake HTTP/WS 测试覆盖 subprotocol、路径 endpoint name、Bearer、双向字节、EOF 和握手错误退出。bridge 不解析 SSH、ACP、HTTP 等上层协议。
-
-### ACP 任务与会话控制
-
-使用 ACP WebSocket 初始化、创建会话、提交 prompt、接收必要消息和工具事件，支持取消、状态查询和关闭会话。
+`forward` CLI 和 `Bridge` 库 API 将 TCP 连接转发给指定沙箱的逻辑端点。上层协议的解析归消费方。
 
 #### 验收
 
-- 通知和不匹配 ID 的响应不结束当前请求，多个通知后仍等待相同 ID 的最终结果，通知不延长总期限。
-- prompt 只有 end_turn 返回成功，cancelled 使用独立退出码，JSON-RPC error、未知终态、断线与超时均报错且不重放。
-- 另一个连接可以取消当前在途 prompt，并继续查询状态、关闭会话。
-- fake 对端测试覆盖传输与终态语义，真实模型验收显式 opt-in。
-
-### 真实 Pi 独立验收
-
-启动随机 scope 的独立 Gateway，发布正式 bundle，使用正式 Runtime 镜像和操作方最小模型配置完成仓库任务。
-
-#### 验收
-
-- 真实 Pi 修改函数并补测试，ACP end_turn 后独立检查差异与测试，新增测试能够检测原 bug。
-- 观察真实长工具启动后，通过 `/proc` 核对 root 监督器与工具父子进程身份及存活，不以跨 UID 信号权限判断存活。收到 cancelled 时记录的 PID 和标记后代立即消失，进程证据读取失败则验收失败，另一会话继续完成真实任务。
-- 停止再启动保留仓库文件与测试，Gateway 删除后无所属容器和卷。
-- 所有等待有期限，失败时清理自身 scope 并保留仓库外脱敏证据。证据包含取消子阶段、固定客户端命令类别和退出码，不记录命令参数、凭据、模型配置、prompt 或原始输出。
-- 真实验收默认忽略，必须显式启用并提供 Gateway binary、镜像、bundle 和操作方最小 Pi 配置。入口要求 root，保证临时配置归 root 所有且权限为 0700，仅复制指定文件，不读取宿主全量 auth。
+- 先查询 `/api/v1/sandboxes/{id}/endpoints`，仅转发 `ready` 端点。端点 DTO 只接受 `name`、`bundle`、`protocol`、`port`、`state`、`ready`，拒绝 `address`、`visibility` 和其他未知字段。
+- 每条本地 TCP 连接独立拨通 `/api/v1/sandboxes/{id}/connect/{endpoint_name}`，携带 Gateway Bearer 和 `ursi-tcp-v1` 子协议。调用方只能指定逻辑端点和本地监听地址。
+- fake HTTP/WS 对端可观察到协议协商、端点路径、身份、双向有界字节转发、`eof` 半关闭和 Ping/Pong。握手失败关闭对应本地连接，取消或退出时回收连接。
