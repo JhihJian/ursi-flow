@@ -45,8 +45,8 @@ async function host() {
 		}
 	`);
 	const log = join(f.workspace, "artifacts/prompts");
-	async function call(name: string, text?: string) {
-		const args = text === undefined ? { attemptId: f.id } : { attemptId: f.id, workspaceRef: `workspace:${f.id}`, artifactDirectoryRef: `artifacts:${f.id}`, workInstruction: { text, encoding: "utf-8" } };
+	async function call(name: string, text?: string, runConfig?: unknown) {
+		const args = text === undefined ? { attemptId: f.id } : { attemptId: f.id, workspaceRef: `workspace:${f.id}`, artifactDirectoryRef: `artifacts:${f.id}`, workInstruction: text, runConfig };
 		const p = spawn(process.execPath, [join(pi, "stdio.ts")], { env: f.env, stdio: ["pipe", "pipe", "pipe"] });
 		const lines = [
 			{ id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } },
@@ -77,11 +77,13 @@ describe("Pi lifecycle", () => {
 		expect(await f.call("start", " ")).toBe("invalid");
 		expect(await f.call("start", "x".repeat(256 * 1024 + 1))).toBe("invalid");
 		const instruction = "review\0the complete instruction";
+		expect(await f.call("start", instruction, { modelProfile: "other" })).toBe("invalid");
+		expect(await f.call("inspect")).toBe("not_found");
 		const replies = await Promise.all(Array.from({length: 5}, () => f.call("start", instruction)));
 		expect(replies.every(s => ["succeeded", "running"].includes(s))).toBe(true);
 		await expect.poll(() => f.call("inspect"), {timeout: 5000}).toBe("succeeded");
 		expect(await f.call("cancel")).toBe("succeeded");
-		expect(await f.call("start", instruction)).toBe("succeeded");
+		expect(await f.call("start", instruction, {})).toBe("succeeded");
 		expect(await f.call("start", "other")).toBe("conflict");
 		await writeFile(f.path, JSON.stringify({ ...config, systemPrompt: "changed" }));
 		expect(await f.call("start", instruction)).toBe("conflict");

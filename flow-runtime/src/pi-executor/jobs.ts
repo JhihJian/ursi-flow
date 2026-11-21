@@ -22,7 +22,8 @@ export class PiJobs {
 	private env: NodeJS.ProcessEnv;
 	constructor(env = process.env) { this.env = env; }
 	async start(req: ExecutorStartRequest) {
-		const { attemptId: id, workInstruction: { text } } = req;
+		if (Object.keys(req.runConfig ?? {}).length) throw new ExecutorError("invalid");
+		const { attemptId: id, workInstruction: text } = req;
 		if (!text.trim() || Buffer.byteLength(text) > 256 * 1024) throw new ExecutorError("invalid");
 		const paths = layout(this.env, id);
 		const { digest } = snapshot(paths.attempt);

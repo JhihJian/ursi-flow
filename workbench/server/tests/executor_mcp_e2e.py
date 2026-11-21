@@ -235,7 +235,8 @@ class ExecutorAcceptance(unittest.TestCase):
             body = self.body(note, patch['id'])
             self.check_attempt(self.http('PUT', path, body), key)
             self.http('PUT', source + '&replace=true', b'new version')
-            self.check_attempt(self.http('PUT', path, body), key)
+            self.check_attempt(self.http('PUT', path, dict(body, runConfig={})), key)
+            self.http('PUT', path, dict(body, runConfig={'other': True}), expect=(409,))
             self.http('PUT', path, self.body('改动指令', patch['id']), expect=(409,))
             self.http('PUT', path, self.body(note), expect=(409,))
             done = self.terminal(key, path, 'succeeded')
@@ -252,6 +253,12 @@ class ExecutorAcceptance(unittest.TestCase):
             self.http('PUT', report + '&replace=true', b'changed', expect=(409,))
             self.http('PUT', directory + '/file?path=new.txt', b'late', expect=(409,))
             self.assertEqual(self.http('GET', report, raw=True), note.encode())
+
+    def test_rejects_unsupported_run_config_before_daemon_start(self):
+        with self.server():
+            _, path = self.attempt()
+            self.http('PUT', path, dict(self.body('检查配置'), runConfig={'flow': 'override'}), expect=(400,))
+            self.assertEqual(self.cli('run', 'list'), [])
 
     def test_lost_start_receipt(self):
         key, path = self.attempt()

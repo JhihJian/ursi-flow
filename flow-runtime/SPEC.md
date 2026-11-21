@@ -2,6 +2,7 @@
 parent: ../SPEC.md
 references:
   - docs/flow-spec.md
+  - ../docs/EXECUTOR-MCP.md
 ---
 
 # Flow Runtime
@@ -60,7 +61,7 @@ Flow Runtime 提供固定 MCP `2025-06-18` stdio JSONL adapter，作为 Workbenc
 
 #### 验收
 
-- `executor_start` 严格接受 `{attemptId, workspaceRef, artifactDirectoryRef, workInstruction}`，其中 attempt ID 为小写标准 UUID，两个引用分别绑定同一 ID，指令编码固定为 `utf-8`；inspect/cancel 严格只接受 `{attemptId}`。
+- 按[执行器 MCP 协议](../docs/EXECUTOR-MCP.md)，`executor_start` 接受小写标准 UUID、与该 ID 绑定的两个目录引用、字符串 `workInstruction` 和可选 JSON 对象 `runConfig`。固定修订的 Flow 适配器未定义运行配置字段，省略或 `{}` 使用部署配置，其他值返回 `invalid`。inspect/cancel 只接受 `{attemptId}`。
 - 成功工具结果的 `structuredContent` 与唯一 JSON text 内容相同，包含 `attemptId`、`status`、`artifactDirectoryRef`，并可包含区分后端的 `backendRunRef`；状态只使用 `running`、`succeeded`、`failed`、`cancelled`、`unverified`。
 - 工具失败使用 `isError: true`，text 只包含允许的 JSON 错误码 `invalid`、`conflict`、`not_found`、`busy` 或 `unavailable`，不回传路径、凭据或 daemon 原始错误。
 - adapter 将 `<URSI_EXECUTOR_ROOT>/<attemptId>/workspace` 作为 cwd，并使用其中的 `artifacts/`；调用 inspect/cancel 前确认真实目录、拒绝符号链接、验证当前用户所有权以及 daemon job 的 ID、Flow、revision、cwd 和任务身份。revision 或部署配置漂移时拒绝操作且不影响其他 Run。

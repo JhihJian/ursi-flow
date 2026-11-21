@@ -30,7 +30,8 @@ export interface ExecutorStartRequest {
 	attemptId: string;
 	workspaceRef: `workspace:${string}`;
 	artifactDirectoryRef: `artifacts:${string}`;
-	workInstruction: { text: string; encoding: "utf-8" };
+	workInstruction: string;
+	runConfig?: Record<string, unknown>;
 }
 
 export interface RuntimeJob {
@@ -91,7 +92,7 @@ function invalidRequest(): never {
 }
 
 export function parseStartRequest(value: unknown): ExecutorStartRequest {
-	if (!isRecord(value) || !hasOnly(value, ["attemptId", "workspaceRef", "artifactDirectoryRef", "workInstruction"]))
+	if (!isRecord(value) || !hasOnly(value, ["attemptId", "workspaceRef", "artifactDirectoryRef", "workInstruction", "runConfig"]))
 		return invalidRequest();
 	if (!isLowerUuid(value.attemptId)) return invalidRequest();
 	if (typeof value.workspaceRef !== "string" || value.workspaceRef !== `workspace:${value.attemptId}`)
@@ -101,22 +102,15 @@ export function parseStartRequest(value: unknown): ExecutorStartRequest {
 		value.artifactDirectoryRef !== `artifacts:${value.attemptId}`
 	)
 		return invalidRequest();
-	if (!isRecord(value.workInstruction) || !hasOnly(value.workInstruction, ["text", "encoding"]))
-		return invalidRequest();
-	if (
-		typeof value.workInstruction.text !== "string" ||
-		value.workInstruction.encoding !== "utf-8" ||
-		Buffer.byteLength(value.workInstruction.text, "utf8") > 4 * 1024 * 1024
-	)
+	if (value.runConfig !== undefined && !isRecord(value.runConfig)) return invalidRequest();
+	if (typeof value.workInstruction !== "string" || Buffer.byteLength(value.workInstruction, "utf8") > 4 * 1024 * 1024)
 		return invalidRequest();
 	return {
 		attemptId: value.attemptId,
 		workspaceRef: value.workspaceRef as `workspace:${string}`,
 		artifactDirectoryRef: value.artifactDirectoryRef as `artifacts:${string}`,
-		workInstruction: {
-			text: value.workInstruction.text,
-			encoding: "utf-8",
-		},
+		workInstruction: value.workInstruction,
+		...(value.runConfig === undefined ? {} : { runConfig: value.runConfig }),
 	};
 }
 
@@ -348,8 +342,9 @@ export class ExecutorAdapter {
 	}
 
 	async start(request: ExecutorStartRequest): Promise<ExecutorResult> {
+		if (Object.keys(request.runConfig ?? {}).length) throw new ExecutorError("invalid");
 		const paths = await ownedPath(this.config.root, request.attemptId, true);
-		const task = { 任务: request.workInstruction.text };
+		const task = { 任务: request.workInstruction };
 		const run = await this.runtime.startPinned(
 			request.attemptId,
 			this.config.flow,
@@ -357,7 +352,7 @@ export class ExecutorAdapter {
 			task,
 			this.config.revision,
 		);
-		if (!this.matches(run, request.attemptId, paths.workspace, request.workInstruction.text))
+		if (!this.matches(run, request.attemptId, paths.workspace, request.workInstruction))
 			throw new ExecutorError("conflict");
 		return result(request.attemptId, request.artifactDirectoryRef, status(run.status));
 	}

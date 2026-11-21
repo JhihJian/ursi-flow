@@ -44,6 +44,23 @@ struct Start {
     preview_definition: Option<Value>,
     work_instruction: Instruction,
     work_patch_id: Option<String>,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    run_config: serde_json::Map<String, Value>,
+}
+
+impl Start {
+    fn into_mcp_arguments(self, id: &str) -> Value {
+        let mut args = json!({
+            "attemptId": id,
+            "workspaceRef": format!("workspace:{id}"),
+            "artifactDirectoryRef": format!("artifacts:{id}"),
+            "workInstruction": self.work_instruction.text,
+        });
+        if !self.run_config.is_empty() {
+            args["runConfig"] = Value::Object(self.run_config);
+        }
+        args
+    }
 }
 
 // Only omitted selectors opt into the legacy Flow route; an explicit null is invalid.
@@ -120,7 +137,7 @@ async fn run(s: Arc<Service>, id: String, op: Operation) -> Reply {
 }
 impl Service {
     async fn drive(&self, id: &str, op: Operation) -> Result<Value, Error> {
-        let mut row = self
+        let row = self
             .store
             .read(|db| Ok(db["executorAttempts"].get(id).cloned()))?;
         if let (Some(row), Operation::Start(body)) = (&row, &op) {
@@ -177,19 +194,14 @@ impl Service {
                 "result": {"attemptId":id,"status":"starting","artifactDirectoryRef":format!("artifacts:{id}")}
             });
             self.store.update(|db| {
-                db["executorAttempts"][id] = new.clone();
+                db["executorAttempts"][id] = new;
                 Ok(())
             })?;
-            row = Some(new);
             backend
         };
 
-        let row = row.expect("reserved");
         let (tool, args) = match op {
-            Operation::Start(_) => (
-                "executor_start",
-                json!({"attemptId":id,"workInstruction":row["request"]["workInstruction"],"workspaceRef":format!("workspace:{id}"),"artifactDirectoryRef":format!("artifacts:{id}")}),
-            ),
+            Operation::Start(body) => ("executor_start", body.into_mcp_arguments(id)),
             Operation::Inspect => ("executor_inspect", json!({"attemptId":id})),
             Operation::Cancel => ("executor_cancel", json!({"attemptId":id})),
         };

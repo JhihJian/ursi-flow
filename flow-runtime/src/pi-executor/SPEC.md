@@ -1,7 +1,7 @@
 ---
 parent: ../../SPEC.md
 references:
-  - ../../../workbench/EXECUTOR-MCP.md
+  - ../../../docs/EXECUTOR-MCP.md
   - ../../../workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 
@@ -17,7 +17,7 @@ references:
 
 #### 验收
 
-- 三个工具、参数、响应和公开错误码遵循 Workbench 执行器 MCP 契约。`backendRunRef` 为 `pi:<attemptId>`。协议响应不含宿主路径、配置正文或凭据。
+- 三个工具、参数、响应和公开错误码遵循 执行器 MCP 契约。启动指令为字符串。Pi 从冻结快照读取配置，`runConfig` 仅接受省略或空对象，其他值在启动前返回 `invalid`。`backendRunRef` 为 `pi:<attemptId>`。协议响应不含宿主路径、配置正文或凭据。
 - `<URSI_EXECUTOR_ROOT>/<attemptId>/agent-config.json` 与业务工作区分开。配置、尝试目录和工作区属于当前用户且私有；拒绝符号链接、硬链接文件和特殊文件。模型与业务工具授权来自 `URSI_PI_POLICY` 指定的绝对私有文件。
 - 快照最多 2 MiB；校验 `systemPrompt`、`modelProfile`、Skill 的标识、整数修订和正文，以及工具标识和 SHA-256 schema 摘要。额外字段参与快照身份校验，但不传给 SDK。单次任务文本独立于固定指令，最多 256 KiB。
 

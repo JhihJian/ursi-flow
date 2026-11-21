@@ -65,9 +65,13 @@ describe("executor MCP adapter", () => {
 			attemptId,
 			workspaceRef: `workspace:${attemptId}`,
 			artifactDirectoryRef: `artifacts:${attemptId}`,
-			workInstruction: { text: "review this", encoding: "utf-8" },
+			workInstruction: "review this",
 		};
 		expect(parseStartRequest(valid)).toEqual(valid);
+		for (const runConfig of [null, [], "{}", false]) {
+			expect(() => parseStartRequest({ ...valid, runConfig })).toThrowError(new ExecutorError("invalid"));
+		}
+		expect(() => parseStartRequest({ ...valid, workInstruction: { text: "review this", encoding: "utf-8" } })).toThrowError(new ExecutorError("invalid"));
 		expect(() => parseStartRequest({ ...valid, extra: true })).toThrowError(
 			new ExecutorError("invalid"),
 		);
@@ -81,12 +85,15 @@ describe("executor MCP adapter", () => {
 		const cwd = await workspace(root);
 		const runtime = new FakeRuntime(job(cwd));
 		const adapter = new ExecutorAdapter(env(root), runtime);
-		const value = await adapter.start({
+		const args = {
 			attemptId,
 			workspaceRef: `workspace:${attemptId}`,
 			artifactDirectoryRef: `artifacts:${attemptId}`,
-			workInstruction: { text: "review this", encoding: "utf-8" },
-		});
+			workInstruction: "review this",
+		} as const;
+		await expect(adapter.start({ ...args, runConfig: { flow: "other" } })).rejects.toMatchObject({ code: "invalid" });
+		expect(runtime.starts).toHaveLength(0);
+		const value = await adapter.start({ ...args, runConfig: {} });
 		expect(runtime.starts[0]).toEqual([
 			attemptId,
 			"material-review",
@@ -139,8 +146,8 @@ describe("executor MCP adapter", () => {
 		expect(await server.handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } })).toMatchObject({ result: { protocolVersion: "2025-06-18" } });
 		expect(await server.handle({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeUndefined();
 		const list = await server.handle({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-		expect(list).toMatchObject({ result: { tools: [{ name: "executor_start" }, { name: "executor_inspect" }, { name: "executor_cancel" }] } });
-		const good = await server.handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "executor_start", _meta: { progressToken: 1 }, arguments: { attemptId, workspaceRef: `workspace:${attemptId}`, artifactDirectoryRef: `artifacts:${attemptId}`, workInstruction: { text: "review this", encoding: "utf-8" } } } });
+		expect(list).toMatchObject({ result: { tools: [{ name: "executor_start", inputSchema: { required: ["attemptId", "workspaceRef", "artifactDirectoryRef", "workInstruction"], properties: { workInstruction: { type: "string" }, runConfig: { type: "object", additionalProperties: false } } } }, { name: "executor_inspect" }, { name: "executor_cancel" }] } });
+		const good = await server.handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "executor_start", _meta: { progressToken: 1 }, arguments: { attemptId, workspaceRef: `workspace:${attemptId}`, artifactDirectoryRef: `artifacts:${attemptId}`, workInstruction: "review this" } } });
 		if (!good || typeof good !== "object" || !("result" in good)) throw new Error("missing MCP result");
 		const result = (good as { result: { structuredContent: unknown; content: [{ text: string }] } }).result;
 		expect(result.content[0].text).toBe(JSON.stringify(result.structuredContent));

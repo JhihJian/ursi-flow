@@ -232,6 +232,7 @@ mod tests {
                 encoding: "utf-8".into(),
             },
             work_patch_id: None,
+            run_config: Default::default(),
         };
         assert!(matches!(target(&flow), Ok(Target::Flow)));
         let encoded = serde_json::to_value(&flow).unwrap();
