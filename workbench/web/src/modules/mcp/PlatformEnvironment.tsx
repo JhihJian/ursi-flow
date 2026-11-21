@@ -29,7 +29,7 @@ function VariableDialog({ action, close, saved }: { action: Action; close: () =>
   </>}>
     <form id={form} onSubmit={submit} autoComplete="off">
       <fieldset className="grid gap-4 text-sm" disabled={change.busy}>
-        {deleting ? <p className="break-words">删除 <code className="break-all">{name}</code> 后，新连接将使用服务进程中的同名变量。若未设置，连接将失败。</p> : <>
+        {deleting ? <p className="break-words">删除 <code className="break-all">{name}</code> 后，使用此平台凭据的服务将无法建立新连接。</p> : <>
           <label>变量名<Input required readOnly={action.type !== 'create'} pattern="[A-Z][A-Z0-9_]*" maxLength={128} spellCheck={false} placeholder="GITHUB_PAT_TOKEN" value={name} onChange={e => setName(e.target.value)} /></label>
           <label>新值<Input required type="password" autoComplete="new-password" spellCheck={false} maxLength={8192} value={value} onChange={e => setValue(e.target.value)} /></label>
           <p className="text-xs text-txt3">保存后不可查看原值。更改从下一次 MCP 连接起生效。</p>
@@ -48,7 +48,7 @@ export function PlatformEnvironment() {
       <Button icon="refresh" loading={variables.loading} onClick={variables.reload}>刷新</Button>
       <Button icon="plus" variant="primary" onClick={() => setAction({ type: 'create' })}>新增变量</Button>
     </>} />
-    <p className="text-sm text-txt3">此处仅列出平台保存的变量。MCP 服务按管理员授权的变量名引用凭据。</p>
+    <p className="text-sm text-txt3">此处仅列出平台保存的变量。登记 MCP 服务时可选择变量作为连接凭据。</p>
     {variables.loading || variables.error || !variables.data.length
       ? <ResourceState loading={variables.loading} error={variables.error} onRetry={variables.reload} empty={!variables.data.length} title={variables.error ? undefined : '暂无平台变量'} />
       : <ul aria-label="平台环境变量" className="divide-y divide-line border-y border-line">

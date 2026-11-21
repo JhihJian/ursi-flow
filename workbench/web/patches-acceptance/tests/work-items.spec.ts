@@ -1,6 +1,4 @@
 import { createServer } from 'node:http'
-import { writeFile, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { expect, test } from '@playwright/test'
 import { readRuntime } from '../fixtures/runtime'
@@ -38,10 +36,11 @@ test('只填标题创建工作项，类别和状态可分别修改并保存', as
 })
 
 test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读取', async ({ page, request }, info) => {
-  const { token, dataDir, apiBase } = readRuntime()
+  const { token, apiBase } = readRuntime()
   const title = `每周反馈-${info.project.name}`
   const uri = 'feedback://weekly'
   const peer = createServer(async (req, res) => {
+    if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401).end(); return }
     if (req.method === 'DELETE') { res.writeHead(204).end(); return }
     const body = []
     for await (const bytes of req) body.push(bytes)
@@ -55,14 +54,20 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
   })
   await new Promise<void>(resolve => peer.listen(0, '127.0.0.1', resolve))
   const url = `http://127.0.0.1:${(peer.address() as AddressInfo).port}/mcp`
-  const policy = join(dataDir, 'work', 'mcp-policy.json')
   try {
-    await writeFile(policy, JSON.stringify([{ url }]), { mode: 0o600 })
     await login(page, token)
+    const key = `MCP_TEST_${info.project.name.toUpperCase()}`
+    await page.goto('/platform-env')
+    await page.getByRole('button', { name: '新增变量' }).click()
+    await page.getByLabel('变量名').fill(key)
+    await page.getByLabel('新值').fill('fixture-token')
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(page.getByText(key, { exact: true })).toBeVisible()
     await page.goto('/mcp-servers')
     await page.getByRole('button', { name: '登记服务' }).click()
     await page.getByLabel('服务名称').fill(title)
     await page.getByLabel('服务地址').fill(url)
+    await page.getByLabel('平台凭据').selectOption(key)
     await page.getByRole('button', { name: '添加服务' }).click()
     await expect(page.getByText(url, { exact: true })).toBeVisible()
     const search = page.getByRole('searchbox', { name: '搜索服务' })
@@ -124,6 +129,5 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
   } finally {
     peer.closeAllConnections()
     peer.close()
-    await unlink(policy).catch(() => {})
   }
 })

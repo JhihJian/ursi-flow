@@ -30,7 +30,7 @@ Server 默认监听 `0.0.0.0:8080`，可用 `URSI_LISTEN_ADDR` 改；Web 开发�
 
 接入带凭据的 MCP 服务时，可在「平台设置 → 环境变量」新增或替换凭据，例如 `GITHUB_PAT_TOKEN`。新连接使用最新值，无需重启。变量值保存在私有工作存储中，请保护数据备份。
 
-接入外部资源时，先在 `$URSI_DATA_DIR/work/mcp-policy.json` 授权服务地址和凭据变量名，再到「平台 MCP 服务」登记并查看资源。在工作项编辑页勾选具体资源、设置别名并保存 Python 脚本，回到详情点击「生成工作包」。脚本接口为 `transform(item, resources)`。授权示例、隔离依赖和脚本样例见[平台 MCP 接入契约](server/src/work/mcp/PLATFORM.md)。仅使用清单无需配置 MCP 或 Python。
+打开「平台 MCP 服务 → 登记服务」，填入名称和地址，选择已保存的平台变量，点击「添加服务」。需要验证连接时点击「浏览资源」。默认部署无需编辑策略文件。在工作项编辑页勾选具体资源、设置别名并保存 Python 脚本，回到详情点击「生成工作包」。脚本接口为 `transform(item, resources)`。授权示例、隔离依赖和脚本样例见[平台 MCP 接入契约](server/src/work/mcp/PLATFORM.md)。仅使用清单无需配置 MCP 或 Python。
 
 ## 目录编辑台
 

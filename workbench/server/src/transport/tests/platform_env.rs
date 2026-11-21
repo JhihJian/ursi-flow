@@ -58,6 +58,53 @@ async fn manages_only_names_and_never_echoes_submitted_values() {
 }
 
 #[tokio::test]
+async fn page_binding_registers_without_file_and_never_uses_host_secret() {
+    let f = Fixture::new("test-token");
+    let path = "/api/v2/mcp-servers";
+    let config = json!({"binding":"platform","name":"github","url":"https://api.githubcopilot.com/mcp/","credentialEnv":"HOME"});
+    assert_eq!(f.request("POST", path, "", config.clone()).await.0, 401);
+    assert_eq!(f.request("POST", path, AUTH, config.clone()).await.0, 400);
+    assert_eq!(
+        f.request(
+            "POST",
+            "/api/v2/platform-env",
+            AUTH,
+            json!({"name":"HOME","value":"fixture-token"})
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, _, body) = f.request("POST", path, AUTH, config.clone()).await;
+    assert_eq!(status, 200);
+    assert!(!body.contains("fixture-token"));
+    let record: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(record["binding"], "platform");
+    let inspect = format!("{path}/{}/inspection", record["id"].as_str().unwrap());
+    let mut bad = config.clone();
+    bad["url"] = json!("http://example.org/mcp");
+    assert_eq!(f.request("POST", path, AUTH, bad).await.0, 400);
+    assert_eq!(
+        f.request("DELETE", "/api/v2/platform-env/HOME", AUTH, Value::Null)
+            .await
+            .0,
+        200
+    );
+    let (status, _, body) = f.request("GET", &inspect, AUTH, Value::Null).await;
+    assert_eq!(status, 503);
+    assert!(body.contains("平台变量已删除"));
+    let anonymous = json!({"binding":"platform","name":"public","url":"https://example.org/mcp"});
+    assert_eq!(
+        f.request("POST", path, AUTH, anonymous.clone()).await.0,
+        200
+    );
+    let policy = f.root.join("work/mcp-policy.json");
+    fs::write(&policy, "[]").unwrap();
+    fs::set_permissions(policy, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(f.request("POST", path, AUTH, anonymous).await.0, 400);
+}
+
+#[tokio::test]
 async fn new_mcp_sessions_use_current_value_only_after_policy_check() {
     use axum::{
         Router,

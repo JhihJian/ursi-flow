@@ -13,7 +13,7 @@ const registryPath = '/mcp-servers'
 export const serverBrowsePath = (id: string) => `${registryPath}/${encodeURIComponent(id)}`
 export const listServers = (signal: AbortSignal) => requestV2<McpServer[]>(registryPath, { signal })
 export const addServer = (draft: ServerDraft, signal: AbortSignal) =>
-  requestV2<McpServer>(registryPath, { method: 'POST', body: JSON.stringify(draft), signal })
+  requestV2<McpServer>(registryPath, { method: 'POST', body: JSON.stringify({ ...draft, binding: 'platform' }), signal })
 export const removeServer = (id: string, signal: AbortSignal) =>
   requestV2<{ id: string }>(serverBrowsePath(id), { method: 'DELETE', signal })
 export const inspectServer = (id: string, signal: AbortSignal) =>

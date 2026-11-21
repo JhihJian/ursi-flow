@@ -60,6 +60,7 @@ impl Fixture {
             name: "反馈".into(),
             url: self.url.clone(),
             credential_env: None,
+            binding: Binding::Policy,
         }
     }
     fn permit(&self) {

@@ -26,6 +26,19 @@ const TABLE: &str = "mcpServers";
 const SNAPSHOT_LIMIT: usize = 4 * 1024 * 1024;
 static SLOTS: Semaphore = Semaphore::const_new(4);
 
+#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Binding {
+    #[default]
+    Policy,
+    Platform,
+}
+impl Binding {
+    fn is_policy(&self) -> bool {
+        *self == Self::Policy
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Config {
@@ -33,6 +46,8 @@ struct Config {
     url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     credential_env: Option<String>,
+    #[serde(default, skip_serializing_if = "Binding::is_policy")]
+    binding: Binding,
 }
 fn invalid(s: &str) -> Error {
     Error::Invalid(s.into())
@@ -82,6 +97,15 @@ async fn register(
         return Err(invalid("服务名称无效"));
     }
     policy::authorize(&store, &config)?;
+    if config.binding == Binding::Platform
+        && let Some(key) = config.credential_env.as_deref()
+    {
+        let value = super::environment::lookup(&store, key)?
+            .ok_or_else(|| invalid("所选平台变量不存在，请先在环境变量页保存"))?;
+        if !policy::valid_bearer(&value) {
+            return Err(invalid("所选变量不能用作 Bearer 令牌，请检查空格或换行"));
+        }
+    }
     let id = Uuid::new_v4().to_string();
     let mut row = json!(config);
     row["id"] = json!(id);

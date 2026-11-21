@@ -46,7 +46,7 @@ cargo run --locked -p ursi-server
 | --- | --- |
 | `/api/v1/flows`、`/api/v1/runs`、`/api/v1/flow-config` | [Flow 包、运行及配置](src/transport/SPEC.md)，仅在启用 Flow 时挂载。 |
 | `/api/v2/work-items` | [工作清单](src/work/worklist/SPEC.md)：增删改查、按类别与状态筛选、按保存的配方生成工作包。 |
-| `/api/v2/mcp-servers` | [平台 MCP 服务](src/work/mcp/PLATFORM.md)：登记、发现资源。使用资源生成工作包前须配置出站授权及 Python 隔离环境。 |
+| `/api/v2/mcp-servers` | [平台 MCP 服务](src/work/mcp/PLATFORM.md)：登记、发现资源。在页面登记端点并选择凭据即可浏览资源；使用资源生成工作包另需 Python 隔离环境。 |
 | `/api/v2/directories` | [虚拟目录](src/work/directories/HTTP.md)：创建目录并按目录 ID 读写文件。 |
 | `/api/v2/patches/work`、`/api/v2/patches/config` | [工作包与配置包](src/work/patches/HTTP.md)：创建、查询包记录，修改工作包的当前归属。 |
 | `/api/v2/resources`、`/api/v2/executors` | [资源与执行器定义](src/work/catalog/HTTP.md)：发布、查版本和停用。 |
