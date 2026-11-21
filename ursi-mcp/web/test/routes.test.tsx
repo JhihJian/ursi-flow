@@ -7,11 +7,11 @@ import { createMcpClient, createMcpRoutes, type McpRequest, type McpServer } fro
 afterEach(cleanup)
 const server = { id: 'team 1', name: '材料服务', url: 'https://fixture.example/mcp' }
 const resource = { name: '周报', uri: 'memo:weekly' }
-function mount(path: string, send: (path: string, init: RequestInit) => unknown) {
+function mount(path: string, send: (path: string, init: RequestInit) => unknown, managed = true) {
   const request: McpRequest = async <T,>(path: string, init: RequestInit) => send(path, init) as T
   const client = createMcpClient(request)
   const listVariableNames = vi.fn(async () => ['TEAM_TOKEN'])
-  const routes = createMcpRoutes({ client, listVariableNames, variableManagementPath: '/admin/credentials' })
+  const routes = createMcpRoutes({ client, ...(managed && { listVariableNames, variableManagementPath: '/admin/credentials' }) })
   const router = createMemoryRouter([{ path: 'admin', children: routes }], { initialEntries: [path] })
   render(<RouterProvider router={router} />)
   return { listVariableNames, router, user: userEvent.setup() }
@@ -44,6 +44,25 @@ it('嵌套路由使用注入的变量名登记服务，通知和资源浏览不�
   await user.click(browse)
   expect(await screen.findByRole('button', { name: '周报' })).toBeVisible()
   expect(screen.getByRole('link', { name: '返回服务列表' })).toHaveAttribute('href', '/admin/mcp-servers')
+})
+
+it('独立宿主只输入凭据引用，不列举或管理部署凭据', async () => {
+  const create = vi.fn()
+  const { user, listVariableNames } = mount('/admin/mcp-servers', (path, options) => {
+    expect(path).toBe('/mcp-servers')
+    if (options.method !== 'POST') return []
+    create(JSON.parse(String(options.body)))
+    return server
+  }, false)
+  await user.click(await screen.findByRole('button', { name: '登记服务' }))
+  const dialog = within(screen.getByRole('dialog'))
+  expect(dialog.queryByRole('link', { name: '管理平台变量' })).not.toBeInTheDocument()
+  await user.type(dialog.getByLabelText('服务名称'), server.name)
+  await user.type(dialog.getByLabelText('服务地址'), server.url)
+  await user.type(dialog.getByLabelText(/凭据引用/), 'TEAM_TOKEN')
+  await user.click(dialog.getByRole('button', { name: '添加服务' }))
+  expect(create).toHaveBeenCalledWith({ name: server.name, url: server.url, credentialEnv: 'TEAM_TOKEN', binding: 'platform' })
+  expect(listVariableNames).not.toHaveBeenCalled()
 })
 
 it('从深链读取正文，工具须先授权，取消确认不调用，确认只调用一次', async () => {

@@ -14,13 +14,15 @@ import { useMcp } from '../context'
 import { Select } from '../ui/select'
 import { useFeedback } from '../ui/feedback'
 
+const noCredentialNames = async () => [] as string[]
+
 function RegisterDialog({ close, registered }: { close: () => void; registered: (server: McpServer) => void }) {
   const { client, listVariableNames, variableManagementPath } = useMcp()
   const formId = useId()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [env, setEnv] = useState('')
-  const variables = useResource(listVariableNames, [])
+  const variables = useResource(listVariableNames ?? noCredentialNames, [])
   const creation = useMutation()
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -35,13 +37,15 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
       <fieldset disabled={creation.busy} className="grid gap-4 text-sm">
         <label>服务名称<Input required maxLength={240} value={name} onChange={e => setName(e.target.value)} /></label>
         <label>服务地址<Input type="url" required maxLength={2048} placeholder="https://mcp.example.org/mcp" value={url} onChange={e => setUrl(e.target.value)} /></label>
-        <label>平台凭据（可选）<Select value={env} onChange={e => setEnv(e.target.value)}>
-          <option value="">无凭据</option>
-          {variables.data.map(key => <option key={key} value={key}>{key}</option>)}
-        </Select></label>
-        {variables.loading && <p role="status">正在读取变量名…</p>}
-        {variables.error && <p role="alert">{variables.error} <Button type="button" onClick={variables.reload}>重试</Button></p>}
-        <p className="text-xs leading-5 text-txt3"><Link to={variableManagementPath} className="text-accent-2 underline">管理平台变量</Link></p>
+        {listVariableNames ? <>
+          <label>平台凭据（可选）<Select value={env} onChange={e => setEnv(e.target.value)}>
+            <option value="">无凭据</option>
+            {variables.data.map(key => <option key={key} value={key}>{key}</option>)}
+          </Select></label>
+          {variables.loading && <p role="status">正在读取变量名…</p>}
+          {variables.error && <p role="alert">{variables.error} <Button type="button" onClick={variables.reload}>重试</Button></p>}
+        </> : <label>凭据引用（可选）<Input value={env} maxLength={128} pattern="[A-Z][A-Z0-9_]*" autoComplete="off" spellCheck={false} placeholder="TEAM_TOKEN" onChange={e => setEnv(e.target.value)} /></label>}
+        {variableManagementPath && <p className="text-xs leading-5 text-txt3"><Link to={variableManagementPath} className="text-accent-2 underline">管理平台变量</Link></p>}
         {env && url.trim() && <p className="break-all text-sm">连接时将把 <strong>{env}</strong> 的值作为 Bearer 令牌发送到 <strong>{url.trim()}</strong>。请确认地址可信。</p>}
         {creation.error && <p role="alert" className="text-err">{creation.error}</p>}
       </fieldset>

@@ -18,13 +18,9 @@ body { margin: 0; }
 :where(.host-bar, .host-route-message, .host-skip) :focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }
 
 .host-top { background: #fff; border-bottom: 1px solid #e2e2e8; }
-.host-bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1.75rem; min-height: 4rem; }
+.host-bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1.75rem; min-height: 4rem; }
 .host-brand { display: inline-flex; align-items: center; gap: .5rem; width: fit-content; color: #18181b; font-size: 1rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .host-brand svg { color: rgb(var(--c-accent)); }
-.host-nav { display: flex; flex-wrap: wrap; gap: .25rem; }
-.host-nav a { display: block; padding: .6rem .75rem; border-radius: .375rem; color: #52525b; text-decoration: none; font-weight: 500; }
-.host-nav a:hover { background: #f4f4f5; color: #18181b; }
-.host-nav a[aria-current="page"] { background: #eeedf9; color: rgb(var(--c-accent-2)); }
 .host-content { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - 4rem); padding-block: 1.75rem; }
 .host-route-message { overflow-wrap: anywhere; }
 .host-route-message button { margin-right: 1rem; }
@@ -32,22 +28,14 @@ body { margin: 0; }
 .host-login { box-sizing: border-box; min-height: 100dvh; justify-content: center; align-items: center; padding: 1rem; }
 .host-login .host-login-form { width: min(100%, 25rem); display: grid; gap: 1.25rem; padding: clamp(1.25rem, 6vw, 2rem); border-radius: .5rem; }
 .host-login h1 { font-size: 1.375rem; line-height: 1.25; font-weight: 650; }
-.host-fields, .host-field { display: grid; min-width: 0; gap: .375rem; }
-.host-fields { gap: 1rem; overflow-wrap: anywhere; }
-.host-field input[readonly] { background: #f4f4f5; }
+.host-field { display: grid; min-width: 0; gap: .375rem; }
 .host-error { color: rgb(var(--c-err)); overflow-wrap: anywhere; }
 .host-muted { color: #52525b; font-size: .875rem; }
 
-.ursi-mcp .host-variable-list { border-block: 1px solid #e2e2e8; }
-.host-variable-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .75rem .5rem; }
-.ursi-mcp .host-variable-row + .host-variable-row { border-top-width: 1px; border-color: #e2e2e8; }
-.host-variable-row code { min-width: 0; overflow-wrap: anywhere; }
-.host-variable-actions { display: flex; gap: .5rem; margin-left: auto; }
 .ursi-mcp [role="status"].fixed, .ursi-mcp [role="alert"].fixed { max-width: calc(100vw - 2rem); overflow-wrap: anywhere; }
 
 @media (max-width: 36rem) {
   .host-bar { grid-template-columns: 1fr auto; gap: .5rem; padding-block: .5rem; }
-  .host-nav { grid-column: 1 / -1; grid-row: 2; }
   .host-content { min-height: 0; padding-block: 1rem; }
   .ursi-mcp :is(.input, .select, .search-input) { font-size: 16px; }
 }

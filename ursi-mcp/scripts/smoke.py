@@ -75,6 +75,15 @@ def check(binary, root, endpoint):
     token_file.touch(mode=0o600)
     token_file.write_text(token + '\n')
     policy = data / 'mcp-policy.json'
+    credential_file = data / 'credentials.json'
+    rotated = secrets.token_hex(16)
+
+    def write_credentials(value):
+        pending = credential_file.with_suffix('.tmp')
+        pending.touch(mode=0o600)
+        pending.write_text(json.dumps({'SMOKE_TOKEN': value}))
+        pending.replace(credential_file)
+
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def call(url, path, method='GET', body=None, expected=200, auth=True, **headers):
@@ -91,7 +100,7 @@ def check(binary, root, endpoint):
         with response:
             raw = response.read()
             assert response.status == expected, (path, response.status, expected)
-            assert all(secret.encode() not in raw for secret in (token, credential)), path
+            assert all(secret.encode() not in raw for secret in (token, credential, rotated)), path
             if response.headers.get_content_type() == 'application/json':
                 return json.loads(raw)
             return raw
@@ -107,20 +116,31 @@ def check(binary, root, endpoint):
         call(url, api + '/unknown', expected=404)
         call(url, registry, expected=403, Origin='http://example.invalid')
         call(url, registry, expected=403, Host='example.invalid')
+        call(url, '/platform-env', expected=404, auth=False)
+        call(url, variables, expected=404)
+        call(url, variables, 'POST', {'name': 'SMOKE_TOKEN', 'value': credential}, expected=404)
+        call(url, variables + '/SMOKE_TOKEN', 'PUT', {'value': rotated}, expected=404)
+        call(url, variables + '/SMOKE_TOKEN', 'DELETE', expected=404)
         call(url, registry, 'POST', draft, expected=400)
         policy.touch(mode=0o600)
         policy.write_text(json.dumps([{'url': endpoint, 'credentialEnv': 'SMOKE_TOKEN'}]))
         call(url, registry, 'POST', draft, expected=400)
-        assert call(url, variables, 'POST', {'name': 'SMOKE_TOKEN', 'value': credential}) == {'name': 'SMOKE_TOKEN'}
+        write_credentials(credential)
         row = call(url, registry, 'POST', draft)
         detail = registry + '/' + row['id']
         assert b'id="root"' in call(url, '/mcp-servers/' + row['id'] + '?uri=memo%3Asmoke', auth=False)
         assert call(url, detail + '/inspection')['resources'][0]['uri'] == 'memo:smoke'
         assert call(url, detail + '/resources/read', 'POST', {'uri': 'memo:smoke'})['contents'][0]['text'] == 'standalone resource'
         assert all(auth == 'Bearer ' + credential for _, auth in Peer.seen)
-        assert call(url, variables + '/SMOKE_TOKEN', 'PUT', {'value': 'new-managed-credential'}) == {'name': 'SMOKE_TOKEN'}
+        write_credentials(rotated)
         call(url, detail + '/inspection')
-        assert Peer.seen[-1][1] == 'Bearer new-managed-credential'
+        assert Peer.seen[-1][1] == 'Bearer ' + rotated
+        assert json.loads((data / 'store.json').read_text()).keys() == {'servers'}
+        credential_file.chmod(0o644)
+        seen = len(Peer.seen)
+        call(url, detail + '/inspection', expected=503)
+        assert len(Peer.seen) == seen
+        credential_file.chmod(0o600)
         settings = {'allowedTools': ['echo'], 'githubToolsets': [], 'githubReadOnly': False}
         assert call(url, detail + '/settings', 'PUT', settings) == settings
         call(url, detail + '/tools/call', 'POST', {'name': 'echo'}, expected=400)
@@ -130,8 +150,9 @@ def check(binary, root, endpoint):
     with run(binary, root, data, token_file) as url:
         assert call(url, registry)[0]['settings'] == settings
         assert call(url, registry)[0]['id'] == row['id']
-        assert call(url, variables) == ['SMOKE_TOKEN']
-        call(url, variables + '/SMOKE_TOKEN', 'DELETE')
+        call(url, detail + '/inspection')
+        assert Peer.seen[-1][1] == 'Bearer ' + rotated
+        credential_file.unlink()
         seen = len(Peer.seen)
         call(url, detail + '/inspection', expected=503)
         assert len(Peer.seen) == seen, 'deleted credential was used or taken from environment'

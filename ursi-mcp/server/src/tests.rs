@@ -45,8 +45,8 @@ impl ServerRepository for Memory {
     }
 }
 impl Credentials for Memory {
-    fn lookup(&self, _: &str) -> Result<Option<String>, Error> {
-        Ok(None)
+    fn lookup(&self, name: &str, _: Binding) -> Result<Option<String>, Error> {
+        Ok((name == "FIXTURE_TOKEN").then(|| "fixture-token".into()))
     }
 }
 
@@ -309,16 +309,15 @@ async fn admin_grants_bind_secret_to_exact_endpoint() {
     f.permit();
     cfg.credential_env = Some("URSI_API_TOKEN".into());
     assert!(policy::endpoint(&f.store, &cfg).is_err());
-    // HOME is a non-secret fixture for checking the authorized reference without mutating process env.
-    cfg.credential_env = Some("HOME".into());
-    f.policy(json!([{"url":cfg.url,"credentialEnv":"HOME"}]));
+    cfg.credential_env = Some("FIXTURE_TOKEN".into());
+    f.policy(json!([{"url":cfg.url,"credentialEnv":"FIXTURE_TOKEN"}]));
     let (_, h) = policy::endpoint(&f.store, &cfg).unwrap();
     assert!(h.unwrap().is_sensitive());
     let value = json!(f.store.register(cfg.clone()).unwrap());
-    assert_eq!(value["credentialEnv"], "HOME");
+    assert_eq!(value["credentialEnv"], "FIXTURE_TOKEN");
     assert_eq!(
         value,
-        json!({"id":value["id"],"name":cfg.name,"url":cfg.url,"credentialEnv":"HOME"})
+        json!({"id":value["id"],"name":cfg.name,"url":cfg.url,"credentialEnv":"FIXTURE_TOKEN"})
     );
     let mut other = cfg.clone();
     other.url.push_str("/other");
@@ -341,13 +340,9 @@ async fn credentialed_request_never_follows_redirect() {
     let app = Router::new().route(
         "/start",
         post(move |headers: HeaderMap| async move {
-            let expected = format!("Bearer {}", std::env::var("HOME").unwrap());
+            let expected = "Bearer fixture-token";
             saw_tx
-                .send(
-                    headers
-                        .get("authorization")
-                        .is_some_and(|h| h == expected.as_str()),
-                )
+                .send(headers.get("authorization").is_some_and(|h| h == expected))
                 .await
                 .unwrap();
             axum::response::Redirect::temporary(&target)
@@ -356,10 +351,10 @@ async fn credentialed_request_never_follows_redirect() {
     let http = tokio::spawn(async move { axum::serve(sock, app).await.unwrap() });
     let cfg = Config {
         url,
-        credential_env: Some("HOME".into()),
+        credential_env: Some("FIXTURE_TOKEN".into()),
         ..f.cfg()
     };
-    f.policy(json!([{"url":cfg.url,"credentialEnv":"HOME"}]));
+    f.policy(json!([{"url":cfg.url,"credentialEnv":"FIXTURE_TOKEN"}]));
     assert!(client::Session::open(&f.store, &cfg).await.is_err());
     assert!(saw_rx.try_recv().unwrap());
     assert!(f.calls.lock().unwrap().is_empty());

@@ -91,14 +91,14 @@ pub trait ServerRepository: Send + Sync {
     fn replace_settings(&self, id: &str, settings: &Settings) -> Result<bool, Error>;
 }
 pub trait Credentials: Send + Sync {
-    fn lookup(&self, name: &str) -> Result<Option<String>, Error>;
+    fn lookup(&self, name: &str, binding: Binding) -> Result<Option<String>, Error>;
 }
 
-/// The optional mode preserves embedded hosts' platform registrations and legacy env fallback.
+/// Controls whether platform registrations require an explicit deployment grant.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PolicyMode {
     Optional,
-    RequiredManagedCredentials,
+    Required,
 }
 
 #[derive(Clone)]
@@ -172,17 +172,16 @@ impl McpPlatform {
                 config.settings = None;
             }
         }
-        if (config.binding == Binding::Platform
-            || self.0.policy_mode == PolicyMode::RequiredManagedCredentials)
+        if (config.binding == Binding::Platform || self.0.policy_mode == PolicyMode::Required)
             && let Some(key) = &config.credential_env
         {
             let value = self
                 .0
                 .credentials
-                .lookup(key)?
-                .ok_or_else(|| invalid("所选平台变量不存在，请先在环境变量页保存"))?;
+                .lookup(key, config.binding)?
+                .ok_or_else(|| invalid("凭据引用不存在，请检查宿主凭据配置"))?;
             if !policy::valid_bearer(&value) {
-                return Err(invalid("所选变量不能用作 Bearer 令牌，请检查空格或换行"));
+                return Err(invalid("凭据不能用作 Bearer 令牌，请检查空格或换行"));
             }
         }
         let row = ServerRecord {

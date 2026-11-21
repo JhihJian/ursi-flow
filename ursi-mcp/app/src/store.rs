@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use ursi_mcp::{Credentials, Error, MAX_SERVERS, ServerRecord, ServerRepository, Settings};
+use ursi_mcp::{Error, MAX_SERVERS, ServerRecord, ServerRepository, Settings};
 
 const MAX_DATA: usize = 4 * 1024 * 1024;
 
@@ -32,7 +32,6 @@ pub fn open_private(options: &mut OpenOptions, path: &Path) -> io::Result<File> 
 #[serde(deny_unknown_fields)]
 struct Data {
     servers: BTreeMap<String, ServerRecord>,
-    credentials: BTreeMap<String, String>,
 }
 
 pub struct Store {
@@ -107,46 +106,8 @@ impl Store {
         *guard = Some(data);
         Ok(result)
     }
-
-    pub fn names(&self) -> Result<Vec<String>, Error> {
-        self.read(|d| d.credentials.keys().cloned().collect())
-    }
-    pub fn set_credential(
-        &self,
-        name: String,
-        value: String,
-        replace: bool,
-    ) -> Result<Result<(), axum::http::StatusCode>, Error> {
-        use axum::http::StatusCode;
-        if !ursi_mcp::valid_credential_name(&name)
-            || value.is_empty()
-            || value.len() > 8192
-            || value.contains('\0')
-        {
-            return Err(Error::Invalid("变量名称或值无效".into()));
-        }
-        self.update(|d| match (d.credentials.contains_key(&name), replace) {
-            (true, false) => Ok(Err(StatusCode::CONFLICT)),
-            (false, true) => Ok(Err(StatusCode::NOT_FOUND)),
-            (false, false) if d.credentials.len() >= 128 => {
-                Err(Error::Invalid("最多保存 128 个变量".into()))
-            }
-            _ => {
-                d.credentials.insert(name, value);
-                Ok(Ok(()))
-            }
-        })
-    }
-    pub fn remove_credential(&self, name: &str) -> Result<bool, Error> {
-        self.update(|d| Ok(d.credentials.remove(name).is_some()))
-    }
 }
 
-impl Credentials for Store {
-    fn lookup(&self, name: &str) -> Result<Option<String>, Error> {
-        self.read(|d| d.credentials.get(name).cloned())
-    }
-}
 impl ServerRepository for Store {
     fn list(&self) -> Result<Vec<ServerRecord>, Error> {
         self.read(|d| d.servers.values().cloned().collect())

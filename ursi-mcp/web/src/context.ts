@@ -3,8 +3,8 @@ import type { McpClient } from './client'
 
 export type McpRouteOptions = {
   client: McpClient
-  listVariableNames: (signal: AbortSignal) => Promise<string[]>
-  variableManagementPath: string
+  listVariableNames?: (signal: AbortSignal) => Promise<string[]>
+  variableManagementPath?: string
 }
 export const McpContext = createContext<McpRouteOptions | null>(null)
 export function useMcp() {

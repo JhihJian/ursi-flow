@@ -1,13 +1,11 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, Link, Navigate, NavLink, Outlet, RouterProvider, useMatches } from 'react-router'
+import { createBrowserRouter, Link, Navigate, Outlet, RouterProvider, useMatches } from 'react-router'
 import { createMcpClient, createMcpRoutes } from '../src'
 import { useMutation } from '../src/lib/use-mutation'
 import { Button } from '../src/ui/button'
-import { FeedbackProvider } from '../src/ui/feedback'
 import { Icon } from '../src/ui/icon'
 import { Input } from '../src/ui/input'
-import { listVariableNames, PlatformEnvironment, variablePath } from './platform-env'
 import { getSession, request, restoreSession, signIn, signOut, subscribe } from './session'
 import './styles.css'
 
@@ -60,10 +58,6 @@ function Shell() {
     <header className="host-top">
       <div className="host-width host-bar">
         <Link to={serverPath} className="host-brand"><Icon name="connector" size={20} /> ursi-mcp</Link>
-        <nav className="host-nav" aria-label="主导航">
-          <NavLink to={serverPath}>MCP 服务</NavLink>
-          <NavLink to={variablePath}>环境变量</NavLink>
-        </nav>
         <div className="ursi-mcp host-logout"><Button icon="logout" onClick={() => signOut()}>退出登录</Button></div>
       </div>
     </header>
@@ -86,8 +80,7 @@ const router = createBrowserRouter([{
     errorElement: <RouteMessage error />,
     children: [
       { index: true, element: <Navigate to={serverPath} replace /> },
-      ...createMcpRoutes({ client: createMcpClient(request), listVariableNames, variableManagementPath: variablePath }),
-      { path: variablePath, handle: { title: '环境变量' }, element: <div className="ursi-mcp"><FeedbackProvider><PlatformEnvironment /></FeedbackProvider></div> },
+      ...createMcpRoutes({ client: createMcpClient(request) }),
       { path: '*', handle: { title: '页面未找到' }, element: <RouteMessage /> },
     ],
   }],

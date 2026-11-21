@@ -3,8 +3,8 @@ use super::{Error, Store, environment};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use ursi_mcp::{
-    Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ServerRecord, ServerRepository,
-    Settings,
+    Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ServerRecord,
+    ServerRepository, Settings,
 };
 const TABLE: &str = "mcpServers";
 
@@ -39,8 +39,13 @@ impl From<McpError> for Error {
     }
 }
 impl Credentials for Store {
-    fn lookup(&self, name: &str) -> Result<Option<String>, McpError> {
-        Ok(environment::lookup(self, name)?)
+    fn lookup(&self, name: &str, binding: Binding) -> Result<Option<String>, McpError> {
+        let managed = environment::lookup(self, name)?;
+        Ok(managed.or_else(|| {
+            (binding == Binding::Policy)
+                .then(|| std::env::var(name).ok())
+                .flatten()
+        }))
     }
 }
 fn decode(row: &Value) -> Result<ServerRecord, Error> {

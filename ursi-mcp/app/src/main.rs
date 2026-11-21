@@ -1,14 +1,14 @@
+mod credentials;
 mod store;
 
 use axum::{
     Json, Router,
-    extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
+    extract::{ConnectInfo, Request, State},
     http::{HeaderValue, StatusCode, header, uri::Authority},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, put},
 };
-use serde::Deserialize;
+use credentials::DeploymentCredentials;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -89,15 +89,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let platform = McpPlatform::with_policy_mode(
         store.clone(),
-        store.clone(),
+        Arc::new(DeploymentCredentials(store.dir.join("credentials.json"))),
         store.dir.join("mcp-policy.json"),
         "ursi-mcpd",
         env!("CARGO_PKG_VERSION"),
-        PolicyMode::RequiredManagedCredentials,
+        PolicyMode::Required,
     );
     let api = Router::new()
         .merge(platform.routes())
-        .merge(credentials(store))
         .fallback(|| async { failure(StatusCode::NOT_FOUND, "API 不存在") })
         .layer(middleware::from_fn_with_state(access.clone(), authenticate));
     let app = Router::new()
@@ -109,7 +108,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route_service("/", ServeFile::new(&index))
         .route_service("/mcp-servers", ServeFile::new(&index))
         .route_service("/mcp-servers/{id}", ServeFile::new(&index))
-        .route_service("/platform-env", ServeFile::new(&index))
         .layer(middleware::from_fn_with_state(access, boundary));
     let listener = tokio::net::TcpListener::bind(bind).await?;
     eprintln!("ursi-mcpd listening at {}", listener.local_addr()?);
@@ -194,61 +192,4 @@ async fn boundary(
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
     response
-}
-
-fn credentials(store: Arc<Store>) -> Router {
-    Router::new()
-        .route("/platform-env", get(names).post(create))
-        .route("/platform-env/{name}", put(replace).delete(remove))
-        .layer(DefaultBodyLimit::max(64 * 1024))
-        .with_state(store)
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Create {
-    name: String,
-    value: String,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Replace {
-    value: String,
-}
-async fn names(State(store): State<Arc<Store>>) -> Result<Json<Vec<String>>, ursi_mcp::Error> {
-    store.names().map(Json)
-}
-async fn create(
-    State(store): State<Arc<Store>>,
-    Json(input): Json<Create>,
-) -> Result<Response, ursi_mcp::Error> {
-    set(&store, input.name, input.value, false)
-}
-async fn replace(
-    State(store): State<Arc<Store>>,
-    Path(name): Path<String>,
-    Json(input): Json<Replace>,
-) -> Result<Response, ursi_mcp::Error> {
-    set(&store, name, input.value, true)
-}
-fn set(
-    store: &Store,
-    name: String,
-    value: String,
-    replace: bool,
-) -> Result<Response, ursi_mcp::Error> {
-    Ok(match store.set_credential(name.clone(), value, replace)? {
-        Ok(()) => Json(json!({"name": name})).into_response(),
-        Err(StatusCode::CONFLICT) => failure(StatusCode::CONFLICT, "变量已存在"),
-        Err(_) => failure(StatusCode::NOT_FOUND, "变量不存在"),
-    })
-}
-async fn remove(
-    State(store): State<Arc<Store>>,
-    Path(name): Path<String>,
-) -> Result<Response, ursi_mcp::Error> {
-    Ok(if store.remove_credential(&name)? {
-        Json(json!({"name": name})).into_response()
-    } else {
-        failure(StatusCode::NOT_FOUND, "变量不存在")
-    })
 }

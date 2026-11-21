@@ -1,4 +1,4 @@
-//! 页面登记绑定平台变量。只有文件策略登记可使用宿主凭据。
+//! 端点授权和出站认证。凭据值由宿主提供。
 use super::{Binding, Config, Error, McpPlatform, PolicyMode, invalid, unavailable};
 use reqwest::{Url, header::HeaderValue};
 use serde::Deserialize;
@@ -106,20 +106,12 @@ pub(super) fn endpoint(
         .credential_env
         .as_ref()
         .map(|key| {
-            let err = || unavailable("管理员配置的 MCP 凭据不可用");
-            let value = match store.0.credentials.lookup(key)? {
-                Some(value) => value,
-                None if store.0.policy_mode == PolicyMode::Optional
-                    && cfg.binding == Binding::Policy =>
-                {
-                    std::env::var(key).map_err(|_| err())?
-                }
-                None => {
-                    return Err(unavailable(
-                        "服务引用的平台变量已删除，请在环境变量页重新设置",
-                    ));
-                }
-            };
+            let err = || unavailable("服务引用的 MCP 凭据不可用，请检查宿主凭据配置");
+            let value = store
+                .0
+                .credentials
+                .lookup(key, cfg.binding)?
+                .ok_or_else(&err)?;
             if !valid_bearer(&value) {
                 return Err(err());
             }

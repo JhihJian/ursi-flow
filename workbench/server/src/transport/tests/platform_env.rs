@@ -92,7 +92,7 @@ async fn page_binding_registers_without_file_and_never_uses_host_secret() {
     );
     let (status, _, body) = f.request("GET", &inspect, AUTH, Value::Null).await;
     assert_eq!(status, 503);
-    assert!(body.contains("平台变量已删除"));
+    assert!(body.contains("MCP 凭据不可用"));
     let anonymous = json!({"binding":"platform","name":"public","url":"https://example.org/mcp"});
     assert_eq!(
         f.request("POST", path, AUTH, anonymous.clone()).await.0,
