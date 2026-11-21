@@ -94,12 +94,20 @@ pub trait Credentials: Send + Sync {
     fn lookup(&self, name: &str) -> Result<Option<String>, Error>;
 }
 
+/// The optional mode preserves embedded hosts' platform registrations and legacy env fallback.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PolicyMode {
+    Optional,
+    RequiredManagedCredentials,
+}
+
 #[derive(Clone)]
 pub struct McpPlatform(Arc<Inner>);
 struct Inner {
     records: Arc<dyn ServerRepository>,
     credentials: Arc<dyn Credentials>,
     policy_file: PathBuf,
+    policy_mode: PolicyMode,
     identity: rmcp::model::Implementation,
     slots: Semaphore,
 }
@@ -111,10 +119,29 @@ impl McpPlatform {
         client_name: &str,
         client_version: &str,
     ) -> Self {
+        Self::with_policy_mode(
+            records,
+            credentials,
+            policy_file,
+            client_name,
+            client_version,
+            PolicyMode::Optional,
+        )
+    }
+
+    pub fn with_policy_mode(
+        records: Arc<dyn ServerRepository>,
+        credentials: Arc<dyn Credentials>,
+        policy_file: PathBuf,
+        client_name: &str,
+        client_version: &str,
+        policy_mode: PolicyMode,
+    ) -> Self {
         Self(Arc::new(Inner {
             records,
             credentials,
             policy_file,
+            policy_mode,
             identity: rmcp::model::Implementation::new(client_name, client_version),
             slots: Semaphore::new(4),
         }))
@@ -145,7 +172,8 @@ impl McpPlatform {
                 config.settings = None;
             }
         }
-        if config.binding == Binding::Platform
+        if (config.binding == Binding::Platform
+            || self.0.policy_mode == PolicyMode::RequiredManagedCredentials)
             && let Some(key) = &config.credential_env
         {
             let value = self

@@ -1,6 +1,20 @@
-# 平台 MCP 嵌入指南
+# ursi-mcp
 
-`ursi-mcp` 管理已登记的 Streamable HTTP MCP 服务。后端库与管理界面可分别引用。宿主负责认证、持久化和平台变量管理，模块负责登记规则、出站授权、会话及限额。
+`ursi-mcp` 管理已登记的 Streamable HTTP MCP 服务。可以运行独立管理台，也可以把后端库与管理页面嵌入其他应用。
+
+## 独立交付
+
+在 Linux x86_64 或 ARM64 构建机上，安装 Node.js 24、Rust 和本机 `musl-gcc`，并安装对应 Rust 目标 `x86_64-unknown-linux-musl` 或 `aarch64-unknown-linux-musl`。从仓库根目录运行：
+
+```sh
+bash ursi-mcp/scripts/package.sh
+```
+
+压缩包和 SHA-256 文件生成在 `ursi-mcp/dist/`。解压后按[启动说明](app/DEPLOY.md)启动。运行机器无需 Workbench、Flow 或构建工具。构建机可运行 `python3 ursi-mcp/scripts/smoke.py <解压目录>/ursi-mcpd`，检查独立启动、资源读取和重启持久化。
+
+## 嵌入应用
+
+宿主负责认证、持久化和平台变量管理，模块负责登记规则、出站授权、会话及限额。
 
 ## Rust 宿主
 

@@ -1,5 +1,5 @@
 //! 页面登记绑定平台变量。只有文件策略登记可使用宿主凭据。
-use super::{Binding, Config, Error, McpPlatform, invalid, unavailable};
+use super::{Binding, Config, Error, McpPlatform, PolicyMode, invalid, unavailable};
 use reqwest::{Url, header::HeaderValue};
 use serde::Deserialize;
 use std::{
@@ -62,7 +62,11 @@ pub(super) fn authorize_operation(
         .open(&store.0.policy_file)
     {
         Ok(file) => file,
-        Err(e) if cfg.binding == Binding::Platform && e.kind() == std::io::ErrorKind::NotFound => {
+        Err(e)
+            if store.0.policy_mode == PolicyMode::Optional
+                && cfg.binding == Binding::Platform
+                && e.kind() == std::io::ErrorKind::NotFound =>
+        {
             return Ok(url);
         }
         Err(_) => return Err(denied()),
@@ -105,7 +109,11 @@ pub(super) fn endpoint(
             let err = || unavailable("管理员配置的 MCP 凭据不可用");
             let value = match store.0.credentials.lookup(key)? {
                 Some(value) => value,
-                None if cfg.binding == Binding::Policy => std::env::var(key).map_err(|_| err())?,
+                None if store.0.policy_mode == PolicyMode::Optional
+                    && cfg.binding == Binding::Policy =>
+                {
+                    std::env::var(key).map_err(|_| err())?
+                }
                 None => {
                     return Err(unavailable(
                         "服务引用的平台变量已删除，请在环境变量页重新设置",

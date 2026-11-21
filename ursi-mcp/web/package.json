@@ -9,6 +9,7 @@
   "files": ["dist", "src", "tailwind.config.cjs", "LICENSE.third-party"],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",
+    "build:standalone": "tsc --noEmit -p standalone/tsconfig.json && vite build --config standalone/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
