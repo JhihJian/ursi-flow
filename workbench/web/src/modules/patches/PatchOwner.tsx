@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { listWorkItems, workItemPath } from '@/shared/api/work-items'
+import { generationRunPath, generatorRevisionPath } from '@/shared/api/work-patch-generators'
 import { useMutation } from '@/shared/hooks/use-mutation'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
@@ -21,7 +22,10 @@ export function PatchOwner({ patch, onSaved }: { patch: Patch; onSaved: () => vo
     {source && <><Button size="sm" variant="ghost" onClick={() => setSourceOpen(true)}>生成来源</Button>
       <Modal open={sourceOpen} title="生成来源" onClose={() => setSourceOpen(false)}>
         <div className="space-y-3 break-all text-sm"><p>生成时的工作项：{source.workItemTitle} · {source.workItemId}</p>
-          <p>配方修订：{source.revision}</p><p>脚本摘要：{source.scriptSha256}</p>
+          {source.runId && <p><Link className="text-accent-2 underline" to={generationRunPath(source.runId)}>查看生成记录</Link></p>}
+          {source.generator && <p>生成器：<Link className="text-accent-2 underline" to={generatorRevisionPath(source.generator)}>
+            {source.generator.id} · 第 {source.generator.revision} 版</Link></p>}
+          <p>{source.runId ? '工作项修订' : '配方修订'}：{source.revision}</p><p>脚本摘要：{source.scriptSha256}</p>
           <ul className="space-y-2">{source.resources.map(r => <li key={r.alias}><strong>{r.alias}</strong> · {r.serverId} · {r.uri}
             <p>内容摘要：{r.sha256}</p><p>读取时间：{new Date(r.readAt).toLocaleString()}</p></li>)}</ul>
         </div>

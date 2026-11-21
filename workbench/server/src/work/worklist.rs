@@ -1,10 +1,11 @@
 //! 工作清单管理可独立编辑的事项及生成工作包的配方。
 mod convert;
 mod generate;
+mod runs;
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, patches};
+use super::{Error, Store, catalog, patches, valid_label};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -19,6 +20,7 @@ use uuid::Uuid;
 const TABLE: &str = "workListItems";
 
 pub(super) fn routes(store: Store, platform: ursi_mcp::McpPlatform) -> Router {
+    let runs = runs::routes(store.clone(), platform.clone());
     Router::new()
         .route("/v2/work-items", get(list).post(create))
         .route(
@@ -31,7 +33,10 @@ pub(super) fn routes(store: Store, platform: ursi_mcp::McpPlatform) -> Router {
                 .route("/v2/work-items/{id}/generate", post(generate::handle))
                 .with_state((store, platform)),
         )
+        .merge(runs)
 }
+
+pub(super) use runs::recover;
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +65,46 @@ struct Resource {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct GeneratorRef {
+    id: String,
+    revision: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Binding {
+    id: String,
+    revision: u64,
+    resources: Vec<Resource>,
+}
+
+fn resolve<'a>(
+    db: &'a Value,
+    id: &str,
+    revision: u64,
+    resources: &[Resource],
+) -> Result<&'a Value, Error> {
+    let generator = catalog::generator(db, id, revision)?;
+    let aliases = generator["aliases"].as_array().ok_or_else(corrupt)?;
+    let unique: HashSet<_> = resources.iter().map(|r| r.alias.as_str()).collect();
+    if resources.len() != aliases.len()
+        || unique.len() != aliases.len()
+        || !aliases
+            .iter()
+            .all(|a| a.as_str().is_some_and(|s| unique.contains(s)))
+        || resources
+            .iter()
+            .any(|r| !valid_label(&r.server_id, 128) || !valid_label(&r.uri, 4096))
+    {
+        return Err(Error::Invalid(
+            "资源引用必须与生成器输入别名一一对应".into(),
+        ));
+    }
+    Ok(generator)
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct Recipe {
     resources: Vec<Resource>,
     script: String,
@@ -76,6 +121,7 @@ struct Definition {
     #[serde(default, deserialize_with = "present")]
     status: Option<Status>,
     recipe: Option<Recipe>,
+    generator: Option<Binding>,
     revision: Option<u64>,
 }
 
@@ -93,6 +139,9 @@ impl Definition {
             return Err(Error::Invalid("工作标题不能为空或包含控制字符".into()));
         }
         if let Some(recipe) = &self.recipe {
+            if self.generator.is_some() {
+                return Err(Error::Invalid("生成器与内嵌配方只能选择一种".into()));
+            }
             if recipe.script.trim().is_empty() || recipe.resources.is_empty() {
                 return Err(Error::Invalid("配方需要脚本和至少一个资源".into()));
             }
@@ -118,9 +167,18 @@ impl Definition {
             .map(|v| json!(v))
             .or_else(|| previous.map(|r| r["status"].clone()))
             .unwrap_or_else(|| json!(Status::default()));
-        Ok(
-            json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"recipe":self.recipe,"revision":revision}),
-        )
+        let mut row = json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"recipe":self.recipe,"revision":revision});
+        if let Some(binding) = &self.generator {
+            row["generator"] = json!(binding);
+        }
+        Ok(row)
+    }
+
+    fn check_binding(&self, db: &Value) -> Result<(), Error> {
+        if let Some(b) = &self.generator {
+            resolve(db, &b.id, b.revision, &b.resources)?;
+        }
+        Ok(())
     }
 }
 
@@ -184,6 +242,7 @@ async fn create(
     let id = Uuid::new_v4().to_string();
     let row = input.row(&id, 1, None)?;
     store.update(|db| {
+        input.check_binding(db)?;
         table_mut(db)?.insert(id, row.clone());
         Ok(Json(row))
     })
@@ -201,6 +260,9 @@ async fn replace(
         }
         let mut row = input.row(&id, revision, Some(old))?;
         if &row != old {
+            if row["generator"] != old["generator"] {
+                input.check_binding(db)?;
+            }
             row["revision"] = json!(revision.checked_add(1).ok_or_else(corrupt)?);
             table_mut(db)?.insert(id, row.clone());
         }

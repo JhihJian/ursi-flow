@@ -49,8 +49,14 @@ impl IntoResponse for Error {
         (code, Json(json!({"error":message}))).into_response()
     }
 }
+fn valid_label(s: &str, limit: usize) -> bool {
+    !s.is_empty() && s.len() <= limit && s.trim() == s && !s.chars().any(char::is_control)
+}
+
 pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     let store = Store::open(dir)?;
+    worklist::recover(&store)
+        .map_err(|err| io::Error::other(format!("恢复生成运行失败：{err:?}")))?;
     let platform = mcp::platform(&store);
     let agents = agent_backends::Registry::from_env()?;
     Ok(catalog::routes(store.clone(), agents.clone())

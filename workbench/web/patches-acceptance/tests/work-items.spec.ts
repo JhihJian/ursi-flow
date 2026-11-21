@@ -1,6 +1,5 @@
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { expect, test } from '@playwright/test'
+import { mcpResource, mcpToken, startMcpFixture } from '../fixtures/mcp'
 import { readRuntime } from '../fixtures/runtime'
 import { login } from './support'
 
@@ -38,41 +37,16 @@ test('只填标题创建工作项，类别和状态可分别修改并保存', as
 test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读取', async ({ page, request }, info) => {
   const { token, apiBase } = readRuntime()
   const title = `每周反馈-${info.project.name}`
-  const uri = 'feedback://weekly'
+  const { uri } = mcpResource
   const modern = info.project.name === 'desktop'
-  const toolCalls: unknown[] = []
-  const peer = createServer(async (req, res) => {
-    if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401).end(); return }
-    if (req.method === 'DELETE') { res.writeHead(204).end(); return }
-    const body = []
-    for await (const bytes of req) body.push(bytes)
-    const rpc = JSON.parse(Buffer.concat(body).toString())
-    if (rpc.method === 'server/discover' && !modern) { res.writeHead(400).end(); return }
-    if (modern && (rpc.params?._meta?.['io.modelcontextprotocol/protocolVersion'] !== '2026-07-28' || req.headers['mcp-protocol-version'] !== '2026-07-28')) { res.writeHead(422).end(); return }
-    if (rpc.method === 'notifications/initialized') { res.writeHead(202).end(); return }
-    const result = rpc.method === 'server/discover' ? {
-      supportedVersions: ['2026-07-28','2025-06-18'], capabilities: { resources: { listChanged: true }, tools: {}, prompts: {} }, _meta: { 'io.modelcontextprotocol/serverInfo': { name: '现代服务', version: '2' } },
-    } : rpc.method === 'initialize' ? {
-      protocolVersion: '2025-06-18', capabilities: { resources: {}, tools: {}, prompts: {} }, serverInfo: { name: '反馈', version: '1' },
-    } : rpc.method === 'resources/list' ? { resources: [{ name: '周报', uri }] }
-      : rpc.method === 'tools/list' ? (rpc.params?.cursor ? { tools: [{ name: 'echo', inputSchema: { type: 'object' } }] } : { tools: [{ name: 'first', inputSchema: { type: 'object' } }], nextCursor: 'two' })
-      : rpc.method === 'tools/call' ? { content: [{ type: 'text', text: '回声结果' }] }
-      : rpc.method === 'prompts/list' ? { prompts: [{ name: 'welcome', arguments: [{ name: 'user' }] }] }
-      : rpc.method === 'prompts/get' ? { messages: [{ role: 'user', content: { type: 'text', text: `你好 ${rpc.params.arguments.user}` } }] }
-      : rpc.method === 'resources/templates/list' ? { resourceTemplates: [{ name: '周报模板', uriTemplate: 'feedback://{week}' }] }
-      : { contents: [{ uri: rpc.params.uri, text: '本周反馈原文' }] }
-    if (rpc.method === 'tools/call') toolCalls.push(rpc.params.arguments)
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: modern ? { resultType: 'complete', ttlMs: 0, cacheScope: 'private', ...result } : result }))
-  })
-  await new Promise<void>(resolve => peer.listen(0, '127.0.0.1', resolve))
-  const url = `http://127.0.0.1:${(peer.address() as AddressInfo).port}/mcp`
+  const { url, toolCalls, close } = await startMcpFixture(modern)
   try {
     await login(page, token)
     const key = `MCP_TEST_${info.project.name.toUpperCase()}`
     await page.goto('/platform-env')
     await page.getByRole('button', { name: '新增变量' }).click()
     await page.getByLabel('变量名').fill(key)
-    await page.getByLabel('新值').fill('fixture-token')
+    await page.getByLabel('新值').fill(mcpToken)
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.getByText(key, { exact: true })).toBeVisible()
     await page.goto('/mcp-servers')
@@ -164,7 +138,6 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     await page.getByRole('button', { name: '确认删除', exact: true }).click()
     await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(0)
   } finally {
-    peer.closeAllConnections()
-    peer.close()
+    await close()
   }
 })

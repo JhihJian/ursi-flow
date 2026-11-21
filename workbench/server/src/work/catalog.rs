@@ -19,17 +19,22 @@ use serde_json::{Map, Value, json};
 
 type Reply = Result<Json<Value>, Error>;
 type Collection = (Store, &'static str, Registry);
+pub(super) const GENERATORS: &str = "work-patch-generators";
 
 pub fn routes(store: Store, registry: Registry) -> Router {
     let mut api = Router::new().route("/v2/agent-options", get(agent::options));
-    for kind in ["resources", "executors"] {
+    for kind in ["resources", "executors", GENERATORS] {
         let collection = Router::new()
             .route("/", get(index).post(create))
             .route("/{id}", get(detail))
             .route("/{id}/revisions", get(history))
-            .route("/{id}/revisions/{revision}", get(detail_revision))
-            .route("/{id}/deactivate", post(disable))
-            .with_state((store.clone(), kind, registry.clone()));
+            .route("/{id}/revisions/{revision}", get(detail_revision));
+        let collection = if kind == GENERATORS {
+            collection
+        } else {
+            collection.route("/{id}/deactivate", post(disable))
+        };
+        let collection = collection.with_state((store.clone(), kind, registry.clone()));
         api = api.nest(&format!("/v2/{kind}"), collection);
     }
     api
@@ -106,6 +111,11 @@ fn version<'a>(db: &'a Value, k: &str, id: &str, r: u64) -> Result<&'a Value, Er
         .and_then(|i| history.get(i))
         .ok_or_else(|| Error::NotFound(format!("{k}/{id} 第 {r} 版不存在")))
 }
+pub(super) fn generator<'a>(db: &'a Value, id: &str, revision: u64) -> Result<&'a Value, Error> {
+    require_active(db, GENERATORS, id)?;
+    version(db, GENERATORS, id, revision)
+}
+
 fn latest(db: &Value, k: &str, id: &str) -> Result<Value, Error> {
     let rec = record(db, k, id)?;
     let mut value = versions(rec)?.last().ok_or_else(corrupt)?.clone();

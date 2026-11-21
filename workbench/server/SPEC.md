@@ -21,6 +21,7 @@ Server 通过 `/api/v2` 管理工作清单、包目录、平台 MCP 服务及版
 #### 验收
 
 - [工作清单](src/work/worklist/SPEC.md)可独立增删改查。通过[平台 MCP](src/work/mcp/SPEC.md)选择资源并保存配方后，可按请求生成工作包。删除清单项时保留文件与生成来源。
+- [工作包生成器](src/work/worklist/GENERATORS-HTTP.md)按不可变修订发布。工作项绑定或独立试运行都指定修订，运行状态和结果可独立于 Flow 查询。
 - [工作包与配置包](src/work/patches/SPEC.md)返回各自的 `directoryId`，按 ID 通过[目录接口](src/work/directories/SPEC.md)读写文件。独立创建的虚拟目录无需绑定包。
 - [资源与执行器](src/work/catalog/SPEC.md)按修订发布和读取。执行器固定引用资源修订，停用对象后历史修订仍可读取。
 

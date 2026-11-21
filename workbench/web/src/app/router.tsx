@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 import { routes as chatRoutes } from '@/modules/chat/routes'
 import { workItemRoutes } from '@/modules/work-items/routes'
+import { workPatchGeneratorRoutes } from '@/modules/work-patch-generators/routes'
 import { mcpRoutes } from '@/modules/mcp/routes'
 import { patchRoutes } from '@/modules/patches/routes'
 import { definitionRoutes } from '@/modules/definitions/routes'
@@ -12,6 +13,7 @@ import { RouteErrorAlert } from './RouteErrorAlert'
 const protectedRoutes: RouteObject[] = [
   { path: 'settings/agent-backends', handle: { title: 'Agent 后端' }, lazy: async () => ({ Component: (await import('@/modules/agent-backends/AgentBackends')).AgentBackends }) },
   ...workItemRoutes,
+  ...workPatchGeneratorRoutes,
   ...mcpRoutes,
   ...patchRoutes,
   ...definitionRoutes,

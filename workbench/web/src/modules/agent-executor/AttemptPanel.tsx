@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cancelAttempt, inspectAttempt, startAttempt, type AttemptResult, type AttemptTarget } from '@/shared/api/agent-executor'
 import { errorMessage } from '@/shared/api'
 import { ApiError } from '@/shared/http/client'
+import { newUuid } from '@/shared/lib/uuid'
 import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/textarea'
 import { ArtifactFiles } from './ArtifactFiles'
@@ -41,16 +42,6 @@ function restore(key?: string): Attempt | null {
 function previewKey(target: Props['target']) {
   const d = target?.previewDefinition
   return d && JSON.stringify([d.id, d.agent.configPackageId, d.agent.backendId])
-}
-
-function newUuid() {
-  if (crypto.randomUUID) return crypto.randomUUID()
-  // randomUUID 仅在安全上下文可用，内网 HTTP 同样需要合法的 v4 UUID。
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 15) | 64
-  bytes[8] = (bytes[8] & 63) | 128
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-')
 }
 
 export function AttemptPanel(props: Props) {

@@ -1,13 +1,14 @@
-# 工作包配方转换契约
+# 工作包 Python 转换契约
 
 ## Python 输入与结果
 
-`transform(item, resources)` 的 `item` 仅含 `id`、`title`、`description`、`category`、`status`。后两个字段取自生成开始时的工作项，分别表示工作类别与办理状态，取值见[工作清单契约](HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
+生成器和内嵌配方共用 `transform(item, resources)`。独立试运行的 `item` 为 `None`，工作项生成时 `item` 仅含 `id`、`title`、`description`、`category`、`status`。后两个字段取自生成开始时的工作项，分别表示工作类别与办理状态，取值见[工作清单契约](HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
 
 ```python
 def transform(item, resources):
     text = resources['feedback']['contents'][0]['text']
-    return {'name': item['title'], 'files': [{'path': '材料/反馈.md', 'text': text}]}
+    name = item['title'] if item is not None else '反馈试运行'
+    return {'name': name, 'files': [{'path': '材料/反馈.md', 'text': text}]}
 ```
 
 转换使用 Linux 用户命名空间、`/usr/bin/bwrap`、系统 `/usr/bin/python3` 和 `libseccomp.so.2`，部署需支持 bwrap 的 `--disable-userns`。解释器以清空的环境和只读运行库启动，不挂载工作目录、用户家目录或 `/proc`。可信启动器预加载 `base64`、`collections`、`csv`、`datetime`、`hashlib`、`io`、`itertools`、`json`、`math`、`re` 等模块，然后安装内核系统调用白名单。此后仅保留管道 I/O、进程自身内存管理、计时和退出所需的调用。脚本在内存中处理材料，只能导入已加载的模块或无需读取文件的内建模块。内核拒绝打开文件、创建套接字和启动子进程。

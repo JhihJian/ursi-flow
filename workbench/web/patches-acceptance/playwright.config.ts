@@ -25,7 +25,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop', testMatch: /(?:patches|work-items)\.spec\.ts$/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', testMatch: /(?:patches|work-items)\.spec\.ts$/, use: { ...devices['Pixel 7'] } },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
 })

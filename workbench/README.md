@@ -32,6 +32,8 @@ Server 默认监听 `0.0.0.0:8080`，可用 `URSI_LISTEN_ADDR` 改；Web 开发�
 
 打开「平台 MCP 服务 → 登记服务」，填入名称和地址，选择已保存的平台变量，点击「添加服务」。点击「浏览资源」进入服务检查页，从「工具目录」选择工具、查看参数、勾选调用许可并确认调用；「工具设置」可修改 GitHub 工具集和只读模式。也可获取提示词或读取资源模板。默认部署无需编辑策略文件。在工作项编辑页勾选具体资源、设置别名并保存 Python 脚本，回到详情点击「生成工作包」。脚本接口为 `transform(item, resources)`。授权示例、隔离依赖和脚本样例见[平台 MCP 接入契约](server/src/work/mcp/PLATFORM.md)。仅使用清单无需配置 MCP 或 Python。
 
+从「工作包生成器」发布 Python 脚本并按版本试运行，或在工作项编辑页绑定一个固定版本。保存不会自动执行。手动发起后可在「生成记录」查看输入摘要、只读试运行文件或关联工作包。详见[工作包生成器设计](WORK-PATCH-GENERATOR-DESIGN.md)。
+
 ## 目录编辑台
 
 从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。工作包的业务记录保存目录引用、来源和可选的工作项归属。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](PATCH-STUDIO.md)。

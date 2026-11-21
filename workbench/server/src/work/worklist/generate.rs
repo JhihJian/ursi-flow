@@ -108,7 +108,7 @@ pub(super) fn publish(
     }
 }
 
-fn seed(root: &FsPath, files: &[(String, Vec<u8>)]) -> Result<(), Error> {
+pub(super) fn seed(root: &FsPath, files: &[(String, Vec<u8>)]) -> Result<(), Error> {
     if files.is_empty() {
         return Err(Error::Invalid("转换未返回文件".into()));
     }

@@ -1,5 +1,6 @@
 import { ApiError, requestJson } from '@/shared/http/client'
 import { useResource } from '@/shared/hooks/use-resource'
+import { generationRunsPath, generatorsPath } from '@/shared/api/work-patch-generators'
 
 export interface NavItem { path: string; title: string; icon: string; requiresFlow?: boolean }
 export interface NavGroup { title: string; items: NavItem[] }
@@ -8,8 +9,10 @@ export const navigationGroups: NavGroup[] = [
   { title: '日常工作', items: [
     { path: '/work-items', title: '工作清单', icon: 'board' },
     { path: '/work-patches', title: '工作包', icon: 'folder' },
+    { path: generationRunsPath, title: '生成记录', icon: 'runs' },
   ] },
   { title: '工作定义', items: [
+    { path: generatorsPath, title: '工作包生成器', icon: 'workflow' },
     { path: '/config-patches', title: '配置包', icon: 'settings' },
     { path: '/resources', title: '资源库', icon: 'layers' },
     { path: '/executors', title: '执行器', icon: 'robot' },

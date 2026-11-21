@@ -28,15 +28,46 @@ pub(super) struct Generated {
     pub(super) provenance: Value,
 }
 use super::Recipe;
-pub(super) async fn convert(platform: &McpPlatform, item: &Value) -> Result<Generated, Error> {
-    let mut operation = platform.operation()?;
-    timeout(Duration::from_secs(45), convert_inner(&mut operation, item))
-        .await
-        .map_err(|_| unavailable("资源转换超时"))?
+
+pub(super) struct Progress {
+    pub stage: &'static str,
+    pub evidence: Vec<Value>,
 }
-async fn convert_inner(operation: &mut Operation<'_>, item: &Value) -> Result<Generated, Error> {
+impl Default for Progress {
+    fn default() -> Self {
+        Self {
+            stage: "read",
+            evidence: Vec::new(),
+        }
+    }
+}
+
+pub(super) async fn convert(platform: &McpPlatform, item: &Value) -> Result<Generated, Error> {
     let recipe: Recipe =
         serde_json::from_value(item["recipe"].clone()).map_err(|_| invalid("工作项配方无效"))?;
+    execute(platform, Some(item), &recipe, &mut Progress::default()).await
+}
+
+pub(super) async fn execute(
+    platform: &McpPlatform,
+    item: Option<&Value>,
+    recipe: &Recipe,
+    progress: &mut Progress,
+) -> Result<Generated, Error> {
+    timeout(
+        Duration::from_secs(45),
+        convert_inner(platform, item, recipe, progress),
+    )
+    .await
+    .map_err(|_| unavailable("资源转换超时"))?
+}
+
+async fn convert_inner(
+    platform: &McpPlatform,
+    item: Option<&Value>,
+    recipe: &Recipe,
+    progress: &mut Progress,
+) -> Result<Generated, Error> {
     if recipe.script.trim().is_empty() || recipe.script.len() > 65536 || recipe.resources.len() > 32
     {
         return Err(invalid("配方为空或超过上限"));
@@ -51,8 +82,32 @@ async fn convert_inner(operation: &mut Operation<'_>, item: &Value) -> Result<Ge
             return Err(invalid("资源引用无效或别名重复"));
         }
     }
+    let snapshots = if recipe.resources.is_empty() {
+        json!({})
+    } else {
+        let mut operation = platform.operation()?;
+        read_resources(&mut operation, recipe, &mut progress.evidence).await?
+    };
+    progress.stage = "convert";
+    let input =
+        json!({"item":item.map(item_snapshot),"resources":snapshots,"script":recipe.script});
+    let output = sandbox::run(&input).await?;
+    progress.stage = "validate";
+    let mut provenance = json!({"scriptSha256":format!("{:x}",Sha256::digest(recipe.script.as_bytes())),"resources":progress.evidence});
+    if let Some(item) = item {
+        provenance["workItemId"] = item["id"].clone();
+        provenance["workItemTitle"] = item["title"].clone();
+        provenance["revision"] = item["revision"].clone();
+    }
+    package(output, provenance)
+}
+
+async fn read_resources(
+    operation: &mut Operation<'_>,
+    recipe: &Recipe,
+    evidence: &mut Vec<Value>,
+) -> Result<Value, Error> {
     let mut snapshots = json!({});
-    let mut evidence = vec![];
     let mut size = 0;
     for r in &recipe.resources {
         let contents = operation.read_resource(&r.server_id, &r.uri).await?;
@@ -68,10 +123,7 @@ async fn convert_inner(operation: &mut Operation<'_>, item: &Value) -> Result<Ge
         evidence.push(json!({"serverId":r.server_id,"uri":r.uri,"alias":r.alias,"sha256":format!("{:x}",Sha256::digest(&bytes)),"readAt":now}));
         snapshots[&r.alias] = json!({"serverId":r.server_id,"uri":r.uri,"contents":contents});
     }
-    let input = json!({"item":item_snapshot(item),"resources":snapshots,"script":recipe.script});
-    let output = sandbox::run(&input).await?;
-    let provenance = json!({"workItemId":item["id"],"workItemTitle":item["title"],"revision":item["revision"],"scriptSha256":format!("{:x}",Sha256::digest(recipe.script.as_bytes())),"resources":evidence});
-    package(output, provenance)
+    Ok(snapshots)
 }
 fn item_snapshot(item: &Value) -> Value {
     json!({"id":item["id"],"title":item["title"],"description":item["description"],"category":item["category"],"status":item["status"]})

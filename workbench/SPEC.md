@@ -4,6 +4,7 @@ references:
   - README.md
   - PATCH-STUDIO.md
   - WORK-LIST-DESIGN.md
+  - WORK-PATCH-GENERATOR-DESIGN.md
   - EXECUTOR-DESIGN.md
   - EXECUTOR-MCP.md
   - FLOW-EXECUTOR-DESIGN.md
@@ -23,6 +24,13 @@ references:
 
 - 未接入外部服务也能创建、编辑和删除一次性或持续工作，按类别与进度状态组合筛选。
 - 从平台登记的 MCP 服务选择资源，在工作项保存 Python 配方。每次主动生成一个文件型工作包，重试同一次请求只发布一个包。删除工作项时保留包、文件及生成来源，每包当前至多归属一个工作项。详见[工作清单与工作包来源](WORK-LIST-DESIGN.md)。
+
+### 工作包生成器
+
+#### 验收
+
+- 关闭 Flow 时仍能发布生成器修订、独立试运行并读取只读文件，也能从工作项显式生成关联工作包。新版不改变已有绑定。
+- 生成记录可查回固定修订、输入摘要和结果。同 ID 重试不重复运行，改动请求返回 409。包的生成来源可跳回原记录。
 
 ### 工作包与配置包目录
 

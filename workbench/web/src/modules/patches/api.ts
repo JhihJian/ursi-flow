@@ -1,4 +1,5 @@
 import { ApiError, requestV2 } from '@/shared/http/client'
+import type { GeneratorRef, ResourceEvidence } from '@/shared/api/work-patch-generators'
 
 export type PatchKind = 'work' | 'config'
 /** 包记录：名称与目录标识都由服务端生成，界面按目录标识打开内容。 */
@@ -9,7 +10,9 @@ export interface Patch {
   workItemId?: string | null // 仅文件型工作包有归属
   provenance?: {
     workItemId: string; workItemTitle: string; revision: number; scriptSha256: string
-    resources: { alias: string; serverId: string; uri: string; sha256: string; readAt: number }[]
+    resources: ResourceEvidence[]
+    runId?: string
+    generator?: GeneratorRef
   } | null
   source?: string
   createdAt?: number // Unix 秒

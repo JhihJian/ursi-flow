@@ -6,6 +6,7 @@ depends-on:
 references:
   - ../../../DESIGN-v2.md
   - HTTP.md
+  - ../worklist/GENERATORS-HTTP.md
   - ../../../../EXECUTOR-DESIGN.md
   - ../../../../PI-AGENT-EXECUTOR-DESIGN.md
 ---
@@ -14,7 +15,7 @@ references:
 
 ## 功能意图
 
-分别发布资源与执行器定义，通过修订号读取历史内容。
+分别发布资源、执行器和工作包生成器定义，通过修订号读取历史内容。
 
 ## 关键功能与验收
 
@@ -38,6 +39,13 @@ references:
 - `configSchema` 支持字段数组或 `{fields:[...]}`。每个字段包含 `key`、`label`、`type`，可选 `description`、`required`、`default`、`options`、`min`、`max`。字段类型支持 `string`、`url`、`secret`、`enum`、`integer`、`number`、`boolean`、`configPackage`。它不是任意 JSON Schema，不支持对象、数组、组合、表达式或执行配置。
 - `url` 默认值必须是无空白的绝对 URL；`enum` 必须有非空且不重复的字符串 `options`；`integer` 和 `number` 可声明有限的 `min`、`max`，且默认值必须在边界内；`configPackage` 默认值必须是不含路径的配置包标识。未声明 `default` 的字段没有默认值。
 - `secret` 只能使用 `"***"`、`{"redacted":true}` 或命名的内部引用 `{"ref":"secret://..."}` 表示。明文密钥、路径、命令和环境变量均拒绝，secret 值不进入普通响应。
+
+### 工作包生成器定义
+
+#### 验收
+
+- `/api/v2/work-patch-generators` 发布名称、输入别名与 Python 源码，使用同样的修订分配与历史读取规则。发布只保存定义，不读取输入或执行脚本。
+- 已发布修订可按 ID 和修订号读取。没有停用或删除接口，发布新版不会影响既有绑定。字段和限额见[生成器契约](../worklist/GENERATORS-HTTP.md)。
 
 ### 执行器的资源引用
 

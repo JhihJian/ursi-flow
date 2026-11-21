@@ -57,8 +57,36 @@ pub(super) fn build(db: &Value, k: &str, b: &Value) -> Result<Value, Error> {
     match k {
         "resources" => resource(b),
         "executors" => executor(db, b),
+        super::GENERATORS => generator(b),
         _ => Err(Error::Internal("未知目录类型".into())),
     }
+}
+fn generator(b: &Value) -> Result<Value, Error> {
+    fields(b, &["id", "name", "aliases", "script"])?;
+    let title = super::super::patches::valid_name(text(b, "name")?)?;
+    let script = text(b, "script")?;
+    if script.len() > 65536 {
+        return Err(Error::Invalid("Python 脚本超过 64 KiB".into()));
+    }
+    let aliases = b["aliases"]
+        .as_array()
+        .filter(|rows| rows.len() <= 32)
+        .ok_or_else(|| Error::Invalid("aliases 必须是含至多 32 项的数组".into()))?;
+    let mut unique = std::collections::HashSet::new();
+    for alias in aliases {
+        let alias = alias
+            .as_str()
+            .filter(|s| crate::work::valid_label(s, 128))
+            .ok_or_else(|| Error::Invalid("输入别名无效".into()))?;
+        if !unique.insert(alias) {
+            return Err(Error::Invalid("输入别名重复".into()));
+        }
+    }
+    let id = id(b)?;
+    if id == "new" {
+        return Err(Error::Invalid("生成器标识不能为 new".into()));
+    }
+    Ok(json!({"id":id,"name":title,"aliases":aliases,"script":script}))
 }
 fn resource(b: &Value) -> Result<Value, Error> {
     fields(b, &["id", "kind", "content"])?;
