@@ -39,6 +39,7 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
   const { token, apiBase } = readRuntime()
   const title = `每周反馈-${info.project.name}`
   const uri = 'feedback://weekly'
+  const toolCalls: unknown[] = []
   const peer = createServer(async (req, res) => {
     if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401).end(); return }
     if (req.method === 'DELETE') { res.writeHead(204).end(); return }
@@ -47,9 +48,15 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     const rpc = JSON.parse(Buffer.concat(body).toString())
     if (rpc.method === 'notifications/initialized') { res.writeHead(202).end(); return }
     const result = rpc.method === 'initialize' ? {
-      protocolVersion: '2025-06-18', capabilities: { resources: {} }, serverInfo: { name: '反馈', version: '1' },
+      protocolVersion: '2025-06-18', capabilities: { resources: {}, tools: {}, prompts: {} }, serverInfo: { name: '反馈', version: '1' },
     } : rpc.method === 'resources/list' ? { resources: [{ name: '周报', uri }] }
+      : rpc.method === 'tools/list' ? (rpc.params?.cursor ? { tools: [{ name: 'echo', inputSchema: { type: 'object' } }] } : { tools: [{ name: 'first', inputSchema: { type: 'object' } }], nextCursor: 'two' })
+      : rpc.method === 'tools/call' ? { content: [{ type: 'text', text: '回声结果' }] }
+      : rpc.method === 'prompts/list' ? { prompts: [{ name: 'welcome', arguments: [{ name: 'user' }] }] }
+      : rpc.method === 'prompts/get' ? { messages: [{ role: 'user', content: { type: 'text', text: `你好 ${rpc.params.arguments.user}` } }] }
+      : rpc.method === 'resources/templates/list' ? { resourceTemplates: [{ name: '周报模板', uriTemplate: 'feedback://{week}' }] }
       : { contents: [{ uri: rpc.params.uri, text: '本周反馈原文' }] }
+    if (rpc.method === 'tools/call') toolCalls.push(rpc.params.arguments)
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }))
   })
   await new Promise<void>(resolve => peer.listen(0, '127.0.0.1', resolve))
@@ -76,6 +83,29 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     await search.fill(title)
     await page.getByRole('listitem').filter({ hasText: title }).getByRole('link', { name: '浏览资源' }).click()
     await expect(page.getByText('2025-06-18')).toBeVisible()
+    await page.getByRole('button', { name: '工具目录' }).click()
+    await page.getByLabel('选择工具').selectOption('echo')
+    await expect(page.getByRole('button', { name: '调用工具' })).toBeDisabled()
+    const endpoint = `${apiBase}/api/v2${new URL(page.url()).pathname}/tools/call`
+    const denied = await request.post(endpoint, { headers: { Authorization: `Bearer ${token}` }, data: { name: 'echo', arguments: {} } })
+    expect(denied.status()).toBe(400)
+    expect(toolCalls).toHaveLength(0)
+    await page.getByLabel('允许调用此工具').click()
+    await expect(page.getByLabel('允许调用此工具')).toBeChecked()
+    await page.getByLabel('调用参数').fill('{"note":"hello"}')
+    await page.getByRole('button', { name: '调用工具' }).click()
+    await page.getByRole('button', { name: '确认调用' }).click()
+    await expect(page.locator('pre').filter({ hasText: '回声结果' })).toBeVisible()
+    expect(toolCalls).toEqual([{ note: 'hello' }])
+    await page.getByRole('button', { name: '提示词目录' }).click()
+    await page.getByLabel('调用参数').fill('{"user":"Ada"}')
+    await page.getByRole('button', { name: '获取提示词' }).click()
+    await expect(page.locator('pre').filter({ hasText: '你好 Ada' })).toBeVisible()
+    await page.getByRole('button', { name: '资源模板' }).click()
+    await page.getByLabel('具体资源 URI').fill(uri)
+    await page.getByRole('button', { name: '读取资源' }).click()
+    await expect(page.locator('pre').filter({ hasText: '本周反馈原文' })).toBeVisible()
+    await page.getByRole('button', { name: '资源浏览' }).click()
     await page.getByRole('button', { name: /周报/ }).click()
     await expect(page.getByRole('heading', { name: '周报' })).toBeVisible()
     await expect(page.getByText('本周反馈原文')).toBeVisible()

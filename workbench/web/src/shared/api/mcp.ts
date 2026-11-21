@@ -1,7 +1,10 @@
 import { requestV2 } from '@/shared/http/client'
 
 export type ServerDraft = { name: string; url: string; credentialEnv?: string }
-export type McpServer = ServerDraft & { id: string }
+export type McpSettings = { allowedTools: string[]; githubToolsets: string[]; githubReadOnly: boolean }
+export type McpServer = ServerDraft & { id: string; settings?: McpSettings }
+export type CatalogKind = 'tools' | 'prompts' | 'templates'
+export type CatalogEntry = { name: string; description?: string; inputSchema?: object; arguments?: object[]; uriTemplate?: string }
 export type McpResource = { name: string; uri: string; mimeType?: string; description?: string }
 export type ResourceContent = { uri: string; mimeType?: string } & ({ text: string; blob?: never } | { blob: string; text?: never })
 export type Inspection = {
@@ -11,6 +14,9 @@ export type Inspection = {
 
 const registryPath = '/mcp-servers'
 export const serverBrowsePath = (id: string) => `${registryPath}/${encodeURIComponent(id)}`
+export const fetchCatalog = (id: string, kind: CatalogKind, signal: AbortSignal) => requestV2<CatalogEntry[]>(`${serverBrowsePath(id)}/catalog/${kind}`, { signal })
+export const saveSettings = (id: string, settings: McpSettings, signal: AbortSignal) => requestV2<McpSettings>(`${serverBrowsePath(id)}/settings`, { method: 'PUT', body: JSON.stringify(settings), signal })
+export const invoke = (id: string, kind: 'tools' | 'prompts', name: string, args: object, signal: AbortSignal) => requestV2<Record<string, unknown>>(`${serverBrowsePath(id)}/${kind === 'tools' ? 'tools/call' : 'prompts/get'}`, { method: 'POST', body: JSON.stringify({ name, arguments: args }), signal })
 export const listServers = (signal: AbortSignal) => requestV2<McpServer[]>(registryPath, { signal })
 export const addServer = (draft: ServerDraft, signal: AbortSignal) =>
   requestV2<McpServer>(registryPath, { method: 'POST', body: JSON.stringify({ ...draft, binding: 'platform' }), signal })

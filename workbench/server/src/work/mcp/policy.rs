@@ -15,9 +15,19 @@ use std::{
 struct Grant {
     url: String,
     credential_env: Option<String>,
+    #[serde(default)]
+    allowed_tools: Vec<String>,
 }
 
 pub(super) fn authorize(store: &Store, cfg: &Config) -> Result<Url, Error> {
+    authorize_operation(store, cfg, None)
+}
+
+pub(super) fn authorize_operation(
+    store: &Store,
+    cfg: &Config,
+    tool: Option<&str>,
+) -> Result<Url, Error> {
     let denied = || invalid("MCP 地址与凭据引用未获管理员授权");
     let bad_url = || invalid("请输入完整 HTTP(S) 端点，不含用户名、密码、查询参数或片段");
     let url = Url::parse(&cfg.url).map_err(|_| bad_url())?;
@@ -70,10 +80,11 @@ pub(super) fn authorize(store: &Store, cfg: &Config) -> Result<Url, Error> {
         return Err(denied());
     }
     let grants: Vec<Grant> = serde_json::from_slice(&bytes).map_err(|_| denied())?;
-    if !grants
-        .iter()
-        .any(|g| g.url == cfg.url && g.credential_env == cfg.credential_env)
-    {
+    if !grants.iter().any(|g| {
+        g.url == cfg.url
+            && g.credential_env == cfg.credential_env
+            && tool.is_none_or(|name| g.allowed_tools.iter().any(|s| s == name))
+    }) {
         return Err(denied());
     }
     Ok(url)

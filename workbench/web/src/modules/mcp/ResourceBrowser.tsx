@@ -8,6 +8,8 @@ import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
+import { OperationsPanel, SettingsPanel } from './OperationsPanel'
+import type { CatalogKind } from '@/shared/api/mcp'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
 
 export function ResourceBrowser() {
@@ -24,6 +26,8 @@ export function ResourceBrowser() {
 const capabilityNames = { resources: '资源', tools: '工具', prompts: '提示词' } as const
 
 function Inspector({ server }: { server: McpServer }) {
+  const [view, setView] = useState<'resources' | CatalogKind | 'settings'>('resources')
+  const [settings, setSettings] = useState(server.settings ?? { allowedTools: [], githubToolsets: [], githubReadOnly: false })
   const discovery = useResource<Inspection | null>(signal => inspectServer(server.id, signal), null)
   const result = !discovery.loading && !discovery.error ? discovery.data : null
   const peer = result?.server
@@ -66,7 +70,13 @@ function Inspector({ server }: { server: McpServer }) {
         </div>
       </dl>}
     </section>
-    {!result ? <ResourceState loading={discovery.loading} error={discovery.error} onRetry={discovery.reload} /> :
+    <nav aria-label="服务功能" className="flex flex-wrap gap-2">
+      {([['resources','资源浏览'],['tools','工具目录'],['prompts','提示词目录'],['templates','资源模板'],['settings','工具设置']] as const).map(([key,title]) =>
+        <Button key={key} size="sm" variant={view === key ? 'primary' : 'ghost'} aria-pressed={view === key} onClick={() => setView(key)}>{title}</Button>)}
+    </nav>
+    {view === 'settings' ? <SettingsPanel server={server} settings={settings} saved={s => { setSettings(s); discovery.reload() }} /> : view !== 'resources' ?
+      <OperationsPanel key={view} kind={view} server={server} settings={settings} saved={setSettings} /> :
+      !result ? <ResourceState loading={discovery.loading} error={discovery.error} onRetry={discovery.reload} /> :
       <div className="grid min-h-0 min-w-0 gap-4 lg:flex-1 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[21rem_minmax(0,1fr)]">
         <section aria-label="资源列表" className="panel flex min-w-0 max-h-[45vh] flex-col overflow-hidden rounded-lg lg:max-h-none">
           <div className="space-y-2 border-b border-line px-3 py-3">

@@ -1,4 +1,5 @@
 //! Short-lived platform sessions. rmcp owns MCP initialization, dispatch and typed requests.
+mod catalog;
 mod http;
 
 use super::{Config, Error, SNAPSHOT_LIMIT, STANDARD, Store, label, policy, unavailable};
@@ -34,7 +35,7 @@ impl Session {
         options.allow_stateless = true;
         options.retry_config = Arc::new(NeverRetry::default());
         let transport = StreamableHttpClientTransport::with_client(
-            http::BoundedHttp::new(url, authorization)?,
+            http::BoundedHttp::new(url, authorization, &cfg.settings)?,
             options,
         );
         let session = Self(

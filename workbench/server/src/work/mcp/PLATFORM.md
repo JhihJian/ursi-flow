@@ -53,6 +53,25 @@
 
 资源预览复用同一条授权与限额链路：每次预览新建会话、只发 `resources/read`，响应仍受 4 MiB 上限约束。界面把 `text` 按原文展示，不解释 Markdown 或 HTML；`blob` 只显示大小。预览不是生成的前置步骤，生成仍会自行重新读取。
 
+## 工具、提示词与资源模板
+
+在服务检查页切换「工具目录」「提示词目录」或「资源模板」时才请求该目录。三类发现复用已登记的端点、凭据、短会话与限额。每页按游标继续，最多 32 页、1024 项、合计 4 MiB。工具保留输入 schema，提示词保留参数说明，模板保留 URI 模式。目录可刷新。
+
+以下路径接在 `/api/v2/mcp-servers/{id}` 后：
+
+| 操作 | 请求与结果 |
+| --- | --- |
+| `GET /catalog/{kind}` | `kind` 为 `tools`、`prompts`、`templates`，返回相应 MCP 目录项数组。 |
+| `PUT /settings` | 完整替换 `{allowedTools,githubToolsets,githubReadOnly}`，返回保存值。缺省为空列表和 `false`。 |
+| `POST /tools/call` | `{name,arguments}`，参数为 JSON 对象，返回工具原始 MCP 结果，包括 `isError`。 |
+| `POST /prompts/get` | `{name,arguments}`，参数值为字符串，返回 MCP 消息，按数据展示。 |
+
+「允许调用此工具」修改当前服务的本地精确名称白名单。仅发现或配置远端工具集不会授权。每次手动调用须确认，后端检查白名单；若存在部署策略文件，匹配的授权条目还须含 `allowedTools` 并列出该名称。调用不重试，超时需先核实远端状态。工作包配方、Flow 和执行器不会自动获得这些工具。
+
+官方默认 GitHub 端点 `https://api.githubcopilot.com/mcp/` 的「工具设置」可指定 `repos,issues` 等工具集和只读模式。它们映射到 `X-MCP-Toolsets` 和 `X-MCP-Readonly`；其他服务不能设置这些头。只读开关由 GitHub 实施，实际权限还受 PAT 和组织策略限制。
+
+当前平台使用远程 Streamable HTTP 短会话。资源模板通过输入展开后的 URI 读取，未实现长连接订阅、变更通知、客户端采样、交互式输入或本地 stdio 进程托管。
+
 ## Python 输入与结果
 
 `transform(item, resources)` 的 `item` 仅含 `id`、`title`、`description`、`category`、`status`。后两个字段取自生成开始时的工作项，分别表示工作类别与办理状态，取值见[工作清单契约](../worklist/HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。

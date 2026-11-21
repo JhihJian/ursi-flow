@@ -56,8 +56,14 @@ pub(super) struct BoundedHttp {
 }
 
 impl BoundedHttp {
-    pub(super) fn new(endpoint: Url, authorization: Option<HeaderValue>) -> Result<Self, Error> {
+    pub(super) fn new(
+        endpoint: Url,
+        authorization: Option<HeaderValue>,
+        settings: &super::super::operations::Settings,
+    ) -> Result<Self, Error> {
+        let headers = settings.headers(&endpoint)?;
         let client = Client::builder()
+            .default_headers(headers)
             .no_proxy()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(3))

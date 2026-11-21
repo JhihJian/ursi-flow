@@ -1,5 +1,6 @@
 //! 平台资源连接与工作包转换。不负责发布目录或修改工作项。
 mod client;
+mod operations;
 mod policy;
 mod sandbox;
 #[cfg(test)]
@@ -48,6 +49,8 @@ struct Config {
     credential_env: Option<String>,
     #[serde(default, skip_serializing_if = "Binding::is_policy")]
     binding: Binding,
+    #[serde(default, skip_serializing_if = "operations::Settings::empty")]
+    settings: operations::Settings,
 }
 fn invalid(s: &str) -> Error {
     Error::Invalid(s.into())
@@ -74,7 +77,8 @@ pub(super) fn routes(store: Store) -> Router {
         .route("/v2/mcp-servers/{id}/inspection", get(inspect))
         .route("/v2/mcp-servers/{id}/resources", get(resources))
         .route("/v2/mcp-servers/{id}/resources/read", post(read_resource))
-        .layer(DefaultBodyLimit::max(8192))
+        .merge(operations::routes())
+        .layer(DefaultBodyLimit::max(128 * 1024))
         .with_state(store)
 }
 async fn index(State(store): State<Store>) -> Result<Json<Value>, Error> {
@@ -96,7 +100,8 @@ async fn register(
     if !label(&config.name, 240) {
         return Err(invalid("服务名称无效"));
     }
-    policy::authorize(&store, &config)?;
+    let url = policy::authorize(&store, &config)?;
+    config.settings.validate(&url)?;
     if config.binding == Binding::Platform
         && let Some(key) = config.credential_env.as_deref()
     {

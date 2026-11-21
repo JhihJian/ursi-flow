@@ -61,6 +61,7 @@ impl Fixture {
             url: self.url.clone(),
             credential_env: None,
             binding: Binding::Policy,
+            settings: Default::default(),
         }
     }
     fn permit(&self) {
@@ -352,6 +353,36 @@ async fn credentialed_request_never_follows_redirect() {
     assert!(saw_rx.try_recv().unwrap());
     assert!(f.calls.lock().unwrap().is_empty());
     http.abort();
+}
+
+#[test]
+fn github_settings_build_only_dedicated_headers_on_exact_endpoint() {
+    let mut s = operations::Settings {
+        github_toolsets: vec!["repos".into(), "issues".into()],
+        github_read_only: true,
+        ..Default::default()
+    };
+    let url = reqwest::Url::parse("https://api.githubcopilot.com/mcp/").unwrap();
+    let h = s.headers(&url).unwrap();
+    assert_eq!(h["x-mcp-toolsets"], "repos,issues");
+    assert_eq!(h["x-mcp-readonly"], "true");
+    assert!(
+        s.headers(&reqwest::Url::parse("https://example.org/mcp/").unwrap())
+            .is_err()
+    );
+    s.github_toolsets.push("issues\r\nx-other".into());
+    assert!(s.headers(&url).is_err());
+}
+
+#[tokio::test]
+async fn file_policy_is_a_separate_ceiling_on_tool_calls() {
+    let f = Fixture::new().await;
+    f.permit();
+    let cfg = f.cfg();
+    assert!(policy::authorize_operation(&f.store, &cfg, Some("echo")).is_err());
+    f.policy(json!([{"url":cfg.url,"allowedTools":["echo"]}]));
+    assert!(policy::authorize_operation(&f.store, &cfg, Some("echo")).is_ok());
+    assert!(policy::authorize_operation(&f.store, &cfg, Some("write")).is_err());
 }
 
 #[test]
