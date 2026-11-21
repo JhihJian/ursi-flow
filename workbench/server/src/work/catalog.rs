@@ -6,6 +6,7 @@ mod policy;
 mod tests;
 
 use super::{Error, Store};
+pub(super) use agent::SNAPSHOT_LIMIT;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -32,7 +33,10 @@ pub fn routes(store: Store) -> Router {
 }
 
 async fn create(State((s, k)): State<Collection>, Json(body): Json<Value>) -> Reply {
-    s.update(|db| publish(db, k, body)).map(Json)
+    tokio::task::spawn_blocking(move || s.update(|db| publish(s.dir(), db, k, body)))
+        .await
+        .map_err(|_| Error::Internal("定义发布任务中断".into()))?
+        .map(Json)
 }
 async fn index(State((s, k)): State<Collection>) -> Reply {
     s.read(|db| list_latest(db, k)).map(Json)
@@ -116,7 +120,12 @@ fn list_latest(db: &Value, k: &str) -> Result<Value, Error> {
         .collect::<Result<Vec<_>, _>>()
         .map(Value::Array)
 }
-fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
+fn publish(
+    store_dir: &std::path::Path,
+    db: &mut Value,
+    k: &str,
+    body: Value,
+) -> Result<Value, Error> {
     let id = definitions::id(&body)?;
     let n = match category(db, k)?.and_then(|map| map.get(id)) {
         Some(rec) => {
@@ -126,7 +135,7 @@ fn publish(db: &mut Value, k: &str, body: Value) -> Result<Value, Error> {
         None => 0,
     };
     let (mut value, snapshot) = if k == "executors" && body.get("agent").is_some() {
-        let snapshot = agent_preview(db, &body)?;
+        let snapshot = agent::preview(store_dir, db, &body)?;
         if db["catalog"][k][id]
             .get("agentSnapshots")
             .is_some_and(|s| !s.is_object())
@@ -167,8 +176,8 @@ pub(super) fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Valu
         .ok_or_else(corrupt)
 }
 
-pub(super) fn agent_preview(db: &Value, definition: &Value) -> Result<Value, Error> {
-    agent::preview(db, definition)
+pub(super) fn agent_preview(store: &Store, definition: &Value) -> Result<Value, Error> {
+    store.read(|db| agent::preview(store.dir(), db, definition))
 }
 
 fn deactivate(db: &mut Value, k: &str, id: &str) -> Result<Value, Error> {

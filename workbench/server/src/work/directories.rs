@@ -208,8 +208,17 @@ fn base(store: &Store) -> Result<PathBuf, Error> {
 
 fn valid_id(id: &str) -> Result<(), Error> {
     fs::segments(id, false)
+        .ok()
+        .filter(|parts| parts.len() == 1)
         .map(|_| ())
-        .map_err(|_| Error::NotFound("目录不存在".into()))
+        .ok_or_else(|| Error::NotFound("目录不存在".into()))
+}
+
+/// 调用方持有 Store 锁，跨多个文件读取时不能再获取同一把锁。
+pub(super) fn registered_root(store_dir: &FsPath, db: &Value, id: &str) -> Result<PathBuf, Error> {
+    valid_id(id)?;
+    find(db, id)?;
+    Ok(fs::root(store_dir)?.join(id))
 }
 
 fn prepare(store: &Store) -> Result<PathBuf, Error> {

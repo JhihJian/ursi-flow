@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import type { Directory } from '@/modules/directories/api'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { MCP_PATH, mcpError } from './model'
+import { AgentSettings } from './AgentSettings'
 import { FileError } from './FileError'
 import { SaveBar } from './SaveBar'
 import { useTextFile } from './use-text-file'
@@ -10,7 +11,7 @@ import { useTextFile } from './use-text-file'
  * MCP：`mcp.json` 的原文编辑。合法性提示只影响保存按钮，
  * 草稿始终留在编辑器里，方便对照服务端要求修改。
  */
-export function Mcp({ directory, onDirtyChange }: { directory: Directory; onDirtyChange?: (dirty: boolean) => void }) {
+export function Mcp({ directory, active, onDirtyChange }: { directory: Directory; active: boolean; onDirtyChange?: (dirty: boolean) => void }) {
   const file = useTextFile(directory, MCP_PATH)
   const invalid = useMemo(() => mcpError(file.text), [file.text])
 
@@ -26,6 +27,7 @@ export function Mcp({ directory, onDirtyChange }: { directory: Directory; onDirt
     {!file.error && file.loading
       ? <ResourceState loading className="rounded-none border-0 shadow-none" />
       : <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2">
+        {active && !invalid && !file.loading && <AgentSettings text={file.text} change={file.change} />}
         {invalid && <p role="alert" className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{invalid}</p>}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <textarea

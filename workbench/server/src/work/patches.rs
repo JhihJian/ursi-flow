@@ -242,7 +242,7 @@ async fn create(
     .map_err(|_| Error::Internal("包创建任务中断".into()))?
 }
 
-fn config_package_directory(db: &Value, package_id: &str) -> Result<String, Error> {
+pub(super) fn config_package_directory(db: &Value, package_id: &str) -> Result<String, Error> {
     let value = db
         .get(Kind::Config.table())
         .and_then(|packages| packages.get(package_id))

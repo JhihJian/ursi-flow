@@ -14,7 +14,7 @@ use std::{
 
 #[derive(Default)]
 pub(super) struct Policy {
-    pub models: BTreeSet<String>,
+    pub models: Vec<String>,
     pub tools: BTreeMap<String, String>,
 }
 
@@ -83,10 +83,12 @@ fn read(path: &Path) -> Result<Policy, Error> {
 fn parse(bytes: &[u8]) -> Result<Policy, Error> {
     let doc: Document = serde_json::from_slice(bytes).map_err(|_| unavailable())?;
     let mut policy = Policy::default();
+    let mut ids = BTreeSet::new();
     for model in doc.models {
-        if name(&model.id).is_err() || !policy.models.insert(model.id) {
+        if name(&model.id).is_err() || !ids.insert(model.id.clone()) {
             return Err(unavailable());
         }
+        policy.models.push(model.id);
     }
     for tool in doc.tools {
         let url = Url::parse(&tool.url).map_err(|_| unavailable())?;

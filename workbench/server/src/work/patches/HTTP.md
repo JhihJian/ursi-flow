@@ -11,6 +11,8 @@
 
 工作包的创建、列表与详情还返回 `workItemId`（无归属为 `null`）、`source`（`manual` 或 `generated`）、`createdAt`（服务端 Unix 秒）和 `executionStatus`（新建为 `not_started`）。是否已执行和结果状态由同一字段展示，配置包不附加这些字段。配置引用只返回 `{id}`，不会展开配置内容或宿主路径。
 
+Agent 发布和草稿试跑引用配置包记录的 `id`。`AGENTS.md`、`skills/<name>/SKILL.md` 与 `mcp.json` 的读取和授权规则见 [Agent 定义契约](../catalog/HTTP.md#agent-执行器)。编辑配置包不改变既有的执行器修订或尝试快照。
+
 生成包另有 `provenance`，记录生成时的工作项、修订、脚本摘要与资源读取证据。改绑或删除清单项只改变当前归属。
 
 文件树和正文属于[虚拟目录资源](../directories/HTTP.md)。例如先从记录取得 `directoryId`，再请求 `GET /directories/{directoryId}/tree`。只需要存放文件时，也可直接 `POST /directories`（正文 `{}`），不必创建包。

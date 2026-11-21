@@ -29,6 +29,8 @@ SERVER = ROOT / 'workbench/target/debug/ursi-server'
 ADAPTER = ROOT / 'flow-runtime/dist/pi-executor/stdio.js'
 PROFILE = 'managed-e2e'
 MODEL = 'local-fixture'
+DEFAULT_MODEL = 'local-policy-first'
+TOOL = 'tickets.get'
 API_KEY = 'fixture-only-pi-key'
 MATERIAL = '工单材料：T-123'
 
@@ -51,7 +53,7 @@ class Model(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/event-stream')
         self.end_headers()
         for part, finish in [(delta, None), ({}, reason)]:
-            chunk = {'id': 'pi-e2e', 'object': 'chat.completion.chunk', 'model': MODEL,
+            chunk = {'id': 'pi-e2e', 'object': 'chat.completion.chunk', 'model': body['model'],
                      'choices': [{'index': 0, 'delta': part, 'finish_reason': finish}]}
             self.wfile.write(f'data: {json.dumps(chunk)}\n\n'.encode())
         self.wfile.write(b'data: [DONE]\n\n')
@@ -60,9 +62,8 @@ class Model(BaseHTTPRequestHandler):
         pass
 
 
-def definition(prompt, skill_revision):
-    return {'id': 'ticket-review', 'resources': [{'id': 'guide', 'revision': skill_revision}],
-            'agent': {'systemPrompt': prompt, 'modelProfile': PROFILE, 'tools': []}}
+def definition(package):
+    return {'id': 'ticket-review', 'agent': {'configPackageId': package['id']}}
 
 
 class PiAcceptance(unittest.TestCase):
@@ -85,7 +86,11 @@ class PiAcceptance(unittest.TestCase):
                     'baseUrl': f'http://127.0.0.1:{self.model.server_port}/v1'}
         with os.fdopen(os.open(self.policy, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600),
                        'w', encoding='utf-8') as f:
-            json.dump({'models': [{'id': PROFILE, 'provider': provider}], 'tools': []}, f)
+            models = [{'id': 'z-default', 'provider': {**provider, 'model': DEFAULT_MODEL}},
+                      {'id': PROFILE, 'provider': provider}]
+            tool = {'id': TOOL, 'name': 'getTicket', 'readOnly': True, 'inputSchema': {'type': 'object'},
+                    'url': f'http://127.0.0.1:{self.model.server_port}/mcp'}
+            json.dump({'models': models, 'tools': [tool]}, f)
         self.wrapper = self.root / 'pi-executor'
         node = shutil.which('node')
         self.assertIsNotNone(node, '需要 Node >=22.19')
@@ -146,15 +151,30 @@ class PiAcceptance(unittest.TestCase):
         finally:
             conn.close()
 
-    def skill(self, text):
-        return self.http('POST', '/resources', {'id': 'guide', 'kind': 'skill', 'content': text})['revision']
+    def config_package(self, name, prompt, skill, **options):
+        package = self.http('POST', '/patches/config', {'name': name})
+        self.http('POST', f'/directories/{package["directoryId"]}/dir', {'path': 'skills/guide'})
+        self.update_config(package, prompt, skill, **options)
+        return package
 
-    def request(self, note, **target):
-        patch = self.http('POST', '/patches/work', {'name': '工单样例'})
+    def update_config(self, package, prompt, skill, **options):
+        files = {'AGENTS.md': prompt, 'skills/guide/SKILL.md': skill,
+                 'mcp.json': json.dumps({'mcpServers': {}, **options})}
+        for path, text in files.items():
+            self.http('PUT', f'/directories/{package["directoryId"]}/file?path={path}&replace=true', text.encode())
+
+    def request(self, note, *, work_config=None, **target):
+        spec = {'name': '工单样例'}
+        if work_config is not None:
+            spec['configPackage'] = {'id': work_config['id']}
+        patch = self.http('POST', '/patches/work', spec)
+        if work_config is not None:
+            self.assertEqual(patch['configPackage'], spec['configPackage'])
         self.http('PUT', f'/directories/{patch["directoryId"]}/file?path=ticket.txt', MATERIAL.encode())
         return dict(target, workPatchId=patch['id'], workInstruction={'text': note, 'encoding': 'utf-8'})
 
-    def verify_run(self, key, body, prompt, skill, *, retry=False, absent=()):
+    def verify_run(self, key, body, prompt, skill, *, model=DEFAULT_MODEL, business_tools=(), retry=False, absent=()):
+        start = len(self.model.calls)
         path = '/executor-attempts/' + key
         receipt = self.http('PUT', path, body)
         self.assertEqual(receipt['attemptId'], key)
@@ -178,10 +198,16 @@ class PiAcceptance(unittest.TestCase):
         self.assertEqual(self.http('GET', report, raw=True), self.model.answer.encode())
         self.http('PUT', report + '&replace=true', b'changed', status=(409,))
         # One Pi session: a tool request, then one final response with the actual input.
-        self.assertEqual(len(self.model.calls), 2, '每次尝试应仅有一轮读材料和一轮作答')
-        for route, auth, request in self.model.calls:
-            self.assertEqual((route, auth, request['model']), ('/v1/chat/completions', 'Bearer ' + API_KEY, MODEL))
-        first, second = [call[2]['messages'] for call in self.model.calls]
+        calls = self.model.calls[start:]
+        self.assertEqual(len(calls), 2, '每次尝试应仅有一轮读材料和一轮作答')
+        for route, auth, request in calls:
+            self.assertEqual((route, auth, request['model']), ('/v1/chat/completions', 'Bearer ' + API_KEY, model))
+        tools = [item['function'] for item in calls[0][2]['tools']]
+        business = [tool for tool in tools if tool['name'] not in ('list_inputs', 'read_input')]
+        self.assertEqual(len(business), len(business_tools), business)
+        for tool_id in business_tools:
+            self.assertTrue(any(tool_id in tool['description'] for tool in business), business)
+        first, second = [call[2]['messages'] for call in calls]
         self.assertEqual(first[0]['role'], 'system')
         system = json.dumps(first[0]['content'], ensure_ascii=False)
         for text in (prompt, skill):
@@ -198,7 +224,7 @@ class PiAcceptance(unittest.TestCase):
         with self.workbench():
             skill = '按草稿清单逐项核对。'
             prompt = '使用草稿报告格式。'
-            draft = definition(prompt, self.skill(skill))
+            draft = definition(self.config_package('试跑配置', prompt, skill))
             body = self.request('试跑本次样例。', previewDefinition=draft)
             self.verify_run(str(uuid.uuid4()), body, prompt, skill)
             self.assertEqual(self.http('GET', '/executors'), [])
@@ -209,21 +235,33 @@ class PiAcceptance(unittest.TestCase):
         with self.workbench():
             old_skill, new_skill = '执行首版核对规则。', '执行新版评级规则。'
             old_prompt, new_prompt = '使用首版摘要格式。', '使用新版表格格式。'
-            refs = []
-            for prompt, skill in [(old_prompt, old_skill), (new_prompt, new_skill)]:
-                published = self.http('POST', '/executors', definition(prompt, self.skill(skill)))
-                refs.append({k: published[k] for k in ('id', 'revision')})
-            self.assertEqual([ref['revision'] for ref in refs], [1, 2])
+            package = self.config_package('核查配置', old_prompt, old_skill, modelProfile=PROFILE, tools=[TOOL])
+            draft = definition(package)
+            old_ref = {'id': draft['id'], 'revision': 1}
+            new_ref = {'id': draft['id'], 'revision': 2}
+            self.assertEqual(self.http('POST', '/executors', draft)['revision'], 1)
+            self.update_config(package, new_prompt, new_skill)
+
+            other_prompt, other_skill = '工作包引用的固定指令。', '工作包引用的核查规则。'
+            other = self.config_package('工作包自带配置', other_prompt, other_skill)
+            inputs = self.request('核查同一份工单。', work_config=other)
+            stale = (old_prompt, old_skill, other_prompt, other_skill)
+            self.verify_run(str(uuid.uuid4()), {**inputs, 'previewDefinition': draft}, new_prompt, new_skill, absent=stale)
+            self.assertEqual(self.http('POST', '/executors', draft)['revision'], 2)
+
             key = str(uuid.uuid4())
-            body = self.request('执行正式核查。', executorRef=refs[0])
-            self.verify_run(key, body, old_prompt, old_skill, retry=True, absent=(new_prompt, new_skill))
-            for changed in [{'executorRef': refs[1]}, {'workInstruction': {'text': '其他任务', 'encoding': 'utf-8'}}]:
+            body = {**inputs, 'executorRef': old_ref}
+            self.verify_run(key, body, old_prompt, old_skill, model=MODEL, business_tools=(TOOL,), retry=True,
+                            absent=(new_prompt, new_skill, other_prompt, other_skill))
+            calls = len(self.model.calls)
+            for changed in [{'executorRef': new_ref}, {'workInstruction': {'text': '其他任务', 'encoding': 'utf-8'}}]:
                 self.http('PUT', '/executor-attempts/' + key, {**body, **changed}, status=(409,))
-            self.assertEqual(len(self.model.calls), 2)
+            self.assertEqual(len(self.model.calls), calls)
+            self.verify_run(str(uuid.uuid4()), {**inputs, 'executorRef': new_ref}, new_prompt, new_skill, absent=stale)
 
     def test_pi_driver_disabled(self):
         with self.workbench(enabled=False):
-            draft = definition('已配置但未启用运行器。', self.skill('检查样例。'))
+            draft = definition(self.config_package('禁用样例配置', '已配置但未启用运行器。', '检查样例。'))
             published = self.http('POST', '/executors', draft)
             ref = {k: published[k] for k in ('id', 'revision')}
             body = self.request('不应调用模型。', executorRef=ref)

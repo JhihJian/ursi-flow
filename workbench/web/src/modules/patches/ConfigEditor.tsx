@@ -64,7 +64,7 @@ export function ConfigEditor({ directory }: { directory: Directory }) {
       />
     </div>
     <div aria-hidden={tab !== 'mcp'} className={tab === 'mcp' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-      <Mcp directory={directory} onDirtyChange={setMcpDirty} />
+      <Mcp active={tab === 'mcp'} directory={directory} onDirtyChange={setMcpDirty} />
     </div>
     </>}
   </div>

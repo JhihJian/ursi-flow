@@ -3,11 +3,12 @@
 //! 每一级都用 `symlink_metadata` 校验，任意一级为符号链接即拒绝；文件写入走同目录
 //! 临时文件加 `rename`，并同步目录项，读取方不会看到半截内容。本模块不判断目录的
 //! 业务含义，路径约束由调用方在取得写锁前完成。
+use rustix::fs::{self as at, Dir, Mode, OFlags, ResolveFlags};
 use serde::Serialize;
 use std::{
     fs::{self, DirBuilder, File, OpenOptions},
-    io::{self, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+    io::{self, Read, Write},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -206,6 +207,51 @@ pub(in crate::work) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
     Ok(entries)
 }
 
+/// 只枚举一层子目录，不遍历配置包内不参与运行的附属文件。
+pub(in crate::work) fn child_dirs(root: &Path, parts: &[String]) -> Result<Vec<String>, Fault> {
+    let path = walk(&verify(root)?, parts)?;
+    let dir = open_read(&path, OFlags::DIRECTORY)?;
+    let mut names = Vec::new();
+    for (i, entry) in Dir::read_from(&dir)
+        .map_err(|e| internal(e.into()))?
+        .enumerate()
+    {
+        if i > ENTRY_MAX + 1 {
+            return Err(Fault::Invalid("目录内条目过多".into()));
+        }
+        let entry = entry.map_err(|e| internal(e.into()))?;
+        let name = entry.file_name();
+        if matches!(name.to_bytes(), b"." | b"..")
+            || name.to_bytes().starts_with(b".workbench-tmp-")
+        {
+            continue;
+        }
+        let st = at::statat(&dir, name, at::AtFlags::SYMLINK_NOFOLLOW)
+            .map_err(|e| internal(e.into()))?;
+        match at::FileType::from_raw_mode(st.st_mode) {
+            at::FileType::Directory => {
+                names.push(name.to_str().map_err(|_| invalid_path())?.to_owned())
+            }
+            at::FileType::RegularFile => (),
+            _ => return Err(Fault::Invalid("目录含有非普通条目".into())),
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn open_read(path: &Path, flags: OFlags) -> Result<File, Fault> {
+    at::openat2(
+        at::CWD,
+        path,
+        flags | OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+        ResolveFlags::NO_SYMLINKS,
+    )
+    .map(File::from)
+    .map_err(|e| internal(e.into()))
+}
+
 pub(in crate::work) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
     if parts.is_empty() {
         return Err(invalid_path());
@@ -219,7 +265,19 @@ pub(in crate::work) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fa
     if meta.len() > FILE_LIMIT {
         return Err(Fault::Invalid("文件超过可读取大小上限".into()));
     }
-    fs::read(&path).map_err(internal)
+    let file = open_read(&path, OFlags::empty())?;
+    let meta = file.metadata().map_err(internal)?;
+    if !meta.is_file() || meta.nlink() != 1 {
+        return Err(Fault::Invalid("只能读取目录中的独立普通文件".into()));
+    }
+    let mut bytes = Vec::new();
+    file.take(FILE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(internal)?;
+    if bytes.len() as u64 > FILE_LIMIT {
+        return Err(Fault::Invalid("文件超过可读取大小上限".into()));
+    }
+    Ok(bytes)
 }
 
 /// 写入文件。默认只新建，`replace` 为真时才覆盖已存在的文件。

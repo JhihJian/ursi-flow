@@ -3,8 +3,8 @@ import { expect, test } from './fixtures'
 test('草稿试跑与发布版运行各自打开本次制品，刷新工作包不重发运行', async ({ page }) => {
   await page.addInitScript(() => sessionStorage.setItem('ursi-flow:bearer', 'test'))
   const patch = { id: 'sample', name: '样例包', directoryId: 'inputs' }
-  const skill = { id: 'constructor', revision: 1, kind: 'skill', content: '核对材料' }
-  const definition = { id: 'review', resources: [{ id: skill.id, revision: 1 }], agent: { modelProfile: 'managed', systemPrompt: '固定要求', tools: [] } }
+  const config = { id: 'policy', name: '核查配置', directoryId: 'policy-files' }
+  const definition = { id: 'review', agent: { configPackageId: config.id } }
   const version = { ...definition, revision: 1, active: true }
   let published = false
   const attempts = new Map<string, string>()
@@ -30,9 +30,8 @@ test('草稿试跑与发布版运行各自打开本次制品，刷新工作包�
     }
     if (method === 'GET') {
       const reads: Record<string, unknown> = {
-        '/resources': [{ ...skill, active: true }], '/resources/constructor/revisions': [skill],
+        '/resources': [], '/patches/config': [config], '/directories/policy-files/tree': [],
         '/patches/work': [patch], '/patches/work/sample': patch,
-        '/agent-options': { models: [{ id: 'managed' }], tools: [] },
         '/executors': published ? [version] : [], '/executors/review': version,
         '/executors/review/revisions': [version], '/executors/review/revisions/1': version,
       }
@@ -48,11 +47,13 @@ test('草稿试跑与发布版运行各自打开本次制品，刷新工作包�
   await page.goto('/executors/new')
   await page.getByRole('link', { name: '基于 Agent 配置' }).click()
   await page.getByLabel('执行器 ID').fill(definition.id)
-  await page.getByLabel('固定指令').fill(definition.agent.systemPrompt)
-  await page.getByLabel('受管模型').selectOption('managed')
-  await page.getByRole('button', { name: '添加Skill 资源' }).click()
-  await page.getByLabel('资源 ID').selectOption(skill.id)
-  await page.getByLabel('资源版本').selectOption('1')
+  await expect(page.getByRole('button', { name: '发布执行器' })).toBeDisabled()
+  await page.getByLabel('配置包', { exact: true }).selectOption(config.id)
+  await page.getByRole('link', { name: '编辑配置包' }).click()
+  await expect(page).toHaveURL(/\/config-patches\/policy$/)
+  await expect(page.getByRole('tab', { name: '总览' })).toBeVisible()
+  await page.goBack()
+  await expect(page.getByLabel('配置包', { exact: true })).toHaveValue(config.id)
   await page.getByLabel('样例工作包（可选）').selectOption(patch.id)
   await page.getByLabel('本次指令').fill('试跑核查')
   await page.getByRole('button', { name: '试跑', exact: true }).click()

@@ -3,6 +3,11 @@ use serde_json::json;
 
 mod agent;
 
+// These non-Agent definitions do not consult any package files.
+fn publish(db: &mut Value, kind: &str, body: Value) -> Result<Value, Error> {
+    super::publish(std::path::Path::new("."), db, kind, body)
+}
+
 fn resource(db: &mut Value, id: &str, kind: &str, content: Value) -> Value {
     publish(
         db,

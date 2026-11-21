@@ -27,19 +27,32 @@
 
 `GET /api/v2/agent-options` 返回可选标识，例如 `{"models":[{"id":"managed"}],"tools":[{"id":"tickets.get"}]}`。未设置策略时两个数组均为空。接口不返回 provider、工具地址、远端工具名、参数 schema 或凭据。
 
-`POST /api/v2/executors` 示例：
+`POST /api/v2/executors` 的 Agent 定义和 `PUT /api/v2/executor-attempts/{id}` 的 `previewDefinition` 使用相同对象：
 
 ```json
 {
   "id": "ticket-review",
-  "resources": [{"id": "guide", "revision": 1}],
-  "agent": {"systemPrompt": "逐项核对工单。", "modelProfile": "managed", "tools": ["tickets.get"]}
+  "agent": {"configPackageId": "<配置包记录的 id>"}
 }
 ```
 
-`agent` 的三个字段均必填：`systemPrompt` 是非空正文，按原文保存；`modelProfile` 是受管模型 ID；`tools` 是不重复的只读工具 ID 数组，可为 `[]`。`resources` 可省略，只接受固定修订的 `skill`。`prompt` 资源返回 400，固定指令应写入 `systemPrompt`。Agent 定义不接受 `configSchema`、程序、命令、路径、连接参数或其他扩展字段。
+`configPackageId` 为已登记配置包的标识，区别于 `directoryId`。未知配置包、工作包 ID 或目录 ID 返回 404。内联字段、`resources`（包括空数组）和 `configSchema` 返回 400。普通执行器的定义格式保持不变。
 
-发布成功返回请求正文和 `revision`。列表、详情和历史使用相同的公开定义。服务端在该修订下私存 `{systemPrompt,modelProfile,skills:[{id,revision,content}],tools:[{id,schemaDigest}]}`。`schemaDigest` 是 `inputSchema` 递归按对象键排序、保留数组顺序后，紧凑 UTF-8 JSON 的 SHA-256 小写十六进制字符串。
+服务端与目录 API 共用存储锁，整份解析期间目录不可写入。文件约定如下：
+
+| 包内路径 | 在快照中的用途 |
+| --- | --- |
+| `AGENTS.md` | 提示词，保留 UTF-8 原文。新包中的空文件须先填写。 |
+| `skills/<name>/SKILL.md` | 每个直接子目录必须有此入口。按目录名排序；平铺 `.md` 和入口旁的附属文件不注入。 |
+| `mcp.json` | 顶层对象，仅接受可选的 `modelProfile`、`tools`、`mcpServers`。 |
+
+例如 `{"modelProfile":"managed","tools":["tickets.get"],"mcpServers":{}}`。省略 `modelProfile` 时选择管理员策略 `models` 数组的第一项，数组为空则返回 400。`tools` 默认为 `[]`，显式指定时须为不重复的受权工具 ID 数组。`mcpServers` 只支持空对象；非空对象返回 400，服务端不会启动其中的命令或使用其连接参数。显式 `null` 不表示省略。
+
+提示词及每个 Skill 必须有非空白 UTF-8 正文，单篇最多 256 KiB，Skill 和工具各最多 64 个，完整快照最多 2 MiB。正文无效、缺少入口、配置格式错误或未获授权均拒绝发布，不分配修订号。
+
+发布成功返回请求正文和 `revision`。列表、详情和历史使用相同的公开定义。服务端在该修订下私存 `{systemPrompt,modelProfile,skills:[{id,revision,content}],tools:[{id,schemaDigest}]}`。包内 Skill 的 `revision` 为快照内的 `1`，其正文由执行器修订或尝试 ID 固定。草稿试跑读取当时的包文件，不发布定义。指定已发布修订时直接使用原快照，已有内联格式的历史修订可继续运行。
+
+`schemaDigest` 是 `inputSchema` 递归按对象键排序、保留数组顺序后，紧凑 UTF-8 JSON 的 SHA-256 小写十六进制字符串。
 
 ### 管理员策略
 

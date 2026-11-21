@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const SNAPSHOT_LIMIT: usize = 2 * 1024 * 1024;
+use catalog::SNAPSHOT_LIMIT;
 
 #[derive(Clone)]
 pub(super) enum Backend {
@@ -125,7 +125,7 @@ pub(super) fn resolve(
         }
         Target::Preview(definition) => {
             let backend = pi.cloned().ok_or_else(unavailable)?;
-            let config = store.read(|db| catalog::agent_preview(db, definition))?;
+            let config = catalog::agent_preview(store, definition)?;
             Ok((backend, Some(config)))
         }
     }
@@ -249,6 +249,41 @@ mod tests {
         });
         both.preview_definition = Some(json!({"id":"agent"}));
         assert!(matches!(target(&both), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn old_published_revision_uses_its_snapshot_without_package_lookup() {
+        let path = std::env::temp_dir().join(Uuid::new_v4().to_string());
+        let store = Store::open(path.clone()).unwrap();
+        let inline = json!({"id":"old","agent":{"systemPrompt":"original","modelProfile":"managed","tools":[]},"resources":[{"id":"legacy","revision":7}]});
+        let snapshot = json!({"systemPrompt":"original","modelProfile":"managed","tools":[],"skills":[{"id":"legacy","revision":7,"content":"fixed"}]});
+        store
+            .update(|db| {
+                let mut revision = inline.clone();
+                revision["revision"] = 1.into();
+                db["catalog"]["executors"]["old"] =
+                    json!({"active":true,"revisions":[revision],"agentSnapshots":{"1":snapshot}});
+                Ok(())
+            })
+            .unwrap();
+        let pi = Backend::Pi {
+            bin: "/pi".into(),
+            policy: "/private".into(),
+        };
+        let target = Target::Published(ExecutorRef {
+            id: "old".into(),
+            revision: 1,
+        });
+        assert_eq!(
+            resolve(&store, &target, None, Some(&pi)).unwrap().1,
+            Some(snapshot)
+        );
+        assert!(matches!(
+            resolve(&store, &Target::Preview(inline), None, Some(&pi)),
+            Err(Error::Invalid(_))
+        ));
+        drop(store);
+        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]

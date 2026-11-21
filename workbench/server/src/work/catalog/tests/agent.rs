@@ -1,10 +1,11 @@
 use super::super::agent;
 use super::*;
+use crate::work::{directories, patches};
 use std::{
     fs,
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt, symlink},
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -36,98 +37,84 @@ fn in_policy_process() -> bool {
 }
 
 fn write_policy() -> &'static str {
-    let path = Path::new("policy");
     let mut file = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
         .mode(0o600)
-        .open(path)
+        .open("policy")
         .unwrap();
-    // Deliberately noncanonical key order, including objects inside arrays.
-    let raw = r#"{"tools":[{"id":"tickets.get","name":"private.lookup","readOnly":true,"token":"tool-secret","url":"https://private.test/mcp","inputSchema":{"type":"object","properties":{"z":{"type":"string","description":"说明"}},"allOf":[{"z":2,"a":1}]}}],"models":[{"id":"managed","provider":{"apiKey":"provider-secret"}}]}"#;
+    // Default is declaration order, deliberately different from sorted order.
+    let raw = r#"{"tools":[{"id":"tickets.get","name":"private.lookup","readOnly":true,"token":"tool-secret","url":"https://private.test/mcp","inputSchema":{"type":"object","properties":{"z":{"type":"string","description":"说明"}},"allOf":[{"z":2,"a":1}]}}],"models":[{"id":"managed","provider":{"apiKey":"provider-secret"}},{"id":"alternate","provider":{}}]}"#;
     file.write_all(raw.as_bytes()).unwrap();
     raw
 }
 
-#[tokio::test]
-async fn private_policy_and_frozen_agent_revisions() {
+fn package(store: &Store) -> (Value, PathBuf) {
+    let root = directories::allocate(
+        store,
+        Default::default(),
+        |root| {
+            fs::write(root.join("AGENTS.md"), " 固定指令\n").unwrap();
+            fs::create_dir_all(root.join("skills/guide/templates")).unwrap();
+            fs::write(root.join("skills/guide/SKILL.md"), "v1").unwrap();
+            fs::write(root.join("skills/guide/templates/example"), [0xff]).unwrap();
+            fs::write(root.join("skills/flat.md"), [0xff]).unwrap();
+            fs::write(root.join("mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+            Ok(())
+        },
+        |db, id| {
+            db["configPatches"]["package"] = json!({"id":"package","directoryId":id});
+            db["workPatches"]["work"] = json!({"id":"work","directoryId":id});
+            Ok(store.dir().join(directories::fs::ROOT).join(id))
+        },
+    )
+    .unwrap();
+    (
+        json!({"id":"agent","agent":{"configPackageId":"package"}}),
+        root,
+    )
+}
+
+fn commit(store: &Store, body: &Value) -> Result<Value, Error> {
+    store.update(|db| super::super::publish(store.dir(), db, "executors", body.clone()))
+}
+
+#[test]
+fn private_policy_and_frozen_agent_revisions() {
     if !in_policy_process() {
         return;
     }
     let raw = write_policy();
-    let path = Path::new("policy");
     let base = std::env::current_dir().unwrap().join("store");
     let store = Store::open(base.clone()).unwrap();
-    let mut body = json!({"id":"agent","resources":[{"id":"guide","revision":1}],"agent":{"systemPrompt":" 固定指令\n","modelProfile":"managed","tools":["tickets.get"]}});
-    let snapshot = json!({"systemPrompt":" 固定指令\n","modelProfile":"managed","skills":[{"id":"guide","revision":1,"content":"v1"}],"tools":[{"id":"tickets.get","schemaDigest":"fe8206509685722f4ba8c5225536b6ed16f13d01fae04be19f5650202e4f41d9"}]});
-    let published = store
-        .update(|db| {
-            resource(db, "guide", "skill", "v1".into());
-            resource(db, "guide", "skill", "v2".into());
-            resource(db, "prompt", "prompt", "prompt".into());
-            let before = db.clone();
-            assert_eq!(agent_preview(db, &body)?, snapshot);
-            assert_eq!(db, &before);
-            for (pointer, bad) in [
-                ("/agent", json!({})),
-                ("/agent/systemPrompt", json!(" ")),
-                ("/agent/modelProfile", json!("unknown")),
-                ("/agent/tools", json!(["../tool"])),
-                ("/agent/tools", json!(["unapproved"])),
-                ("/agent/tools", json!(["tickets.get", "tickets.get"])),
-                ("/resources", json!([{"id":"prompt","revision":1}])),
-                (
-                    "/resources",
-                    json!([{"id":"guide","revision":1},{"id":"guide","revision":2}]),
-                ),
-                ("/resources", json!([{"id":"guide","revision":42}])),
-            ] {
-                let mut invalid = body.clone();
-                *invalid.pointer_mut(pointer).unwrap() = bad;
-                assert!(publish(db, "executors", invalid).is_err());
-            }
-            for field in ["command", "env", "provider", "path", "token", "inputSchema"] {
-                let mut invalid = body.clone();
-                invalid["agent"][field] = json!("injected");
-                assert!(matches!(
-                    publish(db, "executors", invalid),
-                    Err(Error::Invalid(_))
-                ));
-            }
-            assert_eq!(db, &before);
-            publish(db, "executors", body.clone())
-        })
-        .unwrap();
-    let mut public = body.clone();
-    public["revision"] = json!(1);
-    assert_eq!(published, public);
+    let (body, root) = package(&store);
+    let first = json!({"systemPrompt":" 固定指令\n","modelProfile":"managed","skills":[{"id":"guide","revision":1,"content":"v1"}],"tools":[]});
+    let before = store.read(|db| Ok(db.clone())).unwrap();
+    assert_eq!(agent_preview(&store, &body).unwrap(), first);
+    assert_eq!(store.read(|db| Ok(db.clone())).unwrap(), before);
+    assert_eq!(commit(&store, &body).unwrap()["revision"], 1);
     drop(store);
-
     let store = Store::open(base.clone()).unwrap();
-    fs::write(path, raw.replace("说明", "修改")).unwrap();
-    body["resources"][0]["revision"] = json!(2);
-    let revised = store
-        .update(|db| {
-            let revised = agent_preview(db, &body)?;
-            assert_ne!(revised["tools"], snapshot["tools"]);
-            assert_eq!(publish(db, "executors", body.clone())?["revision"], 2);
-            deactivate(db, "resources", "guide")?;
-            assert!(matches!(agent_preview(db, &body), Err(Error::Conflict(_))));
-            Ok(revised)
-        })
-        .unwrap();
-    fs::remove_file(path).unwrap();
-    assert!(matches!(agent::options().await, Err(Error::Unavailable(_))));
+    fs::write(root.join("AGENTS.md"), "new prompt").unwrap();
+    fs::write(root.join("skills/guide/SKILL.md"), "v2").unwrap();
+    fs::write(
+        root.join("mcp.json"),
+        r#"{"modelProfile":"alternate","tools":["tickets.get"]}"#,
+    )
+    .unwrap();
+    let second = json!({"systemPrompt":"new prompt","modelProfile":"alternate","skills":[{"id":"guide","revision":1,"content":"v2"}],"tools":[{"id":"tickets.get","schemaDigest":"fe8206509685722f4ba8c5225536b6ed16f13d01fae04be19f5650202e4f41d9"}]});
+    assert_eq!(agent_preview(&store, &body).unwrap(), second);
+    assert_eq!(commit(&store, &body).unwrap()["revision"], 2);
+    fs::write("policy", raw.replace("说明", "修改")).unwrap();
+    assert_ne!(
+        agent_preview(&store, &body).unwrap()["tools"],
+        second["tools"]
+    );
+    fs::remove_dir_all(root).unwrap();
     store
         .update(|db| {
-            assert_eq!(agent_snapshot(db, "agent", 1)?, snapshot);
-            assert_eq!(agent_snapshot(db, "agent", 2)?, revised);
-            assert_eq!(version(db, "executors", "agent", 1)?, &public);
-            assert_eq!(versions(record(db, "executors", "agent")?)?.len(), 2);
-            let mut latest = body.clone();
-            latest["active"] = json!(true);
-            latest["revision"] = json!(2);
-            assert_eq!(list_latest(db, "executors")?, json!([latest]));
+            assert_eq!(agent_snapshot(db, "agent", 1)?, first);
+            assert_eq!(agent_snapshot(db, "agent", 2)?, second);
             assert!(matches!(
                 agent_snapshot(db, "agent", 3),
                 Err(Error::NotFound(_))
@@ -137,7 +124,6 @@ async fn private_policy_and_frozen_agent_revisions() {
                 agent_snapshot(db, "agent", 1),
                 Err(Error::Conflict(_))
             ));
-            assert_eq!(version(db, "executors", "agent", 1)?, &public);
             Ok(())
         })
         .unwrap();
@@ -151,6 +137,82 @@ async fn private_policy_and_frozen_agent_revisions() {
     ] {
         assert!(!disk.contains(private));
     }
+}
+
+#[test]
+fn invalid_package_and_inline_inputs_never_publish() {
+    if !in_policy_process() {
+        return;
+    }
+    write_policy();
+    let store = Store::open(std::env::current_dir().unwrap().join("work")).unwrap();
+    let (body, root) = package(&store);
+    let reject = |invalid: &Value| {
+        assert!(agent_preview(&store, invalid).is_err());
+        assert!(commit(&store, invalid).is_err());
+    };
+    for id in [
+        "../escape",
+        "unknown",
+        "work",
+        root.file_name().unwrap().to_str().unwrap(),
+    ] {
+        reject(&json!({"id":"agent","agent":{"configPackageId":id}}));
+    }
+    for invalid in [
+        json!({"id":"agent","agent":{"systemPrompt":"inline","modelProfile":"managed","tools":[]}}),
+        json!({"id":"agent","agent":body["agent"],"resources":[]}),
+        json!({"id":"agent","agent":{"configPackageId":"package","tools":[]}}),
+        json!({"id":"agent","agent":{"configPackageId":42}}),
+    ] {
+        reject(&invalid);
+    }
+    for bad in [
+        "{",
+        "[]",
+        "null",
+        r#"{"modelProfile":null}"#,
+        r#"{"modelProfile":"unknown"}"#,
+        r#"{"tools":["unapproved"]}"#,
+        r#"{"tools":["tickets.get","tickets.get"]}"#,
+        r#"{"tools":null}"#,
+        r#"{"tools":[{"command":"echo"}]}"#,
+        r#"{"command":"run"}"#,
+        r#"{"mcpServers":null}"#,
+        r#"{"mcpServers":{"x":{"command":"run"}},"mcpServers":{}}"#,
+    ] {
+        fs::write(root.join("mcp.json"), bad).unwrap();
+        reject(&body);
+    }
+    fs::write(
+        root.join("mcp.json"),
+        r#"{"mcpServers":{"x":{"command":"run"}}}"#,
+    )
+    .unwrap();
+    assert!(
+        matches!(commit(&store, &body), Err(Error::Invalid(m)) if m.contains("不支持非空 mcpServers"))
+    );
+    fs::write(root.join("mcp.json"), "{}").unwrap();
+    let skill = root.join("skills/guide/SKILL.md");
+    for bad in [vec![0xff], vec![], vec![b'a'; 256 * 1024 + 1]] {
+        fs::write(&skill, bad).unwrap();
+        reject(&body);
+    }
+    fs::remove_file(&skill).unwrap();
+    reject(&body);
+    let outside = store.dir().join("outside");
+    fs::write(&outside, "not a package document").unwrap();
+    symlink(&outside, &skill).unwrap();
+    reject(&body);
+    fs::remove_file(&skill).unwrap();
+    fs::hard_link(&outside, &skill).unwrap();
+    reject(&body);
+    fs::remove_file(&skill).unwrap();
+    fs::write(&skill, "ok").unwrap();
+    fs::write(root.join("AGENTS.md"), " \n").unwrap();
+    reject(&body);
+    fs::write(root.join("AGENTS.md"), "ok").unwrap();
+    assert_eq!(commit(&store, &body).unwrap()["revision"], 1);
 }
 
 #[tokio::test]
@@ -167,7 +229,6 @@ async fn invalid_or_non_private_policy_fails_closed() {
         raw.replace("\"tools\":[", "\"tools\":[{} ,"),
     ] {
         fs::write(path, invalid).unwrap();
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
         assert!(matches!(agent::options().await, Err(Error::Unavailable(_))));
     }
     fs::write(path, raw).unwrap();
@@ -188,7 +249,9 @@ async fn http_exposes_only_ids_and_public_definition() {
     }
     write_policy();
     let store = Store::open(std::env::current_dir().unwrap().join("work")).unwrap();
-    let app = Router::new().nest("/api", routes(store));
+    let app = routes(store.clone())
+        .merge(patches::routes(store.clone()))
+        .merge(directories::routes(store).unwrap());
     let listen = tokio::net::UnixListener::bind("http.sock").unwrap();
     let server = tokio::spawn(async move { axum::serve(listen, app).await.unwrap() });
     let client = reqwest::Client::builder()
@@ -196,7 +259,7 @@ async fn http_exposes_only_ids_and_public_definition() {
         .no_proxy()
         .build()
         .unwrap();
-    let url = "http://catalog/api/v2";
+    let url = "http://catalog/v2";
     let get = |path: &'static str| {
         let request = client.get(format!("{url}/{path}"));
         async move {
@@ -213,9 +276,31 @@ async fn http_exposes_only_ids_and_public_definition() {
     };
     assert_eq!(
         get("agent-options").await,
-        json!({"models":[{"id":"managed"}],"tools":[{"id":"tickets.get"}]})
+        json!({"models":[{"id":"managed"},{"id":"alternate"}],"tools":[{"id":"tickets.get"}]})
     );
-    let mut body = json!({"id":"review","agent":{"systemPrompt":"inspect","modelProfile":"managed","tools":[]}});
+    let package: Value = client
+        .post(format!("{url}/patches/config"))
+        .json(&json!({"name":"测试"}))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{url}/directories/{}/file?path=AGENTS.md&replace=true",
+            package["directoryId"].as_str().unwrap()
+        ))
+        .body("private prompt")
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let mut body = json!({"id":"review","agent":{"configPackageId":package["id"]}});
     let published: Value = client
         .post(format!("{url}/executors"))
         .json(&body)

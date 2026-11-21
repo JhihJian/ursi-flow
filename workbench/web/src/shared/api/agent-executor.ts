@@ -1,8 +1,9 @@
 import { requestV2 } from '@/shared/http/client'
 
 export type ExecutorRef = { id: string; revision: number }
-export type AgentConfig = { systemPrompt: string; modelProfile: string; tools: string[] }
-export type AgentDefinition = { id: string; resources: ExecutorRef[]; agent: AgentConfig }
+export type AgentConfig = { configPackageId: string }
+export type PublishedAgent = AgentConfig | { systemPrompt: string; modelProfile: string; tools: string[] }
+export type AgentDefinition = { id: string; agent: AgentConfig }
 export type AgentOptions = { models: { id: string }[]; tools: { id: string }[] }
 export type AttemptTarget = { executorRef: ExecutorRef; previewDefinition?: never } | { previewDefinition: AgentDefinition; executorRef?: never }
 export type AttemptRequest = AttemptTarget & { workPatchId?: string; workInstruction: { encoding: 'utf-8'; text: string } }
@@ -13,7 +14,7 @@ export type AttemptResult = {
 }
 
 export const executorChoices = (signal: AbortSignal) => requestV2<(ExecutorRef & { active: boolean })[]>('/executors', { signal })
-export const executorRevisions = (id: string, signal: AbortSignal) => requestV2<(ExecutorRef & { agent?: AgentConfig })[]>(`/executors/${encodeURIComponent(id)}/revisions`, { signal })
+export const executorRevisions = (id: string, signal: AbortSignal) => requestV2<(ExecutorRef & { agent?: PublishedAgent })[]>(`/executors/${encodeURIComponent(id)}/revisions`, { signal })
 
 const path = (id: string) => `/executor-attempts/${encodeURIComponent(id)}`
 export const agentOptions = (signal: AbortSignal) => requestV2<AgentOptions>('/agent-options', { signal })

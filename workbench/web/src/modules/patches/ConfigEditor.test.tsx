@@ -11,6 +11,8 @@ vi.mock('./Explorer', () => ({
     <div data-testid="explorer" data-root={root} data-initial={initialPath} />,
 }))
 
+vi.mock('@/shared/api/agent-executor', () => ({ agentOptions: async () => ({ models: [{ id: 'review' }], tools: [{ id: 'tickets.get' }] }) }))
+
 const prompt = '# 系统提示词\n\n保持简洁。'
 const mcp = '{\n  "mcpServers": {}\n}\n'
 
@@ -85,6 +87,19 @@ describe('配置补丁编辑器', () => {
     expect(directory.writes).toEqual([
       { path: 'mcp.json', content: '{"mcpServers":{"demo":{"command":"npx"}}}', replace: true },
     ])
+  })
+
+  it('在配置包中选择模型和工具，显式保存到同一份文件', async () => {
+    const user = userEvent.setup()
+    const directory = fixture()
+    renderEditor(directory)
+    await user.click(screen.getByRole('tab', { name: 'MCP' }))
+    await user.selectOptions(await screen.findByLabelText('受管模型'), 'review')
+    await user.click(screen.getByLabelText('tickets.get'))
+    expect(directory.writes).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('已保存')
+    expect(JSON.parse(String(directory.writes[0].content))).toEqual({ mcpServers: {}, modelProfile: 'review', tools: ['tickets.get'] })
   })
 
   it('Skills 列表来自 skills/ 目录，选中后交给 Explorer 维护入口文件', async () => {

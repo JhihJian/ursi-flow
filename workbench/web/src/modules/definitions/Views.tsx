@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { patchPath } from '@/modules/patches/PatchModel'
 import { errorMessage } from '@/shared/api'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
@@ -66,7 +67,9 @@ function VersionBody({ v }: { v: Definition }) {
     : <><Fact label="服务引用">{v.content.serverRef}</Fact><Fact label="凭据引用">{v.content.credentialRef || '无'}</Fact>
       <Fact label="执行边界">只登记服务与凭据的命名引用；连接参数由管理员管理，当前执行后端不支持注入 MCP，所以它不能作为执行依赖。</Fact></>}</dl>
   return <><ExecutorContract /><dl className="space-y-4"><Fact label="资源依赖"><Resources refs={v.resources} /></Fact>
-    {v.agent && <><Fact label="固定指令">{v.agent.systemPrompt}</Fact><Fact label="受管模型">{v.agent.modelProfile}</Fact><Fact label="声明的工具">{v.agent.tools.join('、') || '无'}</Fact></>}
+    {v.agent && ('configPackageId' in v.agent
+      ? <Fact label="配置包"><Link className="text-accent-2" to={patchPath('config', v.agent.configPackageId)}>{v.agent.configPackageId}</Link></Fact>
+      : <><Fact label="固定指令">{v.agent.systemPrompt}</Fact><Fact label="受管模型">{v.agent.modelProfile}</Fact><Fact label="声明的工具">{v.agent.tools.join('、') || '无'}</Fact></>)}
     </dl><ConfigSchemaForm schema={v.configSchema} /></>
 }
 export function History({ k, id }: { k: Collection; id: string }) {
