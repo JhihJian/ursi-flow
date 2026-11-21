@@ -5,7 +5,10 @@ mod policy;
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store};
+use super::{
+    Error, Store,
+    agent_backends::{Entry, Registry},
+};
 pub(super) use agent::SNAPSHOT_LIMIT;
 use axum::{
     Json, Router,
@@ -15,9 +18,9 @@ use axum::{
 use serde_json::{Map, Value, json};
 
 type Reply = Result<Json<Value>, Error>;
-type Collection = (Store, &'static str);
+type Collection = (Store, &'static str, Registry);
 
-pub fn routes(store: Store) -> Router {
+pub fn routes(store: Store, registry: Registry) -> Router {
     let mut api = Router::new().route("/v2/agent-options", get(agent::options));
     for kind in ["resources", "executors"] {
         let collection = Router::new()
@@ -26,35 +29,35 @@ pub fn routes(store: Store) -> Router {
             .route("/{id}/revisions", get(history))
             .route("/{id}/revisions/{revision}", get(detail_revision))
             .route("/{id}/deactivate", post(disable))
-            .with_state((store.clone(), kind));
+            .with_state((store.clone(), kind, registry.clone()));
         api = api.nest(&format!("/v2/{kind}"), collection);
     }
     api
 }
 
-async fn create(State((s, k)): State<Collection>, Json(body): Json<Value>) -> Reply {
-    tokio::task::spawn_blocking(move || s.update(|db| publish(s.dir(), db, k, body)))
+async fn create(State((s, k, registry)): State<Collection>, Json(body): Json<Value>) -> Reply {
+    tokio::task::spawn_blocking(move || s.update(|db| publish(s.dir(), db, k, body, &registry)))
         .await
         .map_err(|_| Error::Internal("定义发布任务中断".into()))?
         .map(Json)
 }
-async fn index(State((s, k)): State<Collection>) -> Reply {
+async fn index(State((s, k, _)): State<Collection>) -> Reply {
     s.read(|db| list_latest(db, k)).map(Json)
 }
-async fn detail(State((s, k)): State<Collection>, Path(id): Path<String>) -> Reply {
+async fn detail(State((s, k, _)): State<Collection>, Path(id): Path<String>) -> Reply {
     s.read(|db| latest(db, k, &id)).map(Json)
 }
-async fn history(State((s, k)): State<Collection>, Path(id): Path<String>) -> Reply {
+async fn history(State((s, k, _)): State<Collection>, Path(id): Path<String>) -> Reply {
     s.read(|db| Ok(Value::Array(versions(record(db, k, &id)?)?.clone())))
         .map(Json)
 }
 async fn detail_revision(
-    State((s, k)): State<Collection>,
+    State((s, k, _)): State<Collection>,
     Path((id, r)): Path<(String, u64)>,
 ) -> Reply {
     s.read(|db| version(db, k, &id, r).cloned()).map(Json)
 }
-async fn disable(State((s, k)): State<Collection>, Path(id): Path<String>) -> Reply {
+async fn disable(State((s, k, _)): State<Collection>, Path(id): Path<String>) -> Reply {
     s.update(|db| deactivate(db, k, &id)).map(Json)
 }
 
@@ -125,6 +128,7 @@ fn publish(
     db: &mut Value,
     k: &str,
     body: Value,
+    registry: &Registry,
 ) -> Result<Value, Error> {
     let id = definitions::id(&body)?;
     let n = match category(db, k)?.and_then(|map| map.get(id)) {
@@ -136,13 +140,18 @@ fn publish(
     };
     let (mut value, snapshot) = if k == "executors" && body.get("agent").is_some() {
         let snapshot = agent::preview(store_dir, db, &body)?;
-        if db["catalog"][k][id]
-            .get("agentSnapshots")
-            .is_some_and(|s| !s.is_object())
-        {
-            return Err(corrupt());
+        let backend = registry.select(body["agent"]["backendId"].as_str(), &snapshot)?;
+        for table in ["agentSnapshots", "agentBindings"] {
+            if db["catalog"][k][id]
+                .get(table)
+                .is_some_and(|s| !s.is_object())
+            {
+                return Err(corrupt());
+            }
         }
-        (body.clone(), Some(snapshot))
+        let mut public = body.clone();
+        public["agent"]["backendId"] = json!(backend.id);
+        (public, Some((snapshot, entry_binding(&backend))))
     } else {
         (definitions::build(db, k, &body)?, None)
     };
@@ -157,12 +166,18 @@ fn publish(
             .ok_or_else(corrupt)?
             .push(value.clone());
     }
-    if let Some(snapshot) = snapshot {
+    if let Some((snapshot, binding)) = snapshot {
         db["catalog"][k][id]["agentSnapshots"][revision.to_string()] = snapshot;
+        db["catalog"][k][id]["agentBindings"][revision.to_string()] = binding;
     }
     Ok(value)
 }
-pub(super) fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Value, Error> {
+// Preserve the deployed Pi attempt identity format; paths are private deployment identifiers.
+pub(super) fn entry_binding(entry: &Entry) -> Value {
+    json!([entry.id, entry.bin, entry.policy])
+}
+
+fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Value, Error> {
     require_active(db, "executors", id)?;
     if version(db, "executors", id, revision)?
         .get("agent")
@@ -174,6 +189,42 @@ pub(super) fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Valu
         .get(revision.to_string())
         .cloned()
         .ok_or_else(corrupt)
+}
+
+pub(super) fn published_agent(
+    store: &Store,
+    registry: &Registry,
+    id: &str,
+    rev: u64,
+) -> Result<(Entry, Value), Error> {
+    store.update(|db| {
+        let snapshot = agent_snapshot(db, id, rev)?;
+        let agent = &version(db, "executors", id, rev)?["agent"];
+        let requested = agent
+            .get("backendId")
+            .map(|v| v.as_str().ok_or_else(corrupt))
+            .transpose()?;
+        let backend_id = requested.unwrap_or("pi");
+        let unavailable = || Error::Unavailable("原执行器后端不可用或绑定已变更".into());
+        let entry = registry.lookup(backend_id).map_err(|_| unavailable())?;
+        let bindings = &db["catalog"]["executors"][id];
+        let bindings = bindings
+            .get("agentBindings")
+            .map(|v| v.as_object().ok_or_else(corrupt))
+            .transpose()?;
+        let key = rev.to_string();
+        let binding = entry_binding(&entry);
+        let legacy_unbound = match bindings.and_then(|b| b.get(&key)) {
+            Some(saved) if *saved == binding => false,
+            None if requested.is_none() => true,
+            _ => return Err(unavailable()),
+        };
+        // Health gates a new selection, not use of a previously published binding.
+        if legacy_unbound {
+            db["catalog"]["executors"][id]["agentBindings"][key] = binding;
+        }
+        Ok((entry, snapshot))
+    })
 }
 
 pub(super) fn agent_preview(store: &Store, definition: &Value) -> Result<Value, Error> {

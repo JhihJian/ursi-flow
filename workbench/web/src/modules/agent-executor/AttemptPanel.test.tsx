@@ -6,7 +6,7 @@ import type { AttemptTarget } from '@/shared/api/agent-executor'
 import { AttemptPanel } from './AttemptPanel'
 
 const ref = { executorRef: { id: '核查', revision: 3 } }
-const draft = { id: '核查', agent: { configPackageId: 'review' } }
+const draft = { id: '核查', agent: { configPackageId: 'review', backendId: 'first' } }
 const preview = { previewDefinition: draft }
 const uuid = '9a0fc193-3747-4957-a81f-da4e32f755bf'
 const endpoint = `/api/v2/executor-attempts/${uuid}`
@@ -38,7 +38,7 @@ it('嵌入表单试跑，草稿按内容比较，目标为空仍保留结果', a
   expect(submit).not.toHaveBeenCalled()
   expect(http.mock.calls[0][0]).toBe(endpoint)
   expect(JSON.parse(String(http.mock.calls[0][1].body))).toEqual({ ...preview, workInstruction: { encoding: 'utf-8', text: ' 请核查\n资料 ' } })
-  view.rerender(panel({ previewDefinition: { ...draft, agent: { configPackageId: 'review-alt' } } }))
+  view.rerender(panel({ previewDefinition: { ...draft, agent: { ...draft.agent, backendId: 'second' } } }))
   expect(screen.getByText('旧配置的试跑结果')).toBeVisible()
   view.rerender(panel(structuredClone(preview)))
   expect(screen.queryByText('旧配置的试跑结果')).toBeNull()

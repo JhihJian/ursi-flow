@@ -22,47 +22,84 @@ fn unavailable() -> Error {
     Error::Unavailable("执行器不可用或协议响应无效".into())
 }
 
+fn command(bin: &Path, root: &Path) -> Result<Command, Error> {
+    if !bin.is_absolute() || !root.is_absolute() {
+        return Err(unavailable());
+    }
+    let mut cmd = Command::new(bin);
+    cmd.env_clear()
+        .env("PATH", TRUSTED_PATH)
+        .env("URSI_EXECUTOR_ROOT", root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    Ok(cmd)
+}
+
+fn agent_command(bin: &Path, policy: &Path, root: &Path) -> Result<Command, Error> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    if !policy.is_absolute() {
+        return Err(unavailable());
+    }
+    let metadata = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(policy)
+        .and_then(|f| f.metadata())
+        .map_err(|_| unavailable())?;
+    if !metadata.is_file()
+        || metadata.mode() & 0o7777 != 0o600
+        || (metadata.uid() != 0 && metadata.uid() != unsafe { libc::geteuid() })
+    {
+        return Err(unavailable());
+    }
+    let mut cmd = command(bin, root)?;
+    cmd.env("URSI_PI_POLICY", policy);
+    Ok(cmd)
+}
+
+pub(in crate::work) async fn probe_agent(
+    bin: &Path,
+    policy: &Path,
+    root: &Path,
+) -> Result<(), Error> {
+    let mut child = agent_command(bin, policy, root)?
+        .spawn()
+        .map_err(|_| unavailable())?;
+    run(&mut child, Request::Probe, CALL_TIMEOUT)
+        .await
+        .map(|_| ())
+}
+
+enum Request<'a> {
+    Call(&'a str, Value),
+    Probe,
+}
+
 pub(super) async fn call(
     backend: &Backend,
     root: &Path,
     tool: &str,
     args: Value,
 ) -> Result<Value, Error> {
-    if !backend.bin().is_absolute() || !args.is_object() {
-        return Err(unavailable());
-    }
-    let mut cmd = Command::new(backend.bin());
-    cmd.env_clear()
-        .env("PATH", TRUSTED_PATH)
-        .env("URSI_EXECUTOR_ROOT", root);
-    match backend {
-        Backend::Flow { env, .. } => {
+    let mut cmd = match backend {
+        Backend::Flow { env, bin } => {
+            let mut cmd = command(bin, root)?;
             for (key, value) in FLOW_ENV.into_iter().zip(env) {
                 if let Some(value) = value {
                     cmd.env(key, value);
                 }
             }
+            cmd
         }
-        Backend::Pi { policy, .. } => {
-            cmd.env("URSI_PI_POLICY", policy);
-        }
-    }
-    let mut child = cmd
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| unavailable())?;
-    run(&mut child, tool, args, CALL_TIMEOUT).await
+        Backend::Agent(entry) => agent_command(&entry.bin, &entry.policy, root)?,
+    };
+    let mut child = cmd.spawn().map_err(|_| unavailable())?;
+    run(&mut child, Request::Call(tool, args), CALL_TIMEOUT).await
 }
 
-async fn run(
-    child: &mut Child,
-    tool: &str,
-    args: Value,
-    deadline: Duration,
-) -> Result<Value, Error> {
+async fn run(child: &mut Child, request: Request<'_>, deadline: Duration) -> Result<Value, Error> {
     let exchange = async {
         let input = child.stdin.take().ok_or_else(unavailable)?;
         let output = child.stdout.take().ok_or_else(unavailable)?;
@@ -77,16 +114,34 @@ async fn run(
         {
             return Err(unavailable());
         }
-        let Value::Object(args) = args else {
-            return Err(unavailable());
-        };
-        let params = CallToolRequestParams::new(tool.to_owned()).with_arguments(args);
-        let CallToolResponse::Complete(result) = session
-            .call_tool_once(params)
-            .await
-            .map_err(|_| unavailable())?
-        else {
-            return Err(unavailable());
+        let result = match request {
+            Request::Probe => {
+                let list = session.list_tools(None).await.map_err(|_| unavailable())?;
+                for required in ["executor_start", "executor_inspect", "executor_cancel"] {
+                    if list
+                        .tools
+                        .iter()
+                        .filter(|tool| tool.name == required)
+                        .count()
+                        != 1
+                    {
+                        return Err(unavailable());
+                    }
+                }
+                Ok(Value::Null)
+            }
+            Request::Call(tool, Value::Object(args)) => {
+                let params = CallToolRequestParams::new(tool.to_owned()).with_arguments(args);
+                let CallToolResponse::Complete(result) = session
+                    .call_tool_once(params)
+                    .await
+                    .map_err(|_| unavailable())?
+                else {
+                    return Err(unavailable());
+                };
+                tool_result(result)
+            }
+            Request::Call(_, _) => return Err(unavailable()),
         };
         session.close().await.map_err(|_| unavailable())?;
         if !child.wait().await.map_err(|_| unavailable())?.success() {
@@ -95,7 +150,7 @@ async fn run(
         Ok(result)
     };
     match timeout(deadline, exchange).await {
-        Ok(Ok(result)) => tool_result(result),
+        Ok(Ok(result)) => result,
         _ => {
             let _ = timeout(Duration::from_secs(1), child.kill()).await;
             Err(unavailable())
@@ -154,10 +209,11 @@ b=json.loads(input()); reply(b, {'content':[], 'structuredContent':b['params']['
 assert sys.stdin.read() == ''
 "#).unwrap();
         fs::set_permissions(&bin, fs::Permissions::from_mode(0o700)).unwrap();
-        let backend = Backend::Pi {
+        let backend = Backend::Agent(crate::work::agent_backends::Entry {
+            id: "pi".into(),
             bin: bin.clone(),
             policy,
-        };
+        });
         let args = json!({"attemptId":"x"});
         assert_eq!(
             call(&backend, &root, "inspect", args.clone())
@@ -165,6 +221,45 @@ assert sys.stdin.read() == ''
                 .unwrap(),
             args
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn probe_lists_tools_without_calling_and_requires_clean_exit() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir(&root).unwrap();
+        let bin = root.join("adapter");
+        let policy = root.join("policy");
+        fs::write(&policy, "{}").unwrap();
+        fs::set_permissions(&policy, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::write(&bin, r#"#!/usr/bin/python3
+import json, os, sys
+root = os.environ['URSI_EXECUTOR_ROOT']
+def reply(request, result): print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)
+a = json.loads(input()); reply(a, {'protocolVersion':'2025-06-18','serverInfo':{'name':'adapter','version':'1'},'capabilities':{'tools':{}}})
+assert json.loads(input())['method'] == 'notifications/initialized'
+r = json.loads(input()); assert r['method'] == 'tools/list'
+mode = open(root + '/mode').read()
+names = ['executor_start','executor_inspect','executor_cancel']
+if mode == 'missing': names.pop()
+if mode == 'duplicate': names[-1] = 'executor_start'
+reply(r, {'tools':[{'name':n,'inputSchema':{'type':'object'}} for n in names]})
+assert sys.stdin.read() == ''
+print('private adapter detail', file=sys.stderr)
+sys.exit(1 if mode == 'failed' else 0)
+"#).unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o700)).unwrap();
+        for mode in ["ok", "missing", "duplicate", "failed"] {
+            fs::write(root.join("mode"), mode).unwrap();
+            let result = probe_agent(&bin, &policy, &root).await;
+            if mode == "ok" {
+                result.unwrap();
+            } else {
+                let error = result.unwrap_err();
+                assert!(matches!(error, Error::Unavailable(_)));
+                assert!(!format!("{error:?}").contains("private adapter detail"));
+            }
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -216,7 +311,7 @@ assert sys.stdin.read() == ''
             .spawn()
             .unwrap();
         assert!(matches!(
-            run(&mut child, "inspect", json!({}), Duration::from_millis(50)).await,
+            run(&mut child, Request::Probe, Duration::from_millis(50)).await,
             Err(Error::Unavailable(_))
         ));
         assert!(child.try_wait().unwrap().is_some());

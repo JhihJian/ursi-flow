@@ -15,6 +15,7 @@ export const navigationGroups: NavGroup[] = [
     { path: '/executors', title: '执行器', icon: 'robot' },
   ] },
   { title: '平台设置', items: [
+    { path: '/settings/agent-backends', title: 'Agent 后端', icon: 'robot' },
     { path: '/mcp-servers', title: '平台 MCP 服务', icon: 'connector' },
     { path: '/platform-env', title: '环境变量', icon: 'settings' },
   ] },

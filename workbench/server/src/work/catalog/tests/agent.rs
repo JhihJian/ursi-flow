@@ -75,8 +75,27 @@ fn package(store: &Store) -> (Value, PathBuf) {
     )
 }
 
+fn registry(bin: &str) -> Registry {
+    Registry::for_test(vec![(
+        Entry {
+            id: "managed-adapter".into(),
+            bin: bin.into(),
+            policy: "/private/policy".into(),
+        },
+        true,
+    )])
+}
+
 fn commit(store: &Store, body: &Value) -> Result<Value, Error> {
-    store.update(|db| super::super::publish(store.dir(), db, "executors", body.clone()))
+    store.update(|db| {
+        super::super::publish(
+            store.dir(),
+            db,
+            "executors",
+            body.clone(),
+            &registry("/private/adapter"),
+        )
+    })
 }
 
 #[test]
@@ -92,7 +111,9 @@ fn private_policy_and_frozen_agent_revisions() {
     let before = store.read(|db| Ok(db.clone())).unwrap();
     assert_eq!(agent_preview(&store, &body).unwrap(), first);
     assert_eq!(store.read(|db| Ok(db.clone())).unwrap(), before);
-    assert_eq!(commit(&store, &body).unwrap()["revision"], 1);
+    let published = commit(&store, &body).unwrap();
+    assert_eq!(published["revision"], 1);
+    assert_eq!(published["agent"]["backendId"], "managed-adapter");
     drop(store);
     let store = Store::open(base.clone()).unwrap();
     fs::write(root.join("AGENTS.md"), "new prompt").unwrap();
@@ -111,6 +132,16 @@ fn private_policy_and_frozen_agent_revisions() {
         second["tools"]
     );
     fs::remove_dir_all(root).unwrap();
+    assert_eq!(
+        published_agent(&store, &registry("/private/adapter"), "agent", 1)
+            .unwrap()
+            .1,
+        first
+    );
+    assert!(matches!(
+        published_agent(&store, &registry("/private/replacement"), "agent", 1),
+        Err(Error::Unavailable(_))
+    ));
     store
         .update(|db| {
             assert_eq!(agent_snapshot(db, "agent", 1)?, first);
@@ -164,6 +195,8 @@ fn invalid_package_and_inline_inputs_never_publish() {
         json!({"id":"agent","agent":body["agent"],"resources":[]}),
         json!({"id":"agent","agent":{"configPackageId":"package","tools":[]}}),
         json!({"id":"agent","agent":{"configPackageId":42}}),
+        json!({"id":"agent","agent":{"configPackageId":"package","backendId":null}}),
+        json!({"id":"agent","agent":{"configPackageId":"package","backendId":"../adapter"}}),
     ] {
         reject(&invalid);
     }
@@ -249,7 +282,7 @@ async fn http_exposes_only_ids_and_public_definition() {
     }
     write_policy();
     let store = Store::open(std::env::current_dir().unwrap().join("work")).unwrap();
-    let app = routes(store.clone())
+    let app = routes(store.clone(), registry("/private/adapter"))
         .merge(patches::routes(store.clone()))
         .merge(directories::routes(store).unwrap());
     let listen = tokio::net::UnixListener::bind("http.sock").unwrap();
@@ -313,6 +346,7 @@ async fn http_exposes_only_ids_and_public_definition() {
         .await
         .unwrap();
     body["revision"] = json!(1);
+    body["agent"]["backendId"] = "managed-adapter".into();
     assert_eq!(published, body);
     assert_eq!(get("executors/review/revisions").await, json!([body]));
     assert_eq!(get("executors/review/revisions/1").await, body);

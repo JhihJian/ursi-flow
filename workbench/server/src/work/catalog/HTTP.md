@@ -36,6 +36,8 @@
 }
 ```
 
+`agent.backendId` 是可选的后端 ID。发布和试跑时服务端从已通过检查且兼容本次快照的后端中选择：省略 ID 时，无候选返回 503，多个候选返回 409；显式指定的 ID 不存在返回 404，不兼容返回 400，未就绪返回 503。[后端目录的兼容性查询](../agent_backends/README.md#http-接口)只解析包，不要求已有就绪后端。
+
 `configPackageId` 为已登记配置包的标识，区别于 `directoryId`。未知配置包、工作包 ID 或目录 ID 返回 404。内联字段、`resources`（包括空数组）和 `configSchema` 返回 400。普通执行器的定义格式保持不变。
 
 服务端与目录 API 共用存储锁，整份解析期间目录不可写入。文件约定如下：
@@ -50,7 +52,7 @@
 
 提示词及每个 Skill 必须有非空白 UTF-8 正文，单篇最多 256 KiB，Skill 和工具各最多 64 个，完整快照最多 2 MiB。正文无效、缺少入口、配置格式错误或未获授权均拒绝发布，不分配修订号。
 
-发布成功返回请求正文和 `revision`。列表、详情和历史使用相同的公开定义。服务端在该修订下私存 `{systemPrompt,modelProfile,skills:[{id,revision,content}],tools:[{id,schemaDigest}]}`。包内 Skill 的 `revision` 为快照内的 `1`，其正文由执行器修订或尝试 ID 固定。草稿试跑读取当时的包文件，不发布定义。指定已发布修订时直接使用原快照，已有内联格式的历史修订可继续运行。
+发布成功返回带 `revision` 和实际 `agent.backendId` 的定义，即使请求未指定后端。程序路径和策略路径单独绑定到该修订，只在服务端存储。列表、详情和历史使用相同的公开定义。服务端在该修订下私存 `{systemPrompt,modelProfile,skills:[{id,revision,content}],tools:[{id,schemaDigest}]}`。包内 Skill 的 `revision` 为快照内的 `1`，其正文由执行器修订或尝试 ID 固定。草稿试跑读取当时的包文件，不发布定义。指定已发布修订时直接使用原快照，已有内联格式的历史修订可继续运行。没有 `backendId` 的历史修订始终使用 `pi`。执行已发布修订不依赖最近一次连通性检查。已绑定修订遇到后端移除或程序、策略路径变更时返回 503，不改选其他后端。
 
 `schemaDigest` 是 `inputSchema` 递归按对象键排序、保留数组顺序后，紧凑 UTF-8 JSON 的 SHA-256 小写十六进制字符串。
 

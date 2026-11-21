@@ -33,6 +33,9 @@ DEFAULT_MODEL = 'local-policy-first'
 TOOL = 'tickets.get'
 API_KEY = 'fixture-only-pi-key'
 MATERIAL = '工单材料：T-123'
+PI = 'pi'
+LOCAL = 'local-review'
+LOCAL_LABEL = '本机核查运行器'
 
 
 class Model(BaseHTTPRequestHandler):
@@ -62,8 +65,11 @@ class Model(BaseHTTPRequestHandler):
         pass
 
 
-def definition(package):
-    return {'id': 'ticket-review', 'agent': {'configPackageId': package['id']}}
+def definition(package, backend=None):
+    agent = {'configPackageId': package['id']}
+    if backend is not None:
+        agent['backendId'] = backend
+    return {'id': 'ticket-review', 'agent': agent}
 
 
 class PiAcceptance(unittest.TestCase):
@@ -91,15 +97,24 @@ class PiAcceptance(unittest.TestCase):
             tool = {'id': TOOL, 'name': 'getTicket', 'readOnly': True, 'inputSchema': {'type': 'object'},
                     'url': f'http://127.0.0.1:{self.model.server_port}/mcp'}
             json.dump({'models': models, 'tools': [tool]}, f)
-        self.wrapper = self.root / 'pi-executor'
         node = shutil.which('node')
         self.assertIsNotNone(node, '需要 Node >=22.19')
         cmd = shlex.join([str(Path(node).resolve()), str(ADAPTER.resolve(strict=True))])
-        self.wrapper.write_text(f'#!/bin/sh\nexec {cmd}\n', encoding='utf-8')
-        self.wrapper.chmod(0o700)
+        # Both paths speak the real Pi protocol. Observe stdin without answering any frames.
+        for backend in (PI, LOCAL):
+            wrapper = self.root / backend
+            trace = self.root / f'{backend}.jsonl'
+            trace.touch(mode=0o600)
+            wrapper.write_text(f'#!/bin/sh\ntee -a {shlex.quote(str(trace))} | {cmd}\n', encoding='utf-8')
+            wrapper.chmod(0o700)
+        self.registry = self.root / 'agent-backends.json'
+        with os.fdopen(os.open(self.registry, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600),
+                       'w', encoding='utf-8') as f:
+            json.dump([{'id': LOCAL, 'label': LOCAL_LABEL, 'bin': str(self.root / LOCAL),
+                        'capabilities': ['skills']}], f)
 
     @contextmanager
-    def workbench(self, enabled=True):
+    def workbench(self, enabled=True, *, second=False):
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             self.port = sock.getsockname()[1]
@@ -108,7 +123,9 @@ class PiAcceptance(unittest.TestCase):
                'URSI_DATA_DIR': str(self.root / 'data'), 'URSI_FLOW_ENABLED': '0',
                'URSI_PI_POLICY': str(self.policy)}
         if enabled:
-            env['URSI_PI_EXECUTOR_BIN'] = str(self.wrapper)
+            env['URSI_PI_EXECUTOR_BIN'] = str(self.root / PI)
+        if second:
+            env['URSI_AGENT_BACKENDS'] = str(self.registry)
         log = self.root / 'workbench.log'
         with log.open('wb') as out:
             proc = subprocess.Popen([SERVER.resolve(strict=True)], cwd=self.root, env=env, stdout=out, stderr=out)
@@ -151,6 +168,59 @@ class PiAcceptance(unittest.TestCase):
         finally:
             conn.close()
 
+    def backends(self, package=None):
+        path = '/agent-backends'
+        if package is not None:
+            path += '?configPackageId=' + package['id']
+        rows = self.http('GET', path)
+        self.assertIsInstance(rows, list)
+        by_id = {}
+        for row in rows:
+            backend = row['id']
+            self.assertNotIn(backend, by_id)
+            self.assertIsInstance(backend, str)
+            self.assertIsInstance(row['label'], str)
+            self.assertTrue(row['label'])
+            if package is not None:
+                self.assertIsInstance(row['compatible'], bool)
+            self.assertIsInstance(row['capabilities'], list)
+            self.assertLessEqual(set(row['capabilities']), {'skills', 'tools'})
+            self.assertIsInstance(row['configured'], bool)
+            self.assertIn(row['status'], ('unchecked', 'ready', 'failed'))
+            if row['status'] == 'unchecked':
+                self.assertIsNone(row['checkedAt'])
+            else:
+                self.assertGreater(row['checkedAt'], 0)
+            self.assertNotIn('bin', row)
+            self.assertNotIn(str(self.root), json.dumps(row))
+            by_id[backend] = row
+        return by_id
+
+    def frames(self, backend):
+        trace = (self.root / f'{backend}.jsonl').read_text(encoding='utf-8')
+        return [json.loads(line) for line in trace.splitlines()]
+
+    def check(self, backend):
+        other = LOCAL if backend == PI else PI
+        previous, untouched = len(self.frames(backend)), self.frames(other)
+        calls = len(self.model.calls)
+        result = self.http('POST', f'/agent-backends/{backend}/check')
+        self.assertEqual((result['id'], result['status']), (backend, 'ready'), result)
+        self.assertEqual(self.backends()[backend], result)
+        methods = [frame['method'] for frame in self.frames(backend)[previous:]]
+        self.assertIn('initialize', methods)
+        self.assertIn('tools/list', methods)
+        self.assertNotIn('tools/call', methods)
+        self.assertEqual(self.frames(other), untouched, '单项检查不能启动另一后端')
+        self.assertEqual(len(self.model.calls), calls, '检查不应调用模型')
+
+    def reject_definition(self, draft, inputs, *, status):
+        before = {b: self.frames(b) for b in (PI, LOCAL)}
+        self.http('POST', '/executors', draft, status=(status,))
+        self.http('PUT', '/executor-attempts/' + str(uuid.uuid4()),
+                  {**inputs, 'previewDefinition': draft}, status=(status,))
+        self.assertEqual({b: self.frames(b) for b in before}, before, '被拒绝的定义不能启动运行器')
+
     def config_package(self, name, prompt, skill, **options):
         package = self.http('POST', '/patches/config', {'name': name})
         self.http('POST', f'/directories/{package["directoryId"]}/dir', {'path': 'skills/guide'})
@@ -173,7 +243,8 @@ class PiAcceptance(unittest.TestCase):
         self.http('PUT', f'/directories/{patch["directoryId"]}/file?path=ticket.txt', MATERIAL.encode())
         return dict(target, workPatchId=patch['id'], workInstruction={'text': note, 'encoding': 'utf-8'})
 
-    def verify_run(self, key, body, prompt, skill, *, model=DEFAULT_MODEL, business_tools=(), retry=False, absent=()):
+    def verify_run(self, key, body, prompt, skill, *, backend=PI, model=DEFAULT_MODEL,
+                   business_tools=(), retry=False, absent=()):
         start = len(self.model.calls)
         path = '/executor-attempts/' + key
         receipt = self.http('PUT', path, body)
@@ -194,6 +265,14 @@ class PiAcceptance(unittest.TestCase):
         if retry:
             replay = self.http('PUT', path, body)
             self.assertEqual((replay['status'], replay['artifactDirectoryId']), ('succeeded', done['artifactDirectoryId']))
+        for candidate in (PI, LOCAL):
+            calls = [f['params']['name'] for f in self.frames(candidate) if f['method'] == 'tools/call'
+                     and f['params']['arguments']['attemptId'] == key]
+            if candidate == backend:
+                self.assertIn('executor_start', calls)
+                self.assertIn('executor_inspect', calls)
+            else:
+                self.assertEqual(calls, [], '同一尝试的任何调用都不能改走另一后端')
         report = f'/directories/{done["artifactDirectoryId"]}/file?path=answer.md'
         self.assertEqual(self.http('GET', report, raw=True), self.model.answer.encode())
         self.http('PUT', report + '&replace=true', b'changed', status=(409,))
@@ -225,29 +304,57 @@ class PiAcceptance(unittest.TestCase):
             skill = '按草稿清单逐项核对。'
             prompt = '使用草稿报告格式。'
             draft = definition(self.config_package('试跑配置', prompt, skill))
-            body = self.request('试跑本次样例。', previewDefinition=draft)
-            self.verify_run(str(uuid.uuid4()), body, prompt, skill)
+            inputs = self.request('试跑本次样例。')
+            self.assertEqual(self.backends()[PI]['status'], 'unchecked')
+            self.reject_definition(draft, inputs, status=503)
+            self.check(PI)
+            self.verify_run(str(uuid.uuid4()), {**inputs, 'previewDefinition': draft}, prompt, skill)
             self.assertEqual(self.http('GET', '/executors'), [])
-            self.assertEqual(self.http('POST', '/executors', draft)['revision'], 1,
-                             '试跑不应占用修订号')
+            published = self.http('POST', '/executors', draft)
+            self.assertEqual((published['revision'], published['agent']['backendId']), (1, PI))
 
     def test_pinned_revision_and_idempotency(self):
-        with self.workbench():
+        with self.workbench(second=True):
             old_skill, new_skill = '执行首版核对规则。', '执行新版评级规则。'
             old_prompt, new_prompt = '使用首版摘要格式。', '使用新版表格格式。'
             package = self.config_package('核查配置', old_prompt, old_skill, modelProfile=PROFILE, tools=[TOOL])
             draft = definition(package)
             old_ref = {'id': draft['id'], 'revision': 1}
             new_ref = {'id': draft['id'], 'revision': 2}
-            self.assertEqual(self.http('POST', '/executors', draft)['revision'], 1)
+            directory = self.backends()
+            self.assertEqual({k for k, v in directory.items() if v['configured']}, {PI, LOCAL})
+            self.assertCountEqual(directory[PI]['capabilities'], ['skills', 'tools'])
+            self.assertEqual(directory[LOCAL]['capabilities'], ['skills'])
+            self.assertEqual(directory[LOCAL]['label'], LOCAL_LABEL)
+            self.assertEqual(directory[LOCAL]['status'], 'unchecked')
+            self.check(PI)
+            self.assertEqual(self.backends()[LOCAL]['status'], 'unchecked')
+            self.check(LOCAL)
+            # Both adapters are healthy, but only Pi is advertised to accept business tools.
+            self.assertEqual({k: v['compatible'] for k, v in self.backends(package).items()}, {PI: True, LOCAL: False})
+            inputs = self.request('检查工具兼容性。')
+            self.reject_definition(definition(package, LOCAL), inputs, status=400)
+            published = self.http('POST', '/executors', draft)
+            self.assertEqual((published['revision'], published['agent']['backendId']), (1, PI))
             self.update_config(package, new_prompt, new_skill)
+            self.assertEqual({k: v['compatible'] for k, v in self.backends(package).items()}, {PI: True, LOCAL: True})
 
             other_prompt, other_skill = '工作包引用的固定指令。', '工作包引用的核查规则。'
             other = self.config_package('工作包自带配置', other_prompt, other_skill)
             inputs = self.request('核查同一份工单。', work_config=other)
             stale = (old_prompt, old_skill, other_prompt, other_skill)
-            self.verify_run(str(uuid.uuid4()), {**inputs, 'previewDefinition': draft}, new_prompt, new_skill, absent=stale)
-            self.assertEqual(self.http('POST', '/executors', draft)['revision'], 2)
+            self.reject_definition(draft, inputs, status=409)
+            selected = definition(package, LOCAL)
+            preview_key = str(uuid.uuid4())
+            preview = {**inputs, 'previewDefinition': selected}
+            self.verify_run(preview_key, preview, new_prompt, new_skill, backend=LOCAL, retry=True, absent=stale)
+            self.http('PUT', '/executor-attempts/' + preview_key,
+                      {**inputs, 'previewDefinition': definition(package, PI)}, status=(409,))
+            published = self.http('POST', '/executors', selected)
+            self.assertEqual((published['revision'], published['agent']['backendId']), (2, LOCAL))
+            for ref, backend in [(old_ref, PI), (new_ref, LOCAL)]:
+                revision = self.http('GET', f'/executors/{ref["id"]}/revisions/{ref["revision"]}')
+                self.assertEqual(revision['agent']['backendId'], backend)
 
             key = str(uuid.uuid4())
             body = {**inputs, 'executorRef': old_ref}
@@ -257,15 +364,48 @@ class PiAcceptance(unittest.TestCase):
             for changed in [{'executorRef': new_ref}, {'workInstruction': {'text': '其他任务', 'encoding': 'utf-8'}}]:
                 self.http('PUT', '/executor-attempts/' + key, {**body, **changed}, status=(409,))
             self.assertEqual(len(self.model.calls), calls)
-            self.verify_run(str(uuid.uuid4()), {**inputs, 'executorRef': new_ref}, new_prompt, new_skill, absent=stale)
+            self.verify_run(str(uuid.uuid4()), {**inputs, 'executorRef': new_ref}, new_prompt, new_skill,
+                            backend=LOCAL, absent=stale)
+
+        with self.workbench(second=True):
+            self.assertEqual(self.backends()[LOCAL]['status'], 'unchecked')
+            self.reject_definition(selected, inputs, status=503)
+            self.verify_run(str(uuid.uuid4()), {**inputs, 'executorRef': new_ref}, new_prompt, new_skill,
+                            backend=LOCAL, absent=stale)
+
+    def test_failed_check(self):
+        # Preserve a valid handshake and normal exit, but remove a required tool from tools/list.
+        wrapper = self.root / LOCAL
+        command = wrapper.read_text(encoding='utf-8').rstrip()
+        wrapper.write_text(command + " | sed -u 's/executor_cancel/not_cancel/g'\n", encoding='utf-8')
+        with self.workbench(second=True):
+            self.check(PI)
+            draft = definition(self.config_package('失败检查', '检查报告。', '检查规则。'), LOCAL)
+            inputs = self.request('不能回退到已就绪的 Pi。')
+            self.reject_definition(draft, inputs, status=503)
+            result = self.http('POST', f'/agent-backends/{LOCAL}/check')
+            directory = self.backends()
+            self.assertEqual(result, directory[LOCAL])
+            self.assertEqual((result['status'], directory[PI]['status']), ('failed', 'ready'))
+            methods = [frame['method'] for frame in self.frames(LOCAL)]
+            self.assertIn('tools/list', methods)
+            self.assertNotIn('tools/call', methods)
+            self.reject_definition(draft, inputs, status=503)
+            self.assertEqual(self.model.calls, [])
 
     def test_pi_driver_disabled(self):
-        with self.workbench(enabled=False):
-            draft = definition(self.config_package('禁用样例配置', '已配置但未启用运行器。', '检查样例。'))
+        with self.workbench():
+            self.check(PI)
+            draft = definition(self.config_package('禁用样例配置', '运行器禁用后不能执行。', '检查样例。'))
             published = self.http('POST', '/executors', draft)
             ref = {k: published[k] for k in ('id', 'revision')}
-            body = self.request('不应调用模型。', executorRef=ref)
-            self.http('PUT', '/executor-attempts/' + str(uuid.uuid4()), body, status=(503,))
+            inputs = self.request('不应调用模型。')
+        with self.workbench(enabled=False):
+            directory = self.backends()
+            self.assertFalse(directory[PI]['configured'])
+            self.assertEqual(directory[PI]['status'], 'unchecked')
+            self.reject_definition(draft, inputs, status=503)
+            self.http('PUT', '/executor-attempts/' + str(uuid.uuid4()), {**inputs, 'executorRef': ref}, status=(503,))
             self.assertEqual(self.model.calls, [])
 
 

@@ -21,7 +21,9 @@ export function initialDraft(v?: Definition): Draft {
     return d
   }
   if (v.agent) {
-    d.agent = { configPackageId: 'configPackageId' in v.agent ? v.agent.configPackageId : '' }
+    d.agent = 'configPackageId' in v.agent
+      ? { configPackageId: v.agent.configPackageId, backendId: v.agent.backendId ?? '' }
+      : { configPackageId: '', backendId: '' }
     return d
   }
   d.resources = (v.resources ?? []).map(pinned)
@@ -33,9 +35,10 @@ function fixed(ref: Ref) {
   if (!ref.id || !Number.isSafeInteger(ref.revision) || ref.revision < 1) throw new Error('请选择固定的引用版本。')
   return pinned(ref)
 }
-export function agentDefinition(id: string, { configPackageId }: AgentConfig): AgentDefinition {
+export function agentDefinition(id: string, { configPackageId, backendId }: AgentConfig): AgentDefinition {
   if (!configPackageId.trim()) throw new Error('请选择配置包。')
-  return { id, agent: { configPackageId } }
+  if (!backendId.trim()) throw new Error('请选择可用的 Agent 后端。')
+  return { id, agent: { configPackageId, backendId } }
 }
 export function publishBody(k: Collection, d: Draft) {
   const id = d.id

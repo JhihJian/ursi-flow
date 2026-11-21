@@ -10,6 +10,7 @@ import NotFoundView from './NotFoundView'
 import { RouteErrorAlert } from './RouteErrorAlert'
 
 const protectedRoutes: RouteObject[] = [
+  { path: 'settings/agent-backends', handle: { title: 'Agent 后端' }, lazy: async () => ({ Component: (await import('@/modules/agent-backends/AgentBackends')).AgentBackends }) },
   ...workItemRoutes,
   ...mcpRoutes,
   ...patchRoutes,

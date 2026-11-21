@@ -4,7 +4,7 @@ test('草稿试跑与发布版运行各自打开本次制品，刷新工作包�
   await page.addInitScript(() => sessionStorage.setItem('ursi-flow:bearer', 'test'))
   const patch = { id: 'sample', name: '样例包', directoryId: 'inputs' }
   const config = { id: 'policy', name: '核查配置', directoryId: 'policy-files' }
-  const definition = { id: 'review', agent: { configPackageId: config.id } }
+  const definition = { id: 'review', agent: { configPackageId: config.id, backendId: 'local' } }
   const version = { ...definition, revision: 1, active: true }
   let published = false
   const attempts = new Map<string, string>()
@@ -29,6 +29,10 @@ test('草稿试跑与发布版运行各自打开本次制品，刷新工作包�
       return route.fulfill({ json: { attemptId, status: 'succeeded', artifactDirectoryId: attempts.get(attemptId) } })
     }
     if (method === 'GET') {
+      if (path === '/agent-backends') {
+        expect(url.searchParams.get('configPackageId')).toBe(config.id)
+        return route.fulfill({ json: [{ id: 'local', label: '本地后端', capabilities: [], configured: true, status: 'ready', checkedAt: 1700000000000, compatible: true }] })
+      }
       const reads: Record<string, unknown> = {
         '/resources': [], '/patches/config': [config], '/directories/policy-files/tree': [],
         '/patches/work': [patch], '/patches/work/sample': patch,

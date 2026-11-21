@@ -13,9 +13,9 @@ export interface Resource<T> {
  * 组件卸载时同样递增版本，旧响应不会覆盖新结果也不会继续渲染。
  *
  * loader 身份变化不会触发重新加载（避免内联箭头函数导致的循环）。
- * 参数变化时由调用方传入 `key` 重建组件，或显式调用 `reload()`。
+ * 参数变化时可传入 resourceKey 重新加载，或显式调用 `reload()`。
  */
-export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, initial: T): Resource<T> {
+export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, initial: T, resourceKey?: string): Resource<T> {
   const [data, setData] = useState<T>(initial)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -55,7 +55,7 @@ export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, init
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload()
     return invalidate
-  }, [reload, invalidate])
+  }, [reload, invalidate, resourceKey])
 
   return { data, loading, error, reload }
 }

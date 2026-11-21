@@ -1,4 +1,5 @@
 //! 工作清单、包、资源定义及其持久化。
+mod agent_backends;
 mod catalog;
 mod directories;
 mod environment;
@@ -50,11 +51,13 @@ impl IntoResponse for Error {
 }
 pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     let store = Store::open(dir)?;
-    Ok(catalog::routes(store.clone())
+    let agents = agent_backends::Registry::from_env()?;
+    Ok(catalog::routes(store.clone(), agents.clone())
+        .merge(agents.routes(store.clone()))
         .merge(worklist::routes(store.clone()))
         .merge(mcp::routes(store.clone()))
         .merge(environment::routes(store.clone()))
-        .merge(executor::routes(store.clone()))
+        .merge(executor::routes(store.clone(), agents))
         .merge(directories::routes(store.clone())?)
         .merge(patches::routes(store)))
 }

@@ -1,8 +1,8 @@
 import { requestV2 } from '@/shared/http/client'
 
 export type ExecutorRef = { id: string; revision: number }
-export type AgentConfig = { configPackageId: string }
-export type PublishedAgent = AgentConfig | { systemPrompt: string; modelProfile: string; tools: string[] }
+export type AgentConfig = { configPackageId: string; backendId: string }
+export type PublishedAgent = { configPackageId: string; backendId?: string } | { systemPrompt: string; modelProfile: string; tools: string[] }
 export type AgentDefinition = { id: string; agent: AgentConfig }
 export type AgentOptions = { models: { id: string }[]; tools: { id: string }[] }
 export type AttemptTarget = { executorRef: ExecutorRef; previewDefinition?: never } | { previewDefinition: AgentDefinition; executorRef?: never }

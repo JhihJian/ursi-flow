@@ -33,7 +33,7 @@ const refs = (value: unknown) => Array.isArray(value) ? value.map(ref).filter((v
 function agentFields(value: unknown) {
   if (!value || typeof value !== 'object') return {}
   const a = value as Record<string, unknown>
-  return { agent: { configPackageId: text(a.configPackageId, '') } }
+  return { agent: { configPackageId: text(a.configPackageId, ''), backendId: text(a.backendId, '') } }
 }
 
 function persistedDraft(draft: Draft): Draft {

@@ -40,7 +40,7 @@ function restore(key?: string): Attempt | null {
 
 function previewKey(target: Props['target']) {
   const d = target?.previewDefinition
-  return d && JSON.stringify([d.id, d.agent.configPackageId])
+  return d && JSON.stringify([d.id, d.agent.configPackageId, d.agent.backendId])
 }
 
 function newUuid() {

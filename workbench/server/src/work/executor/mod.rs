@@ -3,12 +3,13 @@ mod binding;
 mod client;
 mod files;
 
-use super::{Error, Store};
+use super::{Error, Store, agent_backends::Registry};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, State},
     routing::{get, post},
 };
+pub(in crate::work) use client::probe_agent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::Arc};
@@ -76,17 +77,17 @@ struct Service {
     store: Store,
     root: PathBuf,
     flow: Option<binding::Backend>,
-    pi: Option<binding::Backend>,
+    registry: Registry,
     // Bound both concurrent subprocesses and lock storage. No database lock spans an RPC.
     locks: [Mutex<()>; 16],
 }
 
-pub(super) fn routes(store: Store) -> Router {
+pub(super) fn routes(store: Store, registry: Registry) -> Router {
     let service = Service {
         root: store.dir().join("executor-workspaces"),
         store,
         flow: binding::flow_from_env(),
-        pi: binding::pi_from_env(),
+        registry,
         locks: Default::default(),
     };
     Router::new()
@@ -152,10 +153,10 @@ impl Service {
             }
         }
         let backend = if let Some(row) = &row {
-            let backend = binding::backend_for_row(row, self.flow.as_ref(), self.pi.as_ref())?;
+            let backend = binding::backend_for_row(row, self.flow.as_ref(), &self.registry)?;
             if matches!(
                 (&backend, &op),
-                (binding::Backend::Pi { .. }, Operation::Start(_))
+                (binding::Backend::Agent(_), Operation::Start(_))
             ) {
                 binding::verify_snapshot(
                     &self.root,
@@ -172,7 +173,7 @@ impl Service {
             };
             let target = binding::target(body)?;
             let (backend, config) =
-                binding::resolve(&self.store, &target, self.flow.as_ref(), self.pi.as_ref())?;
+                binding::resolve(&self.store, &target, self.flow.as_ref(), &self.registry)?;
             let store = self.store.clone();
             let root = self.root.clone();
             let key = id.to_owned();
@@ -186,13 +187,17 @@ impl Service {
             })
             .await
             .map_err(|_| Error::Internal("工作区准备中断".into()))??;
-            let new = json!({
+            let mut new = json!({
                 "request": body,
                 "backend": backend.mode(),
                 "configDigest": digest,
                 "binding": backend.binding(),
                 "result": {"attemptId":id,"status":"starting","artifactDirectoryRef":format!("artifacts:{id}")}
             });
+            if let binding::Backend::Agent(entry) = &backend {
+                new["backendId"] = json!(entry.id);
+                new["result"]["backendId"] = json!(entry.id);
+            }
             self.store.update(|db| {
                 db["executorAttempts"][id] = new;
                 Ok(())
@@ -209,7 +214,12 @@ impl Service {
             .await
             .and_then(|v| validate(id, v));
         let answer = match answer {
-            Ok(v) => v,
+            Ok(mut v) => {
+                if let binding::Backend::Agent(entry) = &backend {
+                    v["backendId"] = json!(entry.id);
+                }
+                v
+            }
             Err(e) => {
                 let last = self.store.update(|db| {
                     let result = &mut db["executorAttempts"][id]["result"];

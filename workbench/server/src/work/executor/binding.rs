@@ -1,13 +1,17 @@
 //! Resolve an Agent target once and bind its private snapshot to one attempt.
 use super::{Error, ExecutorRef, Start};
-use crate::work::{Store, catalog};
+use crate::work::{
+    Store,
+    agent_backends::{Entry, Registry},
+    catalog,
+};
 use rustix::fs::{self as at, Mode, OFlags, ResolveFlags};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
 
@@ -19,19 +23,10 @@ pub(super) enum Backend {
         bin: PathBuf,
         env: [Option<String>; 3],
     },
-    Pi {
-        bin: PathBuf,
-        policy: PathBuf,
-    },
+    Agent(Entry),
 }
 
 impl Backend {
-    pub(super) fn bin(&self) -> &Path {
-        match self {
-            Self::Flow { bin, .. } | Self::Pi { bin, .. } => bin,
-        }
-    }
-
     pub(super) fn binding(&self) -> Value {
         match self {
             // Keep the identity of Flow attempts reserved before Pi was supported.
@@ -39,14 +34,14 @@ impl Backend {
                 bin,
                 env: [flow, revision, home],
             } => json!([bin, flow, revision, home]),
-            Self::Pi { bin, policy } => json!(["pi", bin, policy]),
+            Self::Agent(entry) => catalog::entry_binding(entry),
         }
     }
 
     pub(super) fn mode(&self) -> &'static str {
         match self {
             Self::Flow { .. } => "flow",
-            Self::Pi { .. } => "pi",
+            Self::Agent(_) => "agent",
         }
     }
 }
@@ -65,32 +60,9 @@ pub(super) fn flow_from_env() -> Option<Backend> {
     })
 }
 
-pub(super) fn pi_from_env() -> Option<Backend> {
-    let bin = absolute_env("URSI_PI_EXECUTOR_BIN")?;
-    let policy = absolute_env("URSI_PI_POLICY")?;
-    policy_file(&policy).ok()?;
-    Some(Backend::Pi { bin, policy })
-}
-
 fn absolute_env(name: &str) -> Option<PathBuf> {
     let path = std::env::var(name).ok().map(PathBuf::from)?;
     path.is_absolute().then_some(path)
-}
-
-fn policy_file(path: &Path) -> Result<(), Error> {
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
-        .open(path)
-        .map_err(|_| unavailable())?;
-    let metadata = file.metadata().map_err(|_| unavailable())?;
-    if !metadata.is_file()
-        || metadata.mode() & 0o7777 != 0o600
-        || (metadata.uid() != 0 && metadata.uid() != unsafe { libc::geteuid() })
-    {
-        return Err(unavailable());
-    }
-    Ok(())
 }
 
 pub(super) fn target(start: &Start) -> Result<Target, Error> {
@@ -113,20 +85,19 @@ pub(super) fn resolve(
     store: &Store,
     target: &Target,
     flow: Option<&Backend>,
-    pi: Option<&Backend>,
+    registry: &Registry,
 ) -> Result<(Backend, Option<Value>), Error> {
     match target {
         Target::Flow => Ok((flow.cloned().ok_or_else(unavailable)?, None)),
         Target::Published(reference) => {
-            let backend = pi.cloned().ok_or_else(unavailable)?;
-            let config =
-                store.read(|db| catalog::agent_snapshot(db, &reference.id, reference.revision))?;
-            Ok((backend, Some(config)))
+            let (entry, config) =
+                catalog::published_agent(store, registry, &reference.id, reference.revision)?;
+            Ok((Backend::Agent(entry), Some(config)))
         }
         Target::Preview(definition) => {
-            let backend = pi.cloned().ok_or_else(unavailable)?;
             let config = catalog::agent_preview(store, definition)?;
-            Ok((backend, Some(config)))
+            let entry = registry.select(definition["agent"]["backendId"].as_str(), &config)?;
+            Ok((Backend::Agent(entry), Some(config)))
         }
     }
 }
@@ -134,19 +105,25 @@ pub(super) fn resolve(
 pub(super) fn backend_for_row(
     row: &Value,
     flow: Option<&Backend>,
-    pi: Option<&Backend>,
+    registry: &Registry,
 ) -> Result<Backend, Error> {
-    let mode = row["backend"].as_str().unwrap_or("flow");
-    let backend = match mode {
-        "flow" => flow,
-        "pi" => pi,
-        _ => None,
+    let backend = match row.get("backend") {
+        None => flow.cloned().ok_or_else(unavailable)?,
+        Some(mode) if mode == "flow" => flow.cloned().ok_or_else(unavailable)?,
+        Some(mode) if mode == "agent" || mode == "pi" => {
+            let id = if mode == "pi" {
+                "pi"
+            } else {
+                row["backendId"].as_str().ok_or_else(unavailable)?
+            };
+            Backend::Agent(registry.lookup(id).map_err(|_| unavailable())?)
+        }
+        _ => return Err(unavailable()),
     };
-    let backend = backend.ok_or_else(unavailable)?;
     if row["binding"] != backend.binding() {
         return Err(unavailable());
     }
-    Ok(backend.clone())
+    Ok(backend)
 }
 
 pub(super) fn unavailable() -> Error {
@@ -267,24 +244,37 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let pi = Backend::Pi {
-            bin: "/pi".into(),
-            policy: "/private".into(),
-        };
+        let registry = Registry::for_test(vec![
+            (entry("pi", "/pi", "/private"), true),
+            (entry("alternate", "/alternate", "/private"), true),
+        ]);
         let target = Target::Published(ExecutorRef {
             id: "old".into(),
             revision: 1,
         });
         assert_eq!(
-            resolve(&store, &target, None, Some(&pi)).unwrap().1,
+            resolve(&store, &target, None, &registry).unwrap().1,
             Some(snapshot)
         );
+        let moved = Registry::for_test(vec![(entry("pi", "/changed", "/private"), true)]);
         assert!(matches!(
-            resolve(&store, &Target::Preview(inline), None, Some(&pi)),
+            resolve(&store, &target, None, &moved),
+            Err(Error::Unavailable(_))
+        ));
+        assert!(matches!(
+            resolve(&store, &Target::Preview(inline), None, &registry),
             Err(Error::Invalid(_))
         ));
         drop(store);
         fs::remove_dir_all(path).unwrap();
+    }
+
+    fn entry(id: &str, bin: &str, policy: &str) -> Entry {
+        Entry {
+            id: id.into(),
+            bin: bin.into(),
+            policy: policy.into(),
+        }
     }
 
     #[test]
@@ -293,24 +283,31 @@ mod tests {
             bin: "/flow".into(),
             env: [Some("f".into()), None, None],
         };
-        let pi = Backend::Pi {
-            bin: "/pi".into(),
-            policy: "/private".into(),
-        };
+        let registry = Registry::for_test(vec![
+            (entry("pi", "/pi", "/private"), true),
+            (entry("other", "/other", "/private"), false),
+        ]);
         let legacy = json!({"binding":["/flow", "f", null, null]});
-        let agent = json!({"backend":"pi", "binding":["pi", "/pi", "/private"]});
-        for (row, path) in [(&legacy, flow.bin()), (&agent, pi.bin())] {
+        let old_pi = json!({"backend":"pi", "binding":["pi", "/pi", "/private"]});
+        let agent = json!({"backend":"agent", "backendId":"other", "binding":["other", "/other", "/private"]});
+        for row in [&legacy, &old_pi, &agent] {
             assert_eq!(
-                backend_for_row(row, Some(&flow), Some(&pi)).unwrap().bin(),
-                path
+                backend_for_row(row, Some(&flow), &registry)
+                    .unwrap()
+                    .binding(),
+                row["binding"]
             );
         }
-        assert!(backend_for_row(&agent, Some(&flow), None).is_err());
-        let changed = Backend::Pi {
-            bin: "/pi".into(),
-            policy: "/other".into(),
-        };
-        assert!(backend_for_row(&agent, Some(&flow), Some(&changed)).is_err());
+        for entries in [
+            vec![(entry("pi", "/pi", "/private"), true)],
+            vec![(entry("other", "/other", "/changed"), true)],
+            vec![(entry("other", "/changed", "/private"), true)],
+        ] {
+            assert!(matches!(
+                backend_for_row(&agent, Some(&flow), &Registry::for_test(entries)),
+                Err(Error::Unavailable(_))
+            ));
+        }
     }
 
     #[test]

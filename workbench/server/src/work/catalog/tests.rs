@@ -5,7 +5,13 @@ mod agent;
 
 // These non-Agent definitions do not consult any package files.
 fn publish(db: &mut Value, kind: &str, body: Value) -> Result<Value, Error> {
-    super::publish(std::path::Path::new("."), db, kind, body)
+    super::publish(
+        std::path::Path::new("."),
+        db,
+        kind,
+        body,
+        &Registry::for_test(vec![]),
+    )
 }
 
 fn resource(db: &mut Value, id: &str, kind: &str, content: Value) -> Value {

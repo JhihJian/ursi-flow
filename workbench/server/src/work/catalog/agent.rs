@@ -94,7 +94,10 @@ pub(super) fn preview(store_dir: &Path, db: &Value, definition: &Value) -> Resul
     fields(definition, &["id", "agent"])?;
     id(definition)?;
     let agent = &definition["agent"];
-    fields(agent, &["configPackageId"])?;
+    fields(agent, &["configPackageId", "backendId"])?;
+    if agent.get("backendId").is_some() {
+        name(text(agent, "backendId")?)?;
+    }
     let package = name(text(agent, "configPackageId")?)?;
     let directory = patches::config_package_directory(db, package)?;
     let root = directories::registered_root(store_dir, db, &directory)?;

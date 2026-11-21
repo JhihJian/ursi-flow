@@ -23,7 +23,7 @@ function EditorSource({ k, id, revision, newAgent }: EditorProps & { newAgent: b
   const result = useResource(async signal => {
     const source = id ? await readVersion(k, id, revision, signal) : null
     const draft = initialDraft(source?.version)
-    if (newAgent) draft.agent = { configPackageId: '' }
+    if (newAgent) draft.agent = { configPackageId: '', backendId: '' }
     const resources = k === 'executors' && !draft.agent ? await list('resources', signal) : []
     return { source, resources, draft }
   }, null)
