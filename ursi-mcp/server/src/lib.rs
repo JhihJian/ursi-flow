@@ -9,7 +9,12 @@ mod tests;
 use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::{
     sync::{Semaphore, SemaphorePermit},
     time::timeout,
@@ -75,20 +80,41 @@ fn present_settings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Set
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerRecord {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol_check: Option<ProtocolCheck>,
     #[serde(flatten)]
     pub config: Config,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProtocolStatus {
+    DeclaredV1,
+    NotDeclared,
+    UnsupportedVersion,
+    InvalidDeclaration,
+    Legacy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProtocolCheck {
+    pub status: ProtocolStatus,
+    pub checked_at: u64,
+}
+
 /// The host owns persistence. Insert must enforce MAX_SERVERS atomically.
-/// replace_settings updates only the named record's settings, never recreating a removed record.
+/// Updates touch only the named field, never recreating a removed record.
 pub trait ServerRepository: Send + Sync {
     fn list(&self) -> Result<Vec<ServerRecord>, Error>;
     fn get(&self, id: &str) -> Result<Option<ServerRecord>, Error>;
     fn insert(&self, row: &ServerRecord) -> Result<(), Error>;
     fn remove(&self, id: &str) -> Result<bool, Error>;
     fn replace_settings(&self, id: &str, settings: &Settings) -> Result<bool, Error>;
+    fn record_protocol_check(&self, id: &str, check: &ProtocolCheck) -> Result<bool, Error>;
 }
 pub trait Credentials: Send + Sync {
     fn lookup(&self, name: &str, binding: Binding) -> Result<Option<String>, Error>;
@@ -110,7 +136,19 @@ struct Inner {
     policy_mode: PolicyMode,
     identity: rmcp::model::Implementation,
     slots: Semaphore,
+    active_checks: Mutex<HashSet<String>>,
 }
+
+struct ActiveProtocolCheck<'a> {
+    active: &'a Mutex<HashSet<String>>,
+    id: &'a str,
+}
+impl Drop for ActiveProtocolCheck<'_> {
+    fn drop(&mut self) {
+        self.active.lock().unwrap().remove(self.id);
+    }
+}
+
 impl McpPlatform {
     pub fn new(
         records: Arc<dyn ServerRepository>,
@@ -144,6 +182,7 @@ impl McpPlatform {
             policy_mode,
             identity: rmcp::model::Implementation::new(client_name, client_version),
             slots: Semaphore::new(4),
+            active_checks: Mutex::new(HashSet::new()),
         }))
     }
     /// Mount under the host's authenticated API prefix.
@@ -186,6 +225,7 @@ impl McpPlatform {
         }
         let row = ServerRecord {
             id: Uuid::new_v4().to_string(),
+            protocol_check: None,
             config,
         };
         self.0.records.insert(&row)?;
@@ -214,6 +254,35 @@ impl McpPlatform {
     }
     pub async fn inspect(&self, id: &str) -> Result<Value, Error> {
         self.discover(id, true).await
+    }
+    pub async fn check_protocol(&self, id: &str) -> Result<ProtocolCheck, Error> {
+        let cfg = self.lookup(id)?;
+        let _op = self.operation()?;
+        let active = &self.0.active_checks;
+        if !active.lock().unwrap().insert(id.to_owned()) {
+            return Err(unavailable("该 MCP 服务正在检查协议，请稍后重试"));
+        }
+        let _check = ActiveProtocolCheck { active, id };
+        let status = timeout(Duration::from_secs(25), async {
+            let conn = client::Session::open(self, &cfg).await?;
+            let status = conn.executor_protocol();
+            conn.close().await;
+            status
+        })
+        .await
+        .map_err(|_| unavailable("MCP 协议检查超时"))??;
+        let check = ProtocolCheck {
+            status,
+            checked_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| Error::Internal("系统时间无效".into()))?
+                .as_millis() as u64,
+        };
+        self.0
+            .records
+            .record_protocol_check(id, &check)?
+            .then_some(check)
+            .ok_or_else(missing)
     }
     pub async fn list_resources(&self, id: &str) -> Result<Value, Error> {
         self.discover(id, false).await

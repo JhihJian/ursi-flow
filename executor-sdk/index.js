@@ -32,6 +32,7 @@ export function createExecutorServer(options) {
       if (!isObject(params._meta?.[capsKey])) return invalidParams(id);
       if (method === 'server/discover') return only(params, ['_meta']) ? reply({
         supportedVersions: versions, capabilities: { tools: {} },
+        ttlMs: 0, cacheScope: 'private',
         _meta: { 'io.modelcontextprotocol/serverInfo': info, 'ursi/executorProtocol': '1' },
       }) : invalidParams(id);
     } else if (method === 'initialize') {

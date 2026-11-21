@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use ursi_mcp::{Error, MAX_SERVERS, ServerRecord, ServerRepository, Settings};
+use ursi_mcp::{Error, MAX_SERVERS, ProtocolCheck, ServerRecord, ServerRepository, Settings};
 
 const MAX_DATA: usize = 4 * 1024 * 1024;
 
@@ -133,6 +133,15 @@ impl ServerRepository for Store {
                 return Ok(false);
             };
             record.config.settings = Some(settings.clone());
+            Ok(true)
+        })
+    }
+    fn record_protocol_check(&self, id: &str, check: &ProtocolCheck) -> Result<bool, Error> {
+        self.update(|d| {
+            let Some(record) = d.servers.get_mut(id) else {
+                return Ok(false);
+            };
+            record.protocol_check = Some(*check);
             Ok(true)
         })
     }

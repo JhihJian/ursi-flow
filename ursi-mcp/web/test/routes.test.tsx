@@ -46,6 +46,44 @@ it('嵌套路由使用注入的变量名登记服务，通知和资源浏览不�
   expect(screen.getByRole('link', { name: '返回服务列表' })).toHaveAttribute('href', '/admin/mcp-servers')
 })
 
+it('只在显式协议检查后更新列表标签，复查失败保留标签，撤回声明时移除', async () => {
+  let row: McpServer = server
+  const checkedAt = Date.UTC(2026, 6, 28)
+  const probe = vi.fn()
+    .mockImplementationOnce(() => ({ status: 'declaredV1', checkedAt }))
+    .mockImplementationOnce(() => { throw new Error('暂时无法连接') })
+    .mockImplementationOnce(() => ({ status: 'notDeclared', checkedAt }))
+  const { user } = mount('/admin/mcp-servers', (path, { method, body }) => {
+    if (path === '/mcp-servers') return [row]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    expect(path).toBe('/mcp-servers/team%201/protocol-check')
+    expect(method).toBe('POST')
+    expect(body).toBeUndefined()
+    const protocolCheck = probe()
+    row = { ...row, protocolCheck }
+    return protocolCheck
+  })
+  const button = await screen.findByRole('button', { name: '检查协议' })
+  expect(probe).not.toHaveBeenCalled()
+  expect(screen.queryByText('执行器 v1')).not.toBeInTheDocument()
+  await user.click(button)
+  expect(await screen.findByText('执行器 v1')).toHaveAttribute('title', '上次检查时服务自报支持执行器 v1')
+  await user.click(screen.getByRole('button', { name: '刷新登记' }))
+  expect(probe).toHaveBeenCalledTimes(1)
+  await user.click(screen.getByRole('link', { name: '浏览资源' }))
+  expect(await screen.findByText('服务自报支持执行器 v1')).toBeVisible()
+  expect(document.querySelector('time')).toHaveAttribute('datetime', new Date(checkedAt).toISOString())
+  const recheck = screen.getByRole('button', { name: '重新检查协议' })
+  await user.click(recheck)
+  expect(await screen.findByRole('alert')).toHaveTextContent('暂时无法连接')
+  expect(screen.getByText('执行器 v1')).toBeVisible()
+  await user.click(recheck)
+  expect(await screen.findByText('未声明执行器协议')).toBeVisible()
+  await user.click(screen.getByRole('link', { name: '返回服务列表' }))
+  await screen.findByRole('button', { name: '检查协议' })
+  expect(screen.queryByText('执行器 v1')).not.toBeInTheDocument()
+})
+
 it('独立宿主只输入凭据引用，不列举或管理部署凭据', async () => {
   const create = vi.fn()
   const { user, listVariableNames } = mount('/admin/mcp-servers', (path, options) => {

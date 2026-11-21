@@ -13,6 +13,7 @@ import type { McpServer } from '../client'
 import { useMcp } from '../context'
 import { Select } from '../ui/select'
 import { useFeedback } from '../ui/feedback'
+import { ExecutorBadge, ProtocolCheckButton } from './ProtocolCheck'
 
 const noCredentialNames = async () => [] as string[]
 
@@ -66,7 +67,7 @@ function DeleteDialog({ server, close, removed }: { server: McpServer; close: ()
   </Modal>
 }
 
-const rowLayout = 'grid min-w-0 gap-3 px-4 py-3 md:grid-cols-[minmax(9rem,1fr)_minmax(12rem,1.6fr)_minmax(7rem,.8fr)_auto] md:items-center'
+const rowLayout = 'grid min-w-0 gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,.8fr)_minmax(0,13rem)] md:items-center'
 
 export function McpServers() {
   const { client } = useMcp()
@@ -92,7 +93,7 @@ export function McpServers() {
         </div>
         <input type="search" aria-label="搜索服务" placeholder="搜索名称或地址" className="search-input w-full sm:w-64" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
-      {servers.loading || servers.error || !visible.length
+      {(servers.loading && !servers.data.length) || servers.error || !visible.length
         ? <ResourceState className="border-0 shadow-none" loading={servers.loading} error={servers.error} onRetry={servers.reload} empty={!visible.length}
           title={servers.error ? undefined : servers.data.length ? '没有匹配的服务' : '暂无服务登记'} />
         : <>
@@ -102,14 +103,18 @@ export function McpServers() {
           <ul className="divide-y divide-line">
             {visible.map(s => <li key={s.id} className={rowLayout}>
               <div className="min-w-0">
-                <Link to={encodeURIComponent(s.id)} className="break-words text-sm font-semibold hover:text-accent-2 hover:underline">{s.name}</Link>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link to={encodeURIComponent(s.id)} className="min-w-0 break-words text-sm font-semibold hover:text-accent-2 hover:underline">{s.name}</Link>
+                  <ExecutorBadge check={s.protocolCheck} />
+                </div>
                 <div className="mt-1 text-xs text-txt3 md:hidden">Streamable HTTP</div>
               </div>
               <code className="min-w-0 break-all text-xs leading-5 text-txt2">{s.url}</code>
               <div className="min-w-0">
-                {s.credentialEnv ? <code className="break-all text-xs text-txt2">{s.credentialEnv}</code> : <Badge variant="outline">无凭据</Badge>}
+                {s.credentialEnv ? <code className="break-all text-xs text-txt2">{s.credentialEnv}</code> : <Badge variant="outline" className="whitespace-nowrap">无凭据</Badge>}
               </div>
-              <div className="flex items-center gap-2 md:justify-end">
+              <div className="flex flex-wrap items-start gap-2 md:justify-end">
+                <ProtocolCheckButton id={s.id} checked={servers.reload} />
                 <Button asChild size="sm" icon="stage-resources"><Link to={encodeURIComponent(s.id)}>浏览资源</Link></Button>
                 <Button variant="ghost" size="icon" icon="trash" title="删除登记" aria-label={`删除 ${s.name}`} onClick={() => setDeleting(s)} />
               </div>

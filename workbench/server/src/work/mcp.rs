@@ -3,7 +3,7 @@ use super::{Error, Store, environment};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use ursi_mcp::{
-    Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ServerRecord,
+    Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ProtocolCheck, ServerRecord,
     ServerRepository, Settings,
 };
 const TABLE: &str = "mcpServers";
@@ -100,6 +100,15 @@ impl ServerRepository for Store {
             Ok(true)
         })?)
     }
+    fn record_protocol_check(&self, id: &str, check: &ProtocolCheck) -> Result<bool, McpError> {
+        Ok(self.update(|db| {
+            let Some(row) = db.get_mut(TABLE).and_then(|t| t.get_mut(id)) else {
+                return Ok(false);
+            };
+            row["protocolCheck"] = json!(check);
+            Ok(true)
+        })?)
+    }
 }
 
 #[cfg(test)]
@@ -108,7 +117,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn existing_records_and_settings_survive_reopen() {
+    fn existing_records_settings_and_protocol_checks_survive_reopen() {
         let dir = std::env::temp_dir().join(format!("ursi-mcp-store-{}", uuid::Uuid::new_v4()));
         let store = Store::open(dir.clone()).unwrap();
         let row = json!({"id":"old-id","name":"旧登记","url":"https://example.org/mcp","settings":{"allowedTools":["echo"],"githubToolsets":[],"githubReadOnly":false}});
@@ -122,6 +131,11 @@ mod tests {
 
         let store = Store::open(dir.clone()).unwrap();
         assert_eq!(json!(platform(&store).list().unwrap()), json!([row]));
+        let check = ProtocolCheck {
+            status: ursi_mcp::ProtocolStatus::DeclaredV1,
+            checked_at: 1,
+        };
+        assert!(store.record_protocol_check("old-id", &check).unwrap());
         assert!(
             ServerRepository::replace_settings(&store, "old-id", &Settings::default()).unwrap()
         );
@@ -130,6 +144,7 @@ mod tests {
         let store = Store::open(dir.clone()).unwrap();
         let mut expected = row;
         expected["settings"] = json!(Settings::default());
+        expected["protocolCheck"] = json!(check);
         assert_eq!(json!(platform(&store).list().unwrap()), json!([expected]));
         drop(store);
         fs::remove_dir_all(dir).unwrap();

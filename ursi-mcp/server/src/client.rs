@@ -2,7 +2,10 @@
 mod catalog;
 mod http;
 
-use super::{Config, Error, McpPlatform, SNAPSHOT_LIMIT, STANDARD, label, policy, unavailable};
+use super::{
+    Config, Error, McpPlatform, ProtocolStatus, SNAPSHOT_LIMIT, STANDARD, label, policy,
+    unavailable,
+};
 use base64::Engine;
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt, RoleClient,
@@ -17,7 +20,10 @@ use rmcp::{
     },
 };
 use serde_json::{Value, json};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{Arc, atomic::Ordering},
+};
 
 fn rpc_err() -> Error {
     unavailable("MCP 服务连接失败或协议响应无效")
@@ -25,7 +31,7 @@ fn rpc_err() -> Error {
 
 pub(super) struct Session(
     RunningService<RoleClient, ClientConfig>,
-    Arc<std::sync::OnceLock<Value>>,
+    Option<Value>,
     http::Diagnostic,
 );
 
@@ -43,23 +49,29 @@ impl Session {
             cfg.settings.as_ref().unwrap_or(&Default::default()),
         )?;
         let discovery = http.discovery.clone();
+        let used_initialize = http.used_initialize.clone();
         let diagnostic = http.diagnostic.clone();
         let transport = StreamableHttpClientTransport::with_client(http, options);
-        let session = Self(
-            ClientConfig::new(Default::default(), store.0.identity.clone())
-                .with_protocol_version(ProtocolVersion::V_2025_11_25)
-                .serve_with_lifecycle(
-                    transport,
-                    ClientLifecycleMode::Auto {
-                        preferred_versions: vec![ProtocolVersion::V_2026_07_28],
-                        legacy_version: Some(ProtocolVersion::V_2025_11_25),
-                    },
-                )
-                .await
-                .map_err(|_| diagnostic.error("MCP 会话建立失败"))?,
-            discovery,
-            diagnostic,
-        );
+        let mut connection = ClientConfig::new(Default::default(), store.0.identity.clone())
+            .with_protocol_version(ProtocolVersion::V_2025_11_25)
+            .serve_with_lifecycle(
+                transport,
+                ClientLifecycleMode::Auto {
+                    preferred_versions: vec![ProtocolVersion::V_2026_07_28],
+                    legacy_version: Some(ProtocolVersion::V_2025_11_25),
+                },
+            )
+            .await
+            .map_err(|_| diagnostic.error("MCP 会话建立失败"))?;
+        let discovery = if used_initialize.load(Ordering::Relaxed) {
+            None
+        } else if let Some(snapshot) = discovery.get() {
+            Some(snapshot.clone())
+        } else {
+            let _ = connection.close().await;
+            return Err(rpc_err());
+        };
+        let session = Self(connection, discovery, diagnostic);
         let supported = session.0.peer_info().is_some_and(|info| {
             matches!(
                 info.protocol_version.as_str(),
@@ -83,9 +95,9 @@ impl Session {
             "name": implementation.map(|i| &i.name),
             "version": implementation.map(|i| &i.version),
             "title": implementation.and_then(|i| i.title.as_ref()),
-            "discoveryMethod": if self.1.get().is_some() { "server/discover" } else { "initialize" },
-            "supportedVersions": self.1.get().map(|r| &r["supportedVersions"]),
-            "declaredCapabilities": self.1.get().map(|r| r["capabilities"].clone()).unwrap_or_else(|| json!(info.capabilities)),
+            "discoveryMethod": if self.1.is_some() { "server/discover" } else { "initialize" },
+            "supportedVersions": self.1.as_ref().map(|r| &r["supportedVersions"]),
+            "declaredCapabilities": self.1.as_ref().map(|r| r["capabilities"].clone()).unwrap_or_else(|| json!(info.capabilities)),
             "instructions": info.instructions,
             "protocolVersion": info.protocol_version,
             "capabilities": {
@@ -94,6 +106,25 @@ impl Session {
                 "prompts": info.capabilities.prompts.is_some(),
             },
         }))
+    }
+
+    pub(super) fn executor_protocol(&self) -> Result<ProtocolStatus, Error> {
+        let info = self.0.peer_info().ok_or_else(rpc_err)?;
+        if self.1.is_none() {
+            return Ok(ProtocolStatus::Legacy);
+        }
+        Ok(
+            match info
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.get("ursi/executorProtocol"))
+            {
+                Some(Value::String(version)) if version == "1" => ProtocolStatus::DeclaredV1,
+                Some(Value::String(_)) => ProtocolStatus::UnsupportedVersion,
+                Some(_) => ProtocolStatus::InvalidDeclaration,
+                None => ProtocolStatus::NotDeclared,
+            },
+        )
     }
 
     pub(super) fn has_resources(&self) -> bool {

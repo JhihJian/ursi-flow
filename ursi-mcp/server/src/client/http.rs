@@ -14,7 +14,15 @@ use rmcp::{
 };
 use serde_json::Value;
 use sse_stream::{Sse, SseStream};
-use std::{collections::HashMap, io, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 type Headers = HashMap<HeaderName, HeaderValue>;
 type HttpError = StreamableHttpError<io::Error>;
@@ -67,6 +75,7 @@ impl Diagnostic {
 pub(super) struct BoundedHttp {
     pub(super) diagnostic: Diagnostic,
     pub(super) discovery: Arc<std::sync::OnceLock<Value>>,
+    pub(super) used_initialize: Arc<AtomicBool>,
     client: Client,
     endpoint: Url,
     authorization: Option<HeaderValue>,
@@ -90,6 +99,7 @@ impl BoundedHttp {
             .map_err(|_| rpc_err())?;
         Ok(Self {
             discovery: Default::default(),
+            used_initialize: Default::default(),
             diagnostic: Default::default(),
             client,
             endpoint,
@@ -147,7 +157,10 @@ impl StreamableHttpClient for BoundedHttp {
         let stage = match &message {
             JsonRpcMessage::Request(r) => match &r.request {
                 ClientRequest::DiscoverRequest(_) => "server/discover",
-                ClientRequest::InitializeRequest(_) => "initialize",
+                ClientRequest::InitializeRequest(_) => {
+                    self.used_initialize.store(true, Ordering::Relaxed);
+                    "initialize"
+                }
                 ClientRequest::ListToolsRequest(_) => "tools/list",
                 ClientRequest::ListPromptsRequest(_) => "prompts/list",
                 ClientRequest::ListResourceTemplatesRequest(_) => "resources/templates/list",

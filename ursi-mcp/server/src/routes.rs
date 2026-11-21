@@ -23,6 +23,7 @@ pub(super) fn router(platform: McpPlatform) -> Router {
         .route("/mcp-servers", get(index).post(register))
         .route("/mcp-servers/{id}", delete(remove))
         .route("/mcp-servers/{id}/inspection", get(inspect))
+        .route("/mcp-servers/{id}/protocol-check", post(check_protocol))
         .route("/mcp-servers/{id}/resources", get(resources))
         .route("/mcp-servers/{id}/resources/read", post(read_resource))
         .route("/mcp-servers/{id}/settings", put(settings))
@@ -66,6 +67,12 @@ async fn inspect(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Error> {
     p.inspect(&id).await.map(Json)
+}
+async fn check_protocol(
+    State(p): State<McpPlatform>,
+    Path(id): Path<String>,
+) -> Result<Json<ProtocolCheck>, Error> {
+    p.check_protocol(&id).await.map(Json)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

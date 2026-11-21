@@ -26,6 +26,8 @@ test('independent backend: discover, validate, retry, inspect and cancel over se
   const discovery = rpc(request('server/discover', { _meta: meta })).result;
   assert.deepEqual(discovery._meta, { 'ursi/executorProtocol': '1', 'io.modelcontextprotocol/serverInfo': { name: 'report', version: '1.2.3' } });
   assert.equal(discovery.resultType, 'complete');
+  assert.equal(discovery.ttlMs, 0);
+  assert.equal(discovery.cacheScope, 'private');
   assert.equal(rpc(request('server/discover', { _meta: { ...meta, 'io.modelcontextprotocol/protocolVersion': 'unknown' } })).error.code, -32022);
   assert.equal(rpc(request('tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } })).error.code, -32602);
   const tools = rpc(request('tools/list', { _meta: meta })).result.tools;

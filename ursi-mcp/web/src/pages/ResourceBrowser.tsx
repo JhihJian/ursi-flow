@@ -14,6 +14,7 @@ import { SettingsPanel } from './SettingsPanel'
 import { DataTable } from '../ui/data-table'
 import type { CatalogKind } from '../client'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
+import { ExecutorBadge, ProtocolCheckButton, protocolLabels } from './ProtocolCheck'
 
 export function ResourceBrowser() {
   const { id } = useParams()
@@ -31,6 +32,8 @@ const capabilityNames = { resources: '资源', tools: '工具', prompts: '提示
 
 function Inspector({ server }: { server: McpServer }) {
   const [view, setView] = useState<'resources' | CatalogKind | 'settings'>('resources')
+  const [protocolCheck, setProtocolCheck] = useState(server.protocolCheck)
+  const checkedAt = protocolCheck ? new Date(protocolCheck.checkedAt) : undefined
   const [settings, setSettings] = useState(server.settings ?? { allowedTools: [], githubToolsets: [], githubReadOnly: false })
   const { client } = useMcp()
   const discovery = useResource<Inspection | null>(signal => client.inspectServer(server.id, signal), null)
@@ -54,6 +57,7 @@ function Inspector({ server }: { server: McpServer }) {
         <Icon name="connector" size={18} className="shrink-0 text-accent-2" />
         <h2 className="min-w-0 break-words text-base font-semibold text-txt">{server.name}</h2>
         <Badge variant="outline">已登记</Badge>
+        <ExecutorBadge check={protocolCheck} />
         <Button className="ml-auto" size="sm" icon="refresh" loading={discovery.loading} onClick={discovery.reload}>重新发现</Button>
       </div>
       <dl className="grid gap-x-5 gap-y-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
@@ -63,6 +67,16 @@ function Inspector({ server }: { server: McpServer }) {
           {discovery.loading ? '正在协商和发现' : discovery.error ? '发现失败' : '发现完成'}
         </dd></div>
       </dl>
+      <div className="flex flex-wrap items-start justify-between gap-2 border-t border-line pt-3 text-xs">
+        <dl>
+          <dt className="text-txt3">最近一次成功的协议检查</dt>
+          <dd className="mt-1 text-txt2" role="status">
+            <span>{protocolCheck ? protocolLabels[protocolCheck.status] : '尚未完成协议检查'}</span>
+            {checkedAt && <> · <time dateTime={checkedAt.toISOString()}>{checkedAt.toLocaleString()}</time></>}
+          </dd>
+        </dl>
+        <ProtocolCheckButton id={server.id} recheck={!!protocolCheck} checked={setProtocolCheck} />
+      </div>
       {peer && <dl aria-label="协商信息" className="flex min-w-0 flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3 text-xs text-txt2">
         <div className="flex min-w-0 gap-2"><dt className="shrink-0 text-txt3">本次协议版本</dt><dd className="font-mono">{peer.protocolVersion}</dd></div>
         <div><dt className="text-txt3">发现方式</dt><dd>{peer.discoveryMethod}</dd></div>

@@ -1,7 +1,11 @@
 export type McpRequest = <T>(path: string, options: RequestInit) => Promise<T>
 export type ServerDraft = { name: string; url: string; credentialEnv?: string }
 export type McpSettings = { allowedTools: string[]; githubToolsets: string[]; githubReadOnly: boolean }
-export type McpServer = ServerDraft & { id: string; settings?: McpSettings }
+export type ProtocolCheck = {
+  status: 'declaredV1' | 'notDeclared' | 'unsupportedVersion' | 'invalidDeclaration' | 'legacy'
+  checkedAt: number
+}
+export type McpServer = ServerDraft & { id: string; settings?: McpSettings; protocolCheck?: ProtocolCheck }
 export type CatalogKind = 'tools' | 'prompts' | 'templates'
 export type CatalogEntry = { name: string; description?: string; inputSchema?: object; arguments?: object[]; uriTemplate?: string }
 export type McpResource = { name: string; title?: string; size?: number; uri: string; mimeType?: string; description?: string }
@@ -23,6 +27,7 @@ export function createMcpClient(request: McpRequest) {
     }),
     removeServer: (id: string, signal: AbortSignal) => request<{ id: string }>(serverPath(id), { method: 'DELETE', signal }),
     inspectServer: (id: string, signal: AbortSignal) => request<Inspection>(`${serverPath(id)}/inspection`, { signal }),
+    checkProtocol: (id: string, signal: AbortSignal) => request<ProtocolCheck>(`${serverPath(id)}/protocol-check`, { method: 'POST', signal }),
     listResources: (id: string, signal: AbortSignal) => request<McpResource[]>(`${serverPath(id)}/resources`, { signal }),
     readResource: (id: string, uri: string, signal: AbortSignal) => request<{ contents: ResourceContent[] }>(`${serverPath(id)}/resources/read`, {
       method: 'POST', body: JSON.stringify({ uri }), signal,

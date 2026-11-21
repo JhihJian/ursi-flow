@@ -22,17 +22,11 @@ class Peer(http.server.BaseHTTPRequestHandler):
         request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         method = request['method']
         self.seen.append((method, self.headers.get('Authorization')))
-        if method == 'server/discover':
-            self.send_response(400)
-            self.end_headers()
-            return
-        if method == 'notifications/initialized':
-            self.send_response(202)
-            self.end_headers()
-            return
         result = {
-            'initialize': {'protocolVersion': '2025-06-18', 'capabilities': {'resources': {}},
-                           'serverInfo': {'name': 'delivery-smoke', 'version': '1'}},
+            'server/discover': {'resultType': 'complete', 'supportedVersions': ['2026-07-28'],
+                                'capabilities': {'resources': {}}, 'ttlMs': 0, 'cacheScope': 'private',
+                                '_meta': {'ursi/executorProtocol': '1',
+                                          'io.modelcontextprotocol/serverInfo': {'name': 'delivery-smoke', 'version': '1'}}},
             'resources/list': {'resources': [{'name': 'Smoke', 'uri': 'memo:smoke'}]},
             'resources/read': {'contents': [{'uri': 'memo:smoke', 'text': 'standalone resource'}]},
         }[method]
@@ -128,6 +122,13 @@ def check(binary, root, endpoint):
         write_credentials(credential)
         row = call(url, registry, 'POST', draft)
         detail = registry + '/' + row['id']
+        assert 'protocolCheck' not in row and call(url, registry) == [row]
+        assert not Peer.seen
+        call(url, detail + '/protocol-check', 'POST', expected=401, auth=False)
+        check_result = call(url, detail + '/protocol-check', 'POST')
+        assert check_result['status'] == 'declaredV1' and check_result['checkedAt'] > 0
+        assert call(url, registry)[0]['protocolCheck'] == check_result
+        assert Peer.seen == [('server/discover', 'Bearer ' + credential)]
         assert b'id="root"' in call(url, '/mcp-servers/' + row['id'] + '?uri=memo%3Asmoke', auth=False)
         assert call(url, detail + '/inspection')['resources'][0]['uri'] == 'memo:smoke'
         assert call(url, detail + '/resources/read', 'POST', {'uri': 'memo:smoke'})['contents'][0]['text'] == 'standalone resource'
@@ -150,6 +151,7 @@ def check(binary, root, endpoint):
     with run(binary, root, data, token_file) as url:
         assert call(url, registry)[0]['settings'] == settings
         assert call(url, registry)[0]['id'] == row['id']
+        assert call(url, registry)[0]['protocolCheck'] == check_result
         call(url, detail + '/inspection')
         assert Peer.seen[-1][1] == 'Bearer ' + rotated
         credential_file.unlink()

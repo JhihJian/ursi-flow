@@ -43,6 +43,14 @@ impl ServerRepository for Memory {
         row.config.settings = Some(s.clone());
         Ok(true)
     }
+    fn record_protocol_check(&self, id: &str, check: &ProtocolCheck) -> Result<bool, Error> {
+        let mut rows = self.0.lock().unwrap();
+        let Some(row) = rows.get_mut(id) else {
+            return Ok(false);
+        };
+        row.protocol_check = Some(*check);
+        Ok(true)
+    }
 }
 impl Credentials for Memory {
     fn lookup(&self, name: &str, _: Binding) -> Result<Option<String>, Error> {
@@ -141,7 +149,7 @@ async fn peer(
     if method == "initialize" {
         assert_eq!(q["params"]["clientInfo"]["name"], "fixture-client");
         assert_eq!(q["params"]["protocolVersion"], "2025-11-25");
-        return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"}})))).into_response();
+        return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"},"_meta":{"ursi/executorProtocol":"1"}})))).into_response();
     }
     assert_eq!(h["mcp-session-id"], "session");
     assert_eq!(h["mcp-protocol-version"], "2025-06-18");
@@ -253,6 +261,23 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
         json!({"name":"fixture","version":"1","title":null,"protocolVersion":"2025-06-18","discoveryMethod":"initialize","supportedVersions":null,"declaredCapabilities":{"resources":{}},"instructions":null,"capabilities":{"resources":true,"tools":false,"prompts":false}})
     );
     assert_eq!(report["resources"], resources);
+    assert!(f.store.list().unwrap()[0].protocol_check.is_none());
+    f.calls.lock().unwrap().clear();
+    let check = f
+        .store
+        .check_protocol(row["id"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(check.status, ProtocolStatus::Legacy);
+    assert_eq!(
+        *f.calls.lock().unwrap(),
+        [
+            "server/discover",
+            "initialize",
+            "notifications/initialized",
+            "DELETE"
+        ]
+    );
     fs::remove_file(f.dir.join("mcp-policy.json")).unwrap();
     assert!(
         !client
@@ -465,6 +490,199 @@ async fn modern_discovery_reports_versions_and_skips_undeclared_resources() {
     );
     assert_eq!(report["resources"], json!([]));
     assert_eq!(*f.calls.lock().unwrap(), ["server/discover"]);
+    peer.abort();
+}
+
+fn executor_discovery(id: &Value, declaration: Option<Value>) -> Value {
+    let mut reply = json!({"jsonrpc":"2.0","id":id,"result":{
+        "resultType":"complete","supportedVersions":["2026-07-28","2025-06-18"],
+        "capabilities":{"tools":{},"resources":{}},"ttlMs":0,"cacheScope":"private",
+        "_meta":{"io.modelcontextprotocol/serverInfo":{"name":"executor","version":"1"}}
+    }});
+    if let Some(declaration) = declaration {
+        reply["result"]["_meta"]["ursi/executorProtocol"] = declaration;
+    }
+    reply
+}
+
+#[tokio::test]
+async fn protocol_api_persists_only_successful_correlated_declarations() {
+    let f = Fixture::new().await;
+    let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let requests = f.calls.clone();
+    let peer = Router::new().route(
+        "/mcp",
+        post({
+            let mode = mode.clone();
+            move |Json(q): Json<Value>| {
+                let requests = requests.clone();
+                let mode = mode.clone();
+                async move {
+                    requests
+                        .lock()
+                        .unwrap()
+                        .push(q["method"].as_str().unwrap().into());
+                    match mode.load(std::sync::atomic::Ordering::Relaxed) {
+                        0 => Json(executor_discovery(&q["id"], Some(json!("1")))).into_response(),
+                        1 => {
+                            let reply = executor_discovery(&q["id"], None);
+                            (
+                                [("content-type", "text/event-stream")],
+                                format!("data: {reply}\n\n"),
+                            )
+                                .into_response()
+                        }
+                        2 => Json(executor_discovery(&q["id"], Some(json!(1)))).into_response(),
+                        3 => Json(executor_discovery(&q["id"], Some(json!("2")))).into_response(),
+                        4 => Json(executor_discovery(&json!("wrong-id"), Some(json!("1"))))
+                            .into_response(),
+                        _ => StatusCode::BAD_GATEWAY.into_response(),
+                    }
+                }
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = f.cfg();
+    cfg.url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    f.policy(json!([{"url":cfg.url}]));
+    let peer = tokio::spawn(async move { axum::serve(listener, peer).await.unwrap() });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let registry = format!("http://{}/mcp-servers", listener.local_addr().unwrap());
+    let app = f.store.routes();
+    let api = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let mut forged = json!(cfg);
+    forged["protocolCheck"] = json!({"status":"declaredV1","checkedAt":1});
+    assert_eq!(
+        client
+            .post(&registry)
+            .json(&forged)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let row: Value = client
+        .post(&registry)
+        .json(&cfg)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let endpoint = format!("{registry}/{}/protocol-check", row["id"].as_str().unwrap());
+    let list = || async {
+        client
+            .get(&registry)
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    };
+    assert_eq!(list().await, json!([row]));
+    assert!(row.get("protocolCheck").is_none());
+    assert!(f.calls.lock().unwrap().is_empty());
+
+    for (wire_case, status) in [
+        (0, "declaredV1"),
+        (4, ""),
+        (5, ""),
+        (1, "notDeclared"),
+        (2, "invalidDeclaration"),
+        (3, "unsupportedVersion"),
+    ] {
+        mode.store(wire_case, std::sync::atomic::Ordering::Relaxed);
+        let previous = list().await;
+        let reply = client.post(&endpoint).send().await.unwrap();
+        if status.is_empty() {
+            assert_eq!(reply.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(list().await, previous);
+        } else {
+            let check: Value = reply.error_for_status().unwrap().json().await.unwrap();
+            assert_eq!(check["status"], status);
+            assert!(check["checkedAt"].as_u64().unwrap() > 0);
+            assert_eq!(list().await[0]["protocolCheck"], check);
+        }
+    }
+    fs::remove_file(f.dir.join("mcp-policy.json")).unwrap();
+    assert_eq!(
+        client.post(&endpoint).send().await.unwrap().status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(*f.calls.lock().unwrap(), ["server/discover"; 6]);
+    api.abort();
+    peer.abort();
+}
+
+#[tokio::test]
+async fn protocol_check_serializes_per_service_without_overwriting_settings_or_recreating_deleted_rows()
+ {
+    let f = Fixture::new().await;
+    let (started, mut requests) = tokio::sync::mpsc::unbounded_channel();
+    let peer = Router::new().route(
+        "/mcp",
+        post(move |Json(q): Json<Value>| {
+            let started = started.clone();
+            async move {
+                assert_eq!(q["method"], "server/discover");
+                let (send, wait) = tokio::sync::oneshot::channel();
+                started.send(send).unwrap();
+                wait.await.unwrap();
+                Json(executor_discovery(&q["id"], Some(json!("1"))))
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = f.cfg();
+    cfg.url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    f.policy(json!([{"url":cfg.url}]));
+    let record = f.store.register(cfg).unwrap();
+    let id = &record.id;
+    let peer = tokio::spawn(async move { axum::serve(listener, peer).await.unwrap() });
+    let spawn_check = || {
+        let (store, id) = (f.store.clone(), id.clone());
+        tokio::spawn(async move { store.check_protocol(&id).await })
+    };
+    let checked = spawn_check();
+    let release = timeout(Duration::from_secs(3), requests.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        f.store.check_protocol(id).await,
+        Err(Error::Unavailable(_))
+    ));
+    let settings = Settings {
+        allowed_tools: vec!["echo".into()],
+        ..Settings::default()
+    };
+    f.store.replace_settings(id, settings.clone()).unwrap();
+    release.send(()).unwrap();
+    assert_eq!(
+        checked.await.unwrap().unwrap().status,
+        ProtocolStatus::DeclaredV1
+    );
+    assert_eq!(
+        json!(f.store.list().unwrap()[0].config.settings),
+        json!(settings)
+    );
+
+    let checked = spawn_check();
+    let release = timeout(Duration::from_secs(3), requests.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    f.store.remove(id).unwrap();
+    release.send(()).unwrap();
+    assert!(matches!(checked.await.unwrap(), Err(Error::NotFound(_))));
+    assert!(f.store.list().unwrap().is_empty());
     peer.abort();
 }
 
