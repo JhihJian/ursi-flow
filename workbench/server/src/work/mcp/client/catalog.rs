@@ -22,15 +22,16 @@ impl Session {
         let mut keys = HashSet::new();
         let mut rows = Vec::new();
         let mut bytes = 2;
-        for _ in 0..32 {
+        for page in 1..=32 {
+            let failed = |_| self.2.error(&format!("MCP 目录第 {page} 页失败"));
             let params = Some(PaginatedRequestParams::default().with_cursor(cursor));
             let (items, next) = match kind {
                 Catalog::Tools => {
-                    let r = self.0.list_tools(params).await.map_err(|_| rpc_err())?;
+                    let r = self.0.list_tools(params).await.map_err(failed)?;
                     (json!(r.tools), r.next_cursor)
                 }
                 Catalog::Prompts => {
-                    let r = self.0.list_prompts(params).await.map_err(|_| rpc_err())?;
+                    let r = self.0.list_prompts(params).await.map_err(failed)?;
                     (json!(r.prompts), r.next_cursor)
                 }
                 Catalog::Templates => {
@@ -38,7 +39,7 @@ impl Session {
                         .0
                         .list_resource_templates(params)
                         .await
-                        .map_err(|_| rpc_err())?;
+                        .map_err(failed)?;
                     (json!(r.resource_templates), r.next_cursor)
                 }
             };
@@ -64,7 +65,7 @@ impl Session {
                 return Ok(Value::Array(rows));
             };
             if !label(&next, 4096) || !cursors.insert(next.clone()) {
-                return Err(rpc_err());
+                return Err(unavailable("MCP 目录分页游标无效或重复"));
             }
             cursor = Some(next);
         }

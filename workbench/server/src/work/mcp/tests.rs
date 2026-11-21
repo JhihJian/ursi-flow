@@ -379,6 +379,51 @@ fn github_settings_build_only_dedicated_headers_on_exact_endpoint() {
 }
 
 #[tokio::test]
+async fn catalog_errors_preserve_phase_not_remote_body() {
+    let f = Fixture::new().await;
+    let app = Router::new().route("/denied",post(|| async {(StatusCode::UNAUTHORIZED,"private fixture detail")})).route("/broken", post(|Json(q):Json<Value>| async move {
+        match q["method"].as_str() {
+            Some("server/discover") => StatusCode::BAD_REQUEST.into_response(),
+            Some("initialize") => Json(json!({"jsonrpc":"2.0","id":q["id"],"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1"}}})).into_response(),
+            Some("notifications/initialized") => StatusCode::ACCEPTED.into_response(),
+            Some("tools/list") => ([("content-type","application/json")],"private fixture detail").into_response(),
+            _ => StatusCode::NOT_FOUND.into_response(),
+        }
+    }));
+    let sock = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", sock.local_addr().unwrap());
+    let peer = tokio::spawn(async move { axum::serve(sock, app).await.unwrap() });
+    for (path, expected) in [
+        (
+            "denied",
+            "MCP 会话建立失败：server/discover 收到远端 HTTP 401",
+        ),
+        (
+            "broken",
+            "MCP 目录第 1 页失败：tools/list 的响应不是有效 JSON",
+        ),
+    ] {
+        let mut cfg = f.cfg();
+        cfg.url = format!("{base}/{path}");
+        f.policy(json!([{"url":cfg.url}]));
+        let result = match client::Session::open(&f.store, &cfg).await {
+            Err(e) => Err(e),
+            Ok(s) => {
+                let r = s.catalog(operations::Catalog::Tools).await;
+                s.close().await;
+                r
+            }
+        };
+        let Error::Unavailable(reason) = result.unwrap_err() else {
+            panic!("expected 503")
+        };
+        assert!(reason.contains(expected), "{reason}");
+        assert!(!reason.contains("private fixture detail"));
+    }
+    peer.abort();
+}
+
+#[tokio::test]
 async fn file_policy_is_a_separate_ceiling_on_tool_calls() {
     let f = Fixture::new().await;
     f.permit();

@@ -48,8 +48,24 @@ fn validate_result(value: &Value, is_read: bool) -> io::Result<()> {
     Ok(())
 }
 
+// Only locally authored text and numeric status/error codes enter this slot.
+#[derive(Clone, Default)]
+pub(super) struct Diagnostic(Arc<std::sync::Mutex<Option<String>>>);
+impl Diagnostic {
+    fn note(&self, text: String) {
+        *self.0.lock().unwrap() = Some(text);
+    }
+    pub(super) fn error(&self, context: &str) -> Error {
+        let note = self.0.lock().unwrap();
+        super::unavailable(&format!(
+            "{context}：{}",
+            note.as_deref().unwrap_or("协议响应无效或版本不匹配")
+        ))
+    }
+}
 #[derive(Clone)]
 pub(super) struct BoundedHttp {
+    pub(super) diagnostic: Diagnostic,
     pub(super) discovery: Arc<std::sync::OnceLock<Value>>,
     client: Client,
     endpoint: Url,
@@ -74,6 +90,7 @@ impl BoundedHttp {
             .map_err(|_| rpc_err())?;
         Ok(Self {
             discovery: Default::default(),
+            diagnostic: Default::default(),
             client,
             endpoint,
             authorization,
@@ -127,13 +144,36 @@ impl StreamableHttpClient for BoundedHttp {
         budget: usize,
     ) -> Result<StreamableHttpPostResponse, HttpError> {
         let is_read = matches!(&message, JsonRpcMessage::Request(request) if matches!(request.request, ClientRequest::ReadResourceRequest(_)));
+        let stage = match &message {
+            JsonRpcMessage::Request(r) => match &r.request {
+                ClientRequest::DiscoverRequest(_) => "server/discover",
+                ClientRequest::InitializeRequest(_) => "initialize",
+                ClientRequest::ListToolsRequest(_) => "tools/list",
+                ClientRequest::ListPromptsRequest(_) => "prompts/list",
+                ClientRequest::ListResourceTemplatesRequest(_) => "resources/templates/list",
+                _ => "MCP 请求",
+            },
+            _ => "MCP 通知",
+        };
+        let diag = &self.diagnostic;
+        diag.note(format!("{stage} 未取得有效的协议响应"));
         let response = self
             .request(Method::POST, headers, session.as_deref())
             .header(ACCEPT, "application/json, text/event-stream")
             .json(&message)
             .send()
             .await
-            .map_err(|_| bad_response())?;
+            .map_err(|e| {
+                diag.note(format!(
+                    "{stage} {}",
+                    if e.is_timeout() {
+                        "请求超时"
+                    } else {
+                        "网络连接失败"
+                    }
+                ));
+                bad_response()
+            })?;
         let discover_id = match &message {
             JsonRpcMessage::Request(r)
                 if matches!(r.request, ClientRequest::DiscoverRequest(_)) =>
@@ -146,6 +186,10 @@ impl StreamableHttpClient for BoundedHttp {
         let legacy_rejection = discover_id.is_some()
             && session.is_none()
             && matches!(status.as_u16(), 400 | 404 | 405);
+        diag.note(format!(
+            "{stage} 收到远端 HTTP {}，未完成协议处理",
+            status.as_u16()
+        ));
         if !status.is_success() && !legacy_rejection {
             return Err(bad_response());
         }
@@ -172,6 +216,7 @@ impl StreamableHttpClient for BoundedHttp {
             .trim()
             .to_ascii_lowercase();
         let mut remaining = budget.min(SNAPSHOT_LIMIT);
+        let body_diag = diag.clone();
         let mut body = response
             .bytes_stream()
             .map_err(|_| io::Error::other("invalid MCP response body"))
@@ -181,7 +226,10 @@ impl StreamableHttpClient for BoundedHttp {
                         remaining = left;
                         Ok(chunk)
                     }
-                    None => Err(io::Error::other("MCP response exceeds body budget")),
+                    None => {
+                        body_diag.note(format!("{stage} 的响应超过大小上限"));
+                        Err(io::Error::other("MCP response exceeds body budget"))
+                    }
                 })
             });
         if legacy_rejection {
@@ -202,7 +250,11 @@ impl StreamableHttpClient for BoundedHttp {
         }
         // The SDK retains the selected version but discards the advertised version list.
         let snapshot = self.discovery.clone();
+        let wire_diag = diag.clone();
         let inspect = move |value: &Value| -> io::Result<()> {
+            if let Some(code) = value["error"]["code"].as_i64() {
+                wire_diag.note(format!("{stage} 返回 JSON-RPC 错误 {code}"));
+            }
             validate_result(value, is_read)?;
             if let Some(id) = &discover_id
                 && value["id"] == serde_json::json!(id)
@@ -218,10 +270,16 @@ impl StreamableHttpClient for BoundedHttp {
                 while let Some(chunk) = body.try_next().await.map_err(|_| bad_response())? {
                     bytes.extend_from_slice(&chunk);
                 }
-                let value = serde_json::from_slice(&bytes).map_err(|_| bad_response())?;
+                let value = serde_json::from_slice(&bytes).map_err(|_| {
+                    diag.note(format!("{stage} 的响应不是有效 JSON"));
+                    bad_response()
+                })?;
                 inspect(&value).map_err(HttpError::Client)?;
                 Ok(StreamableHttpPostResponse::Json(
-                    serde_json::from_value(value).map_err(|_| bad_response())?,
+                    serde_json::from_value(value).map_err(|_| {
+                        diag.note(format!("{stage} 的 JSON 不符合 MCP 响应结构"));
+                        bad_response()
+                    })?,
                     id,
                 ))
             }
@@ -243,7 +301,10 @@ impl StreamableHttpClient for BoundedHttp {
                     .boxed();
                 Ok(StreamableHttpPostResponse::Sse(events, id))
             }
-            _ => Err(bad_response()),
+            _ => {
+                diag.note(format!("{stage} 的响应类型不是 JSON 或 SSE"));
+                Err(bad_response())
+            }
         }
     }
 

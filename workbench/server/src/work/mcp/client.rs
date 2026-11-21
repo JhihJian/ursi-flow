@@ -27,6 +27,7 @@ fn rpc_err() -> Error {
 pub(super) struct Session(
     RunningService<RoleClient, ClientConfig>,
     Arc<std::sync::OnceLock<Value>>,
+    http::Diagnostic,
 );
 
 impl Session {
@@ -39,6 +40,7 @@ impl Session {
         options.retry_config = Arc::new(NeverRetry::default());
         let http = http::BoundedHttp::new(url, authorization, &cfg.settings)?;
         let discovery = http.discovery.clone();
+        let diagnostic = http.diagnostic.clone();
         let transport = StreamableHttpClientTransport::with_client(http, options);
         let session = Self(
             mcp_client_info(ProtocolVersion::V_2025_11_25)
@@ -50,8 +52,9 @@ impl Session {
                     },
                 )
                 .await
-                .map_err(|_| rpc_err())?,
+                .map_err(|_| diagnostic.error("MCP 会话建立失败"))?,
             discovery,
+            diagnostic,
         );
         let supported = session.0.peer_info().is_some_and(|info| {
             matches!(
@@ -61,7 +64,7 @@ impl Session {
         });
         if !supported {
             session.close().await;
-            return Err(rpc_err());
+            return Err(unavailable("MCP 会话协商的版本不受支持"));
         }
         Ok(session)
     }
