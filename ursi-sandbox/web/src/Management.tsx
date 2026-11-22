@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
   ChevronDown,
@@ -8,10 +8,16 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import type { Sandbox, Source } from './data'
+import {
+  runtimeImages,
+  type ImageInventory,
+  type Sandbox,
+  type Source,
+} from './data'
 import { Button } from './shared/ui/button'
 import { Textarea } from './shared/ui/textarea'
 import { Input } from './shared/ui/input'
+import { Select } from './shared/ui/select'
 import { Label } from './shared/ui/label'
 import { Alert } from './shared/ui/alert'
 import {
@@ -58,14 +64,34 @@ const randomKey = () =>
     b.toString(16).padStart(2, '0'),
   ).join('')
 type CreateMode = 'quick' | 'json'
+type Image = ImageInventory['images'][number]
+const officialImages = new Set<string>(Object.values(runtimeImages))
+
+function registration(image: Image) {
+  return image.registered && !('invalid' in image.registered)
+    ? image.registered
+    : null
+}
+
+function imageDisabledReason(image: Image) {
+  if (image.registered && 'invalid' in image.registered) return '登记组合无效'
+  if (!image.local_id) return '未确认本机已有'
+  if (
+    officialImages.has(image.reference) &&
+    registration(image)?.runtime_min_image_level == null
+  )
+    return '需先在能力注册表登记 Runtime 包'
+  return ''
+}
+
 function buildQuickSpec(
   image: string,
   name: string,
   command: string,
   memory: string,
   cpus: string,
+  profile: string,
 ) {
-  if (!image.trim()) throw Error('请输入镜像名')
   const memoryMb = Number(memory)
   const cpuCount = Number(cpus)
   if (!Number.isInteger(memoryMb) || memoryMb < 16 || memoryMb > 65536)
@@ -73,7 +99,8 @@ function buildQuickSpec(
   if (!Number.isFinite(cpuCount) || cpuCount <= 0 || cpuCount > 128)
     throw Error('CPU 必须大于 0 且不超过 128')
   return {
-    image: image.trim(),
+    image,
+    ...(profile ? { runtime_profile: profile } : {}),
     command: command
       .split(/\r?\n/)
       .map((item) => item.trim())
@@ -87,27 +114,82 @@ export function CreateSandbox({ source }: { source: Source }) {
   const navigate = useNavigate(),
     [open, show] = useState(false),
     [mode, setMode] = useState<CreateMode>('quick'),
-    [image, setImage] = useState('alpine:3.22'),
+    [image, setImage] = useState(''),
+    [profile, setProfile] = useState(''),
+    [inventory, setInventory] = useState<ImageInventory | null>(null),
+    [inventoryError, setInventoryError] = useState(''),
+    [inventoryVersion, reloadInventory] = useState(0),
     [name, setName] = useState('my-sandbox'),
-    [command, setCommand] = useState('sleep\n3600'),
+    [command, setCommand] = useState(''),
     [memory, setMemory] = useState('256'),
     [cpus, setCpus] = useState('1'),
     [text, edit] = useState(template),
     [busy, wait] = useState(false),
     [error, fail] = useState('')
   const attempt = useRef({ body: '', key: '' })
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    source.images(controller.signal).then(
+      (result) => {
+        if (!controller.signal.aborted) setInventory(result)
+      },
+      (error) => {
+        if (!controller.signal.aborted)
+          setInventoryError(error instanceof Error ? error.message : '未知错误')
+      },
+    )
+    return () => controller.abort()
+  }, [open, source, inventoryVersion])
+  const images = inventory?.images ?? []
+  const selected =
+    inventory?.inventory === 'available'
+      ? images.find(
+          (row) => row.reference === image && !imageDisabledReason(row),
+        )
+      : undefined
+  const selectedRegistration = selected && registration(selected)
+  const hasRuntime = selectedRegistration?.runtime_min_image_level != null
+  const requiresProfile = Boolean(
+    selected && officialImages.has(selected.reference),
+  )
+  const quickReady = Boolean(selected && (!requiresProfile || profile.trim()))
+  const inventoryNotice = inventoryError
+    ? `读取镜像清单失败：${inventoryError}`
+    : !inventory
+      ? '正在读取镜像清单…'
+      : inventory.inventory === 'unsupported'
+        ? '当前驱动不支持本机镜像查询'
+        : inventory.inventory === 'unavailable'
+          ? '暂时无法读取本机镜像'
+          : images.every((row) => imageDisabledReason(row))
+            ? '暂无可选镜像'
+            : ''
+  function clearInventory() {
+    setInventory(null)
+    setInventoryError('')
+    setImage('')
+    setProfile('')
+  }
   function updateMode(next: CreateMode) {
     setMode(next)
     fail('')
   }
   async function submit() {
-    if (!source.create || busy) return
+    if (!source.create || busy || (mode === 'quick' && !quickReady)) return
     wait(true)
     fail('')
     try {
       const spec =
         mode === 'quick'
-          ? buildQuickSpec(image, name, command, memory, cpus)
+          ? buildQuickSpec(
+              image,
+              name,
+              command,
+              memory,
+              cpus,
+              hasRuntime ? profile.trim() : '',
+            )
           : JSON.parse(text)
       if (!spec || typeof spec.image !== 'string' || !spec.image.trim())
         throw Error('规格必须包含 image 镜像名')
@@ -127,7 +209,10 @@ export function CreateSandbox({ source }: { source: Source }) {
       open={open}
       onOpenChange={(next) => {
         show(next)
-        if (next) fail('')
+        if (next) {
+          fail('')
+          clearInventory()
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -140,11 +225,11 @@ export function CreateSandbox({ source }: { source: Source }) {
         <DialogHeader className="pr-8">
           <DialogTitle>创建沙箱</DialogTitle>
           <DialogDescription>
-            快速填写常用配置，提交时自动生成符合 SandboxSpec 规范的 JSON。
+            从 Gateway 的本机镜像清单选择镜像，或直接编辑 SandboxSpec JSON。
           </DialogDescription>
         </DialogHeader>
         <form
-          className="space-y-4"
+          className="min-w-0 space-y-4"
           onSubmit={(event) => {
             event.preventDefault()
             void submit()
@@ -164,17 +249,89 @@ export function CreateSandbox({ source }: { source: Source }) {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="quick" className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="min-w-0 space-y-2 sm:col-span-2">
                   <Label htmlFor="sandbox-image">镜像</Label>
-                  <Input
-                    id="sandbox-image"
-                    value={image}
-                    disabled={busy}
-                    onChange={(e) => setImage(e.target.value)}
-                    placeholder="例如 alpine:3.22"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Select
+                      id="sandbox-image"
+                      className="flex-1"
+                      value={selected ? image : ''}
+                      disabled={
+                        busy ||
+                        !images.length ||
+                        inventory?.inventory !== 'available'
+                      }
+                      onChange={(e) => {
+                        setImage(e.target.value)
+                        setProfile('')
+                      }}
+                    >
+                      <option value="" disabled>
+                        选择本机镜像
+                      </option>
+                      {images.map((row) => {
+                        const reason = imageDisabledReason(row)
+                        return (
+                          <option
+                            key={row.reference}
+                            value={row.reference}
+                            disabled={Boolean(reason)}
+                          >
+                            {row.reference}（
+                            {reason || (row.registered ? '已登记' : '未登记')}）
+                          </option>
+                        )
+                      })}
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      title="刷新镜像清单"
+                      aria-label="刷新镜像清单"
+                      disabled={busy || (!inventory && !inventoryError)}
+                      onClick={() => {
+                        clearInventory()
+                        reloadInventory((version) => version + 1)
+                      }}
+                    >
+                      <RefreshCw />
+                    </Button>
+                  </div>
+                  {inventoryNotice && (
+                    <p
+                      role={inventoryError ? 'alert' : 'status'}
+                      className="text-xs text-txt3"
+                    >
+                      {inventoryNotice}
+                    </p>
+                  )}
+                  {selected && (
+                    <p className="break-words text-xs text-txt3">
+                      受管端点：
+                      {selectedRegistration?.endpoints
+                        .map(({ name }) => name)
+                        .join('、') || '无'}
+                    </p>
+                  )}
                 </div>
+                {hasRuntime && (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="sandbox-runtime-profile">
+                      运行配置{requiresProfile ? '' : '（可选）'}
+                    </Label>
+                    <Input
+                      id="sandbox-runtime-profile"
+                      value={profile}
+                      disabled={busy}
+                      required={requiresProfile}
+                      onChange={(e) => setProfile(e.target.value)}
+                      placeholder="管理员配置的 Runtime Profile 名称"
+                    />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="sandbox-name">名称（可选）</Label>
                   <Input
@@ -222,7 +379,7 @@ export function CreateSandbox({ source }: { source: Source }) {
                   value={command}
                   disabled={busy}
                   onChange={(e) => setCommand(e.target.value)}
-                  placeholder={'sleep\n3600'}
+                  placeholder="留空使用镜像默认命令"
                 />
               </div>
             </TabsContent>
@@ -258,7 +415,7 @@ export function CreateSandbox({ source }: { source: Source }) {
             <Button
               type="submit"
               variant="primary"
-              disabled={!source.manage}
+              disabled={!source.manage || (mode === 'quick' && !quickReady)}
               loading={busy}
             >
               提交创建

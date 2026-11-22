@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react'
 import { RefreshCw, Settings2 } from 'lucide-react'
 import pi from '../../bundles/pi-agent/definition.json'
 import browser from '../../bundles/browser/definition.json'
-import type { ImageInventory, LogicalEndpoint, Registry, Source } from './data'
+import {
+  runtimeImages,
+  type ImageInventory,
+  type LogicalEndpoint,
+  type Registry,
+  type Source,
+} from './data'
 import { Alert } from './shared/ui/alert'
 import { Badge } from './shared/ui/badge'
 import { Button } from './shared/ui/button'
@@ -47,10 +53,10 @@ const modules = [
     endpoints: browser.endpoints,
   },
 ]
-const recipes = new Map([
-  ['ursi-runtime-ssh:local', modules.slice(0, 1)],
-  ['ursi-runtime-pi:local', modules.slice(0, 2)],
-  ['ursi-runtime-browser:local', modules],
+const recipes = new Map<string, typeof modules>([
+  [runtimeImages.ssh, modules.slice(0, 1)],
+  [runtimeImages.pi, modules.slice(0, 2)],
+  [runtimeImages.browser, modules],
 ])
 
 function Endpoints({ endpoints }: { endpoints: LogicalEndpoint[] }) {

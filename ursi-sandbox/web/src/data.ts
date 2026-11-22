@@ -42,6 +42,12 @@ export interface LogicalEndpoint {
   protocol: string
   port: number
 }
+export const runtimeImages = {
+  ssh: 'ursi-runtime-ssh:local',
+  pi: 'ursi-runtime-pi:local',
+  browser: 'ursi-runtime-browser:local',
+} as const
+
 export interface ImageInventory {
   inventory: 'available' | 'unavailable' | 'unsupported'
   images: {
