@@ -21,16 +21,7 @@ struct Grant {
     allowed_tools: Vec<String>,
 }
 
-pub(super) fn authorize(store: &McpPlatform, cfg: &Config) -> Result<Url, Error> {
-    authorize_operation(store, cfg, None)
-}
-
-pub(super) fn authorize_operation(
-    store: &McpPlatform,
-    cfg: &Config,
-    tool: Option<&str>,
-) -> Result<Url, Error> {
-    let denied = || invalid("MCP 地址与凭据引用未获管理员授权");
+pub(super) fn validate(cfg: &Config) -> Result<Url, Error> {
     let bad_url = || invalid("请输入完整 HTTP(S) 端点，不含用户名、密码、查询参数或片段");
     let url = Url::parse(&cfg.url).map_err(|_| bad_url())?;
     if cfg.url.len() > 2048
@@ -47,14 +38,14 @@ pub(super) fn authorize_operation(
     {
         return Err(bad_url());
     }
+    let local = url
+        .host_str()
+        .and_then(|s| s.trim_matches(['[', ']']).parse::<IpAddr>().ok())
+        .is_some_and(|ip| ip.is_loopback());
     if let Some(key) = cfg.credential_env.as_deref() {
         if !valid_credential_name(key) {
             return Err(invalid("凭据变量名无效"));
         }
-        let local = url
-            .host_str()
-            .and_then(|s| s.trim_matches(['[', ']']).parse::<IpAddr>().ok())
-            .is_some_and(|ip| ip.is_loopback());
         if url.scheme() != "https" && !local {
             return Err(invalid("携带凭据的服务地址须使用 HTTPS，回环 IP 除外"));
         }
@@ -63,14 +54,24 @@ pub(super) fn authorize_operation(
         if cfg.credential_env.is_some() {
             return Err(invalid("凭据引用与直接填写密钥只能选择其一"));
         }
-        let local = url
-            .host_str()
-            .and_then(|s| s.trim_matches(['[', ']']).parse::<IpAddr>().ok())
-            .is_some_and(|ip| ip.is_loopback());
         if url.scheme() != "https" && !local {
             return Err(invalid("携带密钥的服务地址须使用 HTTPS，回环 IP 除外"));
         }
     }
+    Ok(url)
+}
+
+pub(super) fn authorize(store: &McpPlatform, cfg: &Config) -> Result<Url, Error> {
+    authorize_operation(store, cfg, None)
+}
+
+pub(super) fn authorize_operation(
+    store: &McpPlatform,
+    cfg: &Config,
+    tool: Option<&str>,
+) -> Result<Url, Error> {
+    let denied = || invalid("MCP 地址与凭据引用未获管理员授权");
+    let url = validate(cfg)?;
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)

@@ -63,7 +63,8 @@ async fn page_binding_registers_without_file_and_never_uses_host_secret() {
     let path = "/api/v2/mcp-servers";
     let config = json!({"binding":"platform","name":"github","url":"https://api.githubcopilot.com/mcp/","credentialEnv":"HOME"});
     assert_eq!(f.request("POST", path, "", config.clone()).await.0, 401);
-    assert_eq!(f.request("POST", path, AUTH, config.clone()).await.0, 400);
+    // Registration does not pre-read credentials; the missing reference fails later.
+    assert_eq!(f.request("POST", path, AUTH, config.clone()).await.0, 200);
     assert_eq!(
         f.request(
             "POST",

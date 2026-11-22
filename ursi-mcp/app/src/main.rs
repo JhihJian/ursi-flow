@@ -93,7 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store.dir.join("mcp-policy.json"),
         "ursi-mcpd",
         env!("CARGO_PKG_VERSION"),
-        PolicyMode::Required,
+        // Page operators are the deployment admins: registration is self-service
+        // unless the deployment drops a policy file to enforce an allowlist.
+        PolicyMode::Optional,
     );
     let api = Router::new()
         .merge(platform.routes())

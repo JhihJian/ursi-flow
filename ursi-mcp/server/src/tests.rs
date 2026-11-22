@@ -86,16 +86,20 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_mode(PolicyMode::Optional).await
+    }
+    async fn with_mode(mode: PolicyMode) -> Self {
         let dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&dir).unwrap();
         let memory = Arc::new(Memory::default());
         *memory.1.lock().unwrap() = default_recognition_rules();
-        let store = McpPlatform::new(
+        let store = McpPlatform::with_policy_mode(
             memory.clone(),
             memory,
             dir.join("mcp-policy.json"),
             "fixture-client",
             "1",
+            mode,
         );
         let calls = Arc::new(Mutex::new(vec![]));
         let app = Router::new()
@@ -390,6 +394,13 @@ async fn inline_secret_registers_connects_and_never_echoes_back() {
     let mut cfg = f.cfg();
     cfg.credential_secret = Some("bad token".into());
     assert!(f.store.register(cfg).is_err());
+    // Required policy mode blocks registration itself until the endpoint is granted.
+    let strict = Fixture::with_mode(PolicyMode::Required).await;
+    let mut gated = strict.cfg();
+    gated.credential_secret = Some("inline-token".into());
+    assert!(strict.store.register(gated.clone()).is_err());
+    strict.policy(json!([{"url":gated.url,"allowSecret":true}]));
+    assert!(strict.store.register(gated).is_ok());
     // API responses only mark presence; the value itself never echoes back.
     let mut cfg = f.cfg();
     cfg.credential_secret = Some("inline-token".into());
@@ -942,3 +953,5 @@ async fn file_policy_is_a_separate_ceiling_on_tool_calls() {
     assert!(policy::authorize_operation(&f.store, &cfg, Some("echo")).is_ok());
     assert!(policy::authorize_operation(&f.store, &cfg, Some("write")).is_err());
 }
+
+

@@ -264,19 +264,26 @@ impl McpPlatform {
         if !label(&config.name, 240) {
             return Err(invalid("服务名称无效"));
         }
-        let url = policy::authorize(self, &config)?;
+        // Registration follows outbound access: a present policy file enforces the
+        // allowlist immediately, while transport and credential-shape checks always apply.
+        policy::validate(&config)?;
+        if self.0.policy_file.exists() {
+            policy::authorize(self, &config)?;
+        } else if self.0.policy_mode == PolicyMode::Required {
+            return Err(invalid("MCP 地址与凭据引用未获管理员授权"));
+        }
         if let Some(s) = &config.settings {
+            let url = reqwest::Url::parse(&config.url).map_err(|_| invalid("服务地址无效"))?;
             s.validate(&url)?;
             if s.empty() {
                 config.settings = None;
             }
-        }
-        if let Some(value) = config.credential_secret.as_deref() {
+        }        if let Some(value) = config.credential_secret.as_deref() {
             if !policy::valid_bearer(value) {
                 return Err(invalid("密钥不能用作 Bearer 令牌，请检查空格或换行"));
             }
         }
-        if (config.binding == Binding::Platform || self.0.policy_mode == PolicyMode::Required)
+        if self.0.policy_mode == PolicyMode::Required
             && let Some(key) = &config.credential_env
         {
             let value = self

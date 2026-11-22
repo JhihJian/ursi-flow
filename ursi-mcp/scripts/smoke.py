@@ -116,27 +116,39 @@ def check(binary, root, endpoint):
         call(url, variables, 'POST', {'name': 'SMOKE_TOKEN', 'value': credential}, expected=404)
         call(url, variables + '/SMOKE_TOKEN', 'PUT', {'value': rotated}, expected=404)
         call(url, variables + '/SMOKE_TOKEN', 'DELETE', expected=404)
-        call(url, registry, 'POST', draft, expected=400)
+        # No policy file: page registration is self-service (transport checks still apply).
+        row = call(url, registry, 'POST', draft)
+        assert 'protocolCheck' not in row and call(url, registry) == [row]
+        assert not Peer.seen
+        call(url, registry + '/' + row['id'], 'DELETE')
+        # A policy file switches the instance to endpoint allowlist mode. Referenced
+        # credentials may be registered before the file exists; sessions fail closed.
         policy.touch(mode=0o600)
         policy.write_text(json.dumps([{'url': endpoint, 'credentialEnv': 'SMOKE_TOKEN'}]))
-        call(url, registry, 'POST', draft, expected=400)
         write_credentials(credential)
         row = call(url, registry, 'POST', draft)
         detail = registry + '/' + row['id']
         assert 'protocolCheck' not in row and call(url, registry) == [row]
         assert not Peer.seen
-        # Inline secrets need an explicit allowSecret grant and never echo back.
-        call(url, registry, 'POST', inline, expected=400)  # plain HTTP with secret is rejected before policy
+        # Transport checks always apply: dual credentials and bad tokens are rejected
+        # at registration; loopback HTTP with a secret is exempt from the HTTPS rule.
         call(url, registry, 'POST', {**inline, 'credentialEnv': 'SMOKE_TOKEN', 'credentialSecret': 'x'}, expected=400)
         call(url, registry, 'POST', {**inline, 'credentialEnv': None, 'credentialSecret': 'bad token'}, expected=400)
+        # Inline secrets must also pass registration: the endpoint needs `allowSecret`.
+        call(url, registry, 'POST', inline, expected=400)
         policy.write_text(json.dumps([{'url': endpoint, 'credentialEnv': 'SMOKE_TOKEN'},
                                       {'url': endpoint, 'allowSecret': True}]))
         inline_row = call(url, registry, 'POST', inline)
         assert inline_row['credentialSecret'] is True and 'smoke-inline-secret' not in json.dumps(inline_row)
-        assert call(url, registry + '/' + inline_row['id'] + '/protocol-check', 'POST')['status'] == 'checked'
+        check = call(url, registry + '/' + inline_row['id'] + '/protocol-check', 'POST')
+        assert check['status'] == 'checked'
         assert any(auth == 'Bearer smoke-inline-secret' for _, auth in Peer.seen)
         call(url, registry + '/' + inline_row['id'], 'DELETE')
         call(url, detail + '/protocol-check', 'POST', expected=401, auth=False)
+        # Registration no longer pre-reads credentials; missing references fail
+        # closed when a session opens (asserted below via credential_file.unlink).
+        extra = call(url, registry, 'POST', {**draft, 'credentialEnv': 'SMOKE_TOKEN'})
+        call(url, registry + '/' + extra['id'], 'DELETE')
         rules_path = api + '/mcp-recognition-rules'
         assert call(url, rules_path) == [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
         check_result = call(url, detail + '/protocol-check', 'POST')
@@ -186,7 +198,9 @@ def check(binary, root, endpoint):
         call(url, detail + '/inspection', expected=503)
         assert len(Peer.seen) == seen, 'deleted credential was used or taken from environment'
         policy.unlink()
-        call(url, detail + '/inspection', expected=400)
+        # Optional mode lets the deployment drop the policy file entirely; the
+        # missing credential still fails the session closed.
+        call(url, detail + '/inspection', expected=503)
         assert len(Peer.seen) == seen
 
 
