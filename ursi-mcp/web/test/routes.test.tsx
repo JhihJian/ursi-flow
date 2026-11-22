@@ -32,10 +32,11 @@ it('嵌套路由使用注入的变量名登记服务，通知和资源浏览不�
   expect(listVariableNames).not.toHaveBeenCalled()
   await user.click(screen.getByRole('button', { name: '登记服务' }))
   const dialog = within(screen.getByRole('dialog'))
+  await user.selectOptions(dialog.getByLabelText('凭据方式'), 'env')
   expect(dialog.getByRole('link', { name: '管理平台变量' })).toHaveAttribute('href', '/admin/credentials')
   await user.type(dialog.getByLabelText('服务名称'), server.name)
   await user.type(dialog.getByLabelText('服务地址'), server.url)
-  await user.selectOptions(dialog.getByLabelText(/平台凭据/), 'TEAM_TOKEN')
+  await user.selectOptions(dialog.getByLabelText(/凭据引用/), 'TEAM_TOKEN')
   expect(dialog.getByText(/Bearer/)).toHaveTextContent(server.url)
   await user.click(dialog.getByRole('button', { name: '添加服务' }))
   expect(await screen.findByText(`「${server.name}」已登记`)).toBeVisible()
@@ -144,7 +145,7 @@ it('拒绝重复规则并在放弃修改后还原列表', async () => {
   expect(put).toHaveBeenCalledTimes(1)
 })
 
-it('独立宿主只输入凭据引用，不列举或管理部署凭据', async () => {
+it('独立宿主可输入凭据引用或直接填写密钥，不列举或管理部署凭据', async () => {
   const create = vi.fn()
   const { user, listVariableNames } = mount('/admin/mcp-servers', (path, options) => {
     expect(path).toBe('/mcp-servers')
@@ -155,12 +156,24 @@ it('独立宿主只输入凭据引用，不列举或管理部署凭据', async (
   await user.click(await screen.findByRole('button', { name: '登记服务' }))
   const dialog = within(screen.getByRole('dialog'))
   expect(dialog.queryByRole('link', { name: '管理平台变量' })).not.toBeInTheDocument()
+  const modeSelect = dialog.getByLabelText('凭据方式')
+  expect(within(modeSelect).queryByRole('option', { name: '平台凭据引用' })).not.toBeInTheDocument()
   await user.type(dialog.getByLabelText('服务名称'), server.name)
   await user.type(dialog.getByLabelText('服务地址'), server.url)
-  await user.type(dialog.getByLabelText(/凭据引用/), 'TEAM_TOKEN')
+  await user.selectOptions(modeSelect, 'env')
+  await user.type(dialog.getByLabelText('凭据引用'), 'TEAM_TOKEN')
   await user.click(dialog.getByRole('button', { name: '添加服务' }))
   expect(create).toHaveBeenCalledWith({ name: server.name, url: server.url, credentialEnv: 'TEAM_TOKEN', binding: 'platform' })
   expect(listVariableNames).not.toHaveBeenCalled()
+  await user.click(await screen.findByRole('button', { name: '登记服务' }))
+  const second = within(screen.getByRole('dialog'))
+  await user.type(second.getByLabelText('服务名称'), server.name)
+  await user.type(second.getByLabelText('服务地址'), server.url)
+  await user.selectOptions(second.getByLabelText('凭据方式'), 'secret')
+  await user.type(second.getByLabelText('访问密钥'), 'shh-secret')
+  expect(second.getByText(/Bearer/)).toHaveTextContent(server.url)
+  await user.click(second.getByRole('button', { name: '添加服务' }))
+  expect(create).toHaveBeenLastCalledWith({ name: server.name, url: server.url, credentialSecret: 'shh-secret', binding: 'platform' })
 })
 
 it('从深链读取正文，工具须先授权，取消确认不调用，确认只调用一次', async () => {

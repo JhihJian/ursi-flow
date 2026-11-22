@@ -103,6 +103,7 @@ def check(binary, root, endpoint):
     registry = api + '/mcp-servers'
     variables = api + '/platform-env'
     draft = {'name': 'Test service', 'url': endpoint, 'binding': 'platform', 'credentialEnv': 'SMOKE_TOKEN'}
+    inline = {'name': 'Inline service', 'url': endpoint, 'binding': 'platform', 'credentialSecret': 'smoke-inline-secret'}
     with run(binary, root, data, token_file) as url:
         assert b'id="root"' in call(url, '/', auth=False)
         call(url, registry, expected=401, auth=False)
@@ -124,6 +125,17 @@ def check(binary, root, endpoint):
         detail = registry + '/' + row['id']
         assert 'protocolCheck' not in row and call(url, registry) == [row]
         assert not Peer.seen
+        # Inline secrets need an explicit allowSecret grant and never echo back.
+        call(url, registry, 'POST', inline, expected=400)  # plain HTTP with secret is rejected before policy
+        call(url, registry, 'POST', {**inline, 'credentialEnv': 'SMOKE_TOKEN', 'credentialSecret': 'x'}, expected=400)
+        call(url, registry, 'POST', {**inline, 'credentialEnv': None, 'credentialSecret': 'bad token'}, expected=400)
+        policy.write_text(json.dumps([{'url': endpoint, 'credentialEnv': 'SMOKE_TOKEN'},
+                                      {'url': endpoint, 'allowSecret': True}]))
+        inline_row = call(url, registry, 'POST', inline)
+        assert inline_row['credentialSecret'] is True and 'smoke-inline-secret' not in json.dumps(inline_row)
+        assert call(url, registry + '/' + inline_row['id'] + '/protocol-check', 'POST')['status'] == 'checked'
+        assert any(auth == 'Bearer smoke-inline-secret' for _, auth in Peer.seen)
+        call(url, registry + '/' + inline_row['id'], 'DELETE')
         call(url, detail + '/protocol-check', 'POST', expected=401, auth=False)
         rules_path = api + '/mcp-recognition-rules'
         assert call(url, rules_path) == [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
@@ -146,7 +158,7 @@ def check(binary, root, endpoint):
         assert b'id="root"' in call(url, '/mcp-servers/' + row['id'] + '?uri=memo%3Asmoke', auth=False)
         assert call(url, detail + '/inspection')['resources'][0]['uri'] == 'memo:smoke'
         assert call(url, detail + '/resources/read', 'POST', {'uri': 'memo:smoke'})['contents'][0]['text'] == 'standalone resource'
-        assert all(auth == 'Bearer ' + credential for _, auth in Peer.seen)
+        assert all(auth == 'Bearer ' + credential for _, auth in Peer.seen if auth != 'Bearer smoke-inline-secret')
         write_credentials(rotated)
         call(url, detail + '/inspection')
         assert Peer.seen[-1][1] == 'Bearer ' + rotated

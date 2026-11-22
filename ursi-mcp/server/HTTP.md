@@ -6,8 +6,8 @@
 
 | 方法与路径 | 输入或输出 |
 | --- | --- |
-| `GET /api/v2/mcp-servers` | 返回服务记录数组，含可选的 `protocolCheck`。只读登记，不发起连接。 |
-| `POST /api/v2/mcp-servers` | 输入 `{name,url,credentialEnv?,binding?}`，返回含 `id` 的服务记录。只登记配置，不发起连接。 |
+| `GET /api/v2/mcp-servers` | 返回服务记录数组，含可选的 `protocolCheck`。已存密钥只返回布尔 `credentialSecret: true`，不回显值。只读登记，不发起连接。 |
+| `POST /api/v2/mcp-servers` | 输入 `{name,url,credentialEnv?,credentialSecret?,binding?}`，`credentialEnv` 与 `credentialSecret` 互斥；返回含 `id` 的服务记录，密钥只回显为 `true`。直接密钥需策略授权 `allowSecret` 且地址须 HTTPS（回环除外）。只登记配置，不发起连接。 |
 | `DELETE /api/v2/mcp-servers/{id}` | 删除登记，返回 `{id}`。旧工作包保留生成来源。 |
 | `GET /api/v2/mcp-servers/{id}/inspection` | 返回 `{server,resources}`。`server` 含当前 `protocolVersion`、`discoveryMethod`、`supportedVersions`、自报的 `name/version/title`、`declaredCapabilities`、`instructions` 和三个常用能力标记。旧握手的 `supportedVersions` 为 null；未声明资源能力时不发送列表请求。 |
 | `POST /api/v2/mcp-servers/{id}/protocol-check` | 无请求体，协商会话并按当前识别规则计算标签，保存并返回 `{status,checkedAt,labels}`。 |

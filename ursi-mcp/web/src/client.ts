@@ -1,5 +1,5 @@
 export type McpRequest = <T>(path: string, options: RequestInit) => Promise<T>
-export type ServerDraft = { name: string; url: string; credentialEnv?: string }
+export type ServerDraft = { name: string; url: string; credentialEnv?: string; credentialSecret?: string }
 export type McpSettings = { allowedTools: string[]; githubToolsets: string[]; githubReadOnly: boolean }
 export type RecognitionRule = { id: string; label: string; metaKey: string; equals: string }
 export type ProtocolCheck = { status: 'checked' | 'legacy'; checkedAt: number; labels: string[] }
@@ -8,7 +8,7 @@ export type StoredProtocolCheck = ProtocolCheck | {
   checkedAt: number
   labels?: string[]
 }
-export type McpServer = ServerDraft & { id: string; settings?: McpSettings; protocolCheck?: StoredProtocolCheck }
+export type McpServer = Omit<ServerDraft, 'credentialSecret'> & { credentialSecret?: boolean; id: string; settings?: McpSettings; protocolCheck?: StoredProtocolCheck }
 export type CatalogKind = 'tools' | 'prompts' | 'templates'
 export type CatalogEntry = { name: string; description?: string; inputSchema?: object; arguments?: object[]; uriTemplate?: string }
 export type McpResource = { name: string; title?: string; size?: number; uri: string; mimeType?: string; description?: string }

@@ -22,13 +22,20 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
   const formId = useId()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
+  const [mode, setMode] = useState<'none' | 'env' | 'secret'>('none')
   const [env, setEnv] = useState('')
+  const [secret, setSecret] = useState('')
   const variables = useResource(listVariableNames ?? noCredentialNames, [])
   const creation = useMutation()
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim() || !url.trim()) return
-    void creation.run(signal => client.addServer({ name: name.trim(), url: url.trim(), ...(env.trim() && { credentialEnv: env.trim() }) }, signal), registered)
+    void creation.run(signal => client.addServer({
+      name: name.trim(),
+      url: url.trim(),
+      ...(mode === 'env' && env.trim() && { credentialEnv: env.trim() }),
+      ...(mode === 'secret' && secret && { credentialSecret: secret }),
+    }, signal), registered)
   }
   return <Modal open title="登记 MCP 服务" onClose={() => { if (!creation.busy) close() }} closeOnEsc={!creation.busy} closeOnBackdrop={false} footer={<>
     <Button disabled={creation.busy} onClick={close}>取消</Button>
@@ -38,16 +45,23 @@ function RegisterDialog({ close, registered }: { close: () => void; registered: 
       <fieldset disabled={creation.busy} className="grid gap-4 text-sm">
         <label>服务名称<Input required maxLength={240} value={name} onChange={e => setName(e.target.value)} /></label>
         <label>服务地址<Input type="url" required maxLength={2048} placeholder="https://mcp.example.org/mcp" value={url} onChange={e => setUrl(e.target.value)} /></label>
-        {listVariableNames ? <>
-          <label>平台凭据（可选）<Select value={env} onChange={e => setEnv(e.target.value)}>
+        <label>凭据方式<Select value={mode} onChange={e => { setMode(e.target.value as typeof mode); setEnv(''); setSecret('') }}>
+          <option value="none">无凭据</option>
+          <option value="env">{listVariableNames ? '平台凭据引用' : '部署凭据引用'}</option>
+          <option value="secret">直接填写密钥</option>
+        </Select></label>
+        {mode === 'env' && (listVariableNames ? <>
+          <label>凭据引用（可选）<Select value={env} onChange={e => setEnv(e.target.value)}>
             <option value="">无凭据</option>
             {variables.data.map(key => <option key={key} value={key}>{key}</option>)}
           </Select></label>
           {variables.loading && <p role="status">正在读取变量名…</p>}
           {variables.error && <p role="alert">{variables.error} <Button type="button" onClick={variables.reload}>重试</Button></p>}
-        </> : <label>凭据引用（可选）<Input value={env} maxLength={128} pattern="[A-Z][A-Z0-9_]*" autoComplete="off" spellCheck={false} placeholder="TEAM_TOKEN" onChange={e => setEnv(e.target.value)} /></label>}
-        {variableManagementPath && <p className="text-xs leading-5 text-txt3"><Link to={variableManagementPath} className="text-accent-2 underline">管理平台变量</Link></p>}
-        {env && url.trim() && <p className="break-all text-sm">连接时将把 <strong>{env}</strong> 的值作为 Bearer 令牌发送到 <strong>{url.trim()}</strong>。请确认地址可信。</p>}
+        </> : <label>凭据引用<Input value={env} maxLength={128} pattern="[A-Z][A-Z0-9_]*" autoComplete="off" spellCheck={false} placeholder="TEAM_TOKEN" onChange={e => setEnv(e.target.value)} /></label>)}
+        {mode === 'secret' && <label>访问密钥<Input type="password" required maxLength={8192} autoComplete="new-password" spellCheck={false} value={secret} onChange={e => setSecret(e.target.value)} /></label>}
+        {mode === 'env' && variableManagementPath && <p className="text-xs leading-5 text-txt3"><Link to={variableManagementPath} className="text-accent-2 underline">管理平台变量</Link></p>}
+        {mode === 'secret' && secret && url.trim() && <p className="break-all text-sm">连接时将把填写的密钥作为 Bearer 令牌发送到 <strong>{url.trim()}</strong>。密钥会保存在服务登记中，请确认地址可信。</p>}
+        {mode !== 'secret' && env && url.trim() && <p className="break-all text-sm">连接时将把 <strong>{env}</strong> 的值作为 Bearer 令牌发送到 <strong>{url.trim()}</strong>。请确认地址可信。</p>}
         {creation.error && <p role="alert" className="text-err">{creation.error}</p>}
       </fieldset>
     </form>
@@ -112,7 +126,9 @@ export function McpServers() {
               </div>
               <code className="min-w-0 break-all text-xs leading-5 text-txt2">{s.url}</code>
               <div className="min-w-0">
-                {s.credentialEnv ? <code className="break-all text-xs text-txt2">{s.credentialEnv}</code> : <Badge variant="outline" className="whitespace-nowrap">无凭据</Badge>}
+                {s.credentialSecret ? <Badge className="whitespace-nowrap">已存密钥</Badge>
+                  : s.credentialEnv ? <code className="break-all text-xs text-txt2">{s.credentialEnv}</code>
+                  : <Badge variant="outline" className="whitespace-nowrap">无凭据</Badge>}
               </div>
               <div className="flex flex-wrap items-start gap-2 md:justify-end">
                 <ProtocolCheckButton id={s.id} checked={servers.reload} />

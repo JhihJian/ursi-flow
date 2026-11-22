@@ -43,14 +43,14 @@ async fn replace_recognition_rules(
 ) -> Result<Json<Vec<RecognitionRule>>, Error> {
     p.replace_recognition_rules(rules).await.map(Json)
 }
-async fn index(State(p): State<McpPlatform>) -> Result<Json<Vec<ServerRecord>>, Error> {
-    p.list().map(Json)
+async fn index(State(p): State<McpPlatform>) -> Result<Json<Vec<Value>>, Error> {
+    p.list().map(|rows| Json(rows.iter().map(ServerRecord::redacted).collect()))
 }
 async fn register(
     State(p): State<McpPlatform>,
     Json(cfg): Json<Config>,
-) -> Result<Json<ServerRecord>, Error> {
-    p.register(cfg).map(Json)
+) -> Result<Json<Value>, Error> {
+    p.register(cfg).map(|row| Json(row.redacted()))
 }
 async fn remove(
     State(p): State<McpPlatform>,

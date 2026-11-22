@@ -127,6 +127,7 @@ impl Fixture {
             name: "反馈".into(),
             url: self.url.clone(),
             credential_env: None,
+            credential_secret: None,
             binding: Binding::Policy,
             settings: Default::default(),
         }
@@ -369,6 +370,35 @@ async fn admin_grants_bind_secret_to_exact_endpoint() {
     .unwrap();
     assert!(policy::authorize(&f.store, &cfg).is_err());
     assert!(f.calls.lock().unwrap().is_empty());
+}
+#[tokio::test]
+async fn inline_secret_registers_connects_and_never_echoes_back() {
+    let f = Fixture::new().await;
+    let mut cfg = f.cfg();
+    cfg.credential_secret = Some("inline-token".into());
+    // A direct secret needs a per-endpoint `allowSecret` grant and rejects plain HTTP.
+    f.permit();
+    assert!(policy::authorize(&f.store, &cfg).is_err());
+    let https = Config { url: "https://mcp.example.org/mcp".into(), ..cfg.clone() };
+    f.policy(json!([{"url":https.url,"allowSecret":true}]));
+    assert!(f.store.register(https).is_ok());
+    f.policy(json!([{"url":cfg.url,"allowSecret":true}]));
+    let (_, h) = policy::endpoint(&f.store, &cfg).unwrap();
+    assert!(h.unwrap().is_sensitive());
+    cfg.credential_env = Some("FIXTURE_TOKEN".into());
+    assert!(f.store.register(cfg).is_err());
+    let mut cfg = f.cfg();
+    cfg.credential_secret = Some("bad token".into());
+    assert!(f.store.register(cfg).is_err());
+    // API responses only mark presence; the value itself never echoes back.
+    let mut cfg = f.cfg();
+    cfg.credential_secret = Some("inline-token".into());
+    let row = f.store.register(cfg).unwrap().redacted();
+    assert_eq!(row["credentialSecret"], json!(true));
+    // Storage keeps the value for outbound use; API views only mark presence.
+    let value = serde_json::to_string(&f.store.list().unwrap().iter().map(ServerRecord::redacted).collect::<Vec<_>>()).unwrap();
+    assert!(value.contains("credentialSecret"));
+    assert!(!value.contains("inline-token"));
 }
 #[tokio::test]
 async fn credentialed_request_never_follows_redirect() {

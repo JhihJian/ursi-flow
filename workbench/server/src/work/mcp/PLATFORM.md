@@ -8,12 +8,13 @@
 
 ## 部署级访问限制
 
-部署者可在 Server 的私有工作存储目录 `work/mcp-policy.json` 中限制允许的地址和凭据组合。文件存在时，页面登记和后续连接也须通过检查。使用普通文件、权限 `0600`，以原子替换方式维护。文件内容是完整端点与凭据变量名的配对列表，最多 64 KiB。例如：
+部署者可在 Server 的私有工作存储目录 `work/mcp-policy.json` 中限制允许的地址和凭据组合。文件存在时，页面登记和后续连接也须通过检查。使用普通文件、权限 `0600`，以原子替换方式维护。文件内容是完整端点与凭据变量名的配对列表，最多 64 KiB。允许该端点直接填写密钥时加 `"allowSecret": true`（密钥地址必须 HTTPS，回环 IP 除外，值保存在服务登记中且接口不回显）。例如：
 
 ```json
 [
   {"url":"https://feedback.example.org/mcp","credentialEnv":"FEEDBACK_READ_TOKEN"},
-  {"url":"http://127.0.0.1:7100/mcp"}
+  {"url":"http://127.0.0.1:7100/mcp"},
+  {"url":"https://other.example.org/mcp","allowSecret":true}
 ]
 ```
 

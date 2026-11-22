@@ -14,6 +14,9 @@ use std::{
 struct Grant {
     url: String,
     credential_env: Option<String>,
+    /// Deployment opts in per endpoint before users may attach inline secrets.
+    #[serde(default)]
+    allow_secret: bool,
     #[serde(default)]
     allowed_tools: Vec<String>,
 }
@@ -56,6 +59,18 @@ pub(super) fn authorize_operation(
             return Err(invalid("携带凭据的服务地址须使用 HTTPS，回环 IP 除外"));
         }
     }
+    if cfg.credential_secret.is_some() {
+        if cfg.credential_env.is_some() {
+            return Err(invalid("凭据引用与直接填写密钥只能选择其一"));
+        }
+        let local = url
+            .host_str()
+            .and_then(|s| s.trim_matches(['[', ']']).parse::<IpAddr>().ok())
+            .is_some_and(|ip| ip.is_loopback());
+        if url.scheme() != "https" && !local {
+            return Err(invalid("携带密钥的服务地址须使用 HTTPS，回环 IP 除外"));
+        }
+    }
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -86,6 +101,7 @@ pub(super) fn authorize_operation(
     if !grants.iter().any(|g| {
         g.url == cfg.url
             && g.credential_env == cfg.credential_env
+            && (cfg.credential_secret.is_none() || g.allow_secret)
             && tool.is_none_or(|name| g.allowed_tools.iter().any(|s| s == name))
     }) {
         return Err(denied());
@@ -102,24 +118,30 @@ pub(super) fn endpoint(
     cfg: &Config,
 ) -> Result<(Url, Option<HeaderValue>), Error> {
     let url = authorize(store, cfg)?;
-    let auth = cfg
-        .credential_env
-        .as_ref()
-        .map(|key| {
-            let err = || unavailable("服务引用的 MCP 凭据不可用，请检查宿主凭据配置");
-            let value = store
-                .0
-                .credentials
-                .lookup(key, cfg.binding)?
-                .ok_or_else(&err)?;
-            if !valid_bearer(&value) {
-                return Err(err());
-            }
-            let mut h = HeaderValue::from_str(&format!("Bearer {value}")).map_err(|_| err())?;
-            h.set_sensitive(true);
-            Ok(h)
-        })
-        .transpose()?;
+    let auth = if let Some(value) = cfg.credential_secret.as_deref() {
+        if !valid_bearer(value) {
+            return Err(unavailable("登记的密钥不能用作 Bearer 令牌，请检查空格或换行"));
+        }
+        let mut h = HeaderValue::from_str(&format!("Bearer {value}"))
+            .map_err(|_| unavailable("登记的密钥不能用作 Bearer 令牌，请检查空格或换行"))?;
+        h.set_sensitive(true);
+        Some(h)
+    } else if let Some(key) = cfg.credential_env.as_deref() {
+        let err = || unavailable("服务引用的 MCP 凭据不可用，请检查宿主凭据配置");
+        let value = store
+            .0
+            .credentials
+            .lookup(key, cfg.binding)?
+            .ok_or_else(&err)?;
+        if !valid_bearer(&value) {
+            return Err(err());
+        }
+        let mut h = HeaderValue::from_str(&format!("Bearer {value}")).map_err(|_| err())?;
+        h.set_sensitive(true);
+        Some(h)
+    } else {
+        None
+    };
     Ok((url, auth))
 }
 

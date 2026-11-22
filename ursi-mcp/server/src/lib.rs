@@ -66,6 +66,9 @@ pub struct Config {
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_env: Option<String>,
+    /// Direct bearer value; mutually exclusive with `credential_env`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_secret: Option<String>,
     #[serde(default, skip_serializing_if = "Binding::is_policy")]
     pub binding: Binding,
     #[serde(
@@ -74,6 +77,11 @@ pub struct Config {
         deserialize_with = "present_settings"
     )]
     pub settings: Option<Settings>,
+}
+impl Config {
+    pub fn carries_credential(&self) -> bool {
+        self.credential_env.is_some() || self.credential_secret.is_some()
+    }
 }
 fn present_settings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Settings>, D::Error> {
     Settings::deserialize(d).map(Some)
@@ -87,6 +95,16 @@ pub struct ServerRecord {
     pub protocol_check: Option<ProtocolCheck>,
     #[serde(flatten)]
     pub config: Config,
+}
+impl ServerRecord {
+    /// API views never carry the secret value, only whether one is stored.
+    pub fn redacted(&self) -> Value {
+        let mut value = serde_json::to_value(self).expect("record serializes");
+        if value["credentialSecret"].is_string() {
+            value["credentialSecret"] = json!(true);
+        }
+        value
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,6 +269,11 @@ impl McpPlatform {
             s.validate(&url)?;
             if s.empty() {
                 config.settings = None;
+            }
+        }
+        if let Some(value) = config.credential_secret.as_deref() {
+            if !policy::valid_bearer(value) {
+                return Err(invalid("密钥不能用作 Bearer 令牌，请检查空格或换行"));
             }
         }
         if (config.binding == Binding::Platform || self.0.policy_mode == PolicyMode::Required)
