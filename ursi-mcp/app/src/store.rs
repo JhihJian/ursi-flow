@@ -10,7 +10,10 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use ursi_mcp::{Error, MAX_SERVERS, ProtocolCheck, ServerRecord, ServerRepository, Settings};
+use ursi_mcp::{
+    Error, MAX_SERVERS, ProtocolCheck, RecognitionRule, ServerRecord, ServerRepository, Settings,
+    default_recognition_rules,
+};
 
 const MAX_DATA: usize = 4 * 1024 * 1024;
 
@@ -32,6 +35,9 @@ pub fn open_private(options: &mut OpenOptions, path: &Path) -> io::Result<File> 
 #[serde(deny_unknown_fields)]
 struct Data {
     servers: BTreeMap<String, ServerRecord>,
+    /// None means rules were never customized; reads fall back to the seed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rules: Option<Vec<RecognitionRule>>,
 }
 
 pub struct Store {
@@ -141,8 +147,21 @@ impl ServerRepository for Store {
             let Some(record) = d.servers.get_mut(id) else {
                 return Ok(false);
             };
-            record.protocol_check = Some(*check);
+            record.protocol_check = Some(check.clone());
             Ok(true)
+        })
+    }
+    fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, Error> {
+        Ok(self
+            .read(|d| d.rules.clone().unwrap_or_else(default_recognition_rules))?)
+    }
+    fn replace_recognition_rules(&self, rules: &[RecognitionRule]) -> Result<(), Error> {
+        self.update(|d| {
+            d.rules = Some(rules.to_vec());
+            for record in d.servers.values_mut() {
+                record.protocol_check = None;
+            }
+            Ok(())
         })
     }
 }

@@ -125,10 +125,24 @@ def check(binary, root, endpoint):
         assert 'protocolCheck' not in row and call(url, registry) == [row]
         assert not Peer.seen
         call(url, detail + '/protocol-check', 'POST', expected=401, auth=False)
+        rules_path = api + '/mcp-recognition-rules'
+        assert call(url, rules_path) == [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
         check_result = call(url, detail + '/protocol-check', 'POST')
-        assert check_result['status'] == 'declaredV1' and check_result['checkedAt'] > 0
+        assert check_result['status'] == 'checked' and check_result['checkedAt'] > 0
+        assert check_result['labels'] == ['执行器 v1']
         assert call(url, registry)[0]['protocolCheck'] == check_result
-        assert Peer.seen == [('server/discover', 'Bearer ' + credential)]
+        custom = [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'},
+                  {'id': 'smoke', 'label': '烟雾测试', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
+        assert call(url, rules_path, 'PUT', custom) == custom
+        assert call(url, registry)[0].get('protocolCheck') is None
+        check_result = call(url, detail + '/protocol-check', 'POST')
+        assert check_result['labels'] == ['执行器 v1', '烟雾测试']
+        assert call(url, rules_path, 'PUT', []) == []
+        assert call(url, registry)[0].get('protocolCheck') is None
+        check_result = call(url, detail + '/protocol-check', 'POST')
+        assert check_result['labels'] == []
+        assert call(url, registry)[0]['protocolCheck'] == check_result
+        assert Peer.seen[-1] == ('server/discover', 'Bearer ' + credential)
         assert b'id="root"' in call(url, '/mcp-servers/' + row['id'] + '?uri=memo%3Asmoke', auth=False)
         assert call(url, detail + '/inspection')['resources'][0]['uri'] == 'memo:smoke'
         assert call(url, detail + '/resources/read', 'POST', {'uri': 'memo:smoke'})['contents'][0]['text'] == 'standalone resource'
@@ -136,7 +150,7 @@ def check(binary, root, endpoint):
         write_credentials(rotated)
         call(url, detail + '/inspection')
         assert Peer.seen[-1][1] == 'Bearer ' + rotated
-        assert json.loads((data / 'store.json').read_text()).keys() == {'servers'}
+        assert json.loads((data / 'store.json').read_text()).keys() == {'servers', 'rules'}
         credential_file.chmod(0o644)
         seen = len(Peer.seen)
         call(url, detail + '/inspection', expected=503)
@@ -152,6 +166,7 @@ def check(binary, root, endpoint):
         assert call(url, registry)[0]['settings'] == settings
         assert call(url, registry)[0]['id'] == row['id']
         assert call(url, registry)[0]['protocolCheck'] == check_result
+        assert call(url, api + '/mcp-recognition-rules') == []
         call(url, detail + '/inspection')
         assert Peer.seen[-1][1] == 'Bearer ' + rotated
         credential_file.unlink()

@@ -1,20 +1,18 @@
-import type { ProtocolCheck } from '../client'
+import type { ProtocolCheck, StoredProtocolCheck } from '../client'
 import { useMcp } from '../context'
 import { useMutation } from '../lib/use-mutation'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 
-export const protocolLabels: Record<ProtocolCheck['status'], string> = {
-  declaredV1: '服务自报支持执行器 v1',
-  notDeclared: '未声明执行器协议',
-  unsupportedVersion: '声明了不支持的执行器协议版本',
-  invalidDeclaration: '执行器协议声明格式无效',
-  legacy: '使用旧版 MCP 握手，未检查到协议声明',
+export function describeCheck(check?: StoredProtocolCheck) {
+  if (!check) return '尚未完成协议检查'
+  if (check.status === 'legacy') return '使用旧版 MCP 握手'
+  if (check.status !== 'checked') return '旧版检查结果，请重新检查协议'
+  return check.labels?.length ? `匹配 ${check.labels.length} 个标签` : '未匹配识别规则'
 }
 
-export function ExecutorBadge({ check }: { check?: ProtocolCheck }) {
-  if (check?.status !== 'declaredV1') return null
-  return <Badge variant="secondary" title="上次检查时服务自报支持执行器 v1">执行器 v1</Badge>
+export function RecognitionBadges({ check }: { check?: StoredProtocolCheck }) {
+  return check?.labels?.map((label, i) => <Badge key={i} className="min-w-0 break-all" variant="secondary" title="上次协议检查时匹配的标签">{label}</Badge>)
 }
 
 export function ProtocolCheckButton({ id, recheck, checked }: { id: string; recheck?: boolean; checked: (result: ProtocolCheck) => void }) {

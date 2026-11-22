@@ -16,7 +16,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
-    sync::{Semaphore, SemaphorePermit},
+    sync::{RwLock, Semaphore, SemaphorePermit},
     time::timeout,
 };
 use uuid::Uuid;
@@ -83,32 +83,64 @@ fn present_settings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Set
 #[serde(rename_all = "camelCase")]
 pub struct ServerRecord {
     pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "stored_check")]
     pub protocol_check: Option<ProtocolCheck>,
     #[serde(flatten)]
     pub config: Config,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ProtocolStatus {
-    DeclaredV1,
-    NotDeclared,
-    UnsupportedVersion,
-    InvalidDeclaration,
-    Legacy,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecognitionRule {
+    pub id: String,
+    pub label: String,
+    pub meta_key: String,
+    pub equals: String,
+}
+
+pub fn default_recognition_rules() -> Vec<RecognitionRule> {
+    vec![RecognitionRule {
+        id: "executor-v1".into(),
+        label: "执行器 v1".into(),
+        meta_key: "ursi/executorProtocol".into(),
+        equals: "1".into(),
+    }]
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProtocolStatus {
+    Checked,
+    Legacy,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProtocolCheck {
     pub status: ProtocolStatus,
     pub checked_at: u64,
+    pub labels: Vec<String>,
+}
+
+fn stored_check<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<ProtocolCheck>, D::Error> {
+    let Some(value) = Option::<Value>::deserialize(d)? else { return Ok(None) };
+    // Pre-rule checks had no labels and cannot be evaluated without a fresh discovery.
+    if value.get("labels").is_none() && value["checkedAt"].is_u64() && matches!(
+        value["status"].as_str(),
+        Some("declaredV1" | "notDeclared" | "unsupportedVersion" | "invalidDeclaration" | "legacy")
+    ) {
+        return Ok(None);
+    }
+    serde_json::from_value(value).map(Some).map_err(serde::de::Error::custom)
 }
 
 /// The host owns persistence. Insert must enforce MAX_SERVERS atomically.
 /// Updates touch only the named field, never recreating a removed record.
 pub trait ServerRepository: Send + Sync {
+    /// Seed an uninitialized store with `default_recognition_rules`, never a saved empty list.
+    fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, Error>;
+    /// Atomically save the ordered rules and clear every stored protocol check.
+    fn replace_recognition_rules(&self, rules: &[RecognitionRule]) -> Result<(), Error>;
     fn list(&self) -> Result<Vec<ServerRecord>, Error>;
     fn get(&self, id: &str) -> Result<Option<ServerRecord>, Error>;
     fn insert(&self, row: &ServerRecord) -> Result<(), Error>;
@@ -136,6 +168,7 @@ struct Inner {
     policy_mode: PolicyMode,
     identity: rmcp::model::Implementation,
     slots: Semaphore,
+    recognition_lock: RwLock<()>,
     active_checks: Mutex<HashSet<String>>,
 }
 
@@ -182,12 +215,21 @@ impl McpPlatform {
             policy_mode,
             identity: rmcp::model::Implementation::new(client_name, client_version),
             slots: Semaphore::new(4),
+            recognition_lock: RwLock::new(()),
             active_checks: Mutex::new(HashSet::new()),
         }))
     }
     /// Mount under the host's authenticated API prefix.
     pub fn routes(&self) -> axum::Router {
         routes::router(self.clone())
+    }
+    pub fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, Error> {
+        self.0.records.recognition_rules()
+    }
+    pub async fn replace_recognition_rules(&self, rules: Vec<RecognitionRule>) -> Result<Vec<RecognitionRule>, Error> {
+        let _guard = self.0.recognition_lock.write().await;
+        self.0.records.replace_recognition_rules(&rules)?;
+        Ok(rules)
     }
     pub fn list(&self) -> Result<Vec<ServerRecord>, Error> {
         self.0.records.list()
@@ -263,16 +305,20 @@ impl McpPlatform {
             return Err(unavailable("该 MCP 服务正在检查协议，请稍后重试"));
         }
         let _check = ActiveProtocolCheck { active, id };
-        let status = timeout(Duration::from_secs(25), async {
+        // Keep the rule snapshot valid through record_protocol_check, including across clones.
+        let _guard = self.0.recognition_lock.read().await;
+        let rules = self.recognition_rules()?;
+        let (status, labels) = timeout(Duration::from_secs(25), async {
             let conn = client::Session::open(self, &cfg).await?;
-            let status = conn.executor_protocol();
+            let result = conn.recognize(&rules);
             conn.close().await;
-            status
+            result
         })
         .await
         .map_err(|_| unavailable("MCP 协议检查超时"))??;
         let check = ProtocolCheck {
             status,
+            labels,
             checked_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|_| Error::Internal("系统时间无效".into()))?

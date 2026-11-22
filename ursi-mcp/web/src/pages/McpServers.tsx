@@ -13,7 +13,7 @@ import type { McpServer } from '../client'
 import { useMcp } from '../context'
 import { Select } from '../ui/select'
 import { useFeedback } from '../ui/feedback'
-import { ExecutorBadge, ProtocolCheckButton } from './ProtocolCheck'
+import { ProtocolCheckButton, RecognitionBadges } from './ProtocolCheck'
 
 const noCredentialNames = async () => [] as string[]
 
@@ -81,6 +81,7 @@ export function McpServers() {
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN') || a.url.localeCompare(b.url))
   return <div className="page-stack">
     <PageHeader title="平台 MCP 服务" actions={<>
+      <Button asChild><Link to="../mcp-recognition-rules">识别规则</Link></Button>
       <Button icon="refresh" loading={servers.loading} onClick={servers.reload}>刷新登记</Button>
       <Button icon="plus" variant="primary" onClick={() => setRegistering(true)}>登记服务</Button>
     </>} />
@@ -105,7 +106,7 @@ export function McpServers() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link to={encodeURIComponent(s.id)} className="min-w-0 break-words text-sm font-semibold hover:text-accent-2 hover:underline">{s.name}</Link>
-                  <ExecutorBadge check={s.protocolCheck} />
+                  <RecognitionBadges check={s.protocolCheck} />
                 </div>
                 <div className="mt-1 text-xs text-txt3 md:hidden">Streamable HTTP</div>
               </div>

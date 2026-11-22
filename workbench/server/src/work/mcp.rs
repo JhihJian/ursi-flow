@@ -3,10 +3,11 @@ use super::{Error, Store, environment};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use ursi_mcp::{
-    Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ProtocolCheck, ServerRecord,
-    ServerRepository, Settings,
+    Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ProtocolCheck, RecognitionRule,
+    ServerRecord, ServerRepository, Settings, default_recognition_rules,
 };
 const TABLE: &str = "mcpServers";
+const RULES: &str = "mcpRecognitionRules";
 
 struct Adapter(Store);
 
@@ -119,6 +120,33 @@ impl ServerRepository for Adapter {
             })
             .map_err(to_mcp_error)
     }
+    fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, McpError> {
+        self.0
+            .read(|db| match db.get(RULES) {
+                None => Ok(default_recognition_rules()),
+                Some(value) => serde_json::from_value(value.clone())
+                    .map_err(|_| Error::Internal("识别规则数据损坏".into())),
+            })
+            .map_err(to_mcp_error)
+    }
+    fn replace_recognition_rules(&self, rules: &[RecognitionRule]) -> Result<(), McpError> {
+        self.0
+            .update(|db| {
+                db.as_object_mut()
+                    .ok_or_else(|| Error::Internal("业务库损坏".into()))?
+                    .insert(RULES.into(), json!(rules));
+                let rows = db.get_mut(TABLE).and_then(Value::as_object_mut);
+                if let Some(rows) = rows {
+                    for row in rows.values_mut() {
+                        if let Some(obj) = row.as_object_mut() {
+                            obj.remove("protocolCheck");
+                        }
+                    }
+                }
+                Ok(())
+            })
+            .map_err(to_mcp_error)
+    }
 }
 
 #[cfg(test)]
@@ -127,10 +155,10 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn existing_records_settings_and_protocol_checks_survive_reopen() {
+    fn rules_and_legacy_protocol_checks_survive_reopen_or_drop() {
         let dir = std::env::temp_dir().join(format!("ursi-mcp-store-{}", uuid::Uuid::new_v4()));
         let store = Store::open(dir.clone()).unwrap();
-        let row = json!({"id":"old-id","name":"旧登记","url":"https://example.org/mcp","settings":{"allowedTools":["echo"],"githubToolsets":[],"githubReadOnly":false}});
+        let row = json!({"id":"old-id","name":"旧登记","url":"https://example.org/mcp","settings":{"allowedTools":["echo"],"githubToolsets":[],"githubReadOnly":false},"protocolCheck":{"status":"declaredV1","checkedAt":1}});
         store
             .update(|db| {
                 db[TABLE] = json!({"old-id":row.clone()});
@@ -140,10 +168,15 @@ mod tests {
         drop(store);
 
         let store = Store::open(dir.clone()).unwrap();
-        assert_eq!(json!(platform(&store).list().unwrap()), json!([row]));
+        let listed = json!(platform(&store).list().unwrap());
+        assert!(listed[0].get("protocolCheck").is_none(), "旧检查无标签，丢弃");
+        assert_eq!(listed[0]["id"], "old-id");
+        let rules = platform(&store).recognition_rules().unwrap();
+        assert_eq!(rules, default_recognition_rules());
         let check = ProtocolCheck {
-            status: ursi_mcp::ProtocolStatus::DeclaredV1,
+            status: ursi_mcp::ProtocolStatus::Checked,
             checked_at: 1,
+            labels: vec!["执行器 v1".into()],
         };
         let adapter = Adapter(store);
         assert!(adapter.record_protocol_check("old-id", &check).unwrap());
@@ -152,12 +185,17 @@ mod tests {
                 .replace_settings("old-id", &Settings::default())
                 .unwrap()
         );
+        assert!(adapter.replace_recognition_rules(&[]).is_ok());
         drop(adapter);
 
         let store = Store::open(dir.clone()).unwrap();
+        assert!(platform(&store).recognition_rules().unwrap().is_empty());
         let mut expected = row;
         expected["settings"] = json!(Settings::default());
-        expected["protocolCheck"] = json!(check);
+        expected
+            .as_object_mut()
+            .unwrap()
+            .remove("protocolCheck");
         assert_eq!(json!(platform(&store).list().unwrap()), json!([expected]));
         drop(store);
         fs::remove_dir_all(dir).unwrap();

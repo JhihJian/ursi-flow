@@ -20,6 +20,7 @@ impl IntoResponse for Error {
 }
 pub(super) fn router(platform: McpPlatform) -> Router {
     Router::new()
+        .route("/mcp-recognition-rules", get(recognition_rules).put(replace_recognition_rules))
         .route("/mcp-servers", get(index).post(register))
         .route("/mcp-servers/{id}", delete(remove))
         .route("/mcp-servers/{id}/inspection", get(inspect))
@@ -32,6 +33,15 @@ pub(super) fn router(platform: McpPlatform) -> Router {
         .route("/mcp-servers/{id}/prompts/get", post(prompt))
         .layer(DefaultBodyLimit::max(128 * 1024))
         .with_state(platform)
+}
+async fn recognition_rules(State(p): State<McpPlatform>) -> Result<Json<Vec<RecognitionRule>>, Error> {
+    p.recognition_rules().map(Json)
+}
+async fn replace_recognition_rules(
+    State(p): State<McpPlatform>,
+    Json(rules): Json<Vec<RecognitionRule>>,
+) -> Result<Json<Vec<RecognitionRule>>, Error> {
+    p.replace_recognition_rules(rules).await.map(Json)
 }
 async fn index(State(p): State<McpPlatform>) -> Result<Json<Vec<ServerRecord>>, Error> {
     p.list().map(Json)

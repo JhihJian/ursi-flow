@@ -3,7 +3,7 @@ mod catalog;
 mod http;
 
 use super::{
-    Config, Error, McpPlatform, ProtocolStatus, SNAPSHOT_LIMIT, STANDARD, label, policy,
+    Config, Error, McpPlatform, ProtocolStatus, RecognitionRule, SNAPSHOT_LIMIT, STANDARD, label, policy,
     unavailable,
 };
 use base64::Engine;
@@ -108,23 +108,15 @@ impl Session {
         }))
     }
 
-    pub(super) fn executor_protocol(&self) -> Result<ProtocolStatus, Error> {
-        let info = self.0.peer_info().ok_or_else(rpc_err)?;
+    pub(super) fn recognize(&self, rules: &[RecognitionRule]) -> Result<(ProtocolStatus, Vec<String>), Error> {
         if self.1.is_none() {
-            return Ok(ProtocolStatus::Legacy);
+            return Ok((ProtocolStatus::Legacy, vec![]));
         }
-        Ok(
-            match info
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.get("ursi/executorProtocol"))
-            {
-                Some(Value::String(version)) if version == "1" => ProtocolStatus::DeclaredV1,
-                Some(Value::String(_)) => ProtocolStatus::UnsupportedVersion,
-                Some(_) => ProtocolStatus::InvalidDeclaration,
-                None => ProtocolStatus::NotDeclared,
-            },
-        )
+        let info = self.0.peer_info().ok_or_else(rpc_err)?;
+        let labels = rules.iter().filter(|rule| {
+            info.meta.as_ref().and_then(|meta| meta.get(&rule.meta_key)).and_then(Value::as_str) == Some(rule.equals.as_str())
+        }).map(|rule| rule.label.clone()).collect();
+        Ok((ProtocolStatus::Checked, labels))
     }
 
     pub(super) fn has_resources(&self) -> bool {

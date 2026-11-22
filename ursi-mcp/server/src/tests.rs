@@ -16,7 +16,10 @@ use std::{
 use tokio::{net::TcpListener, task::JoinHandle};
 
 #[derive(Default)]
-struct Memory(Mutex<std::collections::BTreeMap<String, ServerRecord>>);
+struct Memory(
+    Mutex<std::collections::BTreeMap<String, ServerRecord>>,
+    Mutex<Vec<RecognitionRule>>,
+);
 impl ServerRepository for Memory {
     fn list(&self) -> Result<Vec<ServerRecord>, Error> {
         Ok(self.0.lock().unwrap().values().cloned().collect())
@@ -48,8 +51,18 @@ impl ServerRepository for Memory {
         let Some(row) = rows.get_mut(id) else {
             return Ok(false);
         };
-        row.protocol_check = Some(*check);
+        row.protocol_check = Some(check.clone());
         Ok(true)
+    }
+    fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, Error> {
+        Ok(self.1.lock().unwrap().clone())
+    }
+    fn replace_recognition_rules(&self, rules: &[RecognitionRule]) -> Result<(), Error> {
+        *self.1.lock().unwrap() = rules.to_vec();
+        for row in self.0.lock().unwrap().values_mut() {
+            row.protocol_check = None;
+        }
+        Ok(())
     }
 }
 impl Credentials for Memory {
@@ -76,6 +89,7 @@ impl Fixture {
         let dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&dir).unwrap();
         let memory = Arc::new(Memory::default());
+        *memory.1.lock().unwrap() = default_recognition_rules();
         let store = McpPlatform::new(
             memory.clone(),
             memory,
@@ -269,6 +283,7 @@ async fn api_discovers_live_pages_and_persists_without_credentials() {
         .await
         .unwrap();
     assert_eq!(check.status, ProtocolStatus::Legacy);
+    assert!(check.labels.is_empty());
     assert_eq!(
         *f.calls.lock().unwrap(),
         [
@@ -553,7 +568,7 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
     let api = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let mut forged = json!(cfg);
-    forged["protocolCheck"] = json!({"status":"declaredV1","checkedAt":1});
+    forged["protocolCheck"] = json!({"status":"declaredV1","checkedAt":1,"labels":["执行器 v1"]});
     assert_eq!(
         client
             .post(&registry)
@@ -590,26 +605,28 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
     assert!(row.get("protocolCheck").is_none());
     assert!(f.calls.lock().unwrap().is_empty());
 
-    for (wire_case, status) in [
-        (0, "declaredV1"),
-        (4, ""),
-        (5, ""),
-        (1, "notDeclared"),
-        (2, "invalidDeclaration"),
-        (3, "unsupportedVersion"),
+    for (wire_case, status, labels) in [
+        (0, "checked", json!(["执行器 v1"])),
+        (4, "checked", json!([])),
+        (5, "checked", json!([])),
+        (1, "checked", json!([])),
+        (2, "checked", json!([])),
+        (3, "checked", json!([])),
     ] {
         mode.store(wire_case, std::sync::atomic::Ordering::Relaxed);
         let previous = list().await;
         let reply = client.post(&endpoint).send().await.unwrap();
-        if status.is_empty() {
-            assert_eq!(reply.status(), StatusCode::SERVICE_UNAVAILABLE);
+        if wire_case >= 4 {
+            assert_eq!(reply.status(), StatusCode::SERVICE_UNAVAILABLE, "关联不符或响应无效保留上次结果");
             assert_eq!(list().await, previous);
-        } else {
-            let check: Value = reply.error_for_status().unwrap().json().await.unwrap();
-            assert_eq!(check["status"], status);
-            assert!(check["checkedAt"].as_u64().unwrap() > 0);
-            assert_eq!(list().await[0]["protocolCheck"], check);
+            continue;
         }
+        let check: Value = reply.error_for_status().unwrap().json().await.unwrap();
+        assert_eq!(check["status"], status);
+        assert_eq!(check["labels"], labels);
+        assert!(check["checkedAt"].as_u64().unwrap() > 0);
+        assert_eq!(list().await[0]["protocolCheck"], check);
+        drop(previous);
     }
     fs::remove_file(f.dir.join("mcp-policy.json")).unwrap();
     assert_eq!(
@@ -617,6 +634,121 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
         StatusCode::BAD_REQUEST
     );
     assert_eq!(*f.calls.lock().unwrap(), ["server/discover"; 6]);
+    api.abort();
+    peer.abort();
+}
+
+#[tokio::test]
+async fn recognition_rules_round_trip_and_recheck_under_new_labels() {
+    let f = Fixture::new().await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let calls = f.calls.clone();
+    let peer = Router::new().route(
+        "/mcp",
+        post(move |Json(q): Json<Value>| {
+            let calls = calls.clone();
+            async move {
+                calls.lock().unwrap().push(q["method"].as_str().unwrap().into());
+                Json(executor_discovery(&q["id"], Some(json!("1"))))
+            }
+        }),
+    );
+    let mut cfg = f.cfg();
+    cfg.url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    f.policy(json!([{"url":cfg.url}]));
+    let id = f.store.register(cfg).unwrap().id;
+    let peer = tokio::spawn(async move { axum::serve(listener, peer).await.unwrap() });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = f.store.routes();
+    let api = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let rules_path = format!("{base}/mcp-recognition-rules");
+    let get = || async {
+        client
+            .get(&rules_path)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    };
+    let put = |body: Value| {
+        let rules_path = rules_path.clone();
+        let client = client.clone();
+        async move {
+            client
+                .put(&rules_path)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let seed = get().await;
+    assert_eq!(seed, json!([{"id":"executor-v1","label":"执行器 v1","metaKey":"ursi/executorProtocol","equals":"1"}]));
+    let endpoint = format!("{base}/mcp-servers/{id}/protocol-check");
+    let check: Value = client
+        .post(&endpoint)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(check["labels"], json!(["执行器 v1"]));
+    let custom = json!([
+        {"id":"executor-v1","label":"执行器 v1","metaKey":"ursi/executorProtocol","equals":"1"},
+        {"id":"analysis","label":"分析服务","metaKey":"ursi/executorProtocol","equals":"1"},
+        {"id":"empty","label":"永不匹配","metaKey":"ursi/serviceKind","equals":"analysis"}
+    ]);
+    assert_eq!(put(custom.clone()).await, custom);
+    assert_eq!(get().await, custom);
+    let row: Value = client
+        .get(format!("{base}/mcp-servers"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(row[0].get("protocolCheck").is_none(), "保存规则须清除旧检查");
+    let check: Value = client
+        .post(&endpoint)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(check["labels"], json!(["执行器 v1", "分析服务"]));
+    assert_eq!(put(json!([])).await, json!([]));
+    let row: Value = client
+        .get(format!("{base}/mcp-servers"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(row[0].get("protocolCheck").is_none());
+    assert_eq!(get().await, json!([]));
     api.abort();
     peer.abort();
 }
@@ -667,7 +799,7 @@ async fn protocol_check_serializes_per_service_without_overwriting_settings_or_r
     release.send(()).unwrap();
     assert_eq!(
         checked.await.unwrap().unwrap().status,
-        ProtocolStatus::DeclaredV1
+        ProtocolStatus::Checked
     );
     assert_eq!(
         json!(f.store.list().unwrap()[0].config.settings),

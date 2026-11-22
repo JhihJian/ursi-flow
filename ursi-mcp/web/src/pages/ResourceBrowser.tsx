@@ -14,7 +14,7 @@ import { SettingsPanel } from './SettingsPanel'
 import { DataTable } from '../ui/data-table'
 import type { CatalogKind } from '../client'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
-import { ExecutorBadge, ProtocolCheckButton, protocolLabels } from './ProtocolCheck'
+import { describeCheck, ProtocolCheckButton, RecognitionBadges } from './ProtocolCheck'
 
 export function ResourceBrowser() {
   const { id } = useParams()
@@ -57,7 +57,7 @@ function Inspector({ server }: { server: McpServer }) {
         <Icon name="connector" size={18} className="shrink-0 text-accent-2" />
         <h2 className="min-w-0 break-words text-base font-semibold text-txt">{server.name}</h2>
         <Badge variant="outline">已登记</Badge>
-        <ExecutorBadge check={protocolCheck} />
+        <RecognitionBadges check={protocolCheck} />
         <Button className="ml-auto" size="sm" icon="refresh" loading={discovery.loading} onClick={discovery.reload}>重新发现</Button>
       </div>
       <dl className="grid gap-x-5 gap-y-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
@@ -71,7 +71,7 @@ function Inspector({ server }: { server: McpServer }) {
         <dl>
           <dt className="text-txt3">最近一次成功的协议检查</dt>
           <dd className="mt-1 text-txt2" role="status">
-            <span>{protocolCheck ? protocolLabels[protocolCheck.status] : '尚未完成协议检查'}</span>
+            <span>{describeCheck(protocolCheck)}</span>
             {checkedAt && <> · <time dateTime={checkedAt.toISOString()}>{checkedAt.toLocaleString()}</time></>}
           </dd>
         </dl>

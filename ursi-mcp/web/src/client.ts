@@ -1,11 +1,14 @@
 export type McpRequest = <T>(path: string, options: RequestInit) => Promise<T>
 export type ServerDraft = { name: string; url: string; credentialEnv?: string }
 export type McpSettings = { allowedTools: string[]; githubToolsets: string[]; githubReadOnly: boolean }
-export type ProtocolCheck = {
+export type RecognitionRule = { id: string; label: string; metaKey: string; equals: string }
+export type ProtocolCheck = { status: 'checked' | 'legacy'; checkedAt: number; labels: string[] }
+export type StoredProtocolCheck = ProtocolCheck | {
   status: 'declaredV1' | 'notDeclared' | 'unsupportedVersion' | 'invalidDeclaration' | 'legacy'
   checkedAt: number
+  labels?: string[]
 }
-export type McpServer = ServerDraft & { id: string; settings?: McpSettings; protocolCheck?: ProtocolCheck }
+export type McpServer = ServerDraft & { id: string; settings?: McpSettings; protocolCheck?: StoredProtocolCheck }
 export type CatalogKind = 'tools' | 'prompts' | 'templates'
 export type CatalogEntry = { name: string; description?: string; inputSchema?: object; arguments?: object[]; uriTemplate?: string }
 export type McpResource = { name: string; title?: string; size?: number; uri: string; mimeType?: string; description?: string }
@@ -15,12 +18,17 @@ export type Inspection = {
   resources: McpResource[]
 }
 
+const recognitionRules = '/mcp-recognition-rules'
 const registry = '/mcp-servers'
 const serverPath = (id: string) => `${registry}/${encodeURIComponent(id)}`
 
 /** 路径相对宿主 API 根，鉴权、错误处理和 JSON 解码均由 request 负责。 */
 export function createMcpClient(request: McpRequest) {
   return {
+    listRecognitionRules: (signal: AbortSignal) => request<RecognitionRule[]>(recognitionRules, { signal }),
+    saveRecognitionRules: (rules: RecognitionRule[], signal: AbortSignal) => request<RecognitionRule[]>(recognitionRules, {
+      method: 'PUT', body: JSON.stringify(rules), signal,
+    }),
     listServers: (signal: AbortSignal) => request<McpServer[]>(registry, { signal }),
     addServer: (draft: ServerDraft, signal: AbortSignal) => request<McpServer>(registry, {
       method: 'POST', body: JSON.stringify({ ...draft, binding: 'platform' }), signal,
