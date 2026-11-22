@@ -93,7 +93,8 @@ impl BoundedHttp {
             .no_proxy()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(3))
-            .timeout(Duration::from_secs(8))
+            // No client-wide timeout: tool catalogs can stream for tens of
+            // seconds. POSTs below carry their own total-time budget.
             .retry(reqwest::retry::never())
             .build()
             .map_err(|_| rpc_err())?;
@@ -174,6 +175,9 @@ impl StreamableHttpClient for BoundedHttp {
             .request(Method::POST, headers, session.as_deref())
             .header(ACCEPT, "application/json, text/event-stream")
             .json(&message)
+            // Total budget including body streaming: catalog pages take
+            // several seconds on large servers but must never hang forever.
+            .timeout(Duration::from_secs(30))
             .send()
             .await
             .map_err(|e| {
