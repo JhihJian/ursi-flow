@@ -9,6 +9,7 @@ export const EXECUTOR_SERVER_NAME = "ursi-flow-executor";
 export const EXECUTOR_SERVER_VERSION = "0.1.0";
 
 export interface RuntimeJob {
+	executorRef?: unknown;
 	id: string;
 	flow: string;
 	revision: string;
@@ -296,6 +297,7 @@ export class ExecutorAdapter {
 
 	private matches(run: RuntimeJob, attemptId: string, workspace: string, text?: string) {
 		return (
+			run.executorRef === undefined &&
 			run.id === attemptId &&
 			run.flow === this.config.flow &&
 			run.revision === this.config.revision &&

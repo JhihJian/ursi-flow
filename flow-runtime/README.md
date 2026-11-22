@@ -1,6 +1,6 @@
 # ursi-flow-runtime
 
-独立 Node 包，直接运行带固定 `FLOW.md` 入口的目录。需要 Node.js 22.19+；Agent 节点还需要可用的模型 provider 配置（`baseUrl`、`apiKey`、`model`）。本地模式会在当前用户权限下运行包中的命令，只运行信任的包。
+独立 Node 包，直接运行带固定 `FLOW.md` 入口的目录。需要 Node.js 22.19+；本地 Pi 节点还需要可用的模型 provider 配置（`baseUrl`、`apiKey`、`model`）。本地模式会在当前用户权限下运行包中的命令，只运行信任的包。
 
 从 `flow-runtime/` 安装可执行文件，然后可运行独立示例：
 
@@ -14,7 +14,7 @@ ursi-flow-local run examples/ordinary --variables '{"任务":"评审改动"}'
 
 ## 以服务方式运行
 
-daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命令，因此不需要 `PATH` 或 `URSI_FLOW_PI`。模型接入完全由 `~/.ursi-flow/config.json` 的 `provider` 决定（控制台“运行配置”页可编辑）：
+daemon 默认用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命令，因此不需要 `PATH` 或 `URSI_FLOW_PI`。模型接入完全由 `~/.ursi-flow/config.json` 的 `provider` 决定（控制台“运行配置”页可编辑）：
 
 ```json
 {
@@ -33,11 +33,17 @@ daemon 用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi` 命�
 - 适配器不读取全局 Pi 的 `auth.json`、`models.json`、扩展和 Skills，provider 是唯一来源，因此任何用户的凭据与模型目录都能用同一份配置接进来。
 - `baseUrl` 填服务根地址（OpenAI 兼容服务一般到 `/v1`），`api` 选协议：`openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`。
 - 可选 `contextWindow`、`maxTokens`、`reasoning`、`thinkingLevel`。
-- provider 缺字段时 `run.start` 直接返回 `invalid_request` 并列出缺项，控制台会禁用“启动运行”按钮并在页面提示缺什么。
+- 本地模式启动需要完整的 provider。控制台提示缺项，平台模式可独立启动。
 - `workspace` 是工作区根目录。`run.start` 不带 `cwd` 时，daemon 在 `<workspace>/<Run ID>` 新建目录作为这次运行的工作目录；两处都没有时返回 `invalid_request` 并提示去配置。显式 `cwd` 必须是已存在的绝对路径，仍优先于工作区。工作目录在启动时写进 Run 记录，同一 Run ID 重试要求 Flow、目录与变量一致，否则返回 `conflict`。
 - `config.json` 含明文密钥，权限保持 `0600`。
 - 已发布的包位于 `~/.ursi-flow/versions/v1/<Flow ID>/`。`v1` 是 Flow 规范格式版本，发布时原子切换到 `.revisions/` 下的新快照。使用 CLI 或控制台发布，已发布目录只读使用。
-- daemon 把每次 Agent 节点执行的会话切片写到 `~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`，与 `facts.json` 同目录。`run.trajectory` 按节点执行读取切片，超过 8 MiB 只返回大小；`run.flow` 按运行持有的目录修订读取包，Flow 之后被改动或删除不影响已完成的运行。`flow.summaries` 一次读完当前修订下每个包的名称、说明与规模，供控制台列表使用。
+- daemon 把每次本地 Pi 节点执行的会话切片写到 `~/.ursi-flow/runs/<runId>/trajectories/<节点执行 ID>.jsonl`，与 `facts.json` 同目录。`run.trajectory` 按节点执行读取切片，超过 8 MiB 只返回大小；`run.flow` 按运行持有的目录修订读取包，Flow 之后被改动或删除不影响已完成的运行。`flow.summaries` 一次读完当前修订下每个包的名称、说明与规模，供控制台列表使用。
+
+### 通过平台执行 Agent 节点
+
+给 daemon 设置 `URSI_EXECUTOR_PLATFORM_URL`（HTTP(S) origin，不含 `/api/v2`）和 `URSI_EXECUTOR_PLATFORM_TOKEN`（服务端 Bearer 令牌）。在 `run.start` 或 `run.startPinned` 的参数中加入 `"executorRef":{"id":"reviewer","revision":7}`，即可把本次运行中独立的 `新建Agent` 节点交给该修订。平台执行器须支持 `runConfig.nodeContract` 并生成 `flow-outcome.json`。平台使用自己的工作区，命令和子 Flow 仍由 daemon 调度。
+
+每次节点访问的 `attemptId` 可在 `run.history` 中查看。启动回执丢失后 daemon 查询原尝试；重启后状态为 `unknown` 时，用 `run.resume` 继续核实。已请求停止的运行应重试 `run.stop`。缺失结果文件或提交了该结果不允许的变量时，节点失败，历史里不会出现对应的路由判定。
 
 ## 项目边界
 

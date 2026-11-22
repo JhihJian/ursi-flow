@@ -14,17 +14,17 @@ use std::{
 use uuid::Uuid;
 
 /// 目录根在 Server 私有目录中的位置，每个目录是其下以标识命名的子树。
-pub(in crate::work) const ROOT: &str = "directories";
+pub const ROOT: &str = "directories";
 
 /// 单个文件正文上限。路由按此限制请求体，本模块再校验一次。
-pub(in crate::work) const FILE_LIMIT: u64 = 8 * 1024 * 1024;
+pub const FILE_LIMIT: u64 = 8 * 1024 * 1024;
 const PATH_MAX: usize = 1024;
 const SEGMENT_MAX: usize = 255;
 const DEPTH_MAX: usize = 32;
 const ENTRY_MAX: usize = 20_000;
 
 #[derive(Debug)]
-pub(in crate::work) enum Fault {
+pub enum Fault {
     Invalid(String),
     NotFound(String),
     Conflict(String),
@@ -44,7 +44,7 @@ fn internal(e: io::Error) -> Fault {
 }
 
 #[derive(Serialize)]
-pub(in crate::work) struct Entry {
+pub struct Entry {
     pub path: String,
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,7 +52,7 @@ pub(in crate::work) struct Entry {
 }
 
 /// 服务启动时准备目录根。已存在的目录也要通过私有目录校验。
-pub(in crate::work) fn prepare(dir: &Path) -> io::Result<()> {
+pub fn prepare(dir: &Path) -> io::Result<()> {
     let base = dir.join(ROOT);
     DirBuilder::new()
         .recursive(true)
@@ -62,12 +62,12 @@ pub(in crate::work) fn prepare(dir: &Path) -> io::Result<()> {
 }
 
 /// 校验并返回目录根。调用方只在其下拼装服务端生成的标识。
-pub(in crate::work) fn root(dir: &Path) -> Result<PathBuf, Fault> {
+pub fn root(dir: &Path) -> Result<PathBuf, Fault> {
     verify(&dir.join(ROOT))
 }
 
 /// 新建一个空目录子树，权限为服务账户私有。
-pub(in crate::work) fn create(path: &Path) -> io::Result<()> {
+pub fn create(path: &Path) -> io::Result<()> {
     DirBuilder::new().mode(0o700).create(path)
 }
 
@@ -84,13 +84,13 @@ fn private(path: &Path) -> io::Result<()> {
 }
 
 /// 每次操作前确认目录根仍是私有目录，避免被换成分支链接。
-pub(in crate::work) fn verify(root: &Path) -> Result<PathBuf, Fault> {
+pub fn verify(root: &Path) -> Result<PathBuf, Fault> {
     private(root).map_err(|e| Fault::Internal(format!("目录根不可用：{e}")))?;
     Ok(root.to_owned())
 }
 
 /// 把目录根相对路径拆成名称段。空路径只在需要表示目录根时接受。
-pub(in crate::work) fn segments(path: &str, allow_root: bool) -> Result<Vec<String>, Fault> {
+pub fn segments(path: &str, allow_root: bool) -> Result<Vec<String>, Fault> {
     if path.is_empty() {
         return if allow_root {
             Ok(Vec::new())
@@ -162,7 +162,7 @@ fn status(path: &Path) -> Result<Option<bool>, Fault> {
 }
 
 /// 全树扁平清单，路径为目录根相对路径。符号链接和隐藏的中间文件不对外暴露。
-pub(in crate::work) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
+pub fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
     let root = verify(root)?;
     let mut entries = Vec::new();
     let mut pending = vec![(String::new(), root)];
@@ -208,7 +208,7 @@ pub(in crate::work) fn tree(root: &Path) -> Result<Vec<Entry>, Fault> {
 }
 
 /// 只枚举一层子目录，不遍历配置包内不参与运行的附属文件。
-pub(in crate::work) fn child_dirs(root: &Path, parts: &[String]) -> Result<Vec<String>, Fault> {
+pub fn child_dirs(root: &Path, parts: &[String]) -> Result<Vec<String>, Fault> {
     let path = walk(&verify(root)?, parts)?;
     let dir = open_read(&path, OFlags::DIRECTORY)?;
     let mut names = Vec::new();
@@ -252,7 +252,7 @@ fn open_read(path: &Path, flags: OFlags) -> Result<File, Fault> {
     .map_err(|e| internal(e.into()))
 }
 
-pub(in crate::work) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
+pub fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fault> {
     if parts.is_empty() {
         return Err(invalid_path());
     }
@@ -281,12 +281,7 @@ pub(in crate::work) fn read(root: &Path, parts: &[String]) -> Result<Vec<u8>, Fa
 }
 
 /// 写入文件。默认只新建，`replace` 为真时才覆盖已存在的文件。
-pub(in crate::work) fn write(
-    root: &Path,
-    parts: &[String],
-    bytes: &[u8],
-    replace: bool,
-) -> Result<(), Fault> {
+pub fn write(root: &Path, parts: &[String], bytes: &[u8], replace: bool) -> Result<(), Fault> {
     if bytes.len() as u64 > FILE_LIMIT {
         return Err(Fault::Invalid(format!(
             "单个文件最大 {} MiB",
@@ -327,7 +322,7 @@ fn atomic(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), Fault> {
     publish
 }
 
-pub(in crate::work) fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault> {
+pub fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, parts, |dir, name| {
         let path = dir.join(name);
@@ -339,7 +334,7 @@ pub(in crate::work) fn mkdir(root: &Path, parts: &[String]) -> Result<(), Fault>
     })
 }
 
-pub(in crate::work) fn remove(root: &Path, parts: &[String]) -> Result<(), Fault> {
+pub fn remove(root: &Path, parts: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, parts, |dir, name| {
         let path = dir.join(name);
@@ -353,7 +348,7 @@ pub(in crate::work) fn remove(root: &Path, parts: &[String]) -> Result<(), Fault
 }
 
 /// 移动或重命名目录内条目，不覆盖目标。
-pub(in crate::work) fn relocate(root: &Path, from: &[String], to: &[String]) -> Result<(), Fault> {
+pub fn relocate(root: &Path, from: &[String], to: &[String]) -> Result<(), Fault> {
     let root = verify(root)?;
     with_parent(&root, from, |from_dir, from_name| {
         let source = from_dir.join(from_name);

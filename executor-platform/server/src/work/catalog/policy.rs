@@ -1,6 +1,5 @@
 //! 将管理员文件投影为允许公开的标识与冻结所需的摘要。
 use super::{Error, definitions::name};
-use reqwest::Url;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -11,6 +10,7 @@ use std::{
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::Path,
 };
+use url::Url;
 
 #[derive(Default)]
 pub(super) struct Policy {

@@ -49,7 +49,7 @@ test('旧地址显示未找到，可返回工作清单', async ({ page }) => {
   await openNavigation(page)
   const nav = page.getByRole('navigation', { name: '主导航' })
   await expect(nav.getByRole('link', { name: 'Flow 包' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: '工作包' })).toHaveAttribute('href', '/work-patches')
+  await expect(nav.getByRole('link', { name: '工作包', exact: true })).toHaveAttribute('href', '/work-patches')
   await expect(nav.getByRole('link', { name: '配置包' })).toHaveAttribute('href', '/config-patches')
   await expect(nav.getByRole('link', { name: /派工|外部来源|Echo 工作区|SOP/ })).toHaveCount(0)
 })

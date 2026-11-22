@@ -1,5 +1,5 @@
 ---
-parent: ../../../SPEC.md
+parent: ../../../../../executor-platform/server/SPEC.md
 references:
   - README.md
   - ../catalog/HTTP.md
@@ -10,7 +10,7 @@ references:
 
 ## 功能意图
 
-让管理员用稳定 ID 登记运行 Agent 的本机程序，让工作模块依据配置包所需能力与最近一次协议检查选择后端。调用方只接触公开描述和检查结果。
+执行器平台让管理员用稳定 ID 登记本机 Agent 程序，依据平台配置包所需能力与最近一次协议检查选择后端。此规格保留在 Workbench 旧文档路径；注册、探测与绑定都由平台完成，Workbench 的服务身份无权管理后端。
 
 ## 关键功能与验收
 

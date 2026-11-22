@@ -151,11 +151,14 @@ async function dispatch(request: unknown) {
 				a.variables === undefined ? {} : a.variables,
 				async () => {
 					const c = await config();
-					requireProvider(c);
+					if (a.executorRef === undefined) requireProvider(c);
 					return c;
 				},
 				op === "run.startPinned" ? a.revision : undefined,
+				a.executorRef,
 			);
+		case "run.resume":
+			return runs.resume(a.id, config);
 		case "run.stop":
 			return runs.stop(a.id);
 		case "run.get":
@@ -218,7 +221,7 @@ for (const signal of ["SIGTERM", "SIGINT"])
 	process.once(signal, () => {
 		server.close(async () => {
 			await queue;
-			await Promise.all([...runs.active.keys()].map((key) => runs.stop(key)));
+			await Promise.all([...runs.active.keys()].map((key) => runs.shutdown(key)));
 			process.exit(0);
 		});
 	});

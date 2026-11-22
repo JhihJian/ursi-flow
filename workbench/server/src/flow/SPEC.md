@@ -17,7 +17,7 @@ depends-on:
 #### 验收
 
 - 包的查询、创建、校验、更新和删除保留 SDK 的 JSON 结果。更新时将可选的预期修订随同文件交给 SDK，由 Runtime 比较并写入。
-- 启动运行只接受 `default` 工作区别名。其他值在 SDK 调用前被拒绝。SDK 收到配置目录、原始变量和调用方的运行 ID。省略 ID 时服务生成 UUID。
+- 启动运行只接受 `default` 工作区别名。其他值在 SDK 调用前被拒绝。SDK 收到配置目录、原始变量和调用方的运行 ID。省略 ID 时服务生成 UUID。可选的 `executorRef: {id, revision}` 原样传给 Runtime，用于本次运行的 Agent 节点；显式空值与无效修订拒绝启动。
 - 运行列表、详情、历史、停止及配置查询和修改返回 Runtime 原始 JSON，SDK 错误保留 `io::ErrorKind`。
 
 ### 阻塞调用隔离

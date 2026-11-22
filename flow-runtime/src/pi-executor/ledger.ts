@@ -2,6 +2,7 @@ import { closeSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ExecutorError, type ExecutorStatus } from "ursi-executor-sdk";
+import { parseRunConfig } from "./node-contract.ts";
 import { privateFile } from "./files.ts";
 
 export const CAPACITY = 8;
@@ -61,11 +62,11 @@ class Ledger {
 		}
 		return row;
 	}
-	reserve(id: string, binding: string, digest: string, inputHash: string, instruction: string) {
+	reserve(id: string, binding: string, digest: string, inputHash: string, encodedInput: string) {
 		const active = this.db.prepare("SELECT * FROM jobs WHERE phase IN ('reserved','running')").all() as unknown as Row[];
 		if (active.map(row => this.reconcile(row)).filter(row => row.phase !== "unverified").length >= CAPACITY) throw new ExecutorError("busy");
 		this.db.prepare("INSERT INTO jobs(id,binding,digest,inputHash,instruction,phase,expires) VALUES(?,?,?,?,?,'reserved',?)")
-			.run(id, binding, digest, inputHash, JSON.stringify(instruction), Date.now() + START_WINDOW_MS);
+			.run(id, binding, digest, inputHash, encodedInput, Date.now() + START_WINDOW_MS);
 	}
 	claim(id: string, binding: string) {
 		const row = this.current(id, binding);
@@ -75,9 +76,10 @@ class Ledger {
 		if (!owner) throw new ExecutorError("unavailable");
 		this.db.prepare("UPDATE jobs SET phase='running',pid=?,owner=? WHERE id=?").run(process.pid, owner, id);
 		// JSON preserves embedded NULs and any escaped surrogate in the original frame.
-		const instruction: unknown = JSON.parse(row.instruction);
-		if (typeof instruction !== "string") throw new ExecutorError("unavailable");
-		return { ...row, instruction };
+		const input = JSON.parse(row.instruction);
+		if (typeof input === "string") return { instruction: input, digest: row.digest, nodeContract: undefined };
+		if (typeof input?.instruction !== "string") throw new ExecutorError("unavailable");
+		return { instruction: input.instruction as string, digest: row.digest, nodeContract: parseRunConfig({ nodeContract: input.nodeContract }) };
 	}
 	cancel(id: string) { this.db.prepare("UPDATE jobs SET cancel=1 WHERE id=? AND phase IN ('running','reserved')").run(id); }
 	cancelRequested(id: string) { return this.db.prepare("SELECT cancel FROM jobs WHERE id=?").get(id)?.cancel === 1; }

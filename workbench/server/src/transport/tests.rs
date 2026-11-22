@@ -48,7 +48,8 @@ impl Fixture {
             crate::flow::FlowClient::new(FlowClient::new(socket)),
             root.clone(),
         );
-        let work = crate::work::routes(root.join("work")).unwrap();
+        let store = ursi_executor_platform::work::Store::open(root.join("work")).unwrap();
+        let work = crate::work::business_routes(store).unwrap();
         let app = combined(Some(service), work, token.into());
         let listener = UnixListener::bind(root.join("http.sock")).unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -129,12 +130,10 @@ async fn retired_dispatch_routes_are_not_mounted() {
         );
     }
     for path in [
-        "resources",
-        "executors",
+        "work-patch-generators",
         "work-items",
         "directories",
         "patches/work",
-        "patches/config",
         "mcp-servers",
     ] {
         assert_eq!(
@@ -245,12 +244,14 @@ async fn start_maps_default_and_forwards_or_generates_run_id() {
     for generated in [false, true] {
         if generated {
             body.as_object_mut().unwrap().remove("runId");
+            body["executorRef"] = json!({"id":"reviewer", "revision":7});
         }
         let req = app.api("POST", "/flows/f/runs", body.clone()).await;
         assert_eq!(req["op"], "run.start");
         let args = &req["args"];
         assert_eq!(args["cwd"], json!(app.root.canonicalize().unwrap()));
         assert_eq!(args["flow"], "f");
+        assert_eq!(args.get("executorRef"), body.get("executorRef"));
         assert_eq!(args["variables"], body["variables"]);
         if generated {
             Uuid::parse_str(args["id"].as_str().unwrap()).unwrap();
@@ -262,6 +263,8 @@ async fn start_maps_default_and_forwards_or_generates_run_id() {
         json!({"workspace":"/tmp","variables":{}}),
         json!({"workspace":"default","variables":{},"cwd":"/tmp"}),
         json!({"workspace":"default","variables":[]}),
+        json!({"workspace":"default","variables":{},"executorRef":{"id":"a","revision":0}}),
+        json!({"workspace":"default","variables":{},"executorRef":null}),
     ] {
         assert!(
             (400..500).contains(

@@ -1,19 +1,19 @@
-//! 包只保存业务元信息与目录引用。文件接口由 directories 提供。
-mod config;
+//! 工作包保存业务元信息与目录引用。文件接口由 directories 提供。
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, directories, worklist};
+use super::{Error, Store, directories, platform_proxy::Platform, worklist};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, State},
     routing::get,
 };
-use config::{ConfigPackageRef, Kind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+const TABLE: &str = "workPatches";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,10 +21,10 @@ struct Patch {
     id: String,
     name: String,
     directory_id: String,
-    #[serde(rename = "configPackage", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     config_package: Option<ConfigPackageRef>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    work: Option<WorkMetadata>,
+    #[serde(flatten)]
+    work: WorkMetadata,
 }
 
 #[derive(Serialize)]
@@ -57,21 +57,19 @@ impl WorkMetadata {
     }
 }
 
-pub(super) fn routes(store: Store) -> Router {
+pub(super) fn routes_with_platform(store: Store, platform: Option<Platform>) -> Router {
     Router::new()
-        .route("/v2/patches/{kind}", get(index).post(create))
-        .route("/v2/patches/{kind}/{id}", get(detail).patch(set_owner))
+        .route(
+            "/v2/patches/work",
+            get(index).post(move |state, body| create(state, body, platform)),
+        )
+        .route("/v2/patches/work/{id}", get(detail).patch(set_owner))
         .layer(DefaultBodyLimit::max(8192))
         .with_state(store)
 }
 
-fn kind(value: &str) -> Result<Kind, Error> {
-    Kind::parse(value).ok_or_else(|| Error::NotFound("包类型不存在".into()))
-}
-
-async fn index(State(store): State<Store>, Path(key): Path<String>) -> Result<Json<Value>, Error> {
-    let table = kind(&key)?.table();
-    store.read(|db| match db.get(table) {
+async fn index(State(store): State<Store>) -> Result<Json<Value>, Error> {
+    store.read(|db| match db.get(TABLE) {
         None => Ok(Json(json!([]))),
         Some(rows) => Ok(Json(json!(
             rows.as_object()
@@ -86,13 +84,9 @@ fn corrupt() -> Error {
     Error::Internal("包记录损坏".into())
 }
 
-async fn detail(
-    State(store): State<Store>,
-    Path((key, id)): Path<(String, String)>,
-) -> Result<Json<Value>, Error> {
-    let table = kind(&key)?.table();
+async fn detail(State(store): State<Store>, Path(id): Path<String>) -> Result<Json<Value>, Error> {
     store.read(|db| {
-        db[table]
+        db[TABLE]
             .get(id)
             .cloned()
             .map(Json)
@@ -100,13 +94,17 @@ async fn detail(
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct ConfigPackageRef {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Create {
     name: String,
-    #[serde(rename = "configPackage", default)]
     config_package: Option<ConfigPackageRef>,
-    #[serde(rename = "workItemId")]
     work_item_id: Option<String>,
 }
 
@@ -120,17 +118,14 @@ struct Owner {
 
 async fn set_owner(
     State(store): State<Store>,
-    Path((key, id)): Path<(String, String)>,
+    Path(id): Path<String>,
     Json(input): Json<Owner>,
 ) -> Result<Json<Value>, Error> {
-    if kind(&key)? != Kind::Work {
-        return Err(Error::NotFound("只有工作包可设置工作项".into()));
-    }
     store.update(|db| {
         if let Some(owner) = &input.work_item_id {
             worklist::find(db, owner)?;
         }
-        let row = db[Kind::Work.table()]
+        let row = db[TABLE]
             .get_mut(&id)
             .ok_or_else(|| Error::NotFound("工作包不存在".into()))?;
         row["workItemId"] = json!(input.work_item_id);
@@ -139,7 +134,7 @@ async fn set_owner(
 }
 
 pub(super) fn detach_item(db: &mut Value, id: &str) -> Result<(), Error> {
-    if let Some(table) = db.get_mut(Kind::Work.table()) {
+    if let Some(table) = db.get_mut(TABLE) {
         for patch in table.as_object_mut().ok_or_else(corrupt)?.values_mut() {
             if patch["workItemId"] == id {
                 patch["workItemId"] = Value::Null;
@@ -159,11 +154,11 @@ pub(super) fn valid_name(name: &str) -> Result<String, Error> {
     Ok(name.to_owned())
 }
 
-fn register(db: &mut Value, kind: Kind, patch: Patch) -> Result<Value, Error> {
+fn register(db: &mut Value, patch: Patch) -> Result<Value, Error> {
     let table = db
         .as_object_mut()
         .ok_or_else(corrupt)?
-        .entry(kind.table())
+        .entry(TABLE)
         .or_insert_with(|| json!({}));
     let row = json!(&patch);
     table
@@ -182,44 +177,37 @@ pub(super) fn register_generated(
 ) -> Result<Value, Error> {
     register(
         db,
-        Kind::Work,
         Patch {
             id: Uuid::new_v4().to_string(),
             name,
             directory_id: directory_id.to_owned(),
             config_package: None,
-            work: Some(WorkMetadata::new(
-                "generated",
-                Some(work_item_id.to_owned()),
-                Some(provenance),
-            )?),
+            work: WorkMetadata::new("generated", Some(work_item_id.to_owned()), Some(provenance))?,
         },
     )
 }
 
 async fn create(
     State(store): State<Store>,
-    Path(key): Path<String>,
     Json(input): Json<Create>,
+    platform: Option<Platform>,
 ) -> Result<Json<Value>, Error> {
-    let kind = kind(&key)?;
-    if kind.is_config() && input.config_package.is_some() {
-        return Err(Error::Invalid("配置包不能引用配置包".into()));
-    }
-    if kind.is_config() && input.work_item_id.is_some() {
-        return Err(Error::Invalid("配置包不能关联工作清单项".into()));
-    }
     let name = valid_name(&input.name)?;
-    let config_package = input.config_package;
+    if let Some(reference) = &input.config_package {
+        if Uuid::parse_str(&reference.id).is_err() {
+            return Err(Error::Invalid("配置包标识无效".into()));
+        }
+        platform
+            .ok_or_else(|| Error::Unavailable("无法验证平台配置包引用".into()))?
+            .check_config(&reference.id)
+            .await?;
+    }
     tokio::task::spawn_blocking(move || {
         directories::allocate(
             &store,
-            kind.rules(),
-            |root| kind.seed(root),
+            directories::Rules::default(),
+            |_| Ok(()),
             |db, directory_id| {
-                if let Some(reference) = config_package.as_ref() {
-                    config_package_directory(db, &reference.id)?;
-                }
                 if let Some(owner) = &input.work_item_id {
                     worklist::find(db, owner)?;
                 }
@@ -227,31 +215,13 @@ async fn create(
                     id: Uuid::new_v4().to_string(),
                     name,
                     directory_id: directory_id.to_owned(),
-                    config_package,
-                    work: if kind == Kind::Work {
-                        Some(WorkMetadata::new("manual", input.work_item_id, None)?)
-                    } else {
-                        None
-                    },
+                    config_package: input.config_package,
+                    work: WorkMetadata::new("manual", input.work_item_id, None)?,
                 };
-                register(db, kind, row).map(Json)
+                register(db, row).map(Json)
             },
         )
     })
     .await
     .map_err(|_| Error::Internal("包创建任务中断".into()))?
-}
-
-pub(super) fn config_package_directory(db: &Value, package_id: &str) -> Result<String, Error> {
-    let value = db
-        .get(Kind::Config.table())
-        .and_then(|packages| packages.get(package_id))
-        .ok_or_else(|| Error::NotFound("配置包不存在".into()))?;
-    if value["id"] != package_id {
-        return Err(corrupt());
-    }
-    value["directoryId"]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(corrupt)
 }

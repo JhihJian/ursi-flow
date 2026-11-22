@@ -46,7 +46,7 @@ async function work(id: string) {
 		const { config, digest } = snapshot(paths.attempt);
 		policyFile(process.env, paths.root);
 		if (digest !== row.digest) throw new Error("configuration changed");
-		const task: Task = { config, workspace: paths.workspace, instruction: row.instruction };
+		const task: Task = { config, workspace: paths.workspace, instruction: row.instruction, nodeContract: row.nodeContract };
 		if (withLedger(paths.root, l => l.cancelRequested(id))) outcome = "cancelled";
 		else {
 			const thread = new Worker(RUNNER, { workerData: task });

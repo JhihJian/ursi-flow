@@ -6,6 +6,7 @@ depends-on:
 references:
   - ../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
   - ../../docs/design/workbench/WEB-WORK-MANAGEMENT.md
+  - ../../docs/design/executor-platform/OVERVIEW.md
   - README.md
 ---
 # Flow 工作台
@@ -42,6 +43,7 @@ references:
 
 - 登录后可创建、读取、编辑、验证和删除含多个文件的包。更新携带读取时的目录 revision。
 - 从已保存包在 default 工作区启动运行，列表与深链可查看真实状态、参数和历史；停止请求后重新读取运行结果。
+- 工作包执行页与 Flow 编辑页均可选择已发布的 Agent 修订启动 Flow，Workbench 将固定的 `executorRef` 传给同源启动接口。管理页面导航与业务 API 地址分别配置。
 - 可读取运行配置并更新模型和最大并发数。
 
 ### 认证、导航与对话

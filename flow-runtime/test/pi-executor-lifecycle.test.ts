@@ -35,12 +35,13 @@ async function host() {
 	const pi = join(f.dir, "pi-executor");
 	await mkdir(pi);
 	await cp(new URL("integrations/mcp", src), join(f.dir, "integrations/mcp"), { recursive: true });
-	for (const name of ["files", "ledger", "jobs", "worker", "runner", "stdio"]) await copyFile(new URL(`pi-executor/${name}.ts`, src), join(pi, `${name}.ts`));
+	await symlink(new URL('core', src), join(f.dir, 'core'), 'dir');
+	for (const name of ["files", "ledger", "jobs", "worker", "runner", "stdio", "node-contract"]) await copyFile(new URL(`pi-executor/${name}.ts`, src), join(pi, `${name}.ts`));
 	await writeFile(join(pi, "session.ts"), `
 		import { appendFile } from 'node:fs/promises';
 		import { setTimeout } from 'node:timers/promises';
-		export async function runPi(config, workspace, instruction, signal) {
-			await appendFile(workspace + '/artifacts/prompts', JSON.stringify({config,instruction}) + '\\n');
+		export async function runPi(config, workspace, instruction, signal, nodeContract) {
+			await appendFile(workspace + '/artifacts/prompts', JSON.stringify({config,instruction,nodeContract}) + '\\n');
 			if (instruction === 'crash') process.kill(process.pid, 'SIGKILL');
 			if (instruction === 'wait') await setTimeout(8000, undefined, {signal});
 		}
@@ -91,6 +92,22 @@ describe("Pi lifecycle", () => {
 		expect(await readFile(f.log, "utf8")).toBe(JSON.stringify({config, instruction}) + "\n");
 	}, 15000);
 
+	it("freezes the valid node contract with the instruction across MCP restarts", async () => {
+		const f = await host();
+		const nodeContract = { outcomes: ["通过", "退回"], variables: ["摘要"] };
+		for (const bad of [null, {}, { outcomes: [], variables: [] }, { ...nodeContract, outcomes: [" "] },
+			{ ...nodeContract, outcomes: [1] }, { ...nodeContract, variables: ["a", "a"] }, { ...nodeContract, extra: 1 }])
+			expect(await f.call("start", "review", { nodeContract: bad })).toBe("invalid");
+		expect(await f.call("inspect")).toBe("not_found");
+		expect(await f.call("start", "review", { nodeContract })).toBe("running");
+		await expect.poll(() => f.call("inspect"), { timeout: 5000 }).toBe("succeeded");
+		expect(await f.call("start", "review", { nodeContract: { variables: ["摘要"], outcomes: ["通过", "退回"] } })).toBe("succeeded");
+		for (const changed of [{}, { nodeContract: { ...nodeContract, variables: [] } },
+			{ nodeContract: { ...nodeContract, outcomes: ["退回", "通过"] } }])
+			expect(await f.call("start", "review", changed)).toBe("conflict");
+		expect(await readFile(f.log, "utf8")).toBe(JSON.stringify({ config, instruction: "review", nodeContract }) + "\n");
+	}, 15000);
+
 	it("waits for the session to acknowledge cancellation", async () => {
 		const f = await host();
 		expect(await f.call("start", "wait")).toBe("running");
@@ -111,10 +128,10 @@ describe("Pi lifecycle", () => {
 
 	it("reserves capacity transactionally and never reclaims an expired attempt", async () => {
 		const f = await fixture();
-		for (let n = 0; n < CAPACITY; n++) withLedger(f.root, l => l.reserve(String(n), "dir", "digest", "hash", "text"));
-		expect(() => withLedger(f.root, l => l.reserve("extra", "dir", "digest", "hash", "text"))).toThrow("busy");
+		for (let n = 0; n < CAPACITY; n++) withLedger(f.root, l => l.reserve(String(n), "dir", "digest", "hash", JSON.stringify("text")));
+		expect(() => withLedger(f.root, l => l.reserve("extra", "dir", "digest", "hash", JSON.stringify("text")))).toThrow("busy");
 		withLedger(f.root, l => { l.cancel("0"); expect(l.claim("0", "dir")).toBeUndefined(); });
-		withLedger(f.root, l => l.reserve("extra", "dir", "digest", "hash", "text"));
+		withLedger(f.root, l => l.reserve("extra", "dir", "digest", "hash", JSON.stringify("text")));
 		expect(() => withLedger(f.root, l => l.current("extra", "different workspace"))).toThrow("conflict");
 		expect(withLedger(f.root, l => l.current("0", "dir").phase)).toBe("cancelled");
 		const db = new DatabaseSync(join(f.root, ".pi-jobs.sqlite"));

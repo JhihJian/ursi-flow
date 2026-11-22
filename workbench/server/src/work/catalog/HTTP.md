@@ -1,6 +1,6 @@
 # 资源与执行器定义 HTTP 契约
 
-`collection` 为 `resources` 或 `executors`，路径相对于 `/api/v2`。
+本文保留 Workbench 前端引用的契约路径。以下为[执行器平台](../../../../../executor-platform/server/README.md)的**管理员**接口，路径相对于平台 `/api/v2`，`collection` 为 `resources` 或 `executors`。Workbench 与 Runtime 的服务令牌只能读取执行器选择所需的 `id`、`revision`、Agent 标记及最新版的 `active`，不返回资源正文、配置包引用或后端绑定。
 
 | 方法 | 路径 | 结果 |
 | --- | --- | --- |
@@ -38,7 +38,7 @@
 
 `agent.backendId` 是可选的后端 ID。发布和试跑时服务端从已通过检查且兼容本次快照的后端中选择：省略 ID 时，无候选返回 503，多个候选返回 409；显式指定的 ID 不存在返回 404，不兼容返回 400，未就绪返回 503。[后端目录的兼容性查询](../agent_backends/README.md#http-接口)只解析包，不要求已有就绪后端。
 
-`configPackageId` 为已登记配置包的标识，区别于 `directoryId`。未知配置包、工作包 ID 或目录 ID 返回 404。内联字段、`resources`（包括空数组）和 `configSchema` 返回 400。普通执行器的定义格式保持不变。
+`configPackageId` 为平台内已登记配置包的标识，区别于 `directoryId`。未知配置包、工作包 ID 或目录 ID 返回 404。内联字段、`resources`（包括空数组）和 `configSchema` 返回 400。普通执行器的定义格式保持不变。
 
 服务端与目录 API 共用存储锁，整份解析期间目录不可写入。文件约定如下：
 

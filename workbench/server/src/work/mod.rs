@@ -1,70 +1,39 @@
-//! 工作清单、包、资源定义及其持久化。
-mod agent_backends;
-mod catalog;
-mod directories;
+//! Workbench 持有业务数据，通过平台的消费者接口选版、执行并读取制品。
+mod business_directories;
 mod environment;
-mod executor;
+mod generators;
 mod mcp;
-
-fn mcp_client_info(version: rmcp::model::ProtocolVersion) -> rmcp::model::ClientConfig {
-    use rmcp::model::{ClientCapabilities, ClientConfig, Implementation};
-    ClientConfig::new(
-        ClientCapabilities::default(),
-        Implementation::new("ursi-workbench", env!("CARGO_PKG_VERSION")),
-    )
-    .with_protocol_version(version)
-}
 mod patches;
-mod store;
+mod platform_proxy;
 mod worklist;
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
-use serde_json::json;
+use axum::Router;
 use std::{io, path::PathBuf};
-use store::Store;
+use ursi_executor_platform::work::{Error, Store, directories};
 
-#[derive(Debug)]
-enum Error {
-    Invalid(String),
-    NotFound(String),
-    Conflict(String),
-    Unavailable(String),
-    Internal(String),
-}
-impl IntoResponse for Error {
-    fn into_response(self) -> Response {
-        let (code, message) = match self {
-            Self::Invalid(s) => (StatusCode::BAD_REQUEST, s),
-            Self::NotFound(s) => (StatusCode::NOT_FOUND, s),
-            Self::Conflict(s) => (StatusCode::CONFLICT, s),
-            Self::Unavailable(s) => (StatusCode::SERVICE_UNAVAILABLE, s),
-            Self::Internal(s) => {
-                eprintln!("工作存储：{s}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "工作存储不可用".into())
-            }
-        };
-        (code, Json(json!({"error":message}))).into_response()
-    }
-}
 fn valid_label(s: &str, limit: usize) -> bool {
     !s.is_empty() && s.len() <= limit && s.trim() == s && !s.chars().any(char::is_control)
 }
 
 pub(crate) fn routes(dir: PathBuf) -> io::Result<Router> {
     let store = Store::open(dir)?;
+    let platform = platform_proxy::routes(store.clone())?;
+    let config_lookup = platform_proxy::Platform::configured(store.clone())?;
+    Ok(business(store, Some(config_lookup))?.merge(platform))
+}
+
+#[cfg(test)]
+pub(crate) fn business_routes(store: Store) -> io::Result<Router> {
+    business(store, None)
+}
+
+fn business(store: Store, config_lookup: Option<platform_proxy::Platform>) -> io::Result<Router> {
     worklist::recover(&store)
         .map_err(|err| io::Error::other(format!("恢复生成运行失败：{err:?}")))?;
-    let platform = mcp::platform(&store);
-    let agents = agent_backends::Registry::from_env()?;
-    Ok(catalog::routes(store.clone(), agents.clone())
-        .merge(agents.routes(store.clone()))
-        .merge(worklist::routes(store.clone(), platform.clone()))
-        .nest("/v2", platform.routes())
+    let mcp = mcp::platform(&store);
+    Ok(business_directories::routes(store.clone())?
+        .merge(generators::routes(store.clone()))
+        .merge(worklist::routes(store.clone(), mcp.clone()))
+        .nest("/v2", mcp.routes())
         .merge(environment::routes(store.clone()))
-        .merge(executor::routes(store.clone(), agents))
-        .merge(directories::routes(store.clone())?)
-        .merge(patches::routes(store)))
+        .merge(patches::routes_with_platform(store, config_lookup)))
 }

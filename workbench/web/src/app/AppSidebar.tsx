@@ -17,7 +17,9 @@ export function AppSidebar({ groups, signedIn, onNavigate }: { groups: NavGroup[
       <nav aria-label="主导航" className="scroll-area min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-2">
         {groups.map(group => <section key={group.title}>
           <h2 className="mb-1 px-3 text-xs font-medium text-txt3">{group.title}</h2>
-          {group.items.map(item => <NavLink key={item.path} to={item.path} onClick={onNavigate} className={({ isActive }) => isActive ? 'sidebar-link nav-active' : 'sidebar-link'}>
+          {group.items.map(item => item.external ? <a key={item.path} href={item.path} className="sidebar-link" referrerPolicy="no-referrer" onClick={onNavigate}>
+            <Icon name={item.icon} size={18} />{item.title}
+          </a> : <NavLink key={item.path} to={item.path} onClick={onNavigate} className={({ isActive }) => isActive ? 'sidebar-link nav-active' : 'sidebar-link'}>
             <Icon name={item.icon} size={18} />{item.title}
           </NavLink>)}
         </section>)}

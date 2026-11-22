@@ -32,6 +32,22 @@ struct Start {
     run_id: Option<String>,
     workspace: String,
     variables: Map<String, Value>,
+    #[serde(default, deserialize_with = "executor_ref")]
+    executor_ref: Option<Value>,
+}
+
+fn executor_ref<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Ref {
+        id: String,
+        revision: std::num::NonZeroU64,
+    }
+    let r = Ref::deserialize(d)?;
+    if r.id.is_empty() || r.id.trim() != r.id {
+        return Err(serde::de::Error::custom("无效的执行器 ID"));
+    }
+    Ok(Some(json!({"id": r.id, "revision": r.revision})))
 }
 
 pub(super) fn routes(service: FlowService) -> Router {
@@ -77,8 +93,14 @@ async fn delete(State(s): Service, Path(id): Path<String>) -> Reply {
 }
 async fn start(State(s): Service, Path(id): Path<String>, Json(p): Json<Start>) -> Reply {
     Ok(Json(
-        s.start(id, p.run_id, &p.workspace, Value::Object(p.variables))
-            .await?,
+        s.start(
+            id,
+            p.run_id,
+            &p.workspace,
+            Value::Object(p.variables),
+            p.executor_ref,
+        )
+        .await?,
     ))
 }
 async fn runs(State(s): Service) -> Reply {

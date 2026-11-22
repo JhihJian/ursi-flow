@@ -277,12 +277,12 @@ export function RunDetail({ source }: { source: Source }) {
     return () => clearTimeout(timer)
   }, [job.value, busy, reloadJob, reloadHistory])
 
-  const stop = async () => {
+  const control = async (op: 'resume' | 'stop') => {
     setBusy(true)
     setError('')
     setConfirm(false)
     try {
-      await source.stop(id)
+      await source[op](id)
       reloadJob()
       reloadHistory()
     } catch (e) {
@@ -397,7 +397,13 @@ export function RunDetail({ source }: { source: Source }) {
                   <RefreshCw />
                   刷新
                 </Button>
-                {jobRow.status === 'running' && (
+                {jobRow.executorRef && jobRow.status === 'unknown' && !jobRow.stopRequested && (
+                  <Button variant="outline" disabled={busy} onClick={() => void control('resume')}>
+                    <RefreshCw />
+                    核实并恢复
+                  </Button>
+                )}
+                {(jobRow.status === 'running' || (jobRow.executorRef && jobRow.status === 'unknown')) && (
                   <Button variant="destructive" disabled={busy} onClick={() => setConfirm(true)}>
                     <CircleStop />
                     停止运行
@@ -428,7 +434,7 @@ export function RunDetail({ source }: { source: Source }) {
           )}
           {jobRow.error && (
             <Alert variant="error">
-              <AlertDescription>运行失败：{jobRow.error}</AlertDescription>
+              <AlertDescription>{jobRow.status === 'unknown' ? '状态待核实' : '运行失败'}：{jobRow.error}</AlertDescription>
             </Alert>
           )}
           <Dialog open={confirm} onOpenChange={setConfirm}>
@@ -443,7 +449,7 @@ export function RunDetail({ source }: { source: Source }) {
                 <DialogClose asChild>
                   <Button variant="ghost">取消</Button>
                 </DialogClose>
-                <Button variant="destructive" onClick={stop}>
+                <Button variant="destructive" onClick={() => void control('stop')}>
                   确认停止
                 </Button>
               </DialogFooter>

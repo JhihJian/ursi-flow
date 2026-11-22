@@ -28,7 +28,8 @@
  "scripts": {
   "build": "tsc -p tsconfig.build.json",
   "prepack": "npm run build",
-  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/local-pi.test.mjs test/pi-session.test.mjs && vitest run"
+  "typecheck": "tsc --noEmit",
+  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/platform-daemon.test.mjs test/local-pi.test.mjs test/pi-session.test.mjs && vitest run"
  },
  "bundleDependencies": ["ursi-executor-sdk"],
  "dependencies": {

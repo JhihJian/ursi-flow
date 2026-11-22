@@ -17,6 +17,7 @@ import { Input } from './components/ui/input'
 import { Label } from './components/ui/label'
 import { Select } from './components/ui/select'
 import { Textarea } from './components/ui/textarea'
+import type { ExecutorRef } from './data'
 import { analyzeParams, toText, toValue, type RunParam } from './flow/params'
 
 export function StartRunDialog({
@@ -37,12 +38,15 @@ export function StartRunDialog({
     variables: Record<string, unknown>,
     runId: string,
     cwd: string,
+    executorRef?: ExecutorRef,
   ) => Promise<void>
 }) {
   const analysis = useMemo(() => analyzeParams(markdown), [markdown])
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [runId, setRunId] = useState('')
   const [cwd, setCwd] = useState('')
+  const [executor, setExecutor] = useState('')
+  const [revision, setRevision] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [raw, setRaw] = useState('{}')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -55,6 +59,8 @@ export function StartRunDialog({
     const next: Record<string, string> = {}
     for (const param of analysis.params) next[param.name] = toText(param.default)
     setDraft(next)
+    setExecutor('')
+    setRevision('')
     setRunId('')
     setCwd('')
     setAdvanced(false)
@@ -153,7 +159,11 @@ export function StartRunDialog({
     }
     setBusy(true)
     try {
-      await onStart(variables, runId.trim(), cwd.trim())
+      const id = executor.trim()
+      const version = Number(revision)
+      if ((id || revision) && (!id || !Number.isSafeInteger(version) || version < 1))
+        throw new Error('平台执行器需要 ID 和正整数修订号。')
+      await onStart(variables, runId.trim(), cwd.trim(), id ? { id, revision: version } : undefined)
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error))
     } finally {
@@ -210,6 +220,17 @@ export function StartRunDialog({
             ? `留空则在 ${workspace} 下按 Run ID 新建目录作为本次运行的工作目录。`
             : '留空需要先在运行配置里填写工作区根目录；已有的绝对路径也可以直接填在右边。'}
         </p>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="start-executor">平台执行器 ID（可选）</Label>
+            <Input id="start-executor" value={executor} onChange={e => setExecutor(e.target.value)} placeholder="留空使用本地 Pi" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="start-executor-revision">执行器修订号</Label>
+            <Input id="start-executor-revision" type="number" min={1} step={1} value={revision} onChange={e => setRevision(e.target.value)} />
+          </div>
+        </div>
 
         {advanced ? (
           <div className="grid gap-1.5">

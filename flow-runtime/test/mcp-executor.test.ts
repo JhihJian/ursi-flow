@@ -40,7 +40,8 @@ class FakeRuntime implements RuntimeClient {
 	readonly starts: unknown[][] = [];
 	readonly gets: string[] = [];
 	readonly stops: string[] = [];
-	constructor(private readonly value: RuntimeJob) {}
+	private readonly value: RuntimeJob;
+	constructor(value: RuntimeJob) { this.value = value; }
 	async startPinned(...args: [string, string, string, Record<string, unknown>, string]) {
 		this.starts.push(args);
 		return this.value;

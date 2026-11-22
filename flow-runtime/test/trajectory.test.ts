@@ -18,23 +18,22 @@ afterEach(async () => {
 describe("节点会话轨迹", () => {
 	it("按节点执行切分条目并保留原始父子关系", async () => {
 		const dir = await tempDir();
-		const entries = [
-			{ type: "message", id: "old", parentId: null, message: { role: "user" } },
-		];
+		const entry = (id: string, parentId: string | null) => ({
+			type: "message" as const, id, parentId, timestamp: new Date(0).toISOString(),
+			message: { role: "user" as const, content: id, timestamp: 0 },
+		});
+		const entries = [entry("old", null)];
 		const recorder = new NodeTrajectoryRecorder({
 			dir,
 			source: { getEntries: () => entries },
 			start: { executionId: "visit-1", cwd: "/work", model: "fixture" },
 		});
 		await recorder.start();
-		entries.push(
-			{ type: "message", id: "a", parentId: "old", message: { role: "user" } },
-			{ type: "message", id: "b", parentId: "a", message: { role: "assistant" } },
-		);
+		entries.push(entry("a", "old"), entry("b", "a"));
 		await recorder.flush();
 		// 重复 flush 不重复写入；后续条目继续追加。
 		await recorder.flush();
-		entries.push({ type: "message", id: "c", parentId: "b", message: { role: "user" } });
+		entries.push(entry("c", "b"));
 		await recorder.stop();
 		const lines = (await readFile(join(dir, "visit-1.jsonl"), "utf8"))
 			.trim()

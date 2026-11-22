@@ -47,7 +47,7 @@ async fn workspace_rejected_before_client_io() {
     let service = FlowService::new(FlowClient::new(SdkClient::new("unused")), PathBuf::new());
     for input in ["", "Default", ".", "..", "/tmp", "default/"] {
         let result = service
-            .start("f".into(), None, input, serde_json::json!({}))
+            .start("f".into(), None, input, serde_json::json!({}), None)
             .await;
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
     }

@@ -14,8 +14,6 @@ use tokio::{
 };
 use uuid::Uuid;
 
-const KINDS: [&str; 2] = ["work", "config"];
-
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -62,11 +60,14 @@ fn encode(path: &str) -> String {
 
 impl Http {
     fn new() -> Self {
-        let dir = Temp::new();
+        Self::open(Temp::new())
+    }
+
+    fn open(dir: Temp) -> Self {
         let store = Store::open(dir.path("work")).unwrap();
-        let app = directories::routes(store.clone())
+        let app = crate::work::business_directories::routes(store.clone())
             .unwrap()
-            .merge(routes(store.clone()))
+            .merge(routes_with_platform(store.clone(), None))
             .merge(worklist::routes(
                 store.clone(),
                 crate::work::mcp::platform(&store),
@@ -119,9 +120,9 @@ impl Http {
         value
     }
 
-    async fn create(&self, kind: &str, name: &str) -> String {
+    async fn create(&self, name: &str) -> String {
         let patch = self
-            .ok("POST", &format!("/v2/patches/{kind}"), json!({"name":name}))
+            .ok("POST", "/v2/patches/work", json!({"name":name}))
             .await;
         assert_ne!(patch["id"], patch["directoryId"]);
         patch["directoryId"].as_str().unwrap().to_owned()
@@ -201,20 +202,14 @@ impl Http {
     }
 }
 
-/// 包列表只公布包标识和名称，两类包各自独立。
 #[tokio::test]
-async fn lists_packages_per_kind_and_rejects_bad_input() {
+async fn lists_work_packages_and_rejects_bad_input() {
     let app = Http::new();
-    for kind in KINDS {
-        assert_eq!(
-            app.ok("GET", &format!("/v2/patches/{kind}"), Value::Null)
-                .await,
-            json!([])
-        );
-    }
-    let work = app.create("work", "  结算异常排查  ").await;
-    let config = app.create("config", "审核助手").await;
-    assert_ne!(work, config);
+    assert_eq!(
+        app.ok("GET", "/v2/patches/work", Value::Null).await,
+        json!([])
+    );
+    let work = app.create("  结算异常排查  ").await;
     let listed = app.ok("GET", "/v2/patches/work", Value::Null).await;
     let work_id = listed[0]["id"].as_str().unwrap();
     assert_ne!(work_id, work);
@@ -243,11 +238,6 @@ async fn lists_packages_per_kind_and_rejects_bad_input() {
             .0,
         404
     );
-    let configs = app.ok("GET", "/v2/patches/config", Value::Null).await;
-    assert_eq!(configs[0]["directoryId"], config);
-    assert_eq!(configs[0]["name"], "审核助手");
-    assert!(configs[0].get("executionStatus").is_none());
-    // 另一类包的标识在交叉路径下不存在，磁盘也不共享。
     assert_eq!(
         app.call("GET", &format!("/v2/patches/config/{work_id}"), Value::Null)
             .await
@@ -353,16 +343,6 @@ async fn binds_moves_and_detaches_only_work_packages() {
     assert_eq!(
         app.call(
             "POST",
-            "/v2/patches/config",
-            json!({"name":"错类","workItemId":a["id"]})
-        )
-        .await
-        .0,
-        400
-    );
-    assert_eq!(
-        app.call(
-            "POST",
             "/v2/patches/work",
             json!({"name":"未知项","workItemId":"missing"})
         )
@@ -396,104 +376,102 @@ async fn binds_moves_and_detaches_only_work_packages() {
     assert_eq!(app.get(dir, "data").await.1, b"immutable reference");
 }
 
-/// 配置包创建即带三个锚点，锚点不能被移动或删除，mcp.json 只接受 JSON 对象。
 #[tokio::test]
-async fn seeds_config_anchors_and_guards_them() {
+async fn manual_work_directory_starts_empty_and_has_no_anchors() {
     let app = Http::new();
-    let work = app.create("work", "空包").await;
+    let work = app.create("空包").await;
     assert_eq!(app.paths(&work).await, Vec::<String>::new());
-
-    let id = app.create("config", "配置包").await;
-    assert_eq!(
-        app.tree(&id).await,
-        vec![
-            json!({"path":"AGENTS.md","kind":"file","size":0}),
-            json!({"path":"mcp.json","kind":"file","size":17}),
-            json!({"path":"skills","kind":"dir"}),
-        ]
-    );
-    assert_eq!(app.get(&id, "mcp.json").await.1, br#"{"mcpServers":{}}"#);
-    assert_eq!(app.get(&id, "AGENTS.md").await.1, b"");
-    // 系统提示词可写，覆盖需要显式确认。
-    assert_eq!(app.put(&id, "AGENTS.md", b"# hola", false).await, 409);
-    assert_eq!(app.put(&id, "AGENTS.md", b"# hola", true).await, 204);
-    assert_eq!(app.get(&id, "AGENTS.md").await.1, b"# hola");
-
-    // 坏 JSON 不覆盖已有文件，也不改变内容。
-    assert_eq!(app.put(&id, "mcp.json", b"not json", true).await, 400);
-    assert_eq!(app.put(&id, "mcp.json", b"[1]", true).await, 400);
-    assert_eq!(app.get(&id, "mcp.json").await.1, br#"{"mcpServers":{}}"#);
-    let body = br#"{"mcpServers":{"tools":{"command":"x"}}}"#;
-    assert_eq!(app.put(&id, "mcp.json", body, true).await, 204);
-    assert_eq!(app.get(&id, "mcp.json").await.1, body);
-    // skills/ 下可以自由建文件。
-    assert_eq!(app.mkdir(&id, "skills/review").await, 204);
-    assert_eq!(
-        app.put(&id, "skills/review/SKILL.md", b"# r", false).await,
-        204
-    );
-
-    for anchor in ["AGENTS.md", "skills", "mcp.json"] {
-        assert_eq!(app.relocate(&id, anchor, "moved").await, 409, "{anchor}");
-        assert_eq!(app.remove(&id, anchor).await, 409, "{anchor}");
-    }
-    // 也不能把其他文件移动或改名成锚点。
-    assert_eq!(
-        app.relocate(&id, "AGENTS.md", "skills/AGENTS.md").await,
-        409
-    );
-    assert_eq!(app.relocate(&id, "skills/review", "prompt").await, 204);
-    assert_eq!(app.relocate(&id, "prompt/SKILL.md", "mcp.json").await, 409);
-    // 工作包没有任何锚点限制。
     assert_eq!(app.put(&work, "AGENTS.md", b"x", false).await, 204);
     assert_eq!(app.mkdir(&work, "skills").await, 204);
     assert_eq!(app.relocate(&work, "AGENTS.md", "prompt.md").await, 204);
     assert_eq!(app.remove(&work, "skills").await, 204);
 }
 
-/// 工作包只能引用已存在的配置包，引用作为受限对象保存在工作包记录中。
 #[tokio::test]
-async fn work_package_accepts_only_config_package_reference() {
-    let app = Http::new();
-    let config_directory = app.create("config", "配置源").await;
-    let config = app.ok("GET", "/v2/patches/config", Value::Null).await;
-    let config_id = config[0]["id"].as_str().unwrap();
-    let work = app
-        .ok(
-            "POST",
-            "/v2/patches/work",
-            json!({"name":"带配置","configPackage":{"id":config_id}}),
+async fn hides_only_legacy_platform_directories_after_reopening_store() {
+    let dir = Temp::new();
+    let store = Store::open(dir.path("work")).unwrap();
+    let allocate = || {
+        directories::allocate(
+            &store,
+            directories::Rules::default(),
+            |root| Ok(dir::write(root, &["file".into()], b"old", false)?),
+            |_, id| Ok(id.to_owned()),
         )
-        .await;
-    assert_eq!(work["configPackage"], json!({"id":config_id}));
-    assert_ne!(work["directoryId"], config_directory);
+        .unwrap()
+    };
+    let config = allocate();
+    let artifact = allocate();
+    let visible = allocate();
+    store
+        .update(|db| {
+            db["configPatches"]["old-config"] = json!({"id":"old-config","directoryId":config});
+            db["executorAttempts"]["old-run"] = json!({"result":{"artifactDirectoryId":artifact}});
+            db["executorAttempts"]["still-running"] = json!({"result":{"status":"running"}});
+            // 其它业务路径也可持有冻结目录，不能把冻结状态当作旧平台的归属标志。
+            directories::freeze(db, &visible)
+        })
+        .unwrap();
+    drop(store);
+    let app = Http::open(dir);
+    for id in [&config, &artifact] {
+        let path = Http::base(id);
+        for suffix in ["", "/tree", "/file?path=file"] {
+            assert_eq!(
+                app.request("GET", &format!("{path}{suffix}"), b"").await.0,
+                404
+            );
+        }
+        let encoded = format!("%{:02X}{}", id.as_bytes()[0], &id[1..]);
+        assert_eq!(app.put(&encoded, "file", b"new", true).await, 404);
+        assert_eq!(app.mkdir(id, "dir").await, 404);
+        assert_eq!(app.relocate(id, "file", "other").await, 404);
+        assert_eq!(app.remove(id, "file").await, 404);
+        assert_eq!(fs::read(app.dir.package(id).join("file")).unwrap(), b"old");
+    }
     assert_eq!(
-        app.call(
-            "POST",
-            "/v2/patches/work",
-            json!({"name":"不存在","configPackage":{"id":"missing"}}),
-        )
-        .await
-        .0,
+        app.call("GET", "/v2/patches/config", Value::Null).await.0,
         404
     );
+    for id in ["old-config", "unknown"] {
+        assert_eq!(
+            app.call(
+                "POST",
+                "/v2/patches/work",
+                json!({"name":"x","configPackage":{"id":id}})
+            )
+            .await
+            .0,
+            400
+        );
+    }
     assert_eq!(
-        app.call(
-            "POST",
-            "/v2/patches/config",
-            json!({"name":"嵌套","configPackage":{"id":config_id}}),
-        )
-        .await
-        .0,
-        400
+        app.ok("GET", "/v2/patches/work", Value::Null).await,
+        json!([])
     );
+    assert_eq!(
+        app.ok("GET", "/v2/directories", Value::Null).await,
+        json!([{"id":visible}])
+    );
+    assert_eq!(app.get(&visible, "file").await, (200, b"old".to_vec()));
+    assert_eq!(app.put(&visible, "file", b"new", true).await, 409);
+    let work = app.create("业务材料").await;
+    let standalone = app.ok("POST", "/v2/directories", json!({})).await;
+    let list = app.ok("GET", "/v2/directories", Value::Null).await;
+    let rows = list.as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    for id in [work.as_str(), standalone["id"].as_str().unwrap()] {
+        assert!(rows.contains(&json!({"id":id})));
+        assert_eq!(app.put(id, "business", b"ok", false).await, 204);
+        assert_eq!(app.get(id, "business").await, (200, b"ok".to_vec()));
+    }
 }
 
-/// 配置包快照使用独立冻结目录，源目录与快照目录互不授予对方写权限。
+/// 目录正文按字节读写，替换已有文件必须显式确认。
 #[tokio::test]
 async fn round_trips_bytes_and_requires_explicit_replace() {
     let app = Http::new();
-    let id = app.create("work", "材料").await;
+    let id = app.create("材料").await;
     let path = "材料/#&!= x.bin";
     let first = [0xffu8, 0x00, 0x01, b'\n'];
     assert_eq!(app.mkdir(&id, "材料").await, 204);
@@ -525,7 +503,7 @@ async fn round_trips_bytes_and_requires_explicit_replace() {
 #[tokio::test]
 async fn rejects_unsafe_paths_and_symlinks() {
     let app = Http::new();
-    let id = app.create("work", "安全").await;
+    let id = app.create("安全").await;
     let outside = app.dir.path("outside");
     fs::create_dir(&outside).unwrap();
     fs::write(outside.join("secret"), b"private").unwrap();
@@ -563,7 +541,7 @@ async fn rejects_unsafe_paths_and_symlinks() {
     assert_eq!(app.put(&id, "alias", b"x", true).await, 500);
     assert_eq!(fs::read(outside.join("secret")).unwrap(), b"private");
     // 包根被换成符号链接时整个包不可用。
-    let other = app.create("work", "被替换").await;
+    let other = app.create("被替换").await;
     let other_root = app.dir.package(&other);
     fs::remove_dir_all(&other_root).unwrap();
     symlink(&outside, &other_root).unwrap();
@@ -579,7 +557,7 @@ async fn rejects_unsafe_paths_and_symlinks() {
 #[tokio::test]
 async fn creates_moves_and_removes_entries() {
     let app = Http::new();
-    let id = app.create("work", "整理").await;
+    let id = app.create("整理").await;
     assert_eq!(app.mkdir(&id, "a").await, 204);
     assert_eq!(app.mkdir(&id, "a").await, 409);
     assert_eq!(app.mkdir(&id, "a/b").await, 204);
@@ -601,7 +579,7 @@ async fn creates_moves_and_removes_entries() {
     assert_eq!(app.remove(&id, "d/exists").await, 204);
     assert_eq!(app.paths(&id).await, vec!["d"]);
     // 跨包隔离：另一份包看不到这些文件。
-    let other = app.create("work", "另一份").await;
+    let other = app.create("另一份").await;
     assert_eq!(app.paths(&other).await, Vec::<String>::new());
 }
 
@@ -609,7 +587,7 @@ async fn creates_moves_and_removes_entries() {
 #[tokio::test]
 async fn serializes_concurrent_writes_to_one_path() {
     let app = Http::new();
-    let id = app.create("work", "并发").await;
+    let id = app.create("并发").await;
     let (one, two) = tokio::join!(
         app.put(&id, ".gitignore", b"a", false),
         app.put(&id, ".gitignore", b"b", false)
@@ -634,8 +612,6 @@ async fn serializes_concurrent_writes_to_one_path() {
         .collect();
     assert_eq!(leftovers, Vec::<String>::new());
     // 失败写入同样不留下临时文件。
-    let config = app.create("config", "配置").await;
-    assert_eq!(app.put(&config, "mcp.json", b"{", true).await, 400);
     assert_eq!(app.put(&id, "shared.bin", b"x", false).await, 409);
     assert_eq!(app.paths(&id).await, vec!["shared.bin"]);
 }

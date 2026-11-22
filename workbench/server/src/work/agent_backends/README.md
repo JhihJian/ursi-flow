@@ -2,6 +2,8 @@
 
 每个 Agent 后端都接收相同的冻结快照，通过[执行器 stdio MCP 契约](../../../../../docs/EXECUTOR-MCP.md)处理工作指令和材料、输出报告。`capabilities` 仅列可选能力：`skills` 对应快照中的 Skill 正文，`tools` 对应管理员授权的工具引用。管理员在登记前审核能力，协议探测只核对执行器接口。
 
+此契约保留在 Workbench 旧文档路径。后端注册表、程序和策略由[执行器平台服务](../../../../../executor-platform/server/README.md)独占。以下环境变量设置在平台进程上，HTTP 检查使用平台管理员令牌。
+
 ## 部署配置
 
 - `URSI_PI_POLICY` 指向全局[模型和只读工具策略](../catalog/HTTP.md)。所有已配置后端共用该文件。

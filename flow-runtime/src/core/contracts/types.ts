@@ -280,6 +280,8 @@ export type NodeRunSource =
 /** An immutable record of one actual visit to a Flow work node. */
 export interface NodeRunRecord {
 	id: string;
+	/** Platform identity committed before dispatch, reused on inspection and cancellation. */
+	attemptId?: string;
 	runId: string;
 	/** Stable fact order within the Run. */
 	sequence: number;
@@ -346,7 +348,7 @@ export interface RunRecoveryRecord {
 	runId: string;
 	sequence: number;
 	interruptedNodeRunId?: string;
-	strategy: "retry_agent" | "fail_command" | "continue_routing";
+	strategy: "retry_agent" | "fail_command" | "continue_routing" | "inspect_attempt";
 	resumedAt: string;
 	summary: string;
 }

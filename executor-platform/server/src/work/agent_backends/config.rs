@@ -94,7 +94,11 @@ impl Registry {
             Description {
                 id: "pi".into(),
                 label: "Pi".into(),
-                capabilities: vec![Capability::Skills, Capability::Tools],
+                capabilities: vec![
+                    Capability::Skills,
+                    Capability::Tools,
+                    Capability::FlowOutcome,
+                ],
             },
             pi.zip(policy.clone()),
         )];

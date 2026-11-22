@@ -3,20 +3,19 @@ import { routes as chatRoutes } from '@/modules/chat/routes'
 import { workItemRoutes } from '@/modules/work-items/routes'
 import { workPatchGeneratorRoutes } from '@/modules/work-patch-generators/routes'
 import { mcpRoutes } from '@/modules/mcp/routes'
-import { patchRoutes } from '@/modules/patches/routes'
-import { definitionRoutes } from '@/modules/definitions/routes'
+import { workPatchRoutes } from '@/modules/patches/routes'
+import { managementRoutes } from './management-routes'
 import AppShell from './AppShell'
 import { LoginGate } from './LoginGate'
 import NotFoundView from './NotFoundView'
 import { RouteErrorAlert } from './RouteErrorAlert'
 
 const protectedRoutes: RouteObject[] = [
-  { path: 'settings/agent-backends', handle: { title: 'Agent 后端' }, lazy: async () => ({ Component: (await import('@/modules/agent-backends/AgentBackends')).AgentBackends }) },
   ...workItemRoutes,
   ...workPatchGeneratorRoutes,
   ...mcpRoutes,
-  ...patchRoutes,
-  ...definitionRoutes,
+  ...workPatchRoutes,
+  ...managementRoutes,
   { path: 'flows', handle: { title: 'Flow 包' }, lazy: async () => ({ Component: (await import('@/modules/flows/Flows')).Flows }) },
   { path: 'flows/new', handle: { title: '创建 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },
   { path: 'flows/:id/edit', handle: { title: '编辑 Flow' }, lazy: async () => ({ Component: (await import('@/modules/flows/FlowEditor')).FlowEditor }) },

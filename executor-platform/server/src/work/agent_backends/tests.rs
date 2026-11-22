@@ -197,7 +197,7 @@ assert sys.stdin.read() == ''
         .unwrap();
     assert_eq!(
         all[0],
-        json!({"id":"pi","label":"Pi","capabilities":["skills","tools"],"configured":false,"status":"unchecked","checkedAt":null})
+        json!({"id":"pi","label":"Pi","capabilities":["skills","tools","flowOutcome"],"configured":false,"status":"unchecked","checkedAt":null})
     );
     assert_eq!(
         all[1],

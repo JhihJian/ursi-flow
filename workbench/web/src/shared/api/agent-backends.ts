@@ -3,7 +3,7 @@ import { requestV2 } from '@/shared/http/client'
 export type AgentBackend = {
   id: string
   label: string
-  capabilities: ('skills' | 'tools')[]
+  capabilities: ('skills' | 'tools' | 'flowOutcome')[]
   configured: boolean
   status: 'unchecked' | 'ready' | 'failed'
   checkedAt: number | null

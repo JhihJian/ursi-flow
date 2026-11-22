@@ -1,7 +1,7 @@
 import type { RouteObject } from 'react-router'
 
 /** 两类包各自的列表与编辑台；应用装配只负责展开这组路由。 */
-export const patchRoutes: RouteObject[] = [
+export const workPatchRoutes: RouteObject[] = [
   {
     path: '/work-patches',
     handle: { title: '工作包' },
@@ -17,6 +17,9 @@ export const patchRoutes: RouteObject[] = [
     handle: { title: '运行工作包' },
     lazy: async () => ({ Component: (await import('./WorkPatchExecute')).WorkPatchExecute }),
   },
+]
+
+export const configPatchRoutes: RouteObject[] = [
   {
     path: '/config-patches',
     handle: { title: '配置包' },
@@ -28,3 +31,5 @@ export const patchRoutes: RouteObject[] = [
     lazy: async () => ({ Component: (await import('./PatchStudio')).ConfigPatchStudio }),
   },
 ]
+
+export const patchRoutes = [...workPatchRoutes, ...configPatchRoutes]

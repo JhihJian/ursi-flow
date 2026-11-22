@@ -1,6 +1,6 @@
 //! Explicit runs are registered before conversion and published with their output.
 use super::{Binding, GeneratorRef, Recipe, Resource, convert, find, generate, resolve};
-use crate::work::{Error, Store, catalog, directories, patches};
+use crate::work::{Error, Store, directories, generators, patches};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -211,7 +211,7 @@ fn publish(store: &Store, job: &Job, output: convert::Generated) -> Result<(), E
         directories::Rules::default(),
         |root| generate::seed(root, &output.files),
         |db, directory_id| {
-            catalog::generator(db, gen_id, revision)?;
+            generators::generator(db, gen_id, revision)?;
             let mut result =
                 json!({"name":output.name,"directoryId":directory_id,"files":manifest});
             if let Some(item) = &job.item {

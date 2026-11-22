@@ -7,13 +7,14 @@ depends-on:
 references:
   - ../../../../docs/design/workbench/SERVER-FLOW.md
   - ../../README.md
+  - ../../../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
 ---
 
 # Server 应用装配
 
 ## 功能意图
 
-将部署者指定的 API 身份、数据目录和工作区装配成可用的 HTTP 服务。`app` 打开私有工作存储，将 v2 工作路由交给统一鉴权层。启用 Flow 时才持有 daemon 子进程句柄，把连接同一 socket 的 `FlowClient` 用于 v1 管理。
+将部署者指定的 API 身份、数据目录和工作区装配成可用的 HTTP 服务。`app` 打开私有业务存储，将 v2 业务路由和执行器平台消费者路由交给统一鉴权层。平台管理接口只在独立平台装配。启用 Flow 时才持有 daemon 子进程句柄，把连接同一 socket 的 `FlowClient` 用于 v1 管理。
 
 ## 关键功能与验收
 
@@ -21,11 +22,14 @@ references:
 
 #### 验收
 
-- `URSI_API_TOKEN` 必填，只接受非空、无空格的可见 ASCII 字符。仅提供令牌时，使用 `0.0.0.0:8080`、数据根目录 `data`、`PATH` 中的 `ursi-flowd` 和当前工作目录。
+- `URSI_API_TOKEN` 必填，只接受非空、无空格的可见 ASCII 字符。入站认证独立于平台身份。监听地址、数据根、daemon 和工作区默认分别为 `0.0.0.0:8080`、`data`、`PATH` 中的 `ursi-flowd` 和当前工作目录。
 - `URSI_LISTEN_ADDR`、`URSI_DATA_DIR`、`URSI_FLOWD_BIN` 和 `URSI_WORKSPACE_DIR` 分别覆盖上述设置。HTTP 使用 `default` 指代配置的工作区。
+- 启用或关闭 Flow 都必须配置 `URSI_EXECUTOR_PLATFORM_URL`（平台 HTTP(S) origin）和 `URSI_EXECUTOR_PLATFORM_TOKEN`（Workbench 消费者令牌）。任一项缺失或格式无效时启动失败，不装配本地执行器管理路由作为替代。
+- `URSI_EXECUTOR_PLATFORM_RUNTIME_TOKEN` 仅供受管 daemon 使用：启动子进程时映射为其 `URSI_EXECUTOR_PLATFORM_TOKEN`，未提供时不传消费者令牌。父进程继续用 Workbench 身份。两者不得共享尝试或制品的访问身份。
 - `URSI_FLOW_ENABLED` 默认 `1`，只接受 `0` 或 `1`。启用时，子进程的 `URSI_FLOW_HOME` 指向私有 `<数据目录>/flow-runtime/`，Server 等待子进程就绪通知后提供 HTTP 服务。关闭时不启动 daemon、不挂载 v1，v2 工作路由仍可用。
-- Server 独占 `<数据目录>/work/work.lock`。`work/` 必须是私有目录，拒绝符号链接及组或其他账户可访问的目录。清单、工作包及独立定义的元数据原子写入 `work.json`，与 daemon 的历史和 socket 分开保存。
+- Server 独占 `<数据目录>/work/work.lock`。`work/` 必须是私有目录，拒绝符号链接及组或其他账户可访问的目录。清单、工作包与生成器等业务元数据原子写入 `work.json`。平台使用独立私有根和 `platform.json`。两种存储根不能互换，也不与 daemon 的历史和 socket 共用。
 - 升级时先取得独占锁，再删除旧派工单据（含尝试与交付）、模板及尝试级配置快照。仅清理制品或快照记录指向、已登记且没有其他引用的目录，不扫描删除无主目录，不跟随符号链接或跨挂载点。清理失败时拒绝启动，保留原元数据以便重试。
+- 业务库升级不向平台导入配置包、定义或尝试。装配业务目录路由时按旧配置包和执行器制品的目录引用排除存量平台文件。无法确认旧记录归属时启动失败。普通业务目录仍按自身的读写状态提供服务。
 - 缺少令牌、地址无效、daemon 无法执行或就绪失败时不报告服务可用。诊断不输出令牌。
 
 ### 独占与关闭

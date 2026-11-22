@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { Catalog, id, optional, readJson, save } from "./catalog.ts";
 import { validateVariables } from "../core/contracts/variables.ts";
 import { BusinessError, invalid } from "./errors.ts";
+import { loadFlow } from "../core/definition/flow-loader.ts";
+import { createFlowExecutionExtensions } from "../executor-adapters/local-pi/runtime.ts";
+import { InMemoryRunStore } from "../core/state/memory-store.ts";
+import { PlatformClient, PlatformAgent, parseExecutorRef, platformConfig, type ExecutorRef, type PlatformConfig } from "../executor-adapters/platform.ts";
 import type { PiProviderConfig } from "../executor-adapters/local-pi/sdk.ts";
 
 export interface Config {
@@ -34,6 +38,9 @@ export function publicConfig(config: Config): PublicConfig {
 /** 轨迹超过这个大小就不整体返回，避免桥接层的响应上限变成 502。 */
 const TRAJECTORY_LIMIT = 8 * 1024 * 1024;
 interface Job {
+	executorRef?: ExecutorRef;
+	platformOrigin?: string;
+	stopRequested?: boolean;
 	id: string;
 	flow: string;
 	revision: string;
@@ -106,9 +113,11 @@ function sameRequest(
 	cwd: string,
 	variables: Record<string, unknown>,
 	expectedRevision?: string,
+	executorRef?: ExecutorRef,
 ) {
 	return (
 		(expectedRevision === undefined || previous.revision === expectedRevision) &&
+		isDeepStrictEqual(previous.executorRef, executorRef) &&
 		previous.flow === flow &&
 		previous.cwd === cwd &&
 		isDeepStrictEqual(previous.variables, variables)
@@ -182,10 +191,12 @@ export class Runs {
 		variables: Record<string, unknown>,
 		readConfig: () => Promise<Config>,
 		expectedRevision?: string,
+		executorRef?: ExecutorRef,
 	) {
 		id(key);
 		id(flow);
 		try {
+			if (executorRef !== undefined) executorRef = parseExecutorRef(executorRef);
 			validateVariables(variables);
 		} catch (e) {
 			if (e instanceof Error && e.constructor === Error) throw invalid(e.message);
@@ -198,12 +209,14 @@ export class Runs {
 		const previous = await this.find(key);
 		let workdir = explicit ? await existingDirectory(cwd as string) : undefined;
 		// 复用 Run ID 的判断不需要读取配置，显式目录的重复请求在这里就能返回。
-		if (previous && workdir && sameRequest(previous, flow, workdir, variables, expectedRevision))
-			return previous;
+		if (previous && workdir) {
+			if (sameRequest(previous, flow, workdir, variables, expectedRevision, executorRef)) return previous;
+			throw new BusinessError("conflict", "Run ID 冲突");
+		}
 		const config = await readConfig();
 		if (!workdir) workdir = await allocateWorkdir(config.workspace, key);
 		if (previous) {
-			if (!sameRequest(previous, flow, workdir, variables, expectedRevision))
+			if (!sameRequest(previous, flow, workdir, variables, expectedRevision, executorRef))
 				throw new BusinessError("conflict", "Run ID 冲突");
 			return previous;
 		}
@@ -215,10 +228,23 @@ export class Runs {
 		if (this.active.size >= config.maxConcurrent)
 			throw new BusinessError("busy", "达到运行并发上限");
 		const { revision } = pinned ?? (await this.catalog.get(flow));
+		let platform: PlatformConfig | undefined;
+		if (executorRef) {
+			try {
+				platform = platformConfig();
+				const client = new PlatformClient(platform);
+				await client.checkNodeExecutor(executorRef);
+				const agentModel = new PlatformAgent(client, executorRef);
+				const pkg = await loadFlow(join(this.catalog.root(revision), flow));
+				const execution = createFlowExecutionExtensions({ agentModel, store: new InMemoryRunStore() });
+				await agentModel.preflight(pkg.flow, { execution, references: pkg.references });
+			} catch (e) { throw invalid(e instanceof Error ? e.message : "无效的平台配置"); }
+		}
 		const dir = this.dir(key);
 		await mkdir(dir, { recursive: true });
 		const job: Job = {
 			id: key,
+			...(executorRef && platform ? { executorRef, platformOrigin: platform.origin } : {}),
 			flow,
 			revision,
 			cwd: workdir,
@@ -226,12 +252,20 @@ export class Runs {
 			config: publicConfig(config),
 			status: "running",
 		};
-		const file = join(dir, "job.json");
+		return this.launch(job, config, platform, false);
+	}
+	private async launch(job: Job, config: Config, platform: PlatformConfig | undefined, resume: boolean) {
+		const { id: key, flow, revision } = job;
+		const dir = this.dir(key), file = join(dir, "job.json");
+		delete job.error;
+		job.status = "running";
 		await save(file, job);
+		const env = { ...process.env };
+		delete env.URSI_EXECUTOR_PLATFORM_TOKEN;
 		const child = fork(
 			fileURLToPath(new URL("./worker.js", import.meta.url)),
 			[],
-			{ detached: true, stdio: ["ignore", "ignore", "inherit", "ipc"] },
+			{ env, detached: true, stdio: ["ignore", "ignore", "inherit", "ipc"] },
 		);
 		let error: string | undefined;
 		child.on("message", (msg: unknown) => {
@@ -249,9 +283,12 @@ export class Runs {
 					const terminal = facts?.runs.find(
 						(r: { id: string }) => r.id === key,
 					)?.status;
+					if (info.stop && job.executorRef) job.stopRequested = true;
 					job.status =
 						terminal && terminal !== "running"
 							? terminal
+							: job.executorRef && (signal || code === 75 || info.stop)
+								? "unknown"
 							: info.stop && signal === "SIGKILL"
 								? (await groupStopped(info.pid))
 									? "stopped"
@@ -271,15 +308,33 @@ export class Runs {
 		});
 		// provider 只经进程间消息交给 worker，避免密钥进入已落盘的 job.json。
 		child.send(
-			{ job, provider: config.provider, path: join(this.catalog.root(revision), flow), dir },
+			{ job, resume, platform, provider: platform ? undefined : config.provider, path: join(this.catalog.root(revision), flow), dir },
 			(err) => {
 				if (err) error = err.message;
 			},
 		);
 		return job;
 	}
+	private boundPlatform(job: Job) {
+		const platform = platformConfig();
+		if (platform.origin !== job.platformOrigin) throw invalid("平台地址与原 Run 不一致");
+		return platform;
+	}
+	async resume(key: string, readConfig: () => Promise<Config>) {
+		const job = await this.get(key);
+		if (this.active.has(key)) return job;
+		if (!job.executorRef || job.status !== "unknown" || job.stopRequested) throw invalid("只能恢复待核实且未请求取消的平台 Run");
+		const config = await readConfig();
+		if (this.active.size >= config.maxConcurrent) throw new BusinessError("busy", "达到运行并发上限");
+		return this.launch(job, config, this.boundPlatform(job), true);
+	}
 	async stop(key: string) {
-		const info = this.active.get(id(key));
+		const before = await this.get(key);
+		const info = this.active.get(key);
+		if (before.executorRef && ["running", "unknown"].includes(before.status)) {
+			before.stopRequested = true;
+			await save(join(this.dir(key), "job.json"), before);
+		}
 		if (info?.pid) {
 			info.stop = true;
 			try {
@@ -289,6 +344,27 @@ export class Runs {
 			}
 			await info.done;
 		}
-		return this.get(key);
+		const job = await this.get(key);
+		if (job.executorRef && job.status === "unknown") {
+			const facts = await optional(readJson(join(this.dir(key), "facts.json")), null);
+			const active = (facts?.nodeRuns ?? []).filter((n: { attemptId?: string; status: string }) => n.attemptId && n.status === "running");
+			try {
+				const client = new PlatformClient(this.boundPlatform(job));
+				const confirmed = await Promise.all(active.map((n: { attemptId: string }) => client.cancel(n.attemptId)));
+				// An orphaned local command is not confirmed stopped by a remote reply.
+				if ((info ? await groupStopped(info.pid) : active.length > 0) && confirmed.every(Boolean)) {
+					job.status = "stopped";
+					delete job.error;
+				} else job.error = "取消待核实，请重试停止原 Run";
+			} catch { job.error = "取消待核实，请检查平台配置并重试停止原 Run"; }
+			await save(join(this.dir(key), "job.json"), job);
+		}
+		return job;
+	}
+	async shutdown(key: string) {
+		const info = this.active.get(key);
+		if (!info || !(await this.get(key)).executorRef) return this.stop(key);
+		try { process.kill(-info.pid, "SIGKILL"); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e; }
+		await info.done;
 	}
 }

@@ -2,7 +2,7 @@
 mod sandbox;
 #[cfg(test)]
 mod tests;
-use crate::work::{Error, directories};
+use crate::work::{Error, directories, mcp::from_mcp_error};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -85,7 +85,7 @@ async fn convert_inner(
     let snapshots = if recipe.resources.is_empty() {
         json!({})
     } else {
-        let mut operation = platform.operation()?;
+        let mut operation = platform.operation().map_err(from_mcp_error)?;
         read_resources(&mut operation, recipe, &mut progress.evidence).await?
     };
     progress.stage = "convert";
@@ -110,7 +110,10 @@ async fn read_resources(
     let mut snapshots = json!({});
     let mut size = 0;
     for r in &recipe.resources {
-        let contents = operation.read_resource(&r.server_id, &r.uri).await?;
+        let contents = operation
+            .read_resource(&r.server_id, &r.uri)
+            .await
+            .map_err(from_mcp_error)?;
         let bytes = serde_json::to_vec(&contents).map_err(|_| invalid("资源内容无效"))?;
         size += bytes.len();
         if size > SNAPSHOT_LIMIT {

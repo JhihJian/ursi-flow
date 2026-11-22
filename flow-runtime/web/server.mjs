@@ -160,7 +160,8 @@ function route(method, path, body, context) {
       if (typeof cwd !== 'string' || cwd.includes('\0')) invalid('工作目录无效')
       return {
         op: 'run.start',
-        args: { id: runId, flow: id, variables, ...(cwd.trim() ? { cwd } : {}) },
+        args: { id: runId, flow: id, variables, ...(cwd.trim() ? { cwd } : {}),
+          ...(body.executorRef !== undefined ? { executorRef: body.executorRef } : {}) },
       }
     }
     if (method === 'GET') return { op: 'flow.get', args: { id } }
@@ -188,11 +189,13 @@ function route(method, path, body, context) {
         node: requireId(safeDecode(match[2])),
       },
     }
-  if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)(\/history|\/stop)?$/))) {
+  if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)(\/history|\/stop|\/resume)?$/))) {
     const id = requireId(safeDecode(match[1]))
     if (!match[2] && method === 'GET') return { op: 'run.get', args: { id } }
     if (match[2] === '/history' && method === 'GET')
       return { op: 'run.history', args: { id } }
+    if (match[2] === '/resume' && method === 'POST')
+      return { op: 'run.resume', args: { id } }
     if (match[2] === '/stop' && method === 'POST')
       return { op: 'run.stop', args: { id } }
   }

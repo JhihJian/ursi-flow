@@ -1,4 +1,5 @@
 import { requestJson } from '@/shared/http/client'
+import type { ExecutorRef } from './agent-executor'
 import type { FlowFiles, FlowPackage, Revision, Run, RunHistory, FlowConfig } from './types'
 
 const flowPath = (id: string) => `/flows/${encodeURIComponent(id)}`
@@ -12,7 +13,7 @@ export const runtime = {
   validate: (id: string, files: FlowFiles) => send<{ id: string; valid: boolean }>('POST', '/flows/validate', { id, files }),
   update: (id: string, files: FlowFiles, expectedRevision: string) => send<Revision>('PUT', flowPath(id), { files, expectedRevision }),
   remove: (id: string) => send('DELETE', flowPath(id)),
-  start: (id: string, variables: Record<string, unknown>, runId?: string) => send<Run>('POST', `${flowPath(id)}/runs`, { runId, workspace: 'default', variables }),
+  start: (id: string, variables: Record<string, unknown>, runId?: string, executorRef?: ExecutorRef) => send<Run>('POST', `${flowPath(id)}/runs`, { runId, workspace: 'default', variables, executorRef }),
   runs: (signal?: AbortSignal) => requestJson<Run[]>('/runs', { signal }),
   run: (id: string, signal?: AbortSignal) => requestJson<Run>(runPath(id), { signal }),
   history: (id: string, signal?: AbortSignal) => requestJson<RunHistory>(`${runPath(id)}/history`, { signal }),

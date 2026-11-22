@@ -5,7 +5,7 @@ mod runs;
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, catalog, patches, valid_label};
+use super::{Error, Store, generators, patches, valid_label};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -84,7 +84,7 @@ fn resolve<'a>(
     revision: u64,
     resources: &[Resource],
 ) -> Result<&'a Value, Error> {
-    let generator = catalog::generator(db, id, revision)?;
+    let generator = generators::generator(db, id, revision)?;
     let aliases = generator["aliases"].as_array().ok_or_else(corrupt)?;
     let unique: HashSet<_> = resources.iter().map(|r| r.alias.as_str()).collect();
     if resources.len() != aliases.len()

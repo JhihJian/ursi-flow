@@ -1,6 +1,7 @@
 ---
 parent: ../../SPEC.md
 references:
+  - ../../docs/flow-spec.md
   - ../../../docs/EXECUTOR-MCP.md
   - ../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
@@ -17,9 +18,17 @@ references:
 
 #### 验收
 
-- 三个工具、参数、响应和公开错误码遵循 执行器 MCP 契约。启动指令为字符串。Pi 从冻结快照读取配置，`runConfig` 仅接受省略或空对象，其他值在启动前返回 `invalid`。`backendRunRef` 为 `pi:<attemptId>`。协议响应不含宿主路径、配置正文或凭据。
+- 三个工具、参数、响应和公开错误码遵循 执行器 MCP 契约。启动指令为字符串。Pi 从冻结快照读取 Agent 配置。`runConfig` 可省略、传空对象，或仅携带 `nodeContract`。无效配置在登记前返回 `invalid`。`backendRunRef` 为 `pi:<attemptId>`。协议响应不含宿主路径、配置正文或凭据。
 - `<URSI_EXECUTOR_ROOT>/<attemptId>/agent-config.json` 与业务工作区分开。配置、尝试目录和工作区属于当前用户且私有；拒绝符号链接、硬链接文件和特殊文件。模型与业务工具授权来自 `URSI_PI_POLICY` 指定的绝对私有文件。
 - 快照最多 2 MiB；校验 `systemPrompt`、`modelProfile`、Skill 的标识、整数修订和正文，以及工具标识和 SHA-256 schema 摘要。额外字段参与快照身份校验，但不传给 SDK。单次任务文本独立于固定指令，最多 256 KiB。
+
+### Flow 节点结果
+
+#### 验收
+
+- `nodeContract` 声明 `outcomes` 和 `variables` 两个字符串数组。每组名称唯一且非空白，结果至少一项，变量名符合 Flow 规则。首次启动冻结契约；同一 ID 更换契约返回 `conflict`。对象键顺序不影响绑定，数组顺序参与绑定。
+- 仅节点会话提供 `submit_flow_outcome`。成功要求会话正常结束且恰有一次合法提交。漏交、重复提交、未声明结果或变量、工具错误和截断均失败，不发布部分结果。
+- 节点成功时在本次尝试的 `artifacts/flow-outcome.json` 写入 `{outcome,variables}`，省略变量归一为 `{}`。普通尝试沿用最终正文 `artifacts/answer.md`。两类制品均不覆盖已有文件。
 
 ### 持久登记与故障核实
 

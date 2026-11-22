@@ -23,7 +23,9 @@ ursi-flow run history review-001
 ursi-flow run stop review-001
 ```
 
-`flow list|get|update|delete` 管理已登记的包。`run list` 列出运行。`run start` 使用调用方当前工作目录，返回即表示已登记，模型或执行配置错误记在运行结果里。相同 Run ID、流程、工作目录和变量重提时返回已有记录。`run history` 返回管理状态 `job` 及已提交的运行、节点、路由和执行证据。中止的节点可能只有开始记录，不伪造 outcome。配置和流程包的修订对后续运行生效。
+平台节点启动示例：`ursi-flow run start review '{"任务":"检查材料"}' review-002 '{"id":"reviewer","revision":7}'`。平台地址和令牌由 daemon 配置。重启后使用 `ursi-flow run resume review-002` 核实原运行；已请求取消的运行用 `ursi-flow run stop review-002` 继续核实停止状态。
+
+`flow list|get|update|delete` 管理已登记的包。`run list` 列出运行。`run start` 使用调用方当前工作目录，返回即表示已登记，模型或执行配置错误记在运行结果里。相同 Run ID、流程、工作目录、变量和执行器引用重提时返回已有记录。`run history` 返回管理状态 `job` 及已提交的运行、节点、路由和执行证据。中止的节点可能只有开始记录，不伪造 outcome。配置和流程包的修订对后续运行生效。
 
 Rust 调用方要固定版本时，使用 `FlowClient::start_pinned(run_id, flow, cwd, variables, revision)`。`revision` 是整个 Flow 目录的发布修订。SDK 只发一次 `run.startPinned` 请求；daemon 在登记新 Run 前核对修订，过期返回 `io::ErrorKind::AlreadyExists`。响应丢失时，可用同一 ID 和原参数重试。即使目录已更新或 Flow 已删除，匹配原绑定也会返回已有 Run；更换修订、Flow、工作目录或变量会返回冲突。普通 `start` 和 CLI 的启动方式不变。
 

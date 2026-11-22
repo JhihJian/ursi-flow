@@ -157,6 +157,12 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
     variables: { 任务: '检查' },
   })
   assert.deepEqual(daemon.calls[17].args, { maxConcurrent: 2 })
+
+  const executorRef = { id: 'reviewer', revision: 7 }
+  await call('POST', '/api/v1/flows/ordinary/runs', { runId: 'remote', executorRef })
+  assert.deepEqual(daemon.calls.at(-1).args.executorRef, executorRef)
+  await call('POST', '/api/v1/runs/remote/resume')
+  assert.deepEqual(daemon.calls.at(-1), { v: 1, op: 'run.resume', args: { id: 'remote' } })
 })
 
 test('启动运行只接受 default 工作区，缺省 Run ID 由服务端生成', async (t) => {

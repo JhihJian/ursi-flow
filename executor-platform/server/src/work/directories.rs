@@ -2,7 +2,7 @@
 //!
 //! 本模块负责路由、目录记录和写锁；文件树操作归 [fs]，路径约束归 [Rules]。
 //! 上层资源通过 [allocate] 建立目录，并在同一笔存储更新中登记自己的记录。
-pub(super) mod fs;
+pub mod fs;
 #[cfg(test)]
 mod tests;
 
@@ -42,11 +42,11 @@ impl From<Fault> for Error {
 /// 目录的路径约束：固定位置不能移动或删除，指定文件必须是 JSON 对象。
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Rules {
+pub struct Rules {
     #[serde(default)]
-    pub(super) fixed: Vec<String>,
+    pub fixed: Vec<String>,
     #[serde(default)]
-    pub(super) json_objects: Vec<String>,
+    pub json_objects: Vec<String>,
 }
 
 impl Rules {
@@ -147,7 +147,7 @@ impl Record {
     }
 }
 
-pub(super) fn routes(store: Store) -> io::Result<Router> {
+pub fn routes(store: Store) -> io::Result<Router> {
     fs::prepare(store.dir())?;
     Ok(Router::new()
         .route("/v2/directories", get(index).post(create))
@@ -195,7 +195,7 @@ fn records_mut(db: &mut Value) -> Result<&mut Map<String, Value>, Error> {
 }
 
 /// 在 allocate 的登记回调中冻结新目录，使首次可见的状态即为只读。
-pub(super) fn freeze(db: &mut Value, id: &str) -> Result<(), Error> {
+pub fn freeze(db: &mut Value, id: &str) -> Result<(), Error> {
     let record = records_mut(db)?.get_mut(id).ok_or_else(corrupt)?;
     record["state"] = json!(Mode::Frozen);
     Ok(())
@@ -215,7 +215,7 @@ fn valid_id(id: &str) -> Result<(), Error> {
 }
 
 /// 调用方持有 Store 锁，跨多个文件读取时不能再获取同一把锁。
-pub(super) fn registered_root(store_dir: &FsPath, db: &Value, id: &str) -> Result<PathBuf, Error> {
+pub fn registered_root(store_dir: &FsPath, db: &Value, id: &str) -> Result<PathBuf, Error> {
     valid_id(id)?;
     find(db, id)?;
     Ok(fs::root(store_dir)?.join(id))
@@ -235,7 +235,7 @@ fn located(store: &Store, id: &str) -> Result<(Record, PathBuf), Error> {
 
 /// 先建目录并执行 seed，再在同一笔更新中登记目录元信息和调用方记录。
 /// 已确认未提交时清理目录；若存储替换后的同步失败，保留目录供重启恢复。
-pub(super) fn allocate<T>(
+pub fn allocate<T>(
     store: &Store,
     rules: Rules,
     seed: impl FnOnce(&FsPath) -> Result<(), Error>,

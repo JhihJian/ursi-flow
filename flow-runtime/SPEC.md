@@ -2,9 +2,11 @@
 parent: ../SPEC.md
 depends-on:
   - ../executor-sdk/SPEC.md
+  - ../executor-platform/server/SPEC.md
 references:
   - docs/flow-spec.md
   - ../docs/EXECUTOR-MCP.md
+  - ../workbench/EXECUTOR-INTEGRATION.md
 ---
 
 # Flow Runtime
@@ -29,7 +31,7 @@ references:
 
 #### 验收
 
-- daemon 执行的每次 Agent 节点都在运行目录的 `trajectories/` 留下 `<节点执行 ID>.jsonl` 会话切片，条目保留原始 `id`/`parentId`，首行是合成会话头；运行中的节点只能读到已产生的部分。
+- daemon 通过本地 Pi 执行的每次 Agent 节点都在运行目录的 `trajectories/` 留下 `<节点执行 ID>.jsonl` 会话切片，条目保留原始 `id`/`parentId`，首行是合成会话头；运行中的节点只能读到已产生的部分。
 - `run.trajectory` 按节点执行读取切片，文件不存在返回 `not_found`，超过 8 MiB 只返回大小与 `omitted`；写入轨迹失败不改变节点结果。
 - 模型连续三次提交节点不允许的结果时本轮结束，节点失败原因保留最后一次拒绝信息。
 
@@ -40,7 +42,7 @@ Daemon 的运行配置保存工作区根目录 `workspace`。`run.start` 不带 
 #### 验收
 
 - 配置里 `workspace` 必须是绝对路径，保存时建目录；留空表示必须为每次运行指定目录。
-- 不带 `cwd` 启动时，运行目录为 `<workspace>/<Run ID>` 的真实路径，工作区根目录不存在时自动创建；命令与 Agent 都在该目录下执行。
+- 不带 `cwd` 启动时，运行目录为 `<workspace>/<Run ID>` 的真实路径，工作区根目录不存在时自动创建；命令与本地 Pi Agent 在该目录下执行。
 - 显式 `cwd` 优先，且必须是已存在的目录，否则返回 `invalid_request`。
 - 既无 `cwd` 又无 `workspace` 时返回 `invalid_request`，消息指出可去运行配置填写工作区根目录。
 - 同一 Run ID 重试要求 Flow、解析后的工作目录与变量一致；换了工作目录返回 `conflict`，不重复执行。
@@ -56,6 +58,18 @@ Daemon 将固定修订的启动与目录发布串行处理。首次启动核对�
 - `flow.list` 只返回标识；`flow.summaries` 一次返回当前修订下每个包的名称、说明、节点数、并行数、变量数与修订。单个包解析失败只在该条带错误原因，不影响其他条目。
 - 已发布的包可从 `versions/v1/<Flow ID>/` 读取，`v1` 表示 Flow 规范格式版本。校验通过后才原子切换当前目录。历史修订存放在 `.revisions/<修订>/`，供 Run 固定读取和编辑冲突检查。
 - 发布的包包含 `FLOW.md` 和按包内相对路径提供的文本附件。读取包保留文件路径与内容，路径不能越过包根，文件与目录不能重名。保存附件不改变运行时对 `references/` 和 `scripts/` 的资源解析规则。
+
+### 将 Agent 节点交给平台执行
+
+`run.start` 和 `run.startPinned` 可指定 `executorRef: {id, revision}`。引用固定到整个 Run（含子 Flow），参与 Run ID 冲突检查。省略引用使用本地 Pi。命令、变量校验与路由仍由 Runtime 负责。
+
+#### 验收
+
+- 平台模式不需要本地模型 provider。仅支持独立的 `新建Agent` 访问，预检整个引用闭包，拒绝复用会话、本地 Agent 装配能力与包内 references 链接。平台令牌不进入 Run 记录。
+- 每次访问先保存新的 `attemptId`，然后 `PUT /api/v2/executor-attempts/{attemptId}`。正文包含 `workInstruction: {text, encoding: "utf-8"}`、固定的 `executorRef` 和 `runConfig.nodeContract: {outcomes, variables}`。这两个数组分别是本节点的结果名与可写变量名。
+- 启动回执丢失后只 GET 原尝试。daemon 重启后，`run.resume` 使用原平台和已记录的 ID 核实结果，同一次节点访问不会重复启动。未确认状态不触发路由。
+- `run.stop` 通过同一路径的 `/cancel` 发起 POST。未确认停止时返回 `unknown` 并记录取消意图，此后可重试停止，不能恢复路由。
+- `succeeded` 后按 `GET /api/v2/directories/{artifactDirectoryId}/file?path=flow-outcome.json` 读取结构化结果。只有 `outcome` 合法且 `variables` 符合所选结果的声明才选边；缺失或非法的结果文件使节点失败。
 
 ### Flow Executor MCP stdio adapter
 

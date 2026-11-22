@@ -110,7 +110,7 @@ impl FlowClient {
         self.request("flow.delete", json!({"id":id}))
     }
     pub fn start(&self, run_id: &str, flow: &str, cwd: &Path, variables: Value) -> Result<Value> {
-        self.start_request(run_id, flow, cwd, variables, None)
+        self.start_with_executor(run_id, flow, cwd, variables, None, None)
     }
     /// Start only at the specified catalog revision, or return the matching existing run.
     pub fn start_pinned(
@@ -121,15 +121,17 @@ impl FlowClient {
         variables: Value,
         revision: &str,
     ) -> io::Result<Value> {
-        self.start_request(run_id, flow, cwd, variables, Some(revision))
+        self.start_with_executor(run_id, flow, cwd, variables, Some(revision), None)
     }
-    fn start_request(
+    /// Select a published executor for all Agent nodes. The daemon validates the reference.
+    pub fn start_with_executor(
         &self,
         run_id: &str,
         flow: &str,
         cwd: &Path,
         variables: Value,
         revision: Option<&str>,
+        executor_ref: Option<Value>,
     ) -> Result<Value> {
         // Resolve relative to the client; the daemon checks and canonicalizes the directory.
         let cwd = std::path::absolute(cwd)?;
@@ -137,12 +139,18 @@ impl FlowClient {
             .to_str()
             .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "工作目录不是 UTF-8"))?;
         let mut args = json!({"id":run_id,"flow":flow,"cwd":cwd,"variables":variables});
+        if let Some(executor_ref) = executor_ref {
+            args["executorRef"] = executor_ref;
+        }
         if let Some(revision) = revision {
             args["revision"] = json!(revision);
             self.request("run.startPinned", args)
         } else {
             self.request("run.start", args)
         }
+    }
+    pub fn resume(&self, id: &str) -> Result<Value> {
+        self.request("run.resume", json!({"id":id}))
     }
     pub fn stop(&self, id: &str) -> Result<Value> {
         self.request("run.stop", json!({"id":id}))

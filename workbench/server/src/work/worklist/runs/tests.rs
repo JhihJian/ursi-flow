@@ -10,7 +10,7 @@ fn fixture() -> (Temp, Service) {
     let temp = Temp(std::env::temp_dir().join(Uuid::new_v4().to_string()));
     let store = Store::open(temp.0.clone()).unwrap();
     store.update(|db| {
-        db["catalog"][catalog::GENERATORS]["g"] = json!({"active":true,"revisions":[{"id":"g","name":"测试","revision":1,"aliases":[],"script":"unused"}]});
+        db["catalog"][generators::GENERATORS]["g"] = json!({"active":true,"revisions":[{"id":"g","name":"测试","revision":1,"aliases":[],"script":"unused"}]});
         db["workListItems"]["item"] = json!({"id":"item","title":"标题","revision":1,"category":"one_time","status":"pending","generator":{"id":"g","revision":1,"resources":[]}});
         Ok(())
     }).unwrap();

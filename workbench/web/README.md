@@ -37,6 +37,18 @@ URSI_ALLOWED_HOSTS=workbench.lan,.example.com npm run dev
 
 开发服务默认将 `/api/v1` 与 `/api/v2` 转发到 `http://127.0.0.1:8080`，可通过 `URSI_API_PROXY` 修改目标；`vite preview` 提供构建产物时使用同一套代理。生产环境使用 `npm run build` 生成的 `dist/`，由独立的静态服务提供页面，并通过反向代理将同源 `/api` 请求转发给 Server，仅对前端路由启用 SPA 回退。Server 不提供静态资源。令牌通过请求头传递，不写入 URL 或构建配置。
 
+## 执行器平台接入
+
+在部署后的 `index.html` 中设置管理入口，无需重新编译：
+
+```html
+<meta name="ursi-executor-management-url" content="https://executor.example.org/console/" />
+```
+
+填入专有管理页面地址后，桌面侧栏与移动抽屉中的配置包、资源、执行器与后端入口合并为「执行器管理平台」。留空时使用内置的同一套管理页面。此设置只改变导航，不传递登录令牌。Workbench 的 `/api/v2` 请求始终发送到本源，由 Workbench Server 按部署配置代理给平台；`URSI_API_PROXY` 应指向 Workbench Server。平台管理页的构建与部署见[独立入口说明](../../executor-platform/web/README.md)。
+
+在「工作包 → 运行工作包」选启用的执行器和已发布的 Agent 修订。直接运行时由 Workbench 处理当前包的材料；切换到「启动 Flow」则选择已保存的 Flow，输入该 Flow 的变量。同一个 `{id, revision}` 作为顶层 `executorRef` 传给 `POST /api/v1/flows/:id/runs`，不会把工作包目录当成 Runtime 的本机路径。Flow 编辑页也可选「平台执行器修订」，或保留 Runtime 默认执行方式。两处均打开服务返回的 Run 详情。
+
 ## 操作（Flow 工具）
 
 | 页面 | 操作 |

@@ -9,7 +9,7 @@ import { ResourceState } from '@/shared/ui/resource-state'
 
 const connectivity = { unchecked: '未检查', ready: '已连通', failed: '检查失败' }
 const tones = { unchecked: 'text-txt3', ready: 'text-ok', failed: 'text-err' }
-const capabilityNames = { skills: 'Skills', tools: 'Tools' }
+const capabilityNames = { skills: 'Skills', tools: 'Tools', flowOutcome: 'Flow 节点结果' }
 const localTime = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium' })
 
 function BackendRow({ initial }: { initial: AgentBackend }) {

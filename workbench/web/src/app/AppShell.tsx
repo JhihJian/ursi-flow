@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { Link, Outlet, useLocation, useMatches } from 'react-router'
 
 import { readToken, subscribeSession } from '@/shared/http/session'
-import { useFeedbackStore } from '@/shared/stores/feedback'
+import { FeedbackHost } from './FeedbackHost'
 import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
-import { Modal } from '@/shared/ui/modal'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
 import { AppSidebar } from './AppSidebar'
-import { cn } from '@/shared/lib/utils'
-import { navigationGroups, useFlowAvailability } from './navigation'
+import { deployedNavigation, navigationGroups, useFlowAvailability } from './navigation'
 
 
 function routeTitle(matches: { handle?: unknown }[]): string | undefined {
@@ -29,13 +27,9 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
   const location = useLocation()
   const matches = useMatches()
   const flow = useFlowAvailability(signedIn)
-  const groups = navigationGroups.map(group => ({ ...group,
+  const groups = deployedNavigation().map(group => ({ ...group,
     items: group.items.filter(item => !item.requiresFlow || flow.data),
   })).filter(group => group.items.length > 0)
-  const toasts = useFeedbackStore((state) => state.toasts)
-  const dismissToast = useFeedbackStore((state) => state.dismissToast)
-  const confirmation = useFeedbackStore((state) => state.confirmation)
-  const finishConfirmation = useFeedbackStore((state) => state.finishConfirmation)
 
   const [drawerPath, setDrawerPath] = useState<string | null>(null)
   const drawerOpen = drawerPath !== null && drawerPath === location.pathname
@@ -106,34 +100,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
       </Sheet>
 
 
-      <Modal
-        open={Boolean(confirmation)}
-        title={confirmation?.title}
-        width={440}
-        onClose={() => { finishConfirmation(false) }}
-        footer={(
-          <>
-            <Button autoFocus onClick={() => { finishConfirmation(false) }}>取消</Button>
-            <Button variant={confirmation?.danger ? 'danger' : 'primary'} onClick={() => { finishConfirmation(true) }}>
-              {confirmation?.confirmLabel || '确认'}
-            </Button>
-          </>
-        )}
-      >
-        <p className="text-sm leading-7 text-txt2">{confirmation?.description}</p>
-      </Modal>
-
-      <div className="toast-region" aria-live="polite" aria-relevant="additions" aria-label="操作通知">
-        {toasts.map((toast) => (
-          <div key={toast.id} className={cn('toast-item', toast.kind === 'error' ? 'border-err/30' : 'border-line')}>
-            <Icon name={toast.kind === 'error' ? 'warning' : 'check'} className={toast.kind === 'error' ? 'text-err' : 'text-ok'} />
-            <p className="min-w-0 flex-1 break-words text-sm text-txt">{toast.message}</p>
-            <button type="button" className="icon-button h-7 w-7" aria-label="关闭通知" onClick={() => { dismissToast(toast.id) }}>
-              <Icon name="close" size={15} />
-            </button>
-          </div>
-        ))}
-      </div>
+      <FeedbackHost />
     </>
   )
 }

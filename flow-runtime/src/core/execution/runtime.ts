@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { AttemptUnconfirmed } from "../contracts/extensions.ts";
 import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
 	AgentRunExecutor,
@@ -366,6 +367,13 @@ export class FlowCoordinator {
 					runtimeToolDefinitions: runtimeToolsForNode(this.flow, target),
 				});
 		}
+		if (current?.attemptId && (current.status === "running" || current.status === "interrupted")) {
+			if (!this.agentModel.allocateAttemptId) throw Error("恢复需要原平台执行器");
+			const round = run.currentParallelRoundId ? await this.requireParallelRound(run, run.currentParallelRoundId) : undefined;
+			await this.recordRecovery(run, current.id, "inspect_attempt", "按已保存的尝试 ID 核实节点结果");
+			const result = await this.executePreparedNode(run, current, resumedOptions.cwd, new Map(), round, undefined, true, true);
+			return this.continueRun(run, current.nodeRef, current.input, resumedOptions, current.enteredFrom, false, result);
+		}
 		if (run.currentParallelRoundId) {
 			const resumeNodeRef = run.currentNodeRef ?? this.flow.startNodeRef;
 			await this.agentModel.start(
@@ -599,6 +607,7 @@ export class FlowCoordinator {
 				);
 			}
 		} catch (error) {
+			if (error instanceof AttemptUnconfirmed) throw error;
 			if (run.status !== "failed") {
 				await this.failRun(run, toFlowError(error, "unknown"));
 			}
@@ -787,6 +796,8 @@ export class FlowCoordinator {
 			retryOf: retryOf?.id,
 			parallelRoundId: round?.id,
 		};
+		if (node.action.kind === "新建Agent" && this.agentModel.allocateAttemptId)
+			record.attemptId = this.agentModel.allocateAttemptId();
 		if (node.action.kind === "执行Flow") record.childRunId = randomUUID();
 		const recovery =
 			source.kind === "recovery" && retryOf
@@ -865,6 +876,7 @@ export class FlowCoordinator {
 		round?: ParallelRoundRecord,
 		branchRef?: string,
 		newInputSemantics = false,
+		inspectOnly = false,
 	): Promise<{ record: NodeRunRecord; outcome: NodeOutcome }> {
 		const node = this.flow.nodes.get(record.nodeRef);
 		if (!node) {
@@ -928,6 +940,8 @@ export class FlowCoordinator {
 					runId: run.id,
 					action: node.action.kind,
 					nodeExecutionReference: record.id,
+					attemptId: record.attemptId,
+					inspectOnly,
 					capabilities: normalizeAgentCapabilities(this.flow.capabilities),
 					profile,
 					prompt: renderAgentPrompt(
@@ -972,6 +986,7 @@ export class FlowCoordinator {
 			await this.completeNode(run, record, outcome, round, branchRef);
 			return { record, outcome };
 		} catch (error) {
+			if (error instanceof AttemptUnconfirmed) throw error;
 			if (record.status !== "failed") {
 				await this.failNode(
 					run,
@@ -1048,6 +1063,7 @@ export class FlowCoordinator {
 				parentNodeRunId: record.id,
 			});
 		} catch (error) {
+			if (error instanceof AttemptUnconfirmed) throw error;
 			const persisted = await this.store.getRun(childRunId);
 			if (persisted) return persisted;
 			throw error;
@@ -1180,6 +1196,7 @@ export class FlowCoordinator {
 				{ record: current, outcome },
 			);
 		} catch (error) {
+			if (error instanceof AttemptUnconfirmed) throw error;
 			if (current.status !== "failed")
 				await this.failNode(run, current, toFlowError(error, "flow_reference"));
 			throw error;

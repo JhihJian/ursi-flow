@@ -26,6 +26,8 @@ pub(in crate::work) struct Entry {
 enum Capability {
     Skills,
     Tools,
+    #[serde(rename = "flowOutcome")]
+    FlowOutcome,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +142,12 @@ impl Registry {
 
     fn backend(&self, id: &str) -> Option<&Backend> {
         self.0.backends.iter().find(|b| b.info.id == id)
+    }
+
+    pub(in crate::work) fn supports_flow(&self, id: &str) -> bool {
+        self.backend(id).is_some_and(|b| {
+            b.entry.is_some() && b.info.capabilities.contains(&Capability::FlowOutcome)
+        })
     }
 
     pub(in crate::work) fn lookup(&self, id: &str) -> Result<Entry, Error> {

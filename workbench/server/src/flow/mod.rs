@@ -53,6 +53,7 @@ impl FlowService {
         run_id: Option<String>,
         workspace: &str,
         variables: Value,
+        executor_ref: Option<Value>,
     ) -> io::Result<Value> {
         if workspace != "default" {
             return Err(io::Error::new(
@@ -66,6 +67,7 @@ impl FlowService {
                 flow,
                 cwd: self.workspace.clone(),
                 variables,
+                executor_ref,
             })
             .await
     }

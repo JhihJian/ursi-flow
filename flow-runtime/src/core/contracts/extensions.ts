@@ -17,7 +17,12 @@ import type {
 	RuntimeToolDefinition,
 } from "./types.ts";
 
+// A remote operation may still be running. Preserve its cursor for inspection.
+export class AttemptUnconfirmed extends Error {}
+
 export interface AgentNodeExecutionRequest {
+	attemptId?: string;
+	inspectOnly?: boolean;
 	runId: string;
 	action: "新建Agent" | "复用Agent";
 	nodeExecutionReference: string;
@@ -31,6 +36,7 @@ export interface AgentNodeExecutionRequest {
 }
 
 export interface AgentRunExecutor {
+	readonly allocateAttemptId?: () => string;
 	readonly extensions: AgentHarnessExtensions;
 	preflight(
 		flow: FlowDefinition,
@@ -52,7 +58,7 @@ export interface AgentRunExecutor {
 	): Promise<void>;
 	executeNode(
 		request: AgentNodeExecutionRequest,
-	): Promise<{ outcome: NodeOutcome; session: NodeSession }>;
+	): Promise<{ outcome: NodeOutcome; session?: NodeSession }>;
 	end(runId: string): Promise<void>;
 }
 

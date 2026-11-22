@@ -17,12 +17,21 @@ mod legacy;
 mod tests;
 
 #[derive(Clone)]
-pub(super) struct Store(Arc<Inner>);
+pub struct Store(Arc<Inner>);
 struct Inner {
     dir: PathBuf,
+    filename: &'static str,
     // None: rename succeeded but directory sync failed. Only open() can recover.
     db: Mutex<Option<Value>>,
-    _lock: File,
+    lock: File,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        // A concurrent fork may still hold a copy of this file description until
+        // exec closes it. Release ownership when the last Store handle is gone.
+        unsafe { libc::flock(self.lock.as_raw_fd(), libc::LOCK_UN) };
+    }
 }
 
 fn unavailable() -> Error {
@@ -41,11 +50,19 @@ fn fits_reader(value: &Value, remaining: usize) -> bool {
 }
 
 impl Store {
-    pub(super) fn dir(&self) -> &Path {
+    pub fn dir(&self) -> &Path {
         &self.0.dir
     }
 
     pub fn open(dir: PathBuf) -> io::Result<Self> {
+        Self::open_role(dir, "work.json")
+    }
+
+    pub(super) fn open_platform(dir: PathBuf) -> io::Result<Self> {
+        Self::open_role(dir, "platform.json")
+    }
+
+    fn open_role(dir: PathBuf, filename: &'static str) -> io::Result<Self> {
         DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
         if fs::symlink_metadata(&dir)?.file_type().is_symlink()
             || dir.metadata()?.permissions().mode() & 0o077 != 0
@@ -58,8 +75,10 @@ impl Store {
         // Subprocesses receive paths derived from the store. Keep them absolute so
         // they cannot be reinterpreted relative to an executor's workspace.
         let dir = fs::canonicalize(dir)?;
-        let lock = OpenOptions::new()
+        let mut lock = OpenOptions::new()
+            .read(true)
             .write(true)
+            .custom_flags(libc::O_NOFOLLOW)
             .create(true)
             .truncate(false)
             .mode(0o600)
@@ -67,7 +86,24 @@ impl Store {
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             return Err(io::Error::last_os_error());
         }
-        let db: Value = match File::open(dir.join("work.json")) {
+        // Both roles contend on the same lock; its durable tag also rejects accidental
+        // reuse after the other process has stopped. An empty lock is a pre-split store.
+        let mut tag = String::new();
+        io::Read::read_to_string(&mut lock, &mut tag)?;
+        let other = if filename == "platform.json" {
+            "work.json"
+        } else {
+            "platform.json"
+        };
+        if (!tag.is_empty() && tag != filename) || dir.join(other).try_exists()? {
+            return Err(io::Error::other("平台和 Workbench 必须使用独立数据目录"));
+        }
+        if tag.is_empty() {
+            lock.write_all(filename.as_bytes())?;
+            lock.sync_all()?;
+            File::open(&dir)?.sync_all()?;
+        }
+        let db: Value = match File::open(dir.join(filename)) {
             Ok(f) => serde_json::from_reader(BufReader::new(f))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => json!({}),
             Err(e) => return Err(e),
@@ -81,10 +117,11 @@ impl Store {
             .is_some_and(|rows| rows.values().any(|row| row.get("status").is_none()));
         let store = Self(Arc::new(Inner {
             dir,
+            filename,
             db: Mutex::new(Some(db)),
-            _lock: lock,
+            lock,
         }));
-        if retire_dispatch || split_categories {
+        if filename == "work.json" && (retire_dispatch || split_categories) {
             store
                 .update(|db| {
                     if split_categories {
@@ -152,7 +189,7 @@ impl Store {
             serde_json::to_writer(&mut writer, next)?;
             writer.flush()?;
             writer.get_ref().sync_all()?;
-            fs::rename(&tmp, self.0.dir.join("work.json"))
+            fs::rename(&tmp, self.0.dir.join(self.0.filename))
         })();
         if publish.is_err() {
             let _ = fs::remove_file(tmp);

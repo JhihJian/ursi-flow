@@ -108,6 +108,49 @@ test('隔离 SDK 按冻结系统提示、skill 和工作指令调用受限输入
   assert.deepEqual(calls.at(-1).msg.params, { name: 'get', arguments: { id: 'T-7' } });
 });
 
+const nodeContract = { outcomes: ['通过', '退回'], variables: ['摘要'] };
+
+test('节点工具只接受冻结契约，发布结构化制品而非最终正文', async t => {
+  for (const variables of [undefined, { 摘要: { flags: [false, null, 3] } }]) {
+    await t.test(variables ? '保留 JSON 值' : '省略变量得到空对象', async t => {
+      const requests = [];
+      const url = await serve(t, (_req, res, body) => {
+        requests.push(body);
+        if (requests.length === 1) toolCall(res, 'submit_flow_outcome', { outcome: '通过', variables });
+        else stream(res, { role: 'assistant', content: '退回' });
+      });
+      const f = await fixture(t, url);
+      await runPi(f.config, f.ws, 'review', signal, nodeContract);
+      const schema = requests[0].tools.find(t => t.function.name === 'submit_flow_outcome').function.parameters;
+      assert.deepEqual(schema.properties.outcome.enum, nodeContract.outcomes);
+      assert.deepEqual(Object.keys(schema.properties.variables.properties), nodeContract.variables);
+      assert.deepEqual(await readdir(join(f.ws, 'artifacts')), ['flow-outcome.json']);
+      assert.deepEqual(JSON.parse(await readFile(join(f.ws, 'artifacts/flow-outcome.json'))), { outcome: '通过', variables: variables ?? {} });
+    });
+  }
+});
+
+test('只有一次合法提交且会话正常结束才发布节点制品', async t => {
+  const valid = { outcome: '通过' };
+  for (const [label, calls, finish] of [
+    ['仅回复文本', []], ['非法结果', [{ outcome: 'unknown' }]],
+    ['禁止转换数字结果', [{ outcome: 1 }]], ['禁止转换字符串变量表', [{ ...valid, variables: '{}' }]],
+    ['非法变量', [{ ...valid, variables: { extra: true } }]], ['非法字段', [{ ...valid, extra: true }]],
+    ['重复提交', [valid, valid]], ['提交后截断', [valid], 'length'],
+    ['结果含凭据', [{ ...valid, variables: { 摘要: [secret] } }]],
+  ]) await t.test(label, async t => {
+    let n = 0;
+    const url = await serve(t, (_req, res) => {
+      if (n < calls.length) toolCall(res, 'submit_flow_outcome', calls[n++]);
+      else stream(res, { role: 'assistant', content: JSON.stringify(valid) }, finish);
+    });
+    const f = await fixture(t, url);
+    const contract = { ...nodeContract, outcomes: [...nodeContract.outcomes, '1'] };
+    await assert.rejects(() => runPi(f.config, f.ws, 'review', signal, contract), /^Error: Pi run failed$/);
+    assert.deepEqual(await readdir(join(f.ws, 'artifacts')), []);
+  });
+});
+
 test('撤销和 schema 漂移在 tools/call 之前生效', async t => {
   const f = await fixture(t);
   let revokeDuringDiscovery = false;

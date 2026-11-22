@@ -1,4 +1,4 @@
-const key = 'ursi-flow:bearer'
+const key = import.meta.env.URSI_EXECUTOR_CONSOLE ? 'ursi-executor:bearer' : 'ursi-flow:bearer'
 const changed = 'ursi-flow:session'
 
 export function readToken(): string {

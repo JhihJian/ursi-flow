@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { ExecutorError, type ExecutorResult, type ExecutorStartRequest, type ExecutorStatus } from "ursi-executor-sdk";
 import { layout, policyFile, snapshot } from "./files.ts";
+import { parseRunConfig } from "./node-contract.ts";
 import { status, withLedger } from "./ledger.ts";
 
 function result(attemptId: string, status: ExecutorStatus): ExecutorResult {
@@ -22,12 +23,14 @@ export class PiJobs {
 	private env: NodeJS.ProcessEnv;
 	constructor(env = process.env) { this.env = env; }
 	async start(req: ExecutorStartRequest) {
-		if (Object.keys(req.runConfig ?? {}).length) throw new ExecutorError("invalid");
+		const nodeContract = parseRunConfig(req.runConfig);
 		const { attemptId: id, workInstruction: text } = req;
 		if (!text.trim() || Buffer.byteLength(text) > 256 * 1024) throw new ExecutorError("invalid");
 		const paths = layout(this.env, id);
 		const { digest } = snapshot(paths.attempt);
-		const hash = createHash("sha256").update(JSON.stringify(text)).digest("hex");
+		// Keep the ordinary-attempt payload (and its identity) unchanged.
+		const input = JSON.stringify(nodeContract ? { instruction: text, nodeContract } : text);
+		const hash = createHash("sha256").update(input).digest("hex");
 		const existing = withLedger(paths.root, l => {
 			const row = l.get(id);
 			if (row) {
@@ -35,7 +38,7 @@ export class PiJobs {
 				return status(l.current(id, paths.binding));
 			}
 			policyFile(this.env, paths.root);
-			l.reserve(id, paths.binding, digest, hash, text);
+			l.reserve(id, paths.binding, digest, hash, input);
 		});
 		if (existing) return result(id, existing);
 		try { await launch(this.env, id); }

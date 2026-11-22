@@ -1,7 +1,7 @@
 use serde_json::{Map, Value, json};
 use std::{env, fs, io, path::Path};
 use ursi_flow_client::{FlowClient, Result};
-const USAGE: &str = "ursi-flow config get|set <JSON>\nursi-flow flow list|get <ID>|validate <ID> <目录>|create <ID> <目录>|update <ID> <目录>|delete <ID>\nursi-flow run start <Flow ID> [变量JSON] [Run ID] | list|get <Run ID>|stop <Run ID>|history <Run ID>";
+const USAGE: &str = "ursi-flow config get|set <JSON>\nursi-flow flow list|get <ID>|validate <ID> <目录>|create <ID> <目录>|update <ID> <目录>|delete <ID>\nursi-flow run start <Flow ID> [变量JSON] [Run ID] [executorRef JSON] | list|get <Run ID>|resume <Run ID>|stop <Run ID>|history <Run ID>";
 fn files(root: &Path) -> Result<Value> {
     fn visit(root: &Path, name: &str, map: &mut Map<String, Value>) -> Result<()> {
         let path = root.join(name);
@@ -55,9 +55,10 @@ fn entry() -> Result<()> {
         ["flow", "delete", id] => c.delete(id),
         ["run", "list"] => c.runs(),
         ["run", "get", id] => c.run(id),
+        ["run", "resume", id] => c.resume(id),
         ["run", "stop", id] => c.stop(id),
         ["run", "history", id] => c.history(id),
-        ["run", "start", flow, rest @ ..] if rest.len() <= 2 => {
+        ["run", "start", flow, rest @ ..] if rest.len() <= 3 => {
             let id = rest
                 .get(1)
                 .map(|v| v.to_string())
@@ -67,7 +68,8 @@ fn entry() -> Result<()> {
                 .map(|s| serde_json::from_str(s))
                 .transpose()?
                 .unwrap_or(json!({}));
-            c.start(&id, flow, &env::current_dir()?, vars)
+            let executor = rest.get(2).map(|s| serde_json::from_str(s)).transpose()?;
+            c.start_with_executor(&id, flow, &env::current_dir()?, vars, None, executor)
         }
         _ => Err(io::Error::other(USAGE)),
     }?;

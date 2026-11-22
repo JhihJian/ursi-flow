@@ -1438,6 +1438,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ursi-executor-platform"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "libc",
+ "rmcp",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tower",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "ursi-flow-client"
 version = "0.1.0"
 dependencies = [
@@ -1470,12 +1488,12 @@ dependencies = [
  "base64 0.22.1",
  "libc",
  "reqwest",
- "rmcp",
  "rustix",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "ursi-executor-platform",
  "ursi-flow-client",
  "ursi-mcp",
  "uuid",

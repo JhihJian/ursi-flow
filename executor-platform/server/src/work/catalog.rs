@@ -19,25 +19,118 @@ use serde_json::{Map, Value, json};
 
 type Reply = Result<Json<Value>, Error>;
 type Collection = (Store, &'static str, Registry);
-pub(super) const GENERATORS: &str = "work-patch-generators";
 
 pub fn routes(store: Store, registry: Registry) -> Router {
-    let mut api = Router::new().route("/v2/agent-options", get(agent::options));
-    for kind in ["resources", "executors", GENERATORS] {
+    let mut api = Router::new()
+        .route("/v2/agent-options", get(agent::options))
+        .merge(
+            Router::new()
+                .route("/v2/node-executors/{id}/{revision}", get(node_executor))
+                .with_state((store.clone(), registry.clone())),
+        );
+    for kind in ["resources", "executors"] {
         let collection = Router::new()
             .route("/", get(index).post(create))
             .route("/{id}", get(detail))
             .route("/{id}/revisions", get(history))
-            .route("/{id}/revisions/{revision}", get(detail_revision));
-        let collection = if kind == GENERATORS {
-            collection
-        } else {
-            collection.route("/{id}/deactivate", post(disable))
-        };
-        let collection = collection.with_state((store.clone(), kind, registry.clone()));
+            .route("/{id}/revisions/{revision}", get(detail_revision))
+            .route("/{id}/deactivate", post(disable))
+            .with_state((store.clone(), kind, registry.clone()));
         api = api.nest(&format!("/v2/{kind}"), collection);
     }
     api
+}
+
+async fn node_executor(
+    State((store, registry)): State<(Store, Registry)>,
+    Path((id, revision)): Path<(String, u64)>,
+) -> Reply {
+    store.read(|db| {
+        require_active(db, "executors", &id)?;
+        let definition = version(db, "executors", &id, revision)?;
+        let agent = definition["agent"]
+            .as_object()
+            .ok_or_else(|| Error::Invalid("节点需要 Agent 执行器".into()))?;
+        let backend = agent
+            .get("backendId")
+            .and_then(Value::as_str)
+            .unwrap_or("pi");
+        if !registry.supports_flow(backend) {
+            return Err(Error::Conflict("后端未声明 flowOutcome 能力".into()));
+        }
+        Ok(Json(json!({"id":id,"revision":revision})))
+    })
+}
+
+pub(super) fn consumer_routes(store: Store) -> Router {
+    Router::new()
+        .route("/v2/executors", get(consumer_index))
+        .route("/v2/executors/{id}", get(consumer_detail))
+        .route("/v2/executors/{id}/revisions", get(consumer_history))
+        .route(
+            "/v2/executors/{id}/revisions/{revision}",
+            get(consumer_revision),
+        )
+        .with_state(store)
+}
+
+fn consumer_view(definition: &Value) -> Result<Value, Error> {
+    let id = definitions::id(definition).map_err(|_| corrupt())?;
+    let revision = definition["revision"]
+        .as_u64()
+        .filter(|r| *r > 0)
+        .ok_or_else(corrupt)?;
+    let mut view = json!({"id": id, "revision": revision});
+    if definition["agent"].is_object() {
+        view["agent"] = json!({});
+    }
+    Ok(view)
+}
+
+fn consumer_latest(rec: &Value) -> Result<Value, Error> {
+    let mut view = consumer_view(versions(rec)?.last().ok_or_else(corrupt)?)?;
+    view["active"] = active(rec)?.into();
+    Ok(view)
+}
+
+async fn consumer_index(State(store): State<Store>) -> Reply {
+    store
+        .read(|db| {
+            category(db, "executors")?
+                .into_iter()
+                .flat_map(Map::values)
+                .map(consumer_latest)
+                .collect::<Result<Vec<_>, _>>()
+                .map(Value::Array)
+        })
+        .map(Json)
+}
+
+async fn consumer_detail(State(store): State<Store>, Path(id): Path<String>) -> Reply {
+    store
+        .read(|db| consumer_latest(record(db, "executors", &id)?))
+        .map(Json)
+}
+
+async fn consumer_history(State(store): State<Store>, Path(id): Path<String>) -> Reply {
+    store
+        .read(|db| {
+            versions(record(db, "executors", &id)?)?
+                .iter()
+                .map(consumer_view)
+                .collect::<Result<Vec<_>, _>>()
+                .map(Value::Array)
+        })
+        .map(Json)
+}
+
+async fn consumer_revision(
+    State(store): State<Store>,
+    Path((id, r)): Path<(String, u64)>,
+) -> Reply {
+    store
+        .read(|db| consumer_view(version(db, "executors", &id, r)?))
+        .map(Json)
 }
 
 async fn create(State((s, k, registry)): State<Collection>, Json(body): Json<Value>) -> Reply {
@@ -111,9 +204,33 @@ fn version<'a>(db: &'a Value, k: &str, id: &str, r: u64) -> Result<&'a Value, Er
         .and_then(|i| history.get(i))
         .ok_or_else(|| Error::NotFound(format!("{k}/{id} 第 {r} 版不存在")))
 }
-pub(super) fn generator<'a>(db: &'a Value, id: &str, revision: u64) -> Result<&'a Value, Error> {
-    require_active(db, GENERATORS, id)?;
-    version(db, GENERATORS, id, revision)
+pub(super) fn resolve_consumer_ref(store: &Store, reference: &Value) -> Result<(), Error> {
+    let (id, revision) = definitions::reference(reference)?;
+    store.read(|db| {
+        require_active(db, "executors", id)?;
+        version(db, "executors", id, revision).map(|_| ())
+    })
+}
+
+#[test]
+fn consumer_views_only_include_public_revision_metadata() {
+    let plain = json!({"id":"worker","revision":1,"configSchema":[{"default":{"ref":"secret://vault/token"}}]});
+    let agent = json!({"id":"worker","revision":2,"resources":[{"id":"private","revision":1}],
+        "agent":{"backendId":"private-adapter","configPackageId":"private-package"}});
+    let rec = json!({"active":false,"revisions":[plain, agent],"agentSnapshots":{"2":{"prompt":"private"}},
+        "agentBindings":{"2":["private-adapter","/opt/private/bin","/opt/private/policy"]}});
+    assert_eq!(
+        consumer_view(&plain).unwrap(),
+        json!({"id":"worker","revision":1})
+    );
+    assert_eq!(
+        consumer_view(&agent).unwrap(),
+        json!({"id":"worker","revision":2,"agent":{}})
+    );
+    assert_eq!(
+        consumer_latest(&rec).unwrap(),
+        json!({"id":"worker","revision":2,"agent":{},"active":false})
+    );
 }
 
 fn latest(db: &Value, k: &str, id: &str) -> Result<Value, Error> {

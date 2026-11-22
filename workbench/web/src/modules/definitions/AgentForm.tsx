@@ -19,7 +19,8 @@ type Props = {
 
 export function AgentForm({ draft: d, revision, busy, change, publish, cancel }: Props) {
   const packages = useResource(listConfigPackageChoices, [])
-  const samples = useResource(signal => listPatches('work', signal), [])
+  const standalone = import.meta.env.URSI_EXECUTOR_CONSOLE
+  const samples = useResource(signal => standalone ? Promise.resolve([]) : listPatches('work', signal), [])
   const [sample, setSample] = useState('')
   const { configPackageId, backendId } = d.agent
   const selected = packages.data.find(p => p.id === configPackageId)
@@ -45,9 +46,9 @@ export function AgentForm({ draft: d, revision, busy, change, publish, cancel }:
       {packageId && <BackendChoice match={match} id={backendId} change={id => change('agent', { configPackageId, backendId: id })} />}
     </fieldset>
     <div className="space-y-3">
-      <Choice label="样例工作包（可选）" value={sample} change={setSample} options={[
+      {!standalone && <Choice label="样例工作包（可选）" value={sample} change={setSample} options={[
         ['', '不使用工作包'], ...samples.data.map(({ id, name }) => [id, name] as const),
-      ]} />
+      ]} />}
       {samples.error && <p role="alert">{samples.error} <Button onClick={samples.reload}>重读工作包</Button></p>}
       <AttemptPanel target={ready ? { previewDefinition: agentDefinition(d.id, d.agent) } : null} workPatchId={sample || undefined} />
     </div>

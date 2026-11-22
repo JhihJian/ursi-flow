@@ -77,7 +77,10 @@ export function providerMissing(config?: FlowConfig | null): string[] {
   if (!provider.model?.trim()) missing.push('model')
   return missing
 }
+export interface ExecutorRef { id: string; revision: number }
 export interface Run extends Revision {
+  executorRef?: ExecutorRef
+  stopRequested?: boolean
   flow: string
   status: string
   cwd: string
@@ -96,6 +99,7 @@ export interface CommandResult {
   stderr: string
 }
 export interface NodeRun {
+  attemptId?: string
   id: string
   runId: string
   sequence: number
@@ -192,6 +196,7 @@ export interface Source {
     variables: Record<string, unknown>,
     runId?: string,
     cwd?: string,
+    executorRef?: ExecutorRef,
   ): Promise<Run>
   runs(signal?: AbortSignal): Promise<Run[]>
   run(id: string, signal?: AbortSignal): Promise<Run>
@@ -199,6 +204,7 @@ export interface Source {
   /** 运行启动时固定的 Flow 修订；详情页据此绘制流转图。 */
   runFlow(id: string, signal?: AbortSignal): Promise<FlowPackage>
   trajectory(id: string, node: string, signal?: AbortSignal): Promise<NodeTrajectory>
+  resume(id: string): Promise<Run>
   stop(id: string): Promise<Run>
   config(signal?: AbortSignal): Promise<FlowConfig>
   configure(patch: ConfigPatch): Promise<FlowConfig>
@@ -268,10 +274,11 @@ function createClient(apiBase: string): Source {
     update: (id, files, expectedRevision) =>
       send('PUT', flowPath(id), { files, expectedRevision }),
     remove: (id) => send('DELETE', flowPath(id)),
-    start: (id, variables, runId, cwd) =>
+    start: (id, variables, runId, cwd, executorRef) =>
       send('POST', `${flowPath(id)}/runs`, {
         runId,
         workspace: 'default',
+        executorRef,
         variables,
         ...(cwd ? { cwd } : {}),
       }),
@@ -284,6 +291,7 @@ function createClient(apiBase: string): Source {
     runFlow: (id, signal) => request(`${runPath(id)}/flow`, { signal }),
     trajectory: (id, node, signal) =>
       request(`${runPath(id)}/nodes/${encodeURIComponent(node)}/trajectory`, { signal }),
+    resume: (id) => send('POST', `${runPath(id)}/resume`),
     stop: (id) => send('POST', `${runPath(id)}/stop`),
     config: (signal) => request('/flow-config', { signal }),
     configure: (patch) => send('PATCH', '/flow-config', patch),

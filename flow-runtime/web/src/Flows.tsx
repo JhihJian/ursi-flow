@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { FlowCanvas } from './Graph'
 import { FlowOverview } from './FlowOverview'
 import { MarkdownEditor } from './Markdown'
+import type { ExecutorRef } from './data'
 import { StartRunDialog } from './StartRunDialog'
 import { cn } from './lib/utils'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -457,13 +458,16 @@ export function FlowEditor({ source }: { source: Source }) {
     parsedVariables: Record<string, unknown>,
     runId: string,
     cwd: string,
+    executorRef?: ExecutorRef,
   ) => {
     // 失败时对话框留在原地显示原因，成功后跳转详情页。cwd 留空由 Runtime 在工作区下新建。
+    if (!executorRef && missingProvider.length) throw new Error(`本地模型 provider 未配置：缺 ${missingProvider.join('、')}`)
     const created = await source.start(
       name,
       parsedVariables,
       runId || undefined,
       cwd || undefined,
+      executorRef,
     )
     navigate(`/runs/${encodeURIComponent(created.id)}`)
   }
@@ -556,13 +560,11 @@ export function FlowEditor({ source }: { source: Source }) {
               variant="primary"
               className="sm:ml-auto"
               onClick={() => setStartOpen(true)}
-              disabled={dirty || busy === 'save' || missingProvider.length > 0}
+              disabled={dirty || busy === 'save'}
               title={
                 dirty
                   ? '请先保存包文件'
-                  : missingProvider.length
-                    ? `模型 provider 未配置：缺 ${missingProvider.join('、')}`
-                    : undefined
+                  : undefined
               }
             >
               <Play />
@@ -575,7 +577,7 @@ export function FlowEditor({ source }: { source: Source }) {
         <Alert variant="warning" className="mt-3">
           <CircleAlert />
           <AlertDescription>
-            模型 provider 还没配全（缺 {missingProvider.join('、')}），Agent 节点无法执行。
+            模型 provider 还没配全（缺 {missingProvider.join('、')}），启动时请选择平台执行器，或先配置本地模型。
             <Link
               className={cn(buttonVariants({ variant: 'link', size: 'sm' }), 'ml-1 h-auto p-0')}
               to="/flow-config"

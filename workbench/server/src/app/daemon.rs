@@ -18,7 +18,24 @@ pub(super) async fn start(config: &Config) -> io::Result<Child> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
-    let mut child = Command::new(&config.flowd)
+    let mut command = Command::new(&config.flowd);
+    // Runtime must not act as the Workbench that launched it, even when its
+    // own token is absent. Remove deployment-only names before spawning.
+    command
+        .env_remove("URSI_EXECUTOR_PLATFORM_TOKEN")
+        .env_remove("URSI_EXECUTOR_PLATFORM_ADMIN_TOKEN")
+        .env_remove("URSI_EXECUTOR_PLATFORM_WORKBENCH_TOKEN")
+        .env_remove("URSI_EXECUTOR_PLATFORM_RUNTIME_TOKEN");
+    if let Some(token) = std::env::var_os("URSI_EXECUTOR_PLATFORM_RUNTIME_TOKEN") {
+        if Some(&token) == std::env::var_os("URSI_EXECUTOR_PLATFORM_TOKEN").as_ref() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Runtime 和 Workbench 不能共用平台令牌",
+            ));
+        }
+        command.env("URSI_EXECUTOR_PLATFORM_TOKEN", token);
+    }
+    let mut child = command
         .env("URSI_FLOW_HOME", &config.home)
         .env("URSI_FLOWD_NOTIFY", "1")
         .env_remove("URSI_API_TOKEN")

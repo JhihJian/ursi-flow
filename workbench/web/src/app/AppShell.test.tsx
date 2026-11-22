@@ -54,6 +54,26 @@ describe('应用壳', () => {
     await waitFor(() => { expect(document.title).toBe('对话 · ursi-flow') })
   })
 
+  it('部署的专有管理页替换桌面和移动管理入口，不改变业务 API 或携带令牌', async () => {
+    const meta = document.createElement('meta')
+    meta.name = 'ursi-executor-management-url'
+    meta.content = 'https://admin.example.org/console/'
+    document.head.append(meta)
+    try {
+      renderAt('/flows')
+      await screen.findByRole('heading', { level: 1 })
+      const check = (nav: HTMLElement) => {
+        expect(within(nav).getByRole('link', { name: '执行器管理平台' })).toHaveAttribute('href', meta.content)
+        expect(within(nav).queryByRole('link', { name: /^执行器$/ })).toBeNull()
+        expect(within(nav).getByRole('link', { name: '工作包' })).toHaveAttribute('href', '/work-patches')
+      }
+      check(screen.getByRole('navigation', { name: '主导航' }))
+      await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
+      check(within(await screen.findByRole('dialog')).getByRole('navigation', { name: '主导航' }))
+      expect(vi.mocked(fetch).mock.calls.every(([path]) => path === '/api/v1/flows')).toBe(true)
+    } finally { meta.remove() }
+  })
+
   it('移动抽屉展示工作区导航并在导航后关闭', async () => {
     const { router } = renderAt('/flows')
     await screen.findByRole('heading', { level: 1 })
