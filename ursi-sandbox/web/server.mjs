@@ -109,6 +109,7 @@ export function createConsole(env) {
       write ||
       readObservation ||
       path === '/api/v1/capabilities' ||
+      path === '/api/v1/images' ||
       registry ||
       /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
         path,

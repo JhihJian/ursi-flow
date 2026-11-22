@@ -81,7 +81,7 @@ test('管理员写请求必须使用白名单路径和同源操作头', async (t
   assert.deepEqual(calls, ['POST ' + path, 'POST ' + rebuildPath])
   assert.deepEqual(bodies, ['', '{"preserve_data":true}'])
 })
-test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日志', async (t) => {
+test('查看者凭据与 Gateway 凭据独立，允许查询镜像和实例', async (t) => {
   const requests = []
   const url = await listen(
     t,
@@ -113,6 +113,7 @@ test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日�
   )
   for (const path of [
     '/api/v1/capabilities',
+    '/api/v1/images',
     list,
     item,
     item + '/logs?tail=200',
@@ -128,7 +129,7 @@ test('查看者凭据与 Gateway 凭据独立，只转发列表、详情及日�
   )
   assert.deepEqual(
     requests,
-    ['/api/v1/capabilities', list, item, item + '/logs?tail=200'].map(
+    ['/api/v1/capabilities', '/api/v1/images', list, item, item + '/logs?tail=200'].map(
       (path) => [path, 'Bearer ' + key],
     ),
   )

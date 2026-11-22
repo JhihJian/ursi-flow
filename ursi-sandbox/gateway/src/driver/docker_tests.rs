@@ -79,6 +79,32 @@ fn drained(driver: &DockerDriver) {
     assert!(driver.script.as_ref().unwrap().lock().unwrap().is_empty());
 }
 
+#[tokio::test]
+async fn local_inventory_reports_only_requested_references_without_pulling() {
+    let lines = [
+        json!({"Repository":"ursi-runtime-pi","Tag":"local","Digest":"<none>","ID":"sha256:pi"}),
+        json!({"Repository":"example.net/custom","Tag":"<none>","Digest":"sha256:manifest","ID":"sha256:custom"}),
+        json!({"Repository":"other","Tag":"latest","Digest":"<none>","ID":"sha256:other"}),
+    ];
+    let driver = scripted(driver(), vec![(
+        args(&["image", "ls", "--no-trunc", "--digests", "--format", "{{json .}}"]),
+        Ok(CliOutput {
+            success: true,
+            stdout: lines.map(|line| line.to_string()).join("\n").into_bytes(),
+            stderr: vec![],
+            truncated: false,
+        }),
+    )]);
+    let found = driver.local_images(&[
+        "ursi-runtime-pi:local", "example.net/custom@sha256:manifest", "missing:latest",
+    ].map(String::from).into()).await.unwrap();
+    assert_eq!(found, BTreeMap::from([
+        ("ursi-runtime-pi:local".into(), "sha256:pi".into()),
+        ("example.net/custom@sha256:manifest".into(), "sha256:custom".into()),
+    ]));
+    drained(&driver);
+}
+
 #[test]
 fn configuration_names_and_volume_identity_are_strict() {
     for namespace in ["", "../host", "-option", "name with spaces"] {

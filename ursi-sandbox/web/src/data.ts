@@ -37,6 +37,23 @@ export interface Registry {
   >
   images: Record<string, string[]>
 }
+export interface LogicalEndpoint {
+  name: string
+  protocol: string
+  port: number
+}
+export interface ImageInventory {
+  inventory: 'available' | 'unavailable' | 'unsupported'
+  images: {
+    reference: string
+    local_id: string | null
+    registered: {
+      bundles: string[]
+      endpoints: (LogicalEndpoint & { bundle: string })[]
+      runtime_min_image_level: number | null
+    } | { invalid: true } | null
+  }[]
+}
 export interface Capabilities {
   rebuild_preserve_data: boolean
   rebuild_destroy_data: boolean
@@ -64,6 +81,7 @@ export interface Source {
   list: (signal: AbortSignal) => Promise<Sandbox[]>
   detail: (id: string, signal: AbortSignal) => Promise<Sandbox>
   logs: (id: string, signal: AbortSignal) => Promise<string>
+  images: (signal: AbortSignal) => Promise<ImageInventory>
   registry?: (signal: AbortSignal) => Promise<Registry>
   replaceRegistry?: (registry: Registry) => Promise<Registry>
 }
@@ -159,16 +177,18 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
             body: JSON.stringify({ preserve_data: preserveData }),
           })
       : undefined,
-    registry: (s) => json<Registry>('./api/v1/registry', s),
-    replaceRegistry: (registry) =>
-      json<Registry>('./api/v1/registry', undefined, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Ursi-Action': 'manage',
-        },
-        body: JSON.stringify(registry),
-      }),
+    images: (s) => json<ImageInventory>('./api/v1/images', s),
+    registry: manage ? (s) => json<Registry>('./api/v1/registry', s) : undefined,
+    replaceRegistry: manage
+      ? (registry) => json<Registry>('./api/v1/registry', undefined, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Ursi-Action': 'manage',
+          },
+          body: JSON.stringify(registry),
+        })
+      : undefined,
     list: async (s) =>
       (await json<{ sandboxes: Sandbox[] }>(base, s)).sandboxes,
     detail: (id, s) => json<Sandbox>(`${base}/${encodeURIComponent(id)}`, s),

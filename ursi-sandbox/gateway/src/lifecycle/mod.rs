@@ -3,7 +3,7 @@ pub mod store;
 
 use crate::{driver::Driver, models::*};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock, Weak},
@@ -63,6 +63,10 @@ impl Service {
             .read()
             .expect("registry lock poisoned")
             .clone()
+    }
+
+    pub async fn local_images(&self, references: &BTreeSet<String>) -> Result<BTreeMap<String, String>> {
+        self.driver.local_images(references).await
     }
 
     pub fn replace_registry(&self, registry: Registry) -> Result<()> {

@@ -1,5 +1,6 @@
 use crate::models::{Capabilities, Observed, Resource, Result, Sandbox};
 use async_trait::async_trait;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[cfg(feature = "driver-docker")]
 pub mod docker;
@@ -24,6 +25,9 @@ pub trait Driver: Send + Sync {
     /// 仅明确不存在时返回 NotFound，网络/daemon错误必须区分。
     async fn observe(&self, sandbox: &Sandbox) -> Result<Observed>;
     async fn logs(&self, sandbox: &Sandbox, tail: usize) -> Result<String>;
+    async fn local_images(&self, _references: &BTreeSet<String>) -> Result<BTreeMap<String, String>> {
+        Err(crate::models::Error::Unsupported("local image inventory".into()))
+    }
     async fn capture_target(&self, _sandbox: &Sandbox) -> Result<serde_json::Value> {
         Err(crate::models::Error::Unsupported(
             "network observations".into(),

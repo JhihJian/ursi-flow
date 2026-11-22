@@ -30,7 +30,8 @@ import {
 } from 'react-router'
 import { ObservationRoute } from './ObservationPage'
 import { EndpointWorkbench } from './Workbench'
-import { CreateSandbox, Actions, CliTools, RegistryAdmin } from './Management'
+import { CreateSandbox, Actions, CliTools } from './Management'
+import { CapabilityRegistry } from './CapabilityRegistry'
 import { Button, buttonVariants } from './shared/ui/button'
 import { Badge } from './shared/ui/badge'
 import { Alert } from './shared/ui/alert'
@@ -173,7 +174,7 @@ function Header({ source }: { source?: Source }) {
           <NavLink className="nav-link" to="/sandboxes">
             沙箱
           </NavLink>
-          {source?.manage && (
+          {source && (
             <NavLink className="nav-link" to="/registry">
               能力注册表
             </NavLink>
@@ -586,7 +587,7 @@ function App() {
           <Route path="sandboxes" element={<List source={config.value} />} />
           <Route
             path="registry"
-            element={<RegistryAdmin source={config.value} />}
+            element={<CapabilityRegistry source={config.value} />}
           />
           <Route
             path="sandboxes/:id/observations/:run?"

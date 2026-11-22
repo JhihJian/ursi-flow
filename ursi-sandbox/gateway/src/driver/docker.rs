@@ -623,6 +623,52 @@ impl Driver for DockerDriver {
         Ok(observed)
     }
 
+    async fn local_images(
+        &self,
+        references: &std::collections::BTreeSet<String>,
+    ) -> Result<BTreeMap<String, String>> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct Row {
+            repository: String,
+            tag: String,
+            digest: String,
+            #[serde(rename = "ID")]
+            id: String,
+        }
+        let output = self
+            .run(
+                ["image", "ls", "--no-trunc", "--digests", "--format", "{{json .}}"]
+                    .map(String::from)
+                    .into(),
+                Duration::from_secs(5),
+                OUTPUT_LIMIT,
+            )
+            .await?
+            .check()?;
+        if output.truncated {
+            return Err(Error::Unavailable("Docker 镜像清单输出过大".into()));
+        }
+        let mut found = BTreeMap::new();
+        for line in output.stdout.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()) {
+            let row: Row = serde_json::from_slice(line)
+                .map_err(|_| Error::Unavailable("Docker 镜像清单格式非法".into()))?;
+            let candidates = [
+                (row.repository != "<none>" && row.tag != "<none>")
+                    .then(|| format!("{}:{}", row.repository, row.tag)),
+                (row.repository != "<none>" && row.digest != "<none>" && !row.digest.is_empty())
+                    .then(|| format!("{}@{}", row.repository, row.digest)),
+                Some(row.id.clone()),
+            ];
+            for reference in candidates.into_iter().flatten() {
+                if references.contains(&reference) {
+                    found.insert(reference, row.id.clone());
+                }
+            }
+        }
+        Ok(found)
+    }
+
     async fn logs(&self, sandbox: &Sandbox, tail: usize) -> Result<String> {
         let object = self.container(sandbox).await?;
         let output = self

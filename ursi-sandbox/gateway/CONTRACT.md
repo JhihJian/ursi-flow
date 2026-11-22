@@ -12,6 +12,7 @@
 |---|---|---|
 | `GET /healthz` | 无 | 200，HTTP 进程健康，不代表所有沙箱就绪 |
 | `GET /api/v1/capabilities` | 无 | 200，driver、capabilities、tunnel_enabled、observer_enabled |
+| `GET /api/v1/images` | 无 | 200，本机镜像与登记组合 |
 | `POST /api/v1/sandboxes` | SandboxSpec，可选 `Idempotency-Key` | 202，Sandbox |
 | `GET /api/v1/sandboxes` | 无 | 200，`{sandboxes:[...]}` |
 | `GET /api/v1/sandboxes/{id}` | 无 | 200，Sandbox |
@@ -23,6 +24,12 @@
 | `GET /api/v1/sandboxes/{id}/endpoints` | 无 | 200，`{endpoints:[...]}` |
 
 所有规格结构拒绝未知字段。同一创建幂等键绑定同一规格与沙箱，删除后保留 key 绑定。生命周期请求先落库再返回受理，驱动操作由后台调度。对账与请求采用每沙箱互斥，忙碌或冲突时返回 409。
+
+## 镜像清单
+
+`GET /api/v1/images` 返回 `{inventory, images}`。`inventory` 为 `available`、`unsupported` 或 `unavailable`。结果包含已登记的引用，以及 Docker 本机可见的 `ursi-runtime-{ssh,pi,browser}:local`。Docker 用清单中的完整标签、仓库摘要或镜像 ID 匹配已登记引用，只读取本地清单。每行含 `reference`、`local_id`（未匹配或查询不可用时为 null）和 `registered`（未登记时为 null）。有效登记返回依赖展开后的 `bundles`、`endpoints` 和可空的 `runtime_min_image_level`，无效组合返回 `{invalid:true}`。
+
+本机镜像 ID 证明该引用能在查询时匹配本机清单。构建来源、发布验收、归档可用性和实例端点就绪分别由发布与运行记录提供。
 
 ## SandboxSpec
 

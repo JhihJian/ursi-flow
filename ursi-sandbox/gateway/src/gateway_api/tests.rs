@@ -101,6 +101,33 @@ async fn create_validates_profile_after_binding_admin_runtime() {
     );
 }
 
+#[cfg(feature = "driver-fake")]
+#[tokio::test]
+async fn image_inventory_keeps_registry_configuration_separate_from_local_presence() {
+    use crate::{driver::fake::FakeDriver, lifecycle::store::Store};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("gateway.sqlite")).unwrap());
+    let registry = Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
+    let state = ApiState {
+        observer: None,
+        service: Service::new(store, Arc::new(FakeDriver::new()), Arc::new(registry)),
+        api_key: "test-key".into(),
+        tunnel_enabled: false,
+    };
+    let Json(inventory) = images(State(state)).await;
+    assert_eq!(inventory["inventory"], "unsupported");
+    let rows = inventory["images"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    let browser = &rows[0];
+    assert_eq!(browser["reference"], "ursi-runtime-browser:local");
+    assert!(browser["local_id"].is_null());
+    assert_eq!(browser["registered"]["bundles"], json!(["pi-execution", "browser"]));
+    assert_eq!(browser["registered"]["endpoints"][0]["name"], "ssh");
+    assert_eq!(browser["registered"]["runtime_min_image_level"], 2);
+    assert!(!inventory.to_string().contains("artifacts.example.invalid"));
+}
+
 #[tokio::test]
 async fn error_mapping_is_structured_and_never_leaks_driver_details() {
     let cases = [

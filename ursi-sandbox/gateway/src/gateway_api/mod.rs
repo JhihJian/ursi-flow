@@ -60,6 +60,7 @@ pub fn router(service: Arc<Service>, api_key: String, tunnel_enabled: bool) -> R
     Router::new()
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/registry", get(registry).put(replace_registry))
+        .route("/api/v1/images", get(images))
         .route("/api/v1/sandboxes", post(create).get(list))
         .route("/api/v1/sandboxes/{id}", get(get_sandbox).delete(delete))
         .route("/api/v1/sandboxes/{id}/start", post(start))
@@ -146,6 +147,44 @@ async fn capabilities(State(state): State<ApiState>) -> Json<serde_json::Value> 
 
 async fn registry(State(state): State<ApiState>) -> Json<Registry> {
     Json(state.service.registry())
+}
+
+async fn images(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let registry = state.service.registry();
+    let mut references = ["ssh", "pi", "browser"]
+        .map(|target| format!("ursi-runtime-{target}:local"))
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    references.extend(registry.images.keys().cloned());
+    let local = state.service.local_images(&references).await;
+    let inventory = match &local {
+        Ok(_) => "available",
+        Err(Error::Unsupported(_)) => "unsupported",
+        Err(_) => "unavailable",
+    };
+    let rows = references.into_iter().filter_map(|reference| {
+        let local_id = local.as_ref().ok().and_then(|list| list.get(&reference));
+        let registration = registry.images.get(&reference);
+        if local_id.is_none() && registration.is_none() {
+            return None;
+        }
+        let expanded = registration.map(|_| {
+            let bundles = registry.resolved_bundle_ids(&reference)?;
+            let endpoints = registry.expand_image_with_bundles(&reference)?;
+            let runtime = registry.runtime_for_image(&reference)?;
+            Ok::<_, ursi_catalog::RegistryError>((bundles, endpoints, runtime))
+        });
+        let registered = expanded.map(|result| match result {
+            Ok((bundles, endpoints, runtime)) => json!({
+                "bundles": bundles,
+                "endpoints": endpoints,
+                "runtime_min_image_level": runtime.map(|bundle| bundle.min_image_level),
+            }),
+            Err(_) => json!({"invalid": true}),
+        });
+        Some(json!({"reference": reference, "local_id": local_id, "registered": registered}))
+    }).collect::<Vec<_>>();
+    Json(json!({"inventory": inventory, "images": rows}))
 }
 
 async fn replace_registry(

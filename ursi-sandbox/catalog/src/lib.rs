@@ -279,13 +279,8 @@ impl Registry {
 
     /// 返回镜像组合后的唯一管理员批准 Runtime 包。
     pub fn runtime_for_image(&self, image: &str) -> Result<Option<BundleRef>> {
-        let bundles = self.lookup_image(image).0;
-        let mut expanded = Vec::new();
-        for id in bundles {
-            self.collect_runtime_bundles(&id, &mut expanded)?;
-        }
         let mut selected = None;
-        for id in expanded {
+        for id in self.resolved_bundle_ids(image)? {
             let bundle = self
                 .bundles
                 .get(&id)
@@ -306,13 +301,21 @@ impl Registry {
         Ok(selected)
     }
 
-    fn collect_runtime_bundles(&self, id: &str, output: &mut Vec<String>) -> Result<()> {
+    pub fn resolved_bundle_ids(&self, image: &str) -> Result<Vec<String>> {
+        let mut expanded = Vec::new();
+        for id in self.lookup_image(image).0 {
+            self.collect_bundles(&id, &mut expanded)?;
+        }
+        Ok(expanded)
+    }
+
+    fn collect_bundles(&self, id: &str, output: &mut Vec<String>) -> Result<()> {
         let bundle = self
             .bundles
             .get(id)
             .ok_or_else(|| RegistryError::Invalid(format!("bundle 依赖缺失: {id}")))?;
         for required in &bundle.requires {
-            self.collect_runtime_bundles(required, output)?;
+            self.collect_bundles(required, output)?;
         }
         if !output.iter().any(|item| item == id) {
             output.push(id.to_owned());
