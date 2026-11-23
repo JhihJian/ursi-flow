@@ -2,7 +2,8 @@
 parent: ../../SPEC.md
 references:
   - ../../docs/flow-spec.md
-  - ../../../docs/EXECUTOR-MCP.md
+  - ../../../docs/design/executor-platform/ACP-PROFILE.md
+  - ../../../docs/design/executor-platform/ACP-SCOPE.md
   - ../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
 
@@ -10,38 +11,32 @@ references:
 
 ## 功能意图
 
-`ursi-pi-executor-mcp` 在 Linux 上执行 Workbench 已冻结的 Agent 配置。每次尝试最多调用一次 Pi 会话；关闭 stdio、重启工作台或丢失启动回执后，仍可凭原 ID 查询和取消。
+Pi 在 Linux 上为执行器平台提供 ACP 会话。生产进程按一次尝试装配冻结配置，至多插入一次工作指令，并报告前台状态、回复和工具进度。平台负责持久记录尝试、监督进程和收集制品。
 
 ## 关键功能与验收
 
-### 任务身份与私有配置
+### ACP 连接与会话装配
 
 #### 验收
 
-- 三个工具、参数、响应和公开错误码遵循 执行器 MCP 契约。启动指令为字符串。Pi 从冻结快照读取 Agent 配置。`runConfig` 可省略、传空对象，或仅携带 `nodeContract`。无效配置在登记前返回 `invalid`。`backendRunRef` 为 `pi:<attemptId>`。协议响应不含宿主路径、配置正文或凭据。
-- `<URSI_EXECUTOR_ROOT>/<attemptId>/agent-config.json` 与业务工作区分开。配置、尝试目录和工作区属于当前用户且私有；拒绝符号链接、硬链接文件和特殊文件。模型与业务工具授权来自 `URSI_PI_POLICY` 指定的绝对私有文件。
-- 快照最多 2 MiB；校验 `systemPrompt`、`modelProfile`、Skill 的标识、整数修订和正文，以及工具标识和 SHA-256 schema 摘要。额外字段参与快照身份校验，但不传给 SDK。单次任务文本独立于固定指令，最多 256 KiB。
+- 走本机 stdio UTF-8 JSONL，标准输出仅承载 JSON-RPC。`initialize` 按 ACP v2 Preview beta.3 校验客户端 `info`，协商 `protocolVersion: 2`，返回 Agent `info` 和 `session.systemPrompt.mode.override` 能力。
+- 生产进程读取 `URSI_ACP_JOB` 指向的私有 `0400` JSON 文件，使用其中的 `cwd`、`configDigest` 和可选 `nodeContract`。`cwd` 必须绑定到 `<URSI_EXECUTOR_ROOT>/<attemptId>/workspace`。同级 `agent-config.json` 权限为 `0400`，原始字节的 SHA-256 与 `configDigest` 一致。文件须为单链接的普通文件，目录须私有且为真实路径。装配失败时不调用模型。
+- 无作业文件时，可用执行根目录下预先建立的私有工作目录开启通用会话。通用会话选用策略中首个模型，支持多次提交，不加载工作区上下文、文件工具或业务工具，也不写制品。
+- `session/new.systemPrompt` 的文本实际进入模型的系统上下文。`override` 替换默认系统指令，`append` 追加到默认系统指令；冻结 Skills 单独装配。工作指令仍作为用户消息。`resource_link` 可随消息插入，链接本身不触发文件读取或网络请求，也不授予访问权限。
 
-### Flow 节点结果
-
-#### 验收
-
-- `nodeContract` 声明 `outcomes` 和 `variables` 两个字符串数组。每组名称唯一且非空白，结果至少一项，变量名符合 Flow 规则。首次启动冻结契约；同一 ID 更换契约返回 `conflict`。对象键顺序不影响绑定，数组顺序参与绑定。
-- 仅节点会话提供 `submit_flow_outcome`。成功要求会话正常结束且恰有一次合法提交。漏交、重复提交、未声明结果或变量、工具错误和截断均失败，不发布部分结果。
-- 节点成功时在本次尝试的 `artifacts/flow-outcome.json` 写入 `{outcome,variables}`，省略变量归一为 `{}`。普通尝试沿用最终正文 `artifacts/answer.md`。两类制品均不覆盖已有文件。
-
-### 持久登记与故障核实
+### 插入回执、取消与回放
 
 #### 验收
 
-- 在根目录的 SQLite 账本中原子登记 ID、指令摘要、快照摘要及目录身份，再启动独立 Node 进程。并发启动或跨进程重试返回同一次尝试；已登记 ID 更换指令、快照或工作区绑定时返回 `conflict`。
-- 同一根目录最多受理 8 个待启动及运行中的尝试。满额时新 ID 返回 `busy`，释放名额后可再启动。重复查询或启动原 ID 不占第二个名额。
-- 15 秒内未领取的登记、已消失的 worker 和无完成证据的会话均报 `unverified`。核实 worker 使用 Linux boot ID、PID 和进程启动时钟。查询、取消及重复启动均不重放 prompt。
+- `session/prompt` 接受有效内容后以 `messageId` 确认插入，模型未完成也可收到回执。对应用户消息更新复用该 ID。生产作业已有一次成功插入后，继续提交非重复指令会被拒绝。重试仍保留的 `idempotencyKey` 返回原 `messageId`，不再插入或运行。
+- 前台工作通过 `session/update` 报告 `running` 和带结束原因的 `idle`。运行中的 `session/cancel` 中止当前会话，确认中止后报告 `idle/cancelled`，不交付部分结果。生产完成与写入方退出由平台结合实时终态与进程回收证据确认。
+- 工具执行通过 `tool_call_update` 报告名称和状态。同一次调用的更新共用 Agent 生成的 `toolCallId`，响应不含原始工具参数、输出或供应商调用 ID。
+- `session/close` 停止该会话的活动，保留进程内可回放记录。`session/list` 支持按 `cwd` 过滤。`session/resume` 校验会话和原 `cwd`；指定 `{type: "start"}` 时先回放保留的历史、再发送 `replay_complete`；无论是否请求回放，均在回应前同步当前状态。平台不以会话回放替代持久尝试记录。
 
-### 取消、超时与终态
+### 冻结资源与制品
 
 #### 验收
 
-- 取消先登记请求。worker 在调用会话前看到请求，或运行中的会话明确确认中止并停止后，才能返回 `cancelled`。会话已成功或失败时，晚到的取消保留原结果。
-- 单次会话限时 30 分钟。超时向当前会话发送中止信号，确认中止记为 `failed`。5 秒内未响应则终止当前 worker 持有的会话线程，记为 `unverified`。不向账本中记录的 PID 发送信号。
-- 写入已确认终态前先结束会话线程，后续查询只返回已记录的状态，供平台收集制品。
+- 模型和只读业务工具来自 `URSI_PI_POLICY`。生产会话按快照中的 `modelProfile` 和 `{id,schemaDigest}` 装配，调用业务工具前重新核对当前授权和远端 schema。SDK 内置工具与工作区资源发现关闭。
+- Skill 快照包含标识、整数修订、入口正文和可选配套文件。装配时核验附件相对路径和 SHA-256。`read_skill_file` 只接受冻结 Skill 的 `{skillId,path}`，有效 UTF-8 返回文本，二进制返回 Base64。任务输入通过受限的 `list_inputs` 和 `read_input` 读取 `inputs/`。
+- 普通生产会话正常结束后发布 `workspace/artifacts/answer.md`。Flow 节点仅在已冻结 `nodeContract` 时提供 `submit_flow_outcome`，且会话正常结束并恰有一次合法提交时才发布 `workspace/artifacts/flow-outcome.json`。结果和变量限于契约声明，缺省变量归一为 `{}`。两类制品均不覆盖已有文件。

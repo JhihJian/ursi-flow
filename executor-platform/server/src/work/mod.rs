@@ -17,13 +17,14 @@ use serde_json::json;
 use std::{io, path::PathBuf};
 pub use store::Store;
 
-fn mcp_client_info(version: rmcp::model::ProtocolVersion) -> rmcp::model::ClientConfig {
-    use rmcp::model::{ClientCapabilities, ClientConfig, Implementation};
-    ClientConfig::new(
-        ClientCapabilities::default(),
-        Implementation::new("ursi-executor-platform", env!("CARGO_PKG_VERSION")),
-    )
-    .with_protocol_version(version)
+#[doc(hidden)]
+pub async fn acp_worker(
+    root: &std::path::Path,
+    id: &str,
+    bin: &std::path::Path,
+    policy: &std::path::Path,
+) -> io::Result<()> {
+    executor::work(root, id, bin, policy).await
 }
 
 #[derive(Debug)]

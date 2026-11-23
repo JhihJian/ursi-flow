@@ -161,7 +161,8 @@ async fn authorize(
         ("PUT", "executor-attempts/{id}") if uuid(id) => {
             return start(store, owner, id, req, next).await;
         }
-        ("GET", "executor-attempts/{id}") | ("POST", "executor-attempts/{id}/cancel")
+        ("GET", "executor-attempts/{id}" | "executor-attempts/{id}/events")
+        | ("POST", "executor-attempts/{id}/cancel")
             if uuid(id) =>
         {
             store.read(|db| check_owner(db, id, owner))?;

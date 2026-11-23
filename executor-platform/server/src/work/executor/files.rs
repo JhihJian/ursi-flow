@@ -361,6 +361,11 @@ pub(super) fn publish(store: &Store, root: &Path, id: &str, status: &str) -> Res
         .and_then(|dir| subdir(&dir, "artifacts"))
         .and_then(private)
         .map_err(file_error)?;
+    let contract = store.read(|db| {
+        Ok(db["executorAttempts"][id]["request"]["runConfig"]
+            .get("nodeContract")
+            .cloned())
+    })?;
     // allocate 在 store 私有根中创建目录。先确认该根的祖先也没有被换成链接。
     host_dir(store.dir()).map_err(file_error)?;
     directories::allocate(
@@ -371,6 +376,11 @@ pub(super) fn publish(store: &Store, root: &Path, id: &str, status: &str) -> Res
             Budget::default()
                 .copy_tree(&src, &dst_fd, "")
                 .map_err(file_error)?;
+            if status == "succeeded"
+                && let Some(contract) = &contract
+            {
+                validate_outcome(&dst_fd, contract)?;
+            }
             fs::fsync(
                 host_dir(dst.parent().expect("allocated directory parent")).map_err(file_error)?,
             )
@@ -393,6 +403,52 @@ pub(super) fn publish(store: &Store, root: &Path, id: &str, status: &str) -> Res
             Ok(result.clone())
         },
     )
+}
+
+fn validate_outcome(dir: &OwnedFd, contract: &Value) -> Result<(), Error> {
+    const LIMIT: u64 = 1024 * 1024;
+    let invalid = || Error::Invalid("缺少有效的 Flow 节点结果".into());
+    let file = File::from(
+        fs::openat2(
+            dir,
+            "flow-outcome.json",
+            OFlags::RDONLY | OFlags::CLOEXEC,
+            Mode::empty(),
+            WITHIN,
+        )
+        .map_err(|e| {
+            if e == Errno::NOENT {
+                invalid()
+            } else {
+                file_error(e.into())
+            }
+        })?,
+    );
+    let st = file.metadata().map_err(file_error)?;
+    if !st.is_file() || st.len() > LIMIT {
+        return Err(invalid());
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Outcome {
+        outcome: String,
+        #[serde(default)]
+        variables: serde_json::Map<String, Value>,
+    }
+    let result: Outcome = serde_json::from_reader(file.take(LIMIT + 1)).map_err(|_| invalid())?;
+    if !contract["outcomes"]
+        .as_array()
+        .is_some_and(|options| options.iter().any(|v| v == &result.outcome))
+        || !contract["variables"].as_array().is_some_and(|names| {
+            result.variables.keys().all(|k| {
+                !matches!(k.as_str(), "__proto__" | "prototype" | "constructor")
+                    && names.iter().any(|name| name == k)
+            })
+        })
+    {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

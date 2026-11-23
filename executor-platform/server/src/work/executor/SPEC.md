@@ -1,14 +1,14 @@
 ---
 parent: ../../../SPEC.md
 references:
-  - ../../../../../docs/EXECUTOR-MCP.md
   - ../../../../../docs/design/executor-platform/OVERVIEW.md
+  - ../../../../../docs/design/executor-platform/ACP-PROFILE.md
 ---
 # 平台执行尝试
 
 ## 功能意图
 
-平台把调用方的指令和输入快照交给固定后端，用同一个 `attemptId` 核对状态并发布只读制品。Workbench 接收业务工作包 ID 并生成输入快照，执行尝试及其工作区归平台所有。
+平台用固定后端执行调用方的指令和输入快照。每次尝试使用独立的 worker 和 ACP v2 stdio 连接，并以 `attemptId` 查回状态、归一化事件和只读制品。
 
 ## 关键功能与验收
 
@@ -16,21 +16,28 @@ references:
 
 #### 验收
 
-- 已认证的 Workbench 或 Runtime 以小写标准 UUID 调用 `PUT /api/v2/executor-attempts/{id}`，指定 `executorRef: {id, revision}` 和 UTF-8 指令。只有管理员可用 `previewDefinition` 替代修订进行试跑；两种目标互斥。
-- 发布修订使用平台冻结的 Agent 配置和固定后端。草稿按所选配置包和兼容且就绪的后端生成本次快照，不分配修订号。平台以部署者指定的程序和策略经 stdio MCP 调用后端。
-- 同角色同 ID 同请求（包括输入摘要）复用原尝试，变更指令、版本、运行配置或输入返回 409。其他角色不能使用该 ID 访问已登记的尝试。
+- 已认证的 Workbench 或 Runtime 以小写标准 UUID 调用 `PUT /api/v2/executor-attempts/{id}`，指定 `executorRef: {id, revision}` 和 UTF-8 指令。管理员可改用 `previewDefinition` 试跑草稿，不分配修订号；两种目标互斥。
+- 使用该次试跑或已发布 ACP 修订的冻结 Agent 配置。worker 在提交任务前核验私有 `0400` 的 `agent-config.json` 及摘要，再按原绑定建立 ACP v2 会话。旧 MCP 修订须重新发布为 ACP 修订才能用于新尝试。
+- 同角色、同 ID、同请求（含输入摘要）查回原尝试；变更指令、修订、运行配置或输入返回 409。每次尝试至多提交一次 `session/prompt`；绑定失效时不改选后端。
 
 ### 查回与取消
 
 #### 验收
 
-- 启动回执丢失或平台重启后，原角色 `GET /api/v2/executor-attempts/{id}` 核对原后端或返回已发布结果，不重发启动。`POST /api/v2/executor-attempts/{id}/cancel` 只取消原尝试。
-- 无法确认终态时，`unverified` 不代表成功或已取消。既有尝试不因探测状态变化改选后端；绑定失效时不切换程序重跑。
+- 启动回执丢失或 HTTP 服务重启后，原角色用 `GET /api/v2/executor-attempts/{id}` 查原尝试。存活的 worker 继续执行；查询及相同 PUT 不重发任务。
+- `POST /api/v2/executor-attempts/{id}/cancel` 为原尝试登记取消意图。确认停止后才可报告取消；已确认并发布的结果保持原样。缺少可信终态或停止证据时为 `unverified`。
+- 切换前平台已发布的完成结果可用原角色、原 ID 查回。未完成的旧协议尝试不转接到 ACP。
 
 ### 输入快照与终态制品
 
 #### 验收
 
-- 每次尝试有独立工作区；调用方上传的 `inputs` 放在该次 `inputs/`，后端向 `artifacts/` 写出结果。平台 API 不接受 Workbench 本地包 ID 或任意宿主路径作为输入。
-- Agent 的 `agent-config.json` 按尝试私存，权限为 `0400`；重发启动前核对摘要，文件缺失或改变时拒绝启动。
-- 确认终态并完成收集后，原角色可按 `artifactDirectoryId` 读取文件树与正文。目录只读，内容仅来自输出区。即使尝试已结束，其他角色读取也返回 404。
+- 显式 `inputs` 快照放入本次 `workspace/inputs/`，后端只从 `workspace/artifacts/` 交付制品。平台 API 不接受 Workbench 本地包 ID 或任意宿主路径作为输入。
+- 确认终态和受管写入方停止后，平台从输出区收集制品。发布后原角色可用 `artifactDirectoryId` 读取只读目录及文件；跨角色读取返回 404。
+
+### 归一化事件分页
+
+#### 验收
+
+- 原角色可调用 `GET /api/v2/executor-attempts/{id}/events?after=0`，在运行中或完成后读取 `{events, nextCursor}`。传回 `nextCursor` 续读，只返回已提交且 `seq` 大于游标的事件。未认证返回 401，其他角色（含管理员）或不存在的尝试返回 404。
+- 接口返回归一化后的事件记录，按序保留状态、回复片段、工具更新与可记录的采集缺口。事件页独立于终态及制品发布；旧协议尝试的事件页为空。

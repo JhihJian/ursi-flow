@@ -5,10 +5,8 @@ references:
   - ../docs/design/workbench/PATCH-STUDIO.md
   - ../docs/design/workbench/WORK-LIST-DESIGN.md
   - ../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
-  - ../docs/design/workbench/EXECUTOR-DESIGN.md
-  - ../docs/EXECUTOR-MCP.md
+  - ../docs/design/executor-platform/OVERVIEW.md
   - EXECUTOR-INTEGRATION.md
-  - ../docs/design/workbench/FLOW-EXECUTOR-DESIGN.md
 ---
 
 # 工作台
@@ -43,10 +41,10 @@ references:
 
 #### 验收
 
-- 从工作台 Cargo 工作区构建 Server，从 `web/` 构建界面。发布与修订管理使用平台管理页；工作台可选择旧修订执行。
-- 发布执行器定义不会启动运行。Agent 按版本运行时使用发布时保存的配置快照和后端绑定。执行路径见[执行器设计](../docs/design/workbench/EXECUTOR-DESIGN.md)。
+- 从工作台 Cargo 工作区构建 Server，从 `web/` 构建界面。发布与修订管理使用平台管理页；工作台可选择已发布的 ACP 修订执行。
+- 发布执行器定义不会启动运行。Agent 按版本运行时使用发布时保存的配置快照和后端绑定。执行路径见[执行器平台设计](../docs/design/executor-platform/OVERVIEW.md)。
 
-### 通过 MCP 执行一次尝试
+### 通过平台执行一次尝试
 
 #### 验收
 

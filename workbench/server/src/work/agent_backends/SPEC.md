@@ -1,9 +1,8 @@
 ---
 parent: ../../../../../executor-platform/server/SPEC.md
 references:
-  - README.md
-  - ../catalog/HTTP.md
-  - ../../../../../docs/EXECUTOR-MCP.md
+  - ../../../../../executor-platform/server/src/work/agent_backends/README.md
+  - ../../../../../docs/design/executor-platform/ACP-PROFILE.md
 ---
 
 # Agent 后端注册与设置目录
@@ -18,16 +17,16 @@ references:
 
 #### 验收
 
-- 无后端配置时，目录只含 `pi`，`configured` 为 `false`。配置 Pi 程序和全局策略后，`configured` 为 `true`，支持 `skills` 与 `tools`。
+- 无后端配置时，目录只含 `pi`，`configured` 为 `false`。配置 Pi 程序和全局策略后，`configured` 为 `true`，支持 `skills`、`tools` 与 `flowOutcome`。
 - 额外后端由 `URSI_AGENT_BACKENDS` 的私有 0600 JSON 文件登记，使用与 Pi 相同的策略和执行契约。基础能力覆盖系统指令、材料与报告。可选能力以管理员声明为准。
-- 清单、程序和策略路径、文件权限、稳定 ID、能力声明按[部署配置](README.md#部署配置)校验。非法或重名 ID、`flow` 或 `pi` 冲突、无效显式后端配置均使注册失败。
+- 清单、程序和策略路径、文件权限、稳定 ID、能力声明按[部署配置](../../../../../executor-platform/server/src/work/agent_backends/README.md#部署配置)校验。非法或重名 ID、`flow` 或 `pi` 冲突、无效显式后端配置均使注册失败。
 
 ### 目录、兼容性与健康检查
 
 #### 验收
 
 - 无包参数的 GET 只返回描述与最近检查结果。带 `configPackageId` 的 GET 使用配置包预览快照，每项增加 `compatible`；需要 Skill 或工具时，后端须声明相应能力。无效包返回解析错误。
-- 每项初始状态为 `unchecked` 且 `checkedAt` 为 `null`。按 ID 检查时，在 Store 的私有 `executor-workspaces` 目录上探测 stdio 接口，支持全新 Store。检查不启动模型、不调用业务工具。
+- 每项初始状态为 `unchecked` 且 `checkedAt` 为 `null`。按 ID 检查时，在私有工作区协商 ACP v2，建立并关闭临时会话，确认进程已回收。检查不提交任务，也不调用模型或业务工具。
 - POST 返回一项，成功为 `ready`，失败为 `failed`，`checkedAt` 为完成时的 Unix 毫秒数。未知 ID 返回 404。公开描述和结果均不含绑定路径、策略正文或子进程诊断。
 
 ### 新选择与既有绑定

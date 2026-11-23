@@ -1,12 +1,15 @@
-//! The platform owns attempt identities and snapshots; MCP owns execution and its evidence.
+//! The platform owns durable attempts and a dedicated ACP worker per execution.
 mod binding;
 mod client;
 mod files;
+mod journal;
+mod worker;
+pub(crate) use worker::work;
 
 use super::{Error, Store, agent_backends::Registry};
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     routing::{get, post},
 };
 pub(in crate::work) use client::probe_agent;
@@ -50,22 +53,7 @@ struct Start {
     run_config: serde_json::Map<String, Value>,
 }
 
-impl Start {
-    fn into_mcp_arguments(self, id: &str) -> Value {
-        let mut args = json!({
-            "attemptId": id,
-            "workspaceRef": format!("workspace:{id}"),
-            "artifactDirectoryRef": format!("artifacts:{id}"),
-            "workInstruction": self.work_instruction.text,
-        });
-        if !self.run_config.is_empty() {
-            args["runConfig"] = Value::Object(self.run_config);
-        }
-        args
-    }
-}
-
-// Only omitted selectors opt into the legacy Flow route; an explicit null is invalid.
+// Selectors must be omitted or present with a valid value.
 fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
     de: D,
 ) -> Result<Option<T>, D::Error> {
@@ -77,9 +65,8 @@ fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 struct Service {
     store: Store,
     root: PathBuf,
-    flow: Option<binding::Backend>,
     registry: Registry,
-    // Bound both concurrent subprocesses and lock storage. No database lock spans an RPC.
+    // Serialize operations for an attempt. Worker capacity is bounded separately.
     locks: [Mutex<()>; 16],
 }
 
@@ -87,13 +74,13 @@ pub(super) fn routes(store: Store, registry: Registry) -> Router {
     let service = Service {
         root: store.dir().join("executor-workspaces"),
         store,
-        flow: binding::flow_from_env(),
         registry,
         locks: Default::default(),
     };
     Router::new()
         .route("/v2/executor-attempts/{id}", get(inspect).put(start))
         .route("/v2/executor-attempts/{id}/cancel", post(cancel))
+        .route("/v2/executor-attempts/{id}/events", get(events))
         .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
         .with_state(Arc::new(service))
 }
@@ -149,10 +136,18 @@ async fn start(
         mut inputs,
     }) = submission.map_err(|_| Error::Invalid("尝试请求无效或超过大小上限".into()))?;
     validate_node(&body)?;
+    if body.run_config.keys().any(|key| key != "nodeContract") {
+        return Err(Error::Invalid("不支持该执行配置".into()));
+    }
     if body.work_patch_id.is_some() {
         return Err(Error::Invalid("平台不接受业务库的工作包引用".into()));
     }
-    if serde_json::to_vec(&body).map_or(true, |b| b.len() > 512 * 1024) {
+    if serde_json::to_vec(&body).map_or(true, |b| b.len() > 512 * 1024)
+        || body
+            .run_config
+            .get("nodeContract")
+            .is_some_and(|v| serde_json::to_vec(v).map_or(true, |b| b.len() > 128 * 1024))
+    {
         return Err(Error::Invalid("指令和执行配置超过大小上限".into()));
     }
     if body.work_instruction.encoding != "utf-8"
@@ -175,6 +170,41 @@ async fn inspect(State(s): State<Arc<Service>>, Path(id): Path<String>) -> Reply
 async fn cancel(State(s): State<Arc<Service>>, Path(id): Path<String>) -> Reply {
     run(s, id, Operation::Cancel).await
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Cursor {
+    #[serde(default)]
+    after: u64,
+}
+async fn events(
+    State(s): State<Arc<Service>>,
+    Path(id): Path<String>,
+    Query(cursor): Query<Cursor>,
+) -> Reply {
+    let uuid = Uuid::parse_str(&id)
+        .ok()
+        .filter(|u| u.to_string() == id)
+        .ok_or_else(|| Error::Invalid("需要小写标准 UUID".into()))?;
+    // Do not mistake a reservation still in its launch handshake for worker loss.
+    let _guard = s.locks[usize::from(uuid.as_bytes()[15]) % s.locks.len()]
+        .lock()
+        .await;
+    let acp = s.store.read(|db| {
+        db["executorAttempts"]
+            .get(&id)
+            .map(|row| row["backend"] == "acp")
+            .ok_or_else(|| Error::NotFound("尝试不存在".into()))
+    })?;
+    if !acp {
+        return Ok(Json(json!({"events":[],"nextCursor":cursor.after})));
+    }
+    let dir = s.root.join(id);
+    tokio::task::spawn_blocking(move || journal::page(&dir, cursor.after))
+        .await
+        .map_err(|_| binding::unavailable())?
+        .map(Json)
+}
+
 enum Operation {
     Start(Start, Arc<[files::Input]>, Option<String>),
     Inspect,
@@ -207,116 +237,118 @@ impl Service {
         }
 
         if let Some(row) = &row {
-            if row["result"]["artifactDirectoryId"].is_string() {
+            if matches!(
+                row["result"]["status"].as_str(),
+                Some("succeeded" | "failed" | "cancelled")
+            ) {
                 return Ok(row["result"].clone());
             }
         }
-        let backend = if let Some(row) = &row {
-            let backend = binding::backend_for_row(row, self.flow.as_ref(), &self.registry)?;
-            if matches!(
-                (&backend, &op),
-                (binding::Backend::Agent(_), Operation::Start(..))
-            ) {
-                binding::verify_snapshot(
-                    &self.root,
-                    id,
-                    row["configDigest"]
-                        .as_str()
-                        .ok_or_else(binding::unavailable)?,
-                )?;
-            }
-            backend
+        let row = if let Some(row) = row {
+            row
         } else {
             let Operation::Start(body, entries, inputs_digest) = &op else {
                 return Err(Error::NotFound("尝试不存在".into()));
             };
-            let target = binding::target(body)?;
             let (backend, config) =
-                binding::resolve(&self.store, &target, self.flow.as_ref(), &self.registry)?;
+                binding::resolve(&self.store, &binding::target(body)?, &self.registry)?;
             let store = self.store.clone();
             let root = self.root.clone();
             let key = id.to_owned();
             let entries = entries.clone();
+            let instruction = body.work_instruction.text.clone();
+            let node = body.run_config.get("nodeContract").cloned();
             let digest = tokio::task::spawn_blocking(move || {
                 files::prepare_inputs(&store, &root, &key, None, &entries)?;
-                config
-                    .as_ref()
-                    .map(|c| binding::create_snapshot(&root, &key, c))
-                    .transpose()
+                let digest = binding::create_snapshot(&root, &key, &config)?;
+                let dir = root.join(&key);
+                let mut job = json!({"cwd":dir.join("workspace"),"configDigest":digest});
+                if let Some(node) = node {
+                    job["nodeContract"] = node;
+                }
+                journal::write(&dir.join("acp-job.json"), &job)
+                    .map_err(|_| binding::unavailable())?;
+                journal::write(
+                    &dir.join("acp-request.json"),
+                    &json!({"instruction":instruction,"configDigest":digest}),
+                )
+                .map_err(|_| binding::unavailable())?;
+                Ok::<_, Error>(digest)
             })
             .await
             .map_err(|_| Error::Internal("工作区准备中断".into()))??;
             let mut new = json!({
-                "request": body,
-                "backend": backend.mode(),
-                "configDigest": digest,
-                "inputsDigest": inputs_digest,
-                "binding": backend.binding(),
-                "result": {"attemptId":id,"status":"starting","artifactDirectoryRef":format!("artifacts:{id}")}
+                "request":body,"backend":"acp","backendId":backend.id,"configDigest":digest,
+                "inputsDigest":inputs_digest,"binding":super::catalog::entry_binding(&backend),
+                "result":{"attemptId":id,"status":"running","backendId":backend.id,"artifactDirectoryRef":format!("artifacts:{id}")}
             });
-            if let binding::Backend::Agent(entry) = &backend {
-                new["backendId"] = json!(entry.id);
-                new["result"]["backendId"] = json!(entry.id);
-            }
             self.store.update(|db| {
-                db["executorAttempts"][id] = new;
+                db["executorAttempts"][id] = new.clone();
                 Ok(())
             })?;
-            backend
-        };
-
-        let (tool, args) = match op {
-            Operation::Start(body, ..) => ("executor_start", body.into_mcp_arguments(id)),
-            Operation::Inspect => ("executor_inspect", json!({"attemptId":id})),
-            Operation::Cancel => ("executor_cancel", json!({"attemptId":id})),
-        };
-        let answer = client::call(&backend, &self.root, tool, args)
-            .await
-            .and_then(|v| validate(id, v));
-        let answer = match answer {
-            Ok(mut v) => {
-                if let binding::Backend::Agent(entry) = &backend {
-                    v["backendId"] = json!(entry.id);
-                }
-                v
+            if worker::launch(&self.root, id, &backend.bin, &backend.policy)
+                .await
+                .is_ok()
+            {
+                return Ok(new["result"].clone());
             }
-            Err(e) => {
-                let last = self.store.update(|db| {
-                    let result = &mut db["executorAttempts"][id]["result"];
-                    result["status"] = json!("unverified");
-                    Ok(result.clone())
-                })?;
-                // An existing Workbench attempt survives a missing or unreachable backend.
-                if tool == "executor_inspect"
-                    && matches!(e, Error::NotFound(_) | Error::Unavailable(_))
-                {
-                    return Ok(last);
-                }
-                return Err(e);
-            }
+            new["result"]["status"] = json!("unverified");
+            return Ok(new["result"].clone());
         };
-        let status = answer["status"].as_str().expect("validated");
-        if matches!(status, "succeeded" | "failed" | "cancelled") {
-            // Stage backend evidence without exposing success before the snapshot is committed.
-            self.store.update(|db| {
-                let r = &mut db["executorAttempts"][id];
-                r["result"]["status"] = json!("unverified");
-                r["result"]["backendRunRef"] = answer["backendRunRef"].clone();
-                r["backendStatus"] = json!(status);
-                Ok(())
-            })?;
-            let store = self.store.clone();
-            let root = self.root.clone();
-            let key = id.to_owned();
-            let status = status.to_owned();
-            tokio::task::spawn_blocking(move || files::publish(&store, &root, &key, &status))
+        let mut result = row["result"].clone();
+        if row["backend"] != "acp" {
+            // In-flight legacy attempts are never redirected to the new backend.
+            result["status"] = json!("unverified");
+            return Ok(result);
+        }
+        let dir = self.root.join(id);
+        if matches!(op, Operation::Cancel) {
+            journal::write(&dir.join("acp-cancel.json"), &json!(true))
+                .map_err(|_| binding::unavailable())?;
+        }
+        if journal::running(&dir)? {
+            result["status"] = json!("running");
+            return Ok(result);
+        }
+        let observed = journal::read(&dir.join("acp-result.json"), 1024)
+            .map_err(|_| binding::unavailable())?;
+        let status = observed
+            .as_ref()
+            .filter(|v| v["writersStopped"] == true)
+            .and_then(|v| v["status"].as_str())
+            .unwrap_or("unverified");
+        match status {
+            "succeeded" | "failed" | "cancelled" => {
+                let store = self.store.clone();
+                let root = self.root.clone();
+                let key = id.to_owned();
+                let status = status.to_owned();
+                tokio::task::spawn_blocking(move || {
+                    // A worker may have crashed after rename and before syncing the directory.
+                    std::fs::File::open(root.join(&key))
+                        .and_then(|dir| dir.sync_all())
+                        .map_err(|_| binding::unavailable())?;
+                    match files::publish(&store, &root, &key, &status) {
+                        Err(Error::Invalid(_)) => store.update(|db| {
+                            let result = &mut db["executorAttempts"][&key]["result"];
+                            result["status"] = json!(if status == "cancelled" {
+                                "cancelled"
+                            } else {
+                                "failed"
+                            });
+                            result["artifactError"] = json!("invalid_artifacts");
+                            Ok(result.clone())
+                        }),
+                        other => other,
+                    }
+                })
                 .await
                 .map_err(|_| Error::Internal("制品收集中断".into()))?
-        } else {
-            self.store.update(|db| {
-                db["executorAttempts"][id]["result"] = answer.clone();
-                Ok(answer)
-            })
+            }
+            _ => {
+                result["status"] = json!("unverified");
+                Ok(result)
+            }
         }
     }
 }
@@ -329,10 +361,14 @@ mod submitted_tests {
         let mut wire = json!({"executorRef":{"id":"reviewer","revision":7},"workInstruction":{"encoding":"utf-8","text":"审核"},"runConfig":{"nodeContract":contract},"inputs":[{"kind":"file","path":"material","contentBase64":"AA=="}]});
         let request: Submitted = serde_json::from_value(wire.clone()).unwrap();
         validate_node(&request.request).unwrap();
-        let args = request.request.into_mcp_arguments("attempt");
-        assert_eq!(args["runConfig"]["nodeContract"], contract);
-        assert_eq!(args["workInstruction"], "审核");
-        assert!(args.get("inputs").is_none());
+        assert_eq!(request.request.run_config["nodeContract"], contract);
+        assert_eq!(request.request.work_instruction.text, "审核");
+        assert!(
+            serde_json::to_value(&request.request)
+                .unwrap()
+                .get("inputs")
+                .is_none()
+        );
         wire["nodeContract"] = contract;
         assert!(serde_json::from_value::<Submitted>(wire.clone()).is_err());
         wire.as_object_mut().unwrap().remove("nodeContract");
@@ -341,26 +377,4 @@ mod submitted_tests {
             validate_node(&serde_json::from_value::<Submitted>(wire).unwrap().request).is_err()
         );
     }
-}
-fn validate(id: &str, v: Value) -> Result<Value, Error> {
-    if v["attemptId"] != id
-        || v["artifactDirectoryRef"] != format!("artifacts:{id}")
-        || !matches!(
-            v["status"].as_str(),
-            Some("running" | "succeeded" | "failed" | "cancelled" | "unverified")
-        )
-    {
-        return Err(binding::unavailable());
-    }
-    let mut result = json!({"attemptId":id,"artifactDirectoryRef":v["artifactDirectoryRef"],"status":v["status"]});
-    if let Some(reference) = v.get("backendRunRef") {
-        if !reference
-            .as_str()
-            .is_some_and(|s| !s.is_empty() && s.len() <= 256)
-        {
-            return Err(binding::unavailable());
-        }
-        result["backendRunRef"] = reference.clone();
-    }
-    Ok(result)
 }

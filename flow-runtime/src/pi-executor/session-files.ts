@@ -86,11 +86,11 @@ export async function listInputs(workspace: FileHandle, path: string) {
   } finally { await dir.close(); }
 }
 
-export function publishAnswer(workspace: FileHandle, text: string, signal: AbortSignal) {
-  return publishArtifact(workspace, 'answer.md', text, signal);
+export function publishAnswer(workspace: FileHandle, text: string, signal: AbortSignal, committed?: () => void) {
+  return publishArtifact(workspace, 'answer.md', text, signal, committed);
 }
 
-export async function publishArtifact(workspace: FileHandle, name: 'answer.md' | 'flow-outcome.json', text: string, signal: AbortSignal) {
+export async function publishArtifact(workspace: FileHandle, name: 'answer.md' | 'flow-outcome.json', text: string, signal: AbortSignal, committed?: () => void) {
   if (!text.trim() || Buffer.byteLength(text) > 1024 * 1024) throw new Error('Invalid final text');
   const dir = await open(fdPath(workspace, 'artifacts'), directory);
   const tmp = fdPath(dir, `.artifact-${randomUUID()}`);
@@ -102,6 +102,7 @@ export async function publishArtifact(workspace: FileHandle, name: 'answer.md' |
       signal.throwIfAborted();
       // Commit without yielding after the last abort check. Never overwrite a prior attempt or link.
       linkSync(tmp, fdPath(dir, name));
+      committed?.();
     } finally { await unlink(tmp); }
   } finally { await dir.close(); }
 }

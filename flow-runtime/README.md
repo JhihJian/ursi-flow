@@ -54,7 +54,7 @@ daemon 默认用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi
 
 ## MCP 执行器 adapter
 
-Workbench 管理员为 adapter 设置以下环境变量：
+`ursi-flow-executor-mcp` 通过[执行器 SDK](../executor-sdk/README.md)为独立 MCP 客户端运行固定修订的整条 Flow。管理员为 adapter 设置以下环境变量：
 
 - `URSI_EXECUTOR_ROOT`：每个尝试的受信根目录。
 - `URSI_EXECUTOR_FLOW` 与 `URSI_EXECUTOR_FLOW_REVISION`：固定的 Flow 及目录修订。

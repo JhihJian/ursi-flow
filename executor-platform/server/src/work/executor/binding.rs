@@ -6,77 +6,30 @@ use crate::work::{
     catalog,
 };
 use rustix::fs::{self as at, Mode, OFlags, ResolveFlags};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Write},
     os::unix::fs::MetadataExt,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use catalog::SNAPSHOT_LIMIT;
-
-#[derive(Clone)]
-pub(super) enum Backend {
-    Flow {
-        bin: PathBuf,
-        env: [Option<String>; 3],
-    },
-    Agent(Entry),
-}
-
-impl Backend {
-    pub(super) fn binding(&self) -> Value {
-        match self {
-            // Keep the identity of Flow attempts reserved before Pi was supported.
-            Self::Flow {
-                bin,
-                env: [flow, revision, home],
-            } => json!([bin, flow, revision, home]),
-            Self::Agent(entry) => catalog::entry_binding(entry),
-        }
-    }
-
-    pub(super) fn mode(&self) -> &'static str {
-        match self {
-            Self::Flow { .. } => "flow",
-            Self::Agent(_) => "agent",
-        }
-    }
-}
-
-pub(super) const FLOW_ENV: [&str; 3] = [
-    "URSI_EXECUTOR_FLOW",
-    "URSI_EXECUTOR_FLOW_REVISION",
-    "URSI_FLOW_HOME",
-];
-
-pub(super) fn flow_from_env() -> Option<Backend> {
-    let bin = absolute_env("URSI_EXECUTOR_BIN")?;
-    Some(Backend::Flow {
-        env: FLOW_ENV.map(|key| std::env::var(key).ok()),
-        bin,
-    })
-}
-
-fn absolute_env(name: &str) -> Option<PathBuf> {
-    let path = std::env::var(name).ok().map(PathBuf::from)?;
-    path.is_absolute().then_some(path)
-}
 
 pub(super) fn target(start: &Start) -> Result<Target, Error> {
     match (&start.executor_ref, &start.preview_definition) {
         (Some(_), Some(_)) => Err(Error::Invalid("不能同时指定执行器版本和 Agent 预览".into())),
         (Some(reference), None) => Ok(Target::Published(reference.clone())),
         (None, Some(definition)) => Ok(Target::Preview(definition.clone())),
-        (None, None) => Ok(Target::Flow),
+        (None, None) => Err(Error::Invalid("需要指定执行器版本或 Agent 预览".into())),
     }
 }
 
 #[derive(Clone)]
 pub(super) enum Target {
-    Flow,
     Published(ExecutorRef),
     Preview(Value),
 }
@@ -84,46 +37,20 @@ pub(super) enum Target {
 pub(super) fn resolve(
     store: &Store,
     target: &Target,
-    flow: Option<&Backend>,
     registry: &Registry,
-) -> Result<(Backend, Option<Value>), Error> {
+) -> Result<(Entry, Value), Error> {
     match target {
-        Target::Flow => Ok((flow.cloned().ok_or_else(unavailable)?, None)),
         Target::Published(reference) => {
             let (entry, config) =
                 catalog::published_agent(store, registry, &reference.id, reference.revision)?;
-            Ok((Backend::Agent(entry), Some(config)))
+            Ok((entry, config))
         }
         Target::Preview(definition) => {
             let config = catalog::agent_preview(store, definition)?;
             let entry = registry.select(definition["agent"]["backendId"].as_str(), &config)?;
-            Ok((Backend::Agent(entry), Some(config)))
+            Ok((entry, config))
         }
     }
-}
-
-pub(super) fn backend_for_row(
-    row: &Value,
-    flow: Option<&Backend>,
-    registry: &Registry,
-) -> Result<Backend, Error> {
-    let backend = match row.get("backend") {
-        None => flow.cloned().ok_or_else(unavailable)?,
-        Some(mode) if mode == "flow" => flow.cloned().ok_or_else(unavailable)?,
-        Some(mode) if mode == "agent" || mode == "pi" => {
-            let id = if mode == "pi" {
-                "pi"
-            } else {
-                row["backendId"].as_str().ok_or_else(unavailable)?
-            };
-            Backend::Agent(registry.lookup(id).map_err(|_| unavailable())?)
-        }
-        _ => return Err(unavailable()),
-    };
-    if row["binding"] != backend.binding() {
-        return Err(unavailable());
-    }
-    Ok(backend)
 }
 
 pub(super) fn unavailable() -> Error {
@@ -164,7 +91,7 @@ pub(super) fn create_snapshot(root: &Path, id: &str, config: &Value) -> Result<S
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
-pub(super) fn verify_snapshot(root: &Path, id: &str, expected: &str) -> Result<(), Error> {
+pub(super) fn read_snapshot(root: &Path, id: &str, expected: &str) -> Result<Value, Error> {
     let file = fs::File::from(
         at::openat(
             attempt_dir(root, id)?,
@@ -190,7 +117,7 @@ pub(super) fn verify_snapshot(root: &Path, id: &str, expected: &str) -> Result<(
     if bytes.len() > SNAPSHOT_LIMIT || format!("{:x}", Sha256::digest(&bytes)) != expected {
         return Err(unavailable());
     }
-    Ok(())
+    serde_json::from_slice(&bytes).map_err(|_| unavailable())
 }
 
 #[cfg(test)]
@@ -200,7 +127,7 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn target_rejects_mixed_agent_shapes_and_preserves_legacy_flow() {
+    fn target_requires_exactly_one_selector() {
         let flow = Start {
             executor_ref: None,
             preview_definition: None,
@@ -211,7 +138,7 @@ mod tests {
             work_patch_id: None,
             run_config: Default::default(),
         };
-        assert!(matches!(target(&flow), Ok(Target::Flow)));
+        assert!(matches!(target(&flow), Err(Error::Invalid(_))));
         let encoded = serde_json::to_value(&flow).unwrap();
         assert!(encoded.get("executorRef").is_none());
         assert!(encoded.get("previewDefinition").is_none());
@@ -252,17 +179,34 @@ mod tests {
             id: "old".into(),
             revision: 1,
         });
-        assert_eq!(
-            resolve(&store, &target, None, &registry).unwrap().1,
-            Some(snapshot)
-        );
+        assert!(matches!(
+            resolve(&store, &target, &registry),
+            Err(Error::Unavailable(_))
+        ));
+        for saved in [
+            json!(["pi", "/pi", "/private"]),
+            catalog::entry_binding(&entry("pi", "/pi", "/private")),
+        ] {
+            store
+                .update(|db| {
+                    db["catalog"]["executors"]["old"]["agentBindings"]["1"] = saved.clone();
+                    Ok(())
+                })
+                .unwrap();
+            let result = resolve(&store, &target, &registry);
+            if saved[0] == "acp-v2" {
+                assert_eq!(result.unwrap().1, snapshot);
+            } else {
+                assert!(matches!(result, Err(Error::Unavailable(_))));
+            }
+        }
         let moved = Registry::for_test(vec![(entry("pi", "/changed", "/private"), true)]);
         assert!(matches!(
-            resolve(&store, &target, None, &moved),
+            resolve(&store, &target, &moved),
             Err(Error::Unavailable(_))
         ));
         assert!(matches!(
-            resolve(&store, &Target::Preview(inline), None, &registry),
+            resolve(&store, &Target::Preview(inline), &registry),
             Err(Error::Invalid(_))
         ));
         drop(store);
@@ -278,39 +222,6 @@ mod tests {
     }
 
     #[test]
-    fn restores_original_driver_without_fallback() {
-        let flow = Backend::Flow {
-            bin: "/flow".into(),
-            env: [Some("f".into()), None, None],
-        };
-        let registry = Registry::for_test(vec![
-            (entry("pi", "/pi", "/private"), true),
-            (entry("other", "/other", "/private"), false),
-        ]);
-        let legacy = json!({"binding":["/flow", "f", null, null]});
-        let old_pi = json!({"backend":"pi", "binding":["pi", "/pi", "/private"]});
-        let agent = json!({"backend":"agent", "backendId":"other", "binding":["other", "/other", "/private"]});
-        for row in [&legacy, &old_pi, &agent] {
-            assert_eq!(
-                backend_for_row(row, Some(&flow), &registry)
-                    .unwrap()
-                    .binding(),
-                row["binding"]
-            );
-        }
-        for entries in [
-            vec![(entry("pi", "/pi", "/private"), true)],
-            vec![(entry("other", "/other", "/changed"), true)],
-            vec![(entry("other", "/changed", "/private"), true)],
-        ] {
-            assert!(matches!(
-                backend_for_row(&agent, Some(&flow), &Registry::for_test(entries)),
-                Err(Error::Unavailable(_))
-            ));
-        }
-    }
-
-    #[test]
     fn snapshot_is_private_read_only_and_stable() {
         let root = std::env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir_all(root.join("id")).unwrap();
@@ -322,11 +233,11 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o400
         );
-        verify_snapshot(&root, "id", &digest).unwrap();
+        read_snapshot(&root, "id", &digest).unwrap();
         assert!(create_snapshot(&root, "id", &config).is_err());
         fs::remove_file(&path).unwrap();
         create_snapshot(&root, "id", &json!({"changed":true})).unwrap();
-        assert!(verify_snapshot(&root, "id", &digest).is_err());
+        assert!(read_snapshot(&root, "id", &digest).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 }

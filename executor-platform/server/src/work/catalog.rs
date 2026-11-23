@@ -45,21 +45,11 @@ async fn node_executor(
     State((store, registry)): State<(Store, Registry)>,
     Path((id, revision)): Path<(String, u64)>,
 ) -> Reply {
-    store.read(|db| {
-        require_active(db, "executors", &id)?;
-        let definition = version(db, "executors", &id, revision)?;
-        let agent = definition["agent"]
-            .as_object()
-            .ok_or_else(|| Error::Invalid("节点需要 Agent 执行器".into()))?;
-        let backend = agent
-            .get("backendId")
-            .and_then(Value::as_str)
-            .unwrap_or("pi");
-        if !registry.supports_flow(backend) {
-            return Err(Error::Conflict("后端未声明 flowOutcome 能力".into()));
-        }
-        Ok(Json(json!({"id":id,"revision":revision})))
-    })
+    let (backend, _) = published_agent(&store, &registry, &id, revision)?;
+    if !registry.supports_flow(&backend.id) {
+        return Err(Error::Conflict("后端未声明 flowOutcome 能力".into()));
+    }
+    Ok(Json(json!({"id":id,"revision":revision})))
 }
 
 pub(super) fn consumer_routes(store: Store) -> Router {
@@ -299,9 +289,8 @@ fn publish(
     }
     Ok(value)
 }
-// Preserve the deployed Pi attempt identity format; paths are private deployment identifiers.
 pub(super) fn entry_binding(entry: &Entry) -> Value {
-    json!([entry.id, entry.bin, entry.policy])
+    json!(["acp-v2", entry.id, entry.bin, entry.policy])
 }
 
 fn agent_snapshot(db: &Value, id: &str, revision: u64) -> Result<Value, Error> {
@@ -324,7 +313,7 @@ pub(super) fn published_agent(
     id: &str,
     rev: u64,
 ) -> Result<(Entry, Value), Error> {
-    store.update(|db| {
+    store.read(|db| {
         let snapshot = agent_snapshot(db, id, rev)?;
         let agent = &version(db, "executors", id, rev)?["agent"];
         let requested = agent
@@ -341,14 +330,8 @@ pub(super) fn published_agent(
             .transpose()?;
         let key = rev.to_string();
         let binding = entry_binding(&entry);
-        let legacy_unbound = match bindings.and_then(|b| b.get(&key)) {
-            Some(saved) if *saved == binding => false,
-            None if requested.is_none() => true,
-            _ => return Err(unavailable()),
-        };
-        // Health gates a new selection, not use of a previously published binding.
-        if legacy_unbound {
-            db["catalog"]["executors"][id]["agentBindings"][key] = binding;
+        if bindings.and_then(|b| b.get(&key)) != Some(&binding) {
+            return Err(unavailable());
         }
         Ok((entry, snapshot))
     })

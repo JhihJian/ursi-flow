@@ -73,7 +73,7 @@ Daemon 将固定修订的启动与目录发布串行处理。首次启动核对�
 
 ### Flow Executor MCP stdio adapter
 
-Flow Runtime 通过独立执行器 SDK 提供 stdio JSONL adapter，作为 Workbench 的本机执行器。adapter 只暴露 `executor_start`、`executor_inspect`、`executor_cancel`，复用 daemon 的 `run.startPinned`、`run.get` 和 `run.stop`，不复制运行状态机。管理员通过 `URSI_EXECUTOR_ROOT`、`URSI_EXECUTOR_FLOW`、`URSI_EXECUTOR_FLOW_REVISION` 和 `URSI_FLOW_HOME` 固定执行边界。
+Flow Runtime 通过独立执行器 SDK 为 MCP 客户端提供整条 Flow 的 stdio JSONL adapter，独立于执行器平台。adapter 只暴露 `executor_start`、`executor_inspect`、`executor_cancel`，复用 daemon 的 `run.startPinned`、`run.get` 和 `run.stop`，不复制运行状态机。管理员通过 `URSI_EXECUTOR_ROOT`、`URSI_EXECUTOR_FLOW`、`URSI_EXECUTOR_FLOW_REVISION` 和 `URSI_FLOW_HOME` 固定执行边界。
 
 #### 验收
 

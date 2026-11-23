@@ -158,7 +158,7 @@ test('登记 Run 前拒绝无效节点执行器', async () => {
 
 test('启动回执丢失并重启 daemon，恢复只查询原尝试并按制品选边', async () => {
   const args = await start('lost', { dropStart: true, status: 'unverified' });
-  await until(() => scenario.calls.some(([method]) => method === 'GET'));
+  await statusOf(args.id, 'unknown');
   assert.equal((await rpc('run.history', { id: args.id })).routeDecisions.length, 0);
   await shutdown();
   await boot();

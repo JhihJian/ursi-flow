@@ -1444,7 +1444,6 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "libc",
- "rmcp",
  "rustix",
  "serde",
  "serde_json",

@@ -142,16 +142,42 @@ async fn http_directory_probe_and_package_preview() {
             br#"{"models":[{"id":"m","provider":{}}],"tools":[]}"#,
             0o600,
         );
-        let bin = t.file("adapter", br#"#!/usr/bin/python3
+        let bin = t.file(
+            "adapter",
+            br#"#!/usr/bin/python3
 import json, os, sys
-assert os.path.isdir(os.environ['URSI_EXECUTOR_ROOT'])
-def reply(req, result): print(json.dumps({'jsonrpc':'2.0','id':req['id'],'result':result}), flush=True)
-reply(json.loads(input()), {'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'example','version':'1'}})
-assert json.loads(input())['method'] == 'notifications/initialized'
-r=json.loads(input()); assert r['method'] == 'tools/list'
-reply(r, {'tools':[{'name':n,'inputSchema':{'type':'object'}} for n in ['executor_start','executor_inspect','executor_cancel']]})
+from pathlib import Path
+
+def request(method):
+    req = json.loads(input())
+    assert req['jsonrpc'] == '2.0' and req['method'] == method
+    return req
+
+def reply(req, **result):
+    print(json.dumps({'jsonrpc': '2.0', 'id': req['id'], 'result': result}), flush=True)
+
+req = request('initialize')
+assert req['params']['protocolVersion'] == 2
+assert req['params']['info']['name'] and req['params']['info']['version']
+assert isinstance(req['params']['capabilities'], dict)
+reply(req, protocolVersion=2, info={'name': 'example', 'version': '2'},
+      capabilities={'session': {'systemPrompt': {'mode': {'override': {}}}}})
+req = request('session/new')
+cwd = Path(req['params']['cwd'])
+assert cwd.is_absolute() and cwd.is_dir()
+assert Path(os.environ['URSI_EXECUTOR_ROOT']) in cwd.parents
+assert 'URSI_ACP_JOB' not in os.environ
+prompt = req['params']['systemPrompt']
+assert prompt['mode'] == 'override'
+assert prompt['content'] and all(b['type'] == 'text' and b['text'] for b in prompt['content'])
+reply(req, sessionId='probe-session')
+req = request('session/close')  # A probe never prompts.
+assert req['params']['sessionId'] == 'probe-session'
+reply(req)
 assert sys.stdin.read() == ''
-"#, 0o700);
+"#,
+            0o700,
+        );
         let mut managed = row(&bin);
         managed["capabilities"] = json!([]);
         let path = t.file("managed", json!([managed]).to_string().as_bytes(), 0o600);

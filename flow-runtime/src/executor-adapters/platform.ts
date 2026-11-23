@@ -114,6 +114,7 @@ export class PlatformAgent implements AgentRunExecutor {
 				const outcome = parseRuntimeOutcome({ toolName: "submit_flow_outcome", arguments: artifact }, request.outcomes, request.allowedVariables);
 				return { outcome };
 			}
+			if (state.status === "unverified") throw new AttemptUnconfirmed(`尝试 ${attemptId} 状态待核实`);
 			if (state.status === "failed" || state.status === "cancelled") throw Error(`平台尝试 ${attemptId}: ${state.status}`);
 			await delay(1000);
 		}

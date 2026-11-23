@@ -6,7 +6,7 @@
 
 ## 本地开发
 
-以下命令从 `workbench/` 执行。先在服务环境中设置 `URSI_API_TOKEN`。只使用工作清单时可关闭 Flow：
+以下命令从 `workbench/` 执行。按 [Server 部署说明](server/README.md#部署配置与存储)设置 `URSI_API_TOKEN`、`URSI_EXECUTOR_PLATFORM_URL` 和 `URSI_EXECUTOR_PLATFORM_TOKEN`。只使用工作清单时可关闭 Flow：
 
 ```sh
 URSI_FLOW_ENABLED=0 cargo run --locked -p ursi-server
@@ -36,13 +36,11 @@ Server 默认监听 `0.0.0.0:8080`，可用 `URSI_LISTEN_ADDR` 改；Web 开发�
 
 ## 目录编辑台
 
-从「工作包」进入 `/work-patches`，输入包名后直接整理文件。从「配置包」进入 `/config-patches`，分别编辑 `AGENTS.md`、`skills/` 和 `mcp.json`。工作包的业务记录保存目录引用、来源和可选的工作项归属。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](../docs/design/workbench/PATCH-STUDIO.md)。
+从「工作包」进入 `/work-patches`，输入包名后直接整理文件。`AGENTS.md`、`skills/` 和 `mcp.json` 等配置包文件由[执行器平台管理页](../executor-platform/web/README.md)维护。工作包的业务记录保存目录引用、来源和可选的工作项归属。也可以不建包，直接 `POST /api/v2/directories` 创建虚拟目录，再用返回的 ID 读写文件。见[目录接口](server/src/work/directories/HTTP.md)和[模块分工与交互对照](../docs/design/workbench/PATCH-STUDIO.md)。
 
 ## 资源库与执行器
 
-在 `/resources` 发布资源，在 `/executors` 发布引用指定提示词或技能修订的执行器。两种目录都能打开历史修订。发布执行器只保存定义，不会启动运行。
-
-执行一次任务走独立的 HTTP 入口：调用方生成小写 UUID，向 `PUT /api/v2/executor-attempts/{attemptId}` 提交指令，可附工作包。回执丢失用同一路径 GET 查回；取得终态的 `artifactDirectoryId` 后，通过目录接口读报告。省略执行目标时使用部署固定的 Flow，也可指定 Agent 修订或提交草稿试跑。三种路径的区别见[执行器设计](../docs/design/workbench/EXECUTOR-DESIGN.md)，部署变量、请求示例和取消语义见[执行器接入说明](EXECUTOR-INTEGRATION.md)。
+资源发布、执行器试跑和执行器修订发布都在[执行器平台管理页](../executor-platform/web/README.md)完成。Workbench 选择已发布的 ACP 修订，用小写 UUID 向 `PUT /api/v2/executor-attempts/{attemptId}` 提交指令，可附工作包。回执丢失用同一路径 GET 查回；取得终态的 `artifactDirectoryId` 后，通过目录接口读报告。Flow 的启动由 Runtime 负责，可选同一修订供 Agent 节点使用。部署变量、请求示例和取消语义见[执行器接入说明](EXECUTOR-INTEGRATION.md)。
 
 ## 检查
 

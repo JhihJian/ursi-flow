@@ -65,6 +65,10 @@ impl Server {
                         "/v2/executor-attempts/{id}/cancel",
                         post(|| async { "cancel" }),
                     )
+                    .route(
+                        "/v2/executor-attempts/{id}/events",
+                        get(|| async { Json(json!({"events":[],"nextCursor":0})) }),
+                    )
                     .with_state(store.clone()),
             );
         let app = secured(
@@ -299,6 +303,7 @@ async fn first_valid_put_owns_id_across_races_and_restart() {
         (Method::GET, ""),
         (Method::PUT, ""),
         (Method::POST, "/cancel"),
+        (Method::GET, "/events?after=0"),
     ] {
         // Axum decodes this UUID alias for both the policy and the handler.
         let route = format!("{}{suffix}", path.replacen("/aaaa", "/%61aaa", 1));
@@ -313,6 +318,10 @@ async fn first_valid_put_owns_id_across_races_and_restart() {
             );
         }
     }
+    assert_eq!(
+        status(api.client.get(format!("{}{path}/events?after=0", api.url))).await,
+        StatusCode::UNAUTHORIZED
+    );
     api.close().await;
 }
 
