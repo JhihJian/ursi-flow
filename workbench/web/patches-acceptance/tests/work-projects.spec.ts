@@ -49,7 +49,10 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
     if (path.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())) writes.push(path)
   })
   await login(page, token)
-  await page.goto('/work-projects')
+  const desktop = info.project.name === 'desktop'
+  const sidebar = await openSidebar(page, desktop)
+  await sidebar.getByRole('link', { name: '工作', exact: true }).click()
+  await page.getByRole('navigation', { name: '工作视图' }).getByRole('link', { name: '项目', exact: true }).click()
   const projectName = `客户交付-${info.project.name}`
   await page.getByLabel('项目名称').fill(projectName)
   await page.getByRole('button', { name: '新建项目', exact: true }).click()
@@ -60,7 +63,6 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
     expect(response.ok()).toBeTruthy()
     return await response.json()
   }
-  const desktop = info.project.name === 'desktop'
   const graph = page.locator('.react-flow')
   await expect(desktop ? graph : page.getByRole('list', { name: '画布列表' })).toBeVisible()
   await addNamed(page, '新建画布', '画布名称', '材料准备')
@@ -212,11 +214,15 @@ test('右键按命中对象提供快捷操作，空画布可建卡，删除仍�
   await expect(action('删除任务卡')).toBeDisabled()
   await page.keyboard.press('Escape')
 
-  await page.getByRole('button', { name: '新建关系', exact: true }).click()
-  await page.getByRole('combobox', { name: '前项', exact: true }).selectOption({ label: '准备' })
-  await page.getByRole('combobox', { name: '后项', exact: true }).selectOption({ label: '交付' })
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  const path = page.locator('path.react-flow__edge-interaction')
+  const port = (name: string, direction: 'source' | 'target') => page.getByRole('group', { name, exact: true })
+    .locator(`.react-flow__handle.${direction}.connectable`)
+  await port('准备', 'source').click()
+  await port('交付', 'target').click()
+  const edge = page.getByRole('group', { name: '准备 → 交付', exact: true })
+  await expect(edge).toBeVisible()
+  await page.reload()
+  await expect(edge).toBeVisible()
+  const path = edge.locator('path.react-flow__edge-interaction')
   await expect(path).toHaveCount(1)
   const point = await path.evaluate((line: SVGPathElement) => {
     const { x, y } = line.getPointAtLength(line.getTotalLength() / 2).matrixTransform(line.getScreenCTM()!)
