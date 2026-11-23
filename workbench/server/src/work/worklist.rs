@@ -1,5 +1,6 @@
 //! 工作清单管理可独立编辑的事项，不包含生成流程。
 mod cleanup;
+mod projects;
 #[cfg(test)]
 mod tests;
 
@@ -28,6 +29,7 @@ pub(super) fn routes(store: Store) -> Router {
             "/v2/work-items/{id}",
             get(detail).put(replace).delete(remove),
         )
+        .merge(projects::routes())
         .with_state(store)
 }
 
@@ -84,7 +86,9 @@ impl Definition {
             .map(|v| json!(v))
             .or_else(|| previous.map(|r| r["status"].clone()))
             .unwrap_or_else(|| json!(Status::default()));
-        Ok(json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"revision":revision}))
+        Ok(
+            json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"revision":revision}),
+        )
     }
 }
 
@@ -139,6 +143,10 @@ async fn create(
     State(store): State<Store>,
     Json(input): Json<Definition>,
 ) -> Result<Json<Value>, Error> {
+    store.update(|db| Ok(Json(insert_item(db, input)?)))
+}
+
+fn insert_item(db: &mut Value, input: Definition) -> Result<Value, Error> {
     if input.revision.is_some() {
         return Err(Error::Invalid("新建工作项无需修订号".into()));
     }
@@ -147,10 +155,8 @@ async fn create(
     }
     let id = Uuid::new_v4().to_string();
     let row = input.row(&id, 1, None)?;
-    store.update(|db| {
-        table_mut(db)?.insert(id, row.clone());
-        Ok(Json(row))
-    })
+    table_mut(db)?.insert(id, row.clone());
+    Ok(row)
 }
 async fn replace(
     State(store): State<Store>,
@@ -174,6 +180,7 @@ async fn replace(
 async fn remove(State(store): State<Store>, Path(id): Path<String>) -> Result<StatusCode, Error> {
     store.update(|db| {
         table_mut(db)?.remove(&id).ok_or_else(missing)?;
+        projects::detach_item(db, &id)?;
         patches::detach_item(db, &id)?;
         Ok(StatusCode::NO_CONTENT)
     })

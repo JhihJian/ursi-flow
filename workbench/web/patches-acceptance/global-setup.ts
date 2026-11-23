@@ -68,6 +68,9 @@ export default async function globalSetup() {
       URSI_DATA_DIR: dataDir,
       URSI_WORKSPACE_DIR: workspaceDir,
       URSI_LISTEN_ADDR: `${host}:${ports.api}`,
+      // 本地功能无需平台在线，但 Server 启动时要求显式配置地址和令牌。
+      URSI_EXECUTOR_PLATFORM_URL: origin(1),
+      URSI_EXECUTOR_PLATFORM_TOKEN: randomBytes(32).toString('hex'),
       URSI_FLOW_ENABLED: '0',
       URSI_FLOWD_BIN: path.join(acceptanceDir, '.run/absent-flowd'),
       URSI_AGENT_BIN: path.join(acceptanceDir, '.run/absent-agent'),

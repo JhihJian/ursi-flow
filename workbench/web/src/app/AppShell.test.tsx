@@ -108,7 +108,7 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
+    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '工作项目', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })

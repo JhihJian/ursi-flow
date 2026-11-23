@@ -1,0 +1,88 @@
+.wb-canvas {
+  width: 100%;
+  min-width: 0;
+  height: clamp(24rem, 62dvh, 52rem);
+  overflow: hidden;
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 8px;
+  background: rgb(var(--c-base));
+}
+
+.wb-canvas .react-flow {
+  --xy-edge-stroke: rgb(var(--c-txt3));
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: rgb(var(--c-accent));
+  --xy-connectionline-stroke: rgb(var(--c-accent));
+  --xy-attribution-background-color: rgb(var(--c-base) / 0.9);
+  --xy-minimap-background-color: rgb(var(--c-surface));
+  --xy-minimap-mask-background-color: rgb(var(--c-base) / 0.64);
+  --xy-minimap-mask-stroke-color: rgb(var(--c-accent));
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: rgb(var(--c-line-strong));
+}
+
+.wb-canvas .react-flow__attribution a {
+  color: rgb(var(--c-txt3));
+}
+
+.wb-canvas .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 8px;
+}
+
+.wb-canvas-card {
+  width: 16rem;
+  border: 1px solid rgb(var(--c-line-strong));
+  border-radius: 8px;
+  background: rgb(var(--c-surface));
+  color: rgb(var(--c-txt));
+  box-shadow: var(--shadow-card);
+}
+
+.wb-canvas-card-title {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.wb-canvas-card-content {
+  min-width: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid rgb(var(--c-line));
+  cursor: auto;
+  overflow-wrap: anywhere;
+}
+
+.wb-canvas .react-flow__node.selected .wb-canvas-card,
+.wb-canvas .react-flow__node:focus-visible .wb-canvas-card {
+  border-color: rgb(var(--c-accent));
+  box-shadow: 0 0 0 2px rgb(var(--c-accent) / 0.28);
+}
+
+.wb-canvas .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgb(var(--c-surface));
+  background: rgb(var(--c-txt3));
+}
+
+.wb-canvas .react-flow__handle.connectable {
+  background: rgb(var(--c-accent));
+}
+
+.wb-canvas-controls {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 8px;
+  background: rgb(var(--c-surface));
+  box-shadow: var(--shadow-card);
+}
+
+.wb-canvas-controls button {
+  width: 2rem;
+  height: 2rem;
+}

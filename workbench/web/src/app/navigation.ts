@@ -8,6 +8,7 @@ export interface NavGroup { title: string; items: NavItem[] }
 export const navigationGroups: NavGroup[] = [
   { title: '日常工作', items: [
     { path: '/work-items', title: '工作清单', icon: 'board' },
+    { path: '/work-projects', title: '工作项目', icon: 'folder' },
     { path: '/work-patches', title: '工作包', icon: 'folder' },
     { path: generationRunsPath, title: '生成记录', icon: 'runs' },
   ] },

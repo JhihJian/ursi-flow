@@ -6,6 +6,7 @@ depends-on:
 references:
   - ../../docs/design/workbench/SERVER-FLOW.md
   - ../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
+  - ../../docs/design/workbench/WORK-PROJECTS-DESIGN.md
   - README.md
 ---
 
@@ -13,7 +14,7 @@ references:
 
 ## 功能意图
 
-Server 通过 `/api/v2` 管理工作清单、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
+Server 通过 `/api/v2` 管理工作清单、项目规划、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
 
 ## 关键功能与验收
 
@@ -25,6 +26,13 @@ Server 通过 `/api/v2` 管理工作清单、工作包、业务目录、生成�
 - [工作包生成器](src/work/generation/GENERATORS-HTTP.md)按不可变修订发布。试运行或关联工作项的运行都以统一请求指定修订，运行状态和结果可独立于 Flow 查询。
 - [工作包](src/work/patches/SPEC.md)返回本地 `directoryId`，可通过[目录接口](src/work/directories/SPEC.md)读写业务文件。独立创建的业务目录无需绑定包。配置包文件只在平台编辑。
 - 可读取执行器选择所需的修订元数据，按固定 `executorRef: {id, revision}` 和业务输入快照执行。Workbench 只能查询、取消本角色的尝试，通过 `platform-artifact-{attemptId}` 只读访问已发布制品。该句柄不出现在业务目录列表。
+
+### 项目规划
+
+#### 验收
+
+- 关闭 Flow 时仍可通过[项目规划接口](src/work/worklist/PROJECTS-HTTP.md)管理项目、组织事项、编辑规划关系和布局。事项办理状态沿用原工作清单接口。
+- 重启后可读回项目层级、归属、卡内顺序、两层关系和布局。规划操作与工作包生成和执行独立。
 
 ### HTTP 管理入口
 

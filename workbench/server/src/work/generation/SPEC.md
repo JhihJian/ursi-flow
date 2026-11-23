@@ -1,5 +1,5 @@
 ---
-parent: ../../SPEC.md
+parent: ../../../SPEC.md
 depends-on:
   - ../patches/SPEC.md
   - ../directories/SPEC.md

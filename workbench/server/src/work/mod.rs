@@ -1,5 +1,6 @@
 //! Workbench 持有业务数据，通过平台的消费者接口选版、执行并读取制品。
 mod business_directories;
+mod canvas;
 mod environment;
 mod generation;
 mod mcp;

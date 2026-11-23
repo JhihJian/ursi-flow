@@ -69,6 +69,7 @@ SOFTWARE.
 | --- | --- | --- |
 | `react`、`react-dom` | UI 运行时 | MIT |
 | `react-router` | 客户端路由与数据路由 | MIT |
+| `@xyflow/react` | Canvas Map 与规划画布的图形交互 | MIT |
 | `zustand` | 应用级状态（主题、反馈、对话会话） | MIT |
 | `@radix-ui/react-*` | 对话框、标签页、开关、下拉菜单、提示等无障碍基元 | MIT |
 | `class-variance-authority` | 组件变体定义 | Apache-2.0 |

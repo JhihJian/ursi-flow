@@ -5,6 +5,7 @@ depends-on:
 references:
   - ../work/catalog/HTTP.md
   - ../work/worklist/HTTP.md
+  - ../work/worklist/PROJECTS-HTTP.md
   - ../work/patches/HTTP.md
   - ../work/directories/HTTP.md
   - ../work/mcp/PLATFORM.md
@@ -47,7 +48,7 @@ references:
 | `GET /{collection}/{id}`、`GET /{collection}/{id}/revisions`、`GET /{collection}/{id}/revisions/{revision}` | 查最新版、版本列表或冻结版本 |
 | `POST /{collection}/{id}/deactivate` | 停用定义，保留历史 |
 
-清单与生成接口见[工作清单](../work/worklist/HTTP.md)，包与文件接口见[工作包](../work/patches/HTTP.md)和[虚拟目录](../work/directories/HTTP.md)，动态资源发现见[MCP 契约](../work/mcp/PLATFORM.md)。已认证请求访问旧 `/items`、`/sources`、`/packages` 及其子路由返回 404。
+清单与生成接口见[工作清单](../work/worklist/HTTP.md)，项目工作区与归属接口见[项目规划](../work/worklist/PROJECTS-HTTP.md)，包与文件接口见[工作包](../work/patches/HTTP.md)和[虚拟目录](../work/directories/HTTP.md)，动态资源发现见[MCP 契约](../work/mcp/PLATFORM.md)。已认证请求访问旧 `/items`、`/sources`、`/packages` 及其子路由返回 404。
 
 ### 认证与错误
 

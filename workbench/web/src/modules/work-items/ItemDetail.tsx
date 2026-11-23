@@ -9,6 +9,7 @@ import { Button } from '@/shared/ui/button'
 import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { categories, deleteWorkItem, getWorkItem, statuses, workItemPath, type WorkItem } from '@/shared/api/work-items'
+import { canvasPath, getPlacement, projectsPath, type Placement } from '@/shared/api/work-projects'
 
 export function ItemDetail() {
   const { id = '' } = useParams()
@@ -32,6 +33,7 @@ function Detail({ item }: { item: WorkItem }) {
         <Button variant="danger" disabled={patches.loading || !!patches.error} onClick={() => setDeleting(true)}>删除工作项</Button></div>
     </header>
     <section className="space-y-2 border-t border-line pt-4"><h2 className="font-semibold">工作说明</h2><p className="whitespace-pre-wrap text-sm">{item.description || '暂无说明'}</p></section>
+    <ItemPlacement itemId={item.id} />
     <section className="space-y-2 border-t border-line pt-4">
       <div className="flex flex-wrap items-center gap-3"><h2 className="font-semibold">生成记录</h2>
         <Button asChild size="sm"><Link to={generationHistoryPath({ workItemId: item.id })}>查看本项的生成记录</Link></Button>
@@ -49,4 +51,20 @@ function Detail({ item }: { item: WorkItem }) {
       {deletion.error && <p role="alert" className="text-err">{deletion.error}</p>}
     </Modal>
   </div>
+}
+
+function ItemPlacement({ itemId }: { itemId: string }) {
+  const placement = useResource<Placement | null>(signal => getPlacement(itemId, signal), null, itemId)
+  const location = placement.data
+  return <section className="space-y-2 border-t border-line pt-4">
+    <h2 className="font-semibold">项目归属</h2>
+    {placement.loading || placement.error ? <ResourceState loading={placement.loading} error={placement.error} onRetry={placement.reload} /> :
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <p className="text-txt3">{location ? '已归属项目任务卡' : '尚未归属项目'}</p>
+        {location ? <Button asChild size="sm"><Link to={{
+          pathname: canvasPath(location.projectId, location.canvasId),
+          search: `?${new URLSearchParams({ focusItemId: itemId })}`,
+        }}>在画布中定位</Link></Button> : <Button asChild size="sm"><Link to={projectsPath}>打开工作项目</Link></Button>}
+      </div>}
+  </section>
 }
