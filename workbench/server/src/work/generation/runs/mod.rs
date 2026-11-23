@@ -1,5 +1,5 @@
 //! Explicit runs are registered before conversion and published with their output.
-use super::{Binding, GeneratorRef, Recipe, Resource, generators, resolve};
+use super::{GeneratorRef, Recipe, Resource, generators, resolve};
 use super::convert::{self, WorkContext};
 use crate::work::{Error, Store, directories, patches};
 use axum::{
@@ -44,21 +44,11 @@ pub(super) fn routes(store: Store, platform: McpPlatform) -> Router {
 }
 
 #[derive(Deserialize, Serialize)]
-#[serde(untagged)]
-enum Request {
-    WorkItem(WorkItem),
-    Trial(Trial),
-}
-#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkItem {
-    work_item_id: String,
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Trial {
+struct Request {
     generator: GeneratorRef,
     resources: Vec<Resource>,
+    work_item_id: Option<String>,
 }
 
 struct Job {
@@ -105,29 +95,21 @@ fn register(service: &Service, id: &str, input: Request) -> Result<(Value, Optio
             }
             return Ok((entry["run"].clone(), None));
         }
-        let (binding, item) = match input {
-            Request::WorkItem(input) => {
-                let item = item_row(db, &input.work_item_id).ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
-                if item["generator"].is_null() {
-                    return Err(Error::Invalid("工作项尚未绑定生成器".into()));
-                }
-                let binding: Binding = serde_json::from_value(item["generator"].clone()).map_err(|_| internal())?;
-                (binding, Some(item.clone()))
-            }
-            Request::Trial(Trial { generator, resources }) => {
-                (Binding { id: generator.id, revision: generator.revision, resources }, None)
-            }
-        };
-        let generator = resolve(db, &binding.id, binding.revision, &binding.resources)?;
+        let item = input
+            .work_item_id
+            .as_deref()
+            .map(|id| item_row(db, id).cloned().ok_or_else(|| Error::NotFound("工作项不存在".into())))
+            .transpose()?;
+        let generator = resolve(db, &input.generator.id, input.generator.revision, &input.resources)?;
         let permit = service.slots.clone().try_acquire_owned()
             .map_err(|_| Error::Unavailable("生成任务已满，请稍后重试".into()))?;
-        let mut row = json!({"id":id,"generator":{"id":binding.id,"revision":binding.revision},"resources":binding.resources,"status":"running","startedAt":now(),"initiator":"workbench-admin"});
+        let mut row = json!({"id":id,"generator":{"id":input.generator.id,"revision":input.generator.revision},"resources":input.resources,"status":"running","startedAt":now(),"initiator":"workbench-admin"});
         if let Some(item) = &item {
             row["workItemId"] = item["id"].clone();
             row["workItemTitle"] = item["title"].clone();
             row["workItemRevision"] = item["revision"].clone();
         }
-        let recipe = Recipe { script: generator["script"].as_str().ok_or_else(internal)?.into(), resources: binding.resources };
+        let recipe = Recipe { script: generator["script"].as_str().ok_or_else(internal)?.into(), resources: input.resources };
         db[RUNS][id] = json!({"request":request,"run":row});
         let context = item.map(|row| {
             let text = |key: &str| row[key].as_str().unwrap_or_default().to_owned();

@@ -42,4 +42,4 @@
 ## 操作接口与配方
 
 - [平台 MCP 操作契约](../../../../../ursi-mcp/server/HTTP.md)定义服务登记、资源读取、工具和提示词接口。
-- [工作包配方转换契约](../worklist/CONVERSION.md)定义 Python 输入、输出与宿主隔离环境。
+- [工作包转换契约](../generation/CONVERSION.md)定义 Python 输入、输出与宿主隔离环境。

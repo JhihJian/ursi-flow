@@ -22,7 +22,7 @@ Server 通过 `/api/v2` 管理工作清单、工作包、业务目录、生成�
 #### 验收
 
 - [工作清单](src/work/worklist/SPEC.md)可独立增删改查。通过[平台 MCP](src/work/mcp/SPEC.md)选择资源并保存配方后，可按请求生成工作包。删除清单项时保留文件与生成来源。
-- [工作包生成器](src/work/worklist/GENERATORS-HTTP.md)按不可变修订发布。工作项绑定或独立试运行都指定修订，运行状态和结果可独立于 Flow 查询。
+- [工作包生成器](src/work/generation/GENERATORS-HTTP.md)按不可变修订发布。试运行或关联工作项的运行都以统一请求指定修订，运行状态和结果可独立于 Flow 查询。
 - [工作包](src/work/patches/SPEC.md)返回本地 `directoryId`，可通过[目录接口](src/work/directories/SPEC.md)读写业务文件。独立创建的业务目录无需绑定包。配置包文件只在平台编辑。
 - 可读取执行器选择所需的修订元数据，按固定 `executorRef: {id, revision}` 和业务输入快照执行。Workbench 只能查询、取消本角色的尝试，通过 `platform-artifact-{attemptId}` 只读访问已发布制品。该句柄不出现在业务目录列表。
 

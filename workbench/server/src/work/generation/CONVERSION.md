@@ -2,7 +2,7 @@
 
 ## Python 输入与结果
 
-生成器和内嵌配方共用 `transform(item, resources)`。独立试运行的 `item` 为 `None`，工作项生成时 `item` 仅含 `id`、`title`、`description`、`category`、`status`。后两个字段取自生成开始时的工作项，分别表示工作类别与办理状态，取值见[工作清单契约](HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
+生成器实现 `transform(item, resources)`。不关联工作项的运行（试运行）`item` 为 `None`；关联工作项时 `item` 仅含 `id`、`title`、`description`、`category`、`status`，取自受理时的工作项快照，后两个字段分别表示工作类别与办理状态，取值见[工作清单契约](../worklist/HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
 
 ```python
 def transform(item, resources):
@@ -20,6 +20,6 @@ def transform(item, resources):
 | Python | 地址空间 192 MiB，CPU 2 秒，含启动与管道读写的总时长 6 秒 |
 | 生成文件 | 1 至 128 个，正文合计 4 MiB，输入输出 JSON 各 6 MiB |
 
-包名最长 80 个字符，文件路径遵循虚拟目录规则。文件正文只接受 `text` 或 `blob` 之一。转换器在校验全部文件后交付结果，由调用方复核工作项修订并发布。
+包名最长 80 个字符，文件路径遵循虚拟目录规则。文件正文只接受 `text` 或 `blob` 之一。转换器在校验全部文件后交付结果，由运行发布流程复核工作项仍存在后发布。
 
-在具备上述隔离设施的主机上，可使用 `cargo test --manifest-path workbench/server/Cargo.toml --lib work::worklist::convert::tests -- --include-ignored` 连同真实隔离用例一起验收。
+在具备上述隔离设施的主机上，可使用 `cargo test --manifest-path workbench/server/Cargo.toml --lib work::generation::convert::tests -- --include-ignored` 连同真实隔离用例一起验收。

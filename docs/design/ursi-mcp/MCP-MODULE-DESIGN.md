@@ -26,4 +26,4 @@
 2. **接入后端和工作清单。** 通过原 v2 路由验证认证、已登记 ID 和设置仍可用。发现、预览、工具及转换共用 4 个并发名额；操作超时和转换 45 秒总时限保持现状。用已有配方验证来源摘要、重复生成请求只发布一个包、读取失败不执行脚本也不发布。
 3. **抽管理页面并切换引用。** 单独构建 Web 包，用一个最小宿主挂载路由。再在 Workbench 验证登记、深链预览、确认后调用工具、凭据删除后的失败提示，以及配方选择资源。最终由依赖检查确认两个包均不导入 Workbench 私有代码。
 
-通用行为见[后端规格](../../../ursi-mcp/server/SPEC.md)与[前端规格](../../../ursi-mcp/web/SPEC.md)。Workbench 的宿主职责见[后端接入规格](../../../workbench/server/src/work/mcp/SPEC.md)、[页面接入规格](../../../workbench/web/src/modules/mcp/SPEC.md)与[配方转换契约](../../../workbench/server/src/work/worklist/CONVERSION.md)。
+通用行为见[后端规格](../../../ursi-mcp/server/SPEC.md)与[前端规格](../../../ursi-mcp/web/SPEC.md)。Workbench 的宿主职责见[后端接入规格](../../../workbench/server/src/work/mcp/SPEC.md)、[页面接入规格](../../../workbench/web/src/modules/mcp/SPEC.md)与[工作包转换契约](../../../workbench/server/src/work/worklist/../generation/CONVERSION.md)。

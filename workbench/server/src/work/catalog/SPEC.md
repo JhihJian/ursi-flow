@@ -5,7 +5,7 @@ depends-on:
 references:
   - ../../../../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
   - HTTP.md
-  - ../worklist/GENERATORS-HTTP.md
+  - ../generation/GENERATORS-HTTP.md
   - ../../../../../docs/design/workbench/EXECUTOR-DESIGN.md
   - ../../../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md
 ---
@@ -14,7 +14,7 @@ references:
 
 ## 功能意图
 
-执行器平台发布资源与执行器，通过修订号读取历史内容。此规格保留在 Workbench 前端引用的旧路径；工作包生成器由 Workbench 单独发布，见[生成器契约](../worklist/GENERATORS-HTTP.md)。
+执行器平台发布资源与执行器，通过修订号读取历史内容。此规格保留在 Workbench 前端引用的旧路径；工作包生成器由 Workbench 单独发布，见[生成器契约](../generation/GENERATORS-HTTP.md)。
 
 ## 关键功能与验收
 

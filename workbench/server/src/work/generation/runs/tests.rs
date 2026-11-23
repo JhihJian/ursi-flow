@@ -25,18 +25,24 @@ fn fixture() -> (Temp, Service) {
     )
 }
 fn bound() -> Request {
-    Request::WorkItem(WorkItem {
-        work_item_id: "item".into(),
-    })
-}
-fn trial() -> Request {
-    Request::Trial(Trial {
+    Request {
         generator: GeneratorRef {
             id: "g".into(),
             revision: 1,
         },
         resources: vec![],
-    })
+        work_item_id: Some("item".into()),
+    }
+}
+fn trial() -> Request {
+    Request {
+        generator: GeneratorRef {
+            id: "g".into(),
+            revision: 1,
+        },
+        resources: vec![],
+        work_item_id: None,
+    }
 }
 fn generated() -> convert::Generated {
     convert::Generated {
