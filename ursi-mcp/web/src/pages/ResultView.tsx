@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '../ui/data-table'
-import { Button } from '../ui/button'
+import { Tabs } from '../ui/tabs'
 
 /**
  * 工具结果动态渲染。优先 structuredContent，其次解析 content 里
@@ -112,13 +112,15 @@ export function ResultView({ output }: Props) {
   const nested = mode === 'structured' && structured && typeof structured === 'object' && !Array.isArray(structured)
     ? Object.entries(structured as Record<string, unknown>).filter(([key, value]) => typeof value === 'object' && value !== null && (!rows || key !== rows.key))
     : []
-  return <section className="grid gap-2">
-    <div className="flex items-center justify-between">
-      <h3>{'isError' in output && output.isError ? '工具返回错误' : '结果'}</h3>
-      <div role="tablist" aria-label="结果查看方式" className="flex gap-1">
-        <Button size="sm" variant={mode === 'structured' ? 'primary' : 'ghost'} aria-pressed={mode === 'structured'} onClick={() => setMode('structured')}>结构化</Button>
-        <Button size="sm" variant={mode === 'raw' ? 'primary' : 'ghost'} aria-pressed={mode === 'raw'} onClick={() => setMode('raw')}>原始 JSON</Button>
-      </div>
+  const isError = 'isError' in output && output.isError
+  return <section className="grid gap-3 rounded-lg border border-line bg-surface p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        <span aria-hidden="true" className={isError ? 'text-err' : 'text-ok'}>{isError ? '✕' : '✓'}</span>
+        {isError ? '工具返回错误' : '执行结果'}
+      </h3>
+      <Tabs label="结果查看方式" value={mode} onValue={setMode}
+        items={[{ value: 'structured', title: '结构化' }, { value: 'raw', title: '原始 JSON' }]} />
     </div>
     {mode === 'raw' && <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all bg-elevated p-3 text-xs">{JSON.stringify(output, null, 2)}</pre>}
     {mode === 'structured' && <div className="grid gap-3 text-sm">

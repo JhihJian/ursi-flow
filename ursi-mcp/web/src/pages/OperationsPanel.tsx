@@ -10,8 +10,12 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { DataTable } from '../ui/data-table'
 import { Switch } from '../ui/switch'
+import { Tabs } from '../ui/tabs'
+import { Icon } from '../ui/icon'
+import { Badge } from '../ui/badge'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ResourceState } from '../ui/resource-state'
+import { cn } from '../lib/utils'
 
 type Props = { server: McpServer; settings: McpSettings; saved: (s: McpSettings) => void }
 const titles = { tools: '工具', prompts: '提示词', templates: '资源模板' }
@@ -28,22 +32,39 @@ export function OperationsPanel(props: Props & { kind: CatalogKind }) {
   const item = items.find(x => key(x) === selected) ?? (kind === 'tools' ? undefined : items[0])
   const permission = useMutation()
   const columns: ColumnDef<CatalogEntry>[] = [
-    { id: 'name', header: '名称', cell: ({ row: { original: x } }) => <button className="break-all text-left font-medium text-accent-2" aria-pressed={key(x) === selected} onClick={() => setSelected(key(x))}>{x.name}</button> },
+    { id: 'name', header: '名称', cell: ({ row: { original: x } }) => <button className="block max-w-56 truncate text-left font-mono text-xs font-medium text-accent-2" title={x.name} aria-pressed={key(x) === selected} onClick={() => setSelected(key(x))}>{x.name}</button> },
     { accessorKey: 'description', header: '说明', cell: ({ row }) => <span className="line-clamp-2 text-txt2">{row.original.description || '未提供'}</span> },
   ]
   if (kind === 'tools') columns.push({ id: 'permission', header: '允许调用', cell: ({ row: { original: x } }) => <Switch aria-label={`允许调用 ${x.name}`} checked={props.settings.allowedTools.includes(x.name)} disabled={permission.busy} onCheckedChange={on => {
     const allowedTools = on ? [...props.settings.allowedTools, x.name] : props.settings.allowedTools.filter(n => n !== x.name)
     void permission.run(signal => client.saveSettings(server.id, { ...props.settings, allowedTools }, signal), props.saved)
   }} /> })
-  return <section className="scroll-area grid min-h-0 content-start gap-3 overflow-auto py-3">
-    <div className="flex items-center justify-between"><h2>{titles[kind]}目录 · {list.data.length}</h2><Button size="sm" icon="refresh" onClick={list.reload}>刷新目录</Button></div>
-    {list.loading || list.error || !list.data.length ? <ResourceState loading={list.loading} error={list.error} empty onRetry={list.reload} title={list.error ? undefined : '目录为空'} /> : <>
-      <Input aria-label="搜索目录" placeholder="搜索名称或说明" value={search} onChange={e => setSearch(e.target.value)} />
-      {items.length ? <DataTable key={search} label={`${titles[kind]}目录`} columns={columns} data={items} rowId={key} selected={item && key(item)} /> : <p>没有匹配项</p>}
-      {permission.error && <p role="alert">{permission.error}</p>}
-      {item && <Entry key={key(item)} {...props} item={item} saving={permission.busy} />}
-    </>}
-  </section>
+  const nav = <div className="flex flex-wrap items-center justify-between gap-2">
+    <h2 className="text-sm font-semibold text-txt">{titles[kind]}目录<span className="ml-1.5 text-xs font-normal text-txt3">共 {list.data.length} 项</span></h2>
+    <Button size="sm" variant="outline" icon="refresh" loading={list.loading} onClick={list.reload}>刷新目录</Button>
+  </div>
+  return <div className="grid min-h-0 min-w-0 content-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <section aria-label={`${titles[kind]}列表`} className="panel flex min-h-[16rem] min-w-0 flex-col overflow-hidden">
+      {nav}
+      <div className="border-b border-line p-3">
+        <Input aria-label="搜索目录" placeholder="搜索名称或说明" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+      {list.loading || list.error || !list.data.length ? <ResourceState loading={list.loading} error={list.error} empty onRetry={list.reload} title={list.error ? undefined : '目录为空'} /> : <>
+        <div className="scroll-area min-h-0 flex-1 overflow-auto">
+          {items.length ? <DataTable key={search} label={`${titles[kind]}目录`} columns={columns} data={items} rowId={key} selected={item && key(item)} /> : <p className="p-3 text-sm text-txt3">没有匹配项</p>}
+        </div>
+        {permission.error && <p role="alert" className="border-t border-line p-3 text-sm text-err">{permission.error}</p>}
+        <p className="border-t border-line px-3 py-2 text-xs text-txt3">点选左侧{titles[kind]}名称后在右侧填写参数并调用</p>
+      </>}
+    </section>
+    <section aria-label={`${titles[kind]}详情`} className="panel min-w-0 self-start">
+      {item ? <Entry key={key(item)} {...props} item={item} saving={permission.busy} /> :
+        <p className="flex flex-col items-center gap-2 p-8 text-center text-sm text-txt3">
+          <Icon name={kind === 'tools' ? 'connector' : kind === 'prompts' ? 'folder' : 'stage-resources'} size={22} />
+          {kind === 'tools' ? '选择一个工具后填写参数调用' : `选择一个${titles[kind]}查看详情`}
+        </p>}
+    </section>
+  </div>
 }
 
 function Entry({ server, settings, item, kind, saving }: Props & { item: CatalogEntry; kind: CatalogKind; saving: boolean }) {
@@ -85,22 +106,30 @@ function Entry({ server, settings, item, kind, saving }: Props & { item: Catalog
     if (signal.aborted) return null
     return client.invoke(server.id, kind, item.name, input, signal)
   }
-  return <div className="grid min-w-0 gap-3 text-sm">
-    {item.description && <p className="whitespace-pre-wrap break-words">{item.description}</p>}
-    {kind === 'templates' ? <label>具体资源 URI<Input value={uri} onChange={e => setUri(e.target.value)} /></label> : <>
-      {formable(schema) && <div role="tablist" aria-label="参数填写方式" className="flex gap-1">
-        <Button size="sm" variant={mode === 'form' ? 'primary' : 'ghost'} aria-pressed={mode === 'form'} onClick={() => switchMode('form')}>表单填写</Button>
-        <Button size="sm" variant={mode === 'json' ? 'primary' : 'ghost'} aria-pressed={mode === 'json'} onClick={() => switchMode('json')}>JSON 模式</Button>
-      </div>}
+  return <div className="grid min-w-0 gap-4 p-4 text-sm">
+    <header className="min-w-0 border-b border-line pb-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon name={kind === 'templates' ? 'folder' : 'connector'} size={16} className="shrink-0 text-accent-2" />
+        <h3 className="min-w-0 truncate font-mono text-sm font-semibold text-txt" title={item.name}>{item.name}</h3>
+        {kind === 'tools' && <Badge variant={allowed ? 'secondary' : 'outline'} className="shrink-0">{allowed ? '已授权' : '未授权'}</Badge>}
+        {formable(schema) && <Tabs className="ml-auto shrink-0" label="参数填写方式" value={mode} onValue={switchMode}
+          items={[{ value: 'form', title: '表单填写' }, { value: 'json', title: 'JSON 模式' }]} />}
+      </div>
+      {item.description && <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-xs text-txt2">{item.description}</p>}
+    </header>
+    {kind === 'templates' ? <label className="grid gap-1"><span className="font-medium">具体资源 URI</span><Input className="font-mono text-xs" value={uri} onChange={e => setUri(e.target.value)} /></label> : <>
       {mode === 'form'
         ? <SchemaForm schema={schema!} values={values} onChange={setValues} />
         : <>
-          <details><summary>参数定义</summary><pre className={code}>{JSON.stringify(schema ?? item.arguments ?? [], null, 2)}</pre></details>
-          <label>调用参数（JSON 对象）<textarea className="input block w-full font-mono" rows={4} value={args} onChange={e => setArgs(e.target.value)} /></label>
+          <details className="text-xs"><summary className="cursor-pointer font-medium text-accent-2">参数定义</summary><pre className={cn(code, 'mt-2 rounded-lg border border-line')}>{JSON.stringify(schema ?? item.arguments ?? [], null, 2)}</pre></details>
+          <label className="grid gap-1"><span className="font-medium">调用参数（JSON 对象）</span><textarea className="input block w-full font-mono" rows={6} value={args} onChange={e => setArgs(e.target.value)} /></label>
         </>}
     </>}
-    <Button loading={execution.busy} disabled={saving || (kind === 'tools' && !allowed) || (kind === 'templates' && (!uri || /[{}]/.test(uri)))} onClick={() => void execution.run(run, setOutput)}>{kind === 'tools' ? '调用工具' : kind === 'templates' ? '读取资源' : '获取提示词'}</Button>
-    {execution.error && <p role="alert">{execution.error}</p>}
+    <div className="flex items-center gap-3">
+      <Button loading={execution.busy} disabled={saving || (kind === 'tools' && !allowed) || (kind === 'templates' && (!uri || /[{}]/.test(uri)))} onClick={() => void execution.run(run, setOutput)}>{kind === 'tools' ? '调用工具' : kind === 'templates' ? '读取资源' : '获取提示词'}</Button>
+      {kind === 'tools' && !allowed && <span className="text-xs text-txt3">先在左侧列表打开「允许调用」开关</span>}
+    </div>
+    {execution.error && <p role="alert" className="rounded-lg border border-err/40 bg-err/10 p-3 text-err">{execution.error}</p>}
     {output && <ResultView output={output} />}
   </div>
 }

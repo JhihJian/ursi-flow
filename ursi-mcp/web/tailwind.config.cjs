@@ -1,7 +1,7 @@
 const palette = {
   base: '250 250 251', surface: '255 255 255', elevated: '244 244 245', line: '226 226 232', 'line-strong': '208 208 216',
   txt: '24 24 27', txt2: '52 52 60', txt3: '82 82 91', accent: '123 97 255', 'accent-2': '79 70 229',
-  'accent-hover': '84 36 216', 'accent-dim': '240 237 255', err: '220 38 38',
+  'accent-hover': '84 36 216', 'accent-dim': '240 237 255', err: '220 38 38', ok: '22 163 74',
 }
 module.exports = {
   content: { relative: true, files: ['./src/**/*.{ts,tsx}'] },

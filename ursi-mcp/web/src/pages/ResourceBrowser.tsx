@@ -11,6 +11,7 @@ import { PageHeader } from '../ui/page-header'
 import { ResourceState } from '../ui/resource-state'
 import { OperationsPanel } from './OperationsPanel'
 import { SettingsPanel } from './SettingsPanel'
+import { Tabs } from '../ui/tabs'
 import { DataTable } from '../ui/data-table'
 import type { CatalogKind } from '../client'
 import { ResourcePreviewPanel } from './ResourcePreviewPanel'
@@ -52,7 +53,7 @@ function Inspector({ server }: { server: McpServer }) {
     setParams(next, { replace: true })
   }
   return <>
-    <section aria-label="服务信息" className="space-y-3 border-y border-line py-3">
+    <section aria-label="服务信息" className="panel space-y-3 p-4">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Icon name="connector" size={18} className="shrink-0 text-accent-2" />
         <h2 className="min-w-0 break-words text-base font-semibold text-txt">{server.name}</h2>
@@ -93,9 +94,10 @@ function Inspector({ server }: { server: McpServer }) {
       {peer?.declaredCapabilities && <details className="text-xs"><summary>全部能力声明</summary><dl className="max-h-40 overflow-auto">{Object.entries(peer.declaredCapabilities).map(([name, flags]) => <div key={name} className="flex flex-wrap gap-2 p-1"><dt className="font-semibold">{name}</dt><dd className="break-all">{flags && typeof flags === 'object' && !Array.isArray(flags) ? Object.entries(flags).map(([k,v]) => `${k === 'listChanged' ? '列表变更通知' : k === 'subscribe' ? '订阅' : k}：${v === true ? '支持' : v === false ? '不支持' : JSON.stringify(v)}`).join('，') || '已声明' : JSON.stringify(flags)}</dd></div>)}</dl></details>}
       {peer?.instructions && <details className="text-xs"><summary>服务器说明</summary><p className="max-h-32 overflow-auto whitespace-pre-wrap break-words">{peer.instructions}</p></details>}
     </section>
-    <nav aria-label="服务功能" className="flex flex-wrap gap-2">
-      {([['resources','资源浏览'],['tools','工具目录'],['prompts','提示词目录'],['templates','资源模板'],['settings','工具设置']] as const).map(([key,title]) =>
-        <Button key={key} size="sm" variant={view === key ? 'primary' : 'ghost'} aria-pressed={view === key} onClick={() => setView(key)}>{title}</Button>)}
+    <nav aria-label="服务功能" className="flex flex-wrap items-center justify-between gap-2">
+      <Tabs label="服务功能" value={view} onValue={setView} items={([
+        ['resources', '资源浏览'], ['tools', '工具目录'], ['prompts', '提示词目录'], ['templates', '资源模板'], ['settings', '工具设置'],
+      ] as const).map(([value, title]) => ({ value, title }))} />
     </nav>
     {view === 'settings' ? <SettingsPanel server={server} settings={settings} saved={s => { setSettings(s); discovery.reload() }} /> : view !== 'resources' ?
       <OperationsPanel key={view} kind={view} server={server} settings={settings} saved={setSettings} /> :
