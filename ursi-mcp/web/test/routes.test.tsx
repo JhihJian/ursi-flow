@@ -306,3 +306,62 @@ it('表单标记必填参数：红色星号、图例与 aria-required', async ()
     expect(screen.getByLabelText(`参数 ${name}`)).toHaveAttribute('aria-required', 'true')
   expect(screen.getByLabelText('参数 paginate')).not.toHaveAttribute('aria-required')
 })
+
+it('工具结果按 structuredContent 渲染表格，可切回原始 JSON', async () => {
+  const calls = vi.fn(() => ({
+    structuredContent: {
+      totalCount: 2,
+      issues: [
+        { number: 1, title: '测试', state: 'OPEN', html_url: 'https://github.com/x/y/issues/1' },
+        { number: 2, title: '第二个', state: 'CLOSED', labels: ['bug'] },
+      ],
+      pageInfo: { hasNextPage: false },
+    },
+    content: [{ type: 'text', text: '{"issues":[]}'}],
+  }))
+  const tool = { name: 'list_issues', inputSchema: { type: 'object', properties: { owner: { type: 'string' } }, required: ['owner'] } }
+  const { user } = mount('/admin/mcp-servers/team%201', (path, options) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    if (path.endsWith('/settings')) return JSON.parse(String(options.body))
+    return calls()
+  })
+  await user.click(await screen.findByRole('button', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: 'list_issues' }))
+  await user.type(screen.getByLabelText('参数 owner'), 'octocat')
+  await user.click(screen.getByRole('switch', { name: '允许调用 list_issues' }))
+  await user.click(screen.getByRole('button', { name: '调用工具' }))
+  await user.click(screen.getByRole('button', { name: '确认调用' }))
+  // 结构化视图: 表格 + 条数 + 顶层标量
+  expect(await screen.findByText('issues · 2 条')).toBeVisible()
+  expect(screen.getByText('totalCount')).toBeVisible()
+  expect(screen.getByText('测试')).toBeVisible()
+  expect(screen.getByRole('link', { name: 'https://github.com/x/y/issues/1' })).toHaveAttribute('href', 'https://github.com/x/y/issues/1')
+  // 嵌套对象折叠
+  expect(screen.getByText('pageInfo')).toBeVisible()
+  // 切原始 JSON
+  await user.click(screen.getByRole('button', { name: '原始 JSON' }))
+  expect(screen.getByText(/structuredContent/)).toBeVisible()
+  // 切回结构化
+  await user.click(screen.getByRole('button', { name: '结构化' }))
+  expect(screen.getByText('issues · 2 条')).toBeVisible()
+})
+
+it('无 structuredContent 时解析 content 文本 JSON 或展示原文', async () => {
+  const calls = vi.fn(() => ({ content: [{ type: 'text', text: '调用成功' }] }))
+  const tool = { name: 'echo' }
+  const { user } = mount('/admin/mcp-servers/team%201', (path, options) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    if (path.endsWith('/settings')) return JSON.parse(String(options.body))
+    return calls()
+  })
+  await user.click(await screen.findByRole('button', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: 'echo' }))
+  await user.click(screen.getByRole('switch', { name: '允许调用 echo' }))
+  await user.click(screen.getByRole('button', { name: '调用工具' }))
+  await user.click(screen.getByRole('button', { name: '确认调用' }))
+  expect(await screen.findByText(/调用成功/)).toBeVisible()
+})

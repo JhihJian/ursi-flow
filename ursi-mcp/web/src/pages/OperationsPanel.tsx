@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { CatalogEntry, CatalogKind, McpServer, McpSettings } from '../client'
 import { SchemaForm, buildArgs, formable, hydrate, type FormValues } from './SchemaForm'
+import { ResultView } from './ResultView'
 import { useMcp } from '../context'
 import { useMutation } from '../lib/use-mutation'
 import { useResource } from '../lib/use-resource'
@@ -100,6 +101,6 @@ function Entry({ server, settings, item, kind, saving }: Props & { item: Catalog
     </>}
     <Button loading={execution.busy} disabled={saving || (kind === 'tools' && !allowed) || (kind === 'templates' && (!uri || /[{}]/.test(uri)))} onClick={() => void execution.run(run, setOutput)}>{kind === 'tools' ? '调用工具' : kind === 'templates' ? '读取资源' : '获取提示词'}</Button>
     {execution.error && <p role="alert">{execution.error}</p>}
-    {output && <section><h3>{'isError' in output && output.isError ? '工具返回错误' : '结果'}</h3><pre className={code}>{JSON.stringify(output, null, 2)}</pre></section>}
+    {output && <ResultView output={output} />}
   </div>
 }
