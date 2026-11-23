@@ -36,6 +36,8 @@ Docker 是首个真实驱动，使用无 shell 的 Docker CLI，启动时固定�
 - 未配置或未知的 runtime_profile 在资源供应前被拒绝。
 - 请求无法指定宿主路径或自定义 capabilities，凭据内容不进入 SQLite。
 - 正式 Runtime 的 SSH/SFTP 与会话服务可用，普通 agent 用户无法读取 session token。
+- 管理员登记的 SSH 授权公钥按 profile 渲染为单个只读文件，在配置目录挂载之后追加单文件挂载覆盖 `/run/ursi/config/authorized_keys`。未登记时不产生该挂载，管理员配置目录内容与其所有权不被修改。
+- 状态查询可从容器挂载表读出该覆盖是否存在；驱动不支持该证据时返回 None，不伪造已生效。
 
 ### 状态与端点
 
