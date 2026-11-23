@@ -1,4 +1,5 @@
 //! 工作清单管理可独立编辑的事项，不包含生成流程。
+mod cleanup;
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +15,11 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 const TABLE: &str = "workListItems";
+
+/// 启动时执行自有数据的一次性清理。
+pub(super) fn recover(store: &Store) -> Result<(), Error> {
+    cleanup::recover(store)
+}
 
 pub(super) fn routes(store: Store) -> Router {
     Router::new()

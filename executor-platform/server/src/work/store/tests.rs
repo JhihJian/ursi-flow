@@ -57,7 +57,7 @@ fn upgrade_removes_only_dispatch_records_and_exclusively_owned_trees() {
     let mut kept = json!({
         "catalog":{"resources":{"r":1},"executors":{"e":2},"other":true},
         "workPatches":{"p":{"directoryId":work}},"configPatches":{"p":{"directoryId":config}},
-        "workListItems":{"i":{"title":"keep","category":"one_time","status":"active"}},"workListGenerations":{"i":{"request":"p"}},"mcpServers":{"s":{}},
+        "workListItems":{"i":{"title":"keep","category":"one_time","status":"active"}},"mcpServers":{"s":{}},
         "future":{"directory":unknown}, "attempts":{"unrelated":"keep"}
     });
     for id in [&work, &config, &standalone, &unknown] {
@@ -96,46 +96,6 @@ fn upgrade_removes_only_dispatch_records_and_exclusively_owned_trees() {
     }
     assert!(dir.0.join("outside").is_dir());
     assert_eq!(snapshot(&dir.open()), kept);
-}
-
-#[test]
-fn category_upgrade_preserves_other_data_and_does_not_rewrite_on_reopen() {
-    use std::os::unix::fs::MetadataExt;
-    let dir = Dir::new();
-    let mut old = json!({
-        "workPatches":{"p":{"workItemId":"active","provenance":{"category":"pending"}}},
-        "workListGenerations":{"active":{"retry":"p"}},
-        "workListItems":{"current":{"category":"continuous","status":"completed","revision":9}},
-        "other":{"category":"active"}
-    });
-    let mut expected = old.clone();
-    for (legacy, category, status) in [
-        ("pending", "one_time", "pending"),
-        ("active", "one_time", "active"),
-        ("completed", "one_time", "completed"),
-        ("continuous", "continuous", "pending"),
-    ] {
-        let mut row = json!({"id":legacy,"title":"事项","description":"说明","category":legacy,"recipe":{"resources":[{"alias":"x","uri":"a","serverId":"s"}],"script":"example"},"revision":7,"extra":[1]});
-        old["workListItems"][legacy] = row.clone();
-        row["category"] = json!(category);
-        row["status"] = json!(status);
-        expected["workListItems"][legacy] = row;
-    }
-    dir.open()
-        .update(|db| {
-            *db = old;
-            Ok(())
-        })
-        .unwrap();
-    assert_eq!(snapshot(&dir.open()), expected);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&dir.bytes()).unwrap(),
-        expected
-    );
-    let db_path = dir.0.join("work.json");
-    let inode = fs::metadata(&db_path).unwrap().ino();
-    assert_eq!(snapshot(&dir.open()), expected);
-    assert_eq!(fs::metadata(db_path).unwrap().ino(), inode);
 }
 
 #[test]

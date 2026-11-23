@@ -10,25 +10,6 @@ use serde_json::Value;
 use std::{collections::BTreeSet, ffi::CStr, fs::File, io, path::Path};
 use uuid::Uuid;
 
-pub(super) fn split_categories(db: &mut Value) -> Result<(), super::Error> {
-    let rows = db["workListItems"]
-        .as_object_mut()
-        .expect("detected legacy work items");
-    for (id, row) in rows {
-        if row.get("status").is_some() {
-            continue;
-        }
-        let (category, status) = match row["category"].as_str() {
-            Some("continuous") => ("continuous", "pending"),
-            Some(status @ ("pending" | "active" | "completed")) => ("one_time", status),
-            _ => return Err(super::Error::Internal(format!("工作项 {id} 的旧类别无效"))),
-        };
-        row["status"] = Value::from(status);
-        row["category"] = Value::from(category);
-    }
-    Ok(())
-}
-
 pub(super) fn present(db: &Value) -> bool {
     db.get("items").is_some()
         || db.get("configPackageSnapshots").is_some()

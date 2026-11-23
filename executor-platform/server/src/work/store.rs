@@ -112,21 +112,15 @@ impl Store {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "无效的工作数据"));
         }
         let retire_dispatch = legacy::present(&db);
-        let split_categories = db["workListItems"]
-            .as_object()
-            .is_some_and(|rows| rows.values().any(|row| row.get("status").is_none()));
         let store = Self(Arc::new(Inner {
             dir,
             filename,
             db: Mutex::new(Some(db)),
             lock,
         }));
-        if filename == "work.json" && (retire_dispatch || split_categories) {
+        if filename == "work.json" && retire_dispatch {
             store
                 .update(|db| {
-                    if split_categories {
-                        legacy::split_categories(db)?;
-                    }
                     if retire_dispatch {
                         legacy::retire(store.dir(), db)
                             .map_err(|e| Error::Internal(e.to_string()))?;

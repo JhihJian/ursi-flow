@@ -27,6 +27,8 @@ pub(crate) fn business_routes(store: Store) -> io::Result<Router> {
 }
 
 fn business(store: Store, config_lookup: Option<platform_proxy::Platform>) -> io::Result<Router> {
+    worklist::recover(&store)
+        .map_err(|err| io::Error::other(format!("清理工作清单历史数据失败：{err:?}")))?;
     generation::recover(&store)
         .map_err(|err| io::Error::other(format!("恢复生成运行失败：{err:?}")))?;
     let mcp = mcp::platform(&store);
