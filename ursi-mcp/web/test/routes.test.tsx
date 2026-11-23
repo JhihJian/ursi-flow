@@ -278,3 +278,31 @@ it('表单与 JSON 模式双向切换保留已填参数', async () => {
   expect(screen.getByLabelText('参数 text')).toHaveDisplayValue('改过')
   expect(screen.getByLabelText('参数 count')).toHaveDisplayValue('7')
 })
+
+it('表单标记必填参数：红色星号、图例与 aria-required', async () => {
+  const tool = {
+    name: 'issue_read',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: { type: 'string', enum: ['get', 'get_field_values'], description: '读取方式' },
+        owner: { type: 'string' },
+        issue_number: { type: 'number' },
+        paginate: { type: 'boolean' },
+      },
+      required: ['method', 'owner', 'issue_number'],
+    },
+  }
+  const { user } = mount('/admin/mcp-servers/team%201', (path) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    throw new Error(path)
+  })
+  await user.click(await screen.findByRole('button', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: 'issue_read' }))
+  expect(screen.getByText(/必填参数（3 个）/)).toBeVisible()
+  for (const name of ['method', 'owner', 'issue_number'])
+    expect(screen.getByLabelText(`参数 ${name}`)).toHaveAttribute('aria-required', 'true')
+  expect(screen.getByLabelText('参数 paginate')).not.toHaveAttribute('aria-required')
+})

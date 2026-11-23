@@ -87,23 +87,25 @@ export function buildArgs(schema: Schema, values: FormValues, partial = false): 
 type Props = { schema: Schema; values: FormValues; onChange: (values: FormValues) => void }
 
 function fieldLabel(name: string, required: boolean): ReactNode {
-  return <span className="font-medium">{name}{required && ' *'}</span>
+  return <span className="font-medium">{name}{required && <span className="text-err" title="必填"> *</span>}</span>
 }
 
 export function SchemaForm({ schema, values, onChange }: Props) {
   const set = (name: string, value: string | boolean) => onChange({ ...values, [name]: value })
+  const requiredCount = Object.keys(schema.properties ?? {}).filter(name => schema.required?.includes(name)).length
   return <div className="grid gap-3">
+    {requiredCount > 0 && <p className="text-xs text-txt3">带 <span className="text-err">*</span> 为必填参数（{requiredCount} 个）</p>}
     {Object.entries(schema.properties ?? {}).map(([name, prop]) => {
       const required = schema.required?.includes(name) ?? false
       const hint = prop.description && <p className="text-xs text-txt3">{prop.description}</p>
       if (prop.type === 'boolean')
         return <div key={name}>
-          <label className="flex items-center gap-2">{fieldLabel(name, required)}<input type="checkbox" className="switch" role="switch" aria-label={`参数 ${name}`} checked={values[name] === true} onChange={e => set(name, e.target.checked)} /></label>
+          <label className="flex items-center gap-2">{fieldLabel(name, required)}<input type="checkbox" className="switch" role="switch" aria-label={`参数 ${name}`} aria-required={required || undefined} checked={values[name] === true} onChange={e => set(name, e.target.checked)} /></label>
           {hint}
         </div>
       if (prop.enum?.length)
         return <label key={name} className="grid gap-1">{fieldLabel(name, required)}
-          <select className="select" aria-label={`参数 ${name}`} value={asText(values[name])} onChange={e => set(name, e.target.value)}>
+          <select className="select" aria-label={`参数 ${name}`} aria-required={required || undefined} value={asText(values[name])} onChange={e => set(name, e.target.value)}>
             <option value="">未选择</option>
             {prop.enum.map(option => <option key={option} value={option}>{option}</option>)}
           </select>
@@ -111,16 +113,16 @@ export function SchemaForm({ schema, values, onChange }: Props) {
         </label>
       if (prop.type === 'number' || prop.type === 'integer')
         return <label key={name} className="grid gap-1">{fieldLabel(name, required)}
-          <input className="input" type="number" step="any" aria-label={`参数 ${name}`} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
+          <input className="input" type="number" step="any" aria-label={`参数 ${name}`} aria-required={required || undefined} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
           {hint}
         </label>
       if (prop.type === 'array' || prop.type === 'object')
         return <label key={name} className="grid gap-1">{fieldLabel(name, required)}
-          <textarea className="input block w-full font-mono" rows={prop.type === 'object' ? 4 : 3} aria-label={`参数 ${name}`} placeholder={prop.type === 'array' ? '每行一项' : 'JSON'} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
+          <textarea className="input block w-full font-mono" rows={prop.type === 'object' ? 4 : 3} aria-label={`参数 ${name}`} aria-required={required || undefined} placeholder={prop.type === 'array' ? '每行一项' : 'JSON'} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
           {hint}
         </label>
       return <label key={name} className="grid gap-1">{fieldLabel(name, required)}
-        <input className="input" aria-label={`参数 ${name}`} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
+        <input className="input" aria-label={`参数 ${name}`} aria-required={required || undefined} value={asText(values[name])} onChange={e => set(name, e.target.value)} />
         {hint}
       </label>
     })}
