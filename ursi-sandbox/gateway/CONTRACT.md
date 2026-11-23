@@ -22,6 +22,9 @@
 | `DELETE /api/v1/sandboxes/{id}` | 无 | 202，带删除意图的 Sandbox，完成后查询 404 |
 | `GET /api/v1/sandboxes/{id}/logs?tail=5000` | tail 范围 1..5000 | 200，`{content:"..."}`，有输出大小上限 |
 | `GET /api/v1/sandboxes/{id}/endpoints` | 无 | 200，`{endpoints:[...]}` |
+| `GET /api/v1/access-keys` | 无 | 200，`{profiles:[...]}` |
+| `POST /api/v1/access-keys` | `{profile,key}` | 201，`{profiles:[...]}` |
+| `DELETE /api/v1/access-keys` | `{profile,fingerprint}` | 200，`{profiles:[...]}` |
 
 所有规格结构拒绝未知字段。同一创建幂等键绑定同一规格与沙箱，删除后保留 key 绑定。生命周期请求先落库再返回受理，驱动操作由后台调度。对账与请求采用每沙箱互斥，忙碌或冲突时返回 409。
 
@@ -65,6 +68,19 @@ Endpoint 为 `{name,bundle,protocol,port,state,ready}` 逻辑对象，不包含 
 命名数据卷挂载 `/ursi/workspace`，驱动只处理具有匹配 scope、id 与代际标签的资源。真实 Docker 驱动固定本地 Unix socket，首版不支持远程 daemon。
 
 准备完成需要容器运行、已配置 Docker HEALTHCHECK 通过，以及每个声明端口的真实 TCP readiness 检查。健康检查应验证镜像声明的真实服务功能，TCP 可达本身只证明端口监听。端点查询返回上次对账快照，隧道建立前重新读取实际资源状态和内部目标。实例保留创建时的端点声明。停止或对账失败时标记端点为 `unavailable`、`ready: false`，重新就绪后更新状态。注册表更新不改变既有实例的端点声明。
+
+## SSH 授权公钥
+
+`access_keys` 能力为 true 表示 Gateway 配置了 `URSI_GATEWAY_ACCESS`。该资源只保存公开公钥，用于生成沙箱内的登录授权，不保存私钥、模型凭据或任何秘密。
+
+- 每条记录含 `key`、`fingerprint`、`created_at`。`fingerprint` 为 OpenSSH `SHA256:` 形式，可直接与 `ssh-keygen -lf` 比对。
+- 公钥必须是 `type base64 [comment]` 三段式，类型限于 OpenSSH 常见公钥算法；带 `authorized_keys` 选项前缀、控制字符或多行的内容被拒绝。单条上限 4 KiB，单个 profile 上限 64 条。
+- 授权作用域是 Runtime Profile，不是单个沙箱。同一 profile 下的所有沙箱共享同一组公钥。
+- 每个 profile 的密钥集渲染为 Gateway 私有目录中的单个文件，创建容器时以只读 bind 叠加挂载覆盖 `/run/ursi/config/authorized_keys`。管理员维护的配置目录不被修改。未登记密钥的 profile 不产生该挂载。
+- 渲染文件一经创建不会被删除。删除最后一个公钥返回 409，因为空授权会让该 profile 的沙箱无法启动。
+- 变更只对之后创建的容器或下次启动生效。运行中的容器持有旧文件，重启才会重新读取。撤销公钥不终止已建立的 SSH 会话，需要停止沙箱才断开。
+- `GET` 的每条 profile 报告 `rendered_at` 与使用该 profile 的沙箱 `id`、`status`、`generation`、`attached`。`attached` 来自容器的挂载表，`null` 表示驱动不提供该证据。这些字段只证明已登记、已渲染和已挂载，不证明某个私钥能登录。
+- 未配置该能力时三个接口均返回 501。fake 驱动不提供该能力。
 
 ## 网络观测
 

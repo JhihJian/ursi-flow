@@ -38,6 +38,7 @@ pub struct DockerDriver {
     docker_host: Option<String>,
     identity: String,
     runtime_profiles: super::profiles::RuntimeProfiles,
+    access_keys: Option<std::sync::Arc<crate::access::AccessKeys>>,
     #[cfg(test)]
     script: Option<Script>,
 }
@@ -81,6 +82,12 @@ impl DockerDriver {
         self
     }
 
+    /// 接入管理员维护的 SSH 授权公钥。仅持有渲染文件路径，不读取私钥。
+    pub fn with_access_keys(mut self, keys: std::sync::Arc<crate::access::AccessKeys>) -> Self {
+        self.access_keys = Some(keys);
+        self
+    }
+
     /// 返回冻结的 endpoint 与 daemon ID，供持久化存储绑定使用。
     pub fn identity(&self) -> &str {
         &self.identity
@@ -98,6 +105,7 @@ impl DockerDriver {
             docker_host: None,
             identity: String::new(),
             runtime_profiles: Default::default(),
+            access_keys: None,
             #[cfg(test)]
             script: None,
         })
@@ -348,6 +356,19 @@ impl DockerDriver {
             .ok_or_else(|| Error::Unavailable("镜像缺少有效 ID".into()))
     }
 
+    /// 叠加挂载必须排在配置目录挂载之后，Docker 按目标路径深度确定覆盖顺序。
+    fn access_mount(&self, profile: &str) -> Option<String> {
+        self.access_keys
+            .as_ref()
+            .and_then(|keys| keys.rendered(profile))
+            .map(|path| {
+                format!(
+                    "type=bind,src={},dst=/run/ursi/config/authorized_keys,readonly",
+                    path.display()
+                )
+            })
+    }
+
     fn create_args(&self, sandbox: &Sandbox, image: String) -> Result<Vec<String>> {
         let (name, volume) = self.names(&sandbox.id, sandbox.resource)?;
         let mut args = vec![
@@ -376,6 +397,11 @@ impl DockerDriver {
                     path.display()
                 ),
             ]);
+            // 授权公钥渲染文件叠加覆盖单个文件，不修改管理员维护的配置目录。
+            // 该文件一经创建不会被删除，否则已有的容器将无法再次启动。
+            if let Some(mount) = self.access_mount(profile) {
+                args.extend(["--mount".into(), mount]);
+            }
             // 固定服务能力集，仅供root监督器/sshd降权与回收。Agent子进程清空所有capabilities。
             for capability in [
                 "CHOWN",
@@ -466,6 +492,7 @@ impl Driver for DockerDriver {
         Capabilities {
             rebuild_preserve_data: true,
             rebuild_destroy_data: true,
+            access_keys: self.access_keys.is_some(),
         }
     }
 
@@ -590,6 +617,19 @@ impl Driver for DockerDriver {
         Ok(())
     }
 
+    async fn access_attached(&self, sandbox: &Sandbox) -> Result<Option<bool>> {
+        if self.access_keys.is_none() {
+            return Ok(None);
+        }
+        let object = self.container(sandbox).await?;
+        Ok(Some(object["Mounts"].as_array().is_some_and(|mounts| {
+            mounts.iter().any(|mount| {
+                mount["Destination"].as_str() == Some("/run/ursi/config/authorized_keys")
+                    && mount["RW"] == false
+            })
+        })))
+    }
+
     async fn capture_target(&self, sandbox: &Sandbox) -> Result<Value> {
         let object = self.container(sandbox).await?;
         if object["State"]["Running"] != true {
@@ -638,9 +678,16 @@ impl Driver for DockerDriver {
         }
         let output = self
             .run(
-                ["image", "ls", "--no-trunc", "--digests", "--format", "{{json .}}"]
-                    .map(String::from)
-                    .into(),
+                [
+                    "image",
+                    "ls",
+                    "--no-trunc",
+                    "--digests",
+                    "--format",
+                    "{{json .}}",
+                ]
+                .map(String::from)
+                .into(),
                 Duration::from_secs(5),
                 OUTPUT_LIMIT,
             )
@@ -650,7 +697,11 @@ impl Driver for DockerDriver {
             return Err(Error::Unavailable("Docker 镜像清单输出过大".into()));
         }
         let mut found = BTreeMap::new();
-        for line in output.stdout.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()) {
+        for line in output
+            .stdout
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+        {
             let row: Row = serde_json::from_slice(line)
                 .map_err(|_| Error::Unavailable("Docker 镜像清单格式非法".into()))?;
             let candidates = [

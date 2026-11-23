@@ -30,10 +30,19 @@ export URSI_GATEWAY_TUNNEL=true
 | `URSI_GATEWAY_OBSERVER_SOCKET` | 未配置 | 配对的宿主 Observer 的 Unix socket 路径，仅 Docker 驱动支持 |
 | `URSI_GATEWAY_RUNTIME_PROFILES` | 未配置 | 管理员白名单 JSON 路径，允许受控的只读 Runtime 配置挂载 |
 | `URSI_GATEWAY_REGISTRY` | `./gateway-registry.json` | 管理员维护的 bundle 定义与 `image -> bundles` 注册表 |
+| `URSI_GATEWAY_ACCESS` | 未配置 | SSH 授权公钥记录文件路径。配置后启用 access-keys 接口并在同目录生成 `<名称>.d/` 渲染目录 |
 
 Docker 首版支持本机绝对路径 Unix socket，TCP/TLS/SSH daemon 和 Kubernetes/E2B 驱动尚未支持。默认编译 Docker 与 fake，生产可使用 `--no-default-features --features driver-docker`。fake 的实际资源保存在内存，仅供测试。
 
 启用网络观测时，每个 Gateway 实例单独配对一个 Observer，使用专用目录和访问组。Gateway 重启后读取 socket 配置；`observer_enabled` 表示已配置，不反映服务在线状态。权限准备、启停和下载示例见 [Observer 使用说明](../observer/README.md)。
+
+## SSH 授权公钥
+
+`URSI_GATEWAY_ACCESS` 指向一个 Gateway 自己拥有的 JSON 文件，不在管理员 Runtime 配置目录内。启用后管理员可通过 `access-keys` 接口维护公钥，Gateway 把每个 Runtime Profile 的密钥集渲染成单个 `authorized_keys`，并在创建容器时以只读 bind 叠加覆盖 `/run/ursi/config/authorized_keys`。管理员配置目录保持 root 私有且不被修改。
+
+这个机制替代了手工在 `config_dir/authorized_keys` 追加公钥的步骤，适合由控制台完成接入安装。注意三点：授权作用域是整个 Runtime Profile；变更只在容器重建或下次启动时生效；删除最后一个公钥会被拒绝，因为空授权会让该 profile 的沙箱无法启动。
+
+该文件与渲染目录应视为 Gateway 持久状态的一部分，需要与 SQLite 一起备份。渲染文件不得手工删除，否则已有的容器无法再次启动。未登记任何密钥时行为与不启用该能力一致。fake 驱动不提供该能力。
 
 ## HTTP 使用
 

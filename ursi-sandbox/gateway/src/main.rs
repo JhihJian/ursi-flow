@@ -30,18 +30,26 @@ async fn run() -> Result<()> {
     }
     let name = env("URSI_GATEWAY_DRIVER", "docker");
     let namespace = env("URSI_GATEWAY_NAMESPACE", "ursi");
+    // 未配置 URSI_GATEWAY_ACCESS 时不启用授权公钥管理，接口返回 501。
+    let access = match std::env::var_os("URSI_GATEWAY_ACCESS") {
+        Some(path) => Some(Arc::new(ursi_gateway::access::AccessKeys::open(
+            Path::new(&path),
+        )?)),
+        None => None,
+    };
     let (driver, identity): (Arc<dyn Driver>, String) = match name.as_str() {
         #[cfg(feature = "driver-docker")]
         "docker" => {
-            let driver =
+            let mut driver =
                 ursi_gateway::driver::docker::DockerDriver::connect(namespace.clone()).await?;
-            let driver = if let Some(path) = std::env::var_os("URSI_GATEWAY_RUNTIME_PROFILES") {
-                driver.with_runtime_profiles(ursi_gateway::driver::profiles::RuntimeProfiles::load(
-                    Path::new(&path),
-                )?)
-            } else {
-                driver
-            };
+            if let Some(path) = std::env::var_os("URSI_GATEWAY_RUNTIME_PROFILES") {
+                driver = driver.with_runtime_profiles(
+                    ursi_gateway::driver::profiles::RuntimeProfiles::load(Path::new(&path))?,
+                );
+            }
+            if let Some(access) = access.clone() {
+                driver = driver.with_access_keys(access);
+            }
             let identity = format!("docker:{namespace}:{}", driver.identity());
             (Arc::new(driver), identity)
         }
@@ -67,6 +75,9 @@ async fn run() -> Result<()> {
         Err(error) => return Err(Error::Invalid(format!("Gateway registry 无效: {error}"))),
     };
     let service = Service::with_registry(store, driver, Arc::new(registry), Some(registry_path));
+    if let Some(access) = access {
+        service.attach_access(access);
+    }
     let tunnel = match env("URSI_GATEWAY_TUNNEL", "false").as_str() {
         "true" => true,
         "false" => false,

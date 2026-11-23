@@ -106,6 +106,7 @@ impl Driver for FakeDriver {
         Capabilities {
             rebuild_preserve_data: true,
             rebuild_destroy_data: true,
+            access_keys: false,
         }
     }
 

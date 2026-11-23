@@ -135,6 +135,9 @@ pub struct Observed {
 pub struct Capabilities {
     pub rebuild_preserve_data: bool,
     pub rebuild_destroy_data: bool,
+    /// Gateway 配置了授权公钥存储与渲染目录时可用。
+    #[serde(default)]
+    pub access_keys: bool,
 }
 
 pub fn valid_name(value: &str) -> bool {

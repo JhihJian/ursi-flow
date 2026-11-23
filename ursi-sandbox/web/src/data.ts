@@ -63,6 +63,7 @@ export interface ImageInventory {
 export interface Capabilities {
   rebuild_preserve_data: boolean
   rebuild_destroy_data: boolean
+  access_keys: boolean
   tunnel_enabled: boolean
   observer_enabled: boolean
 }
@@ -74,8 +75,29 @@ interface GatewayCapabilities {
 const defaultCapabilities: Capabilities = {
   rebuild_preserve_data: false,
   rebuild_destroy_data: false,
+  access_keys: false,
   tunnel_enabled: false,
   observer_enabled: false,
+}
+export interface AccessKey {
+  key: string
+  fingerprint: string
+  created_at: number
+}
+export interface AccessSandbox {
+  id: string
+  status: string
+  generation: number
+  attached: boolean | null
+}
+export interface ProfileAccess {
+  profile: string
+  rendered_at: number | null
+  keys: AccessKey[]
+  sandboxes: AccessSandbox[]
+}
+export interface AccessReport {
+  profiles: ProfileAccess[]
 }
 export interface Source {
   manage: boolean
@@ -90,6 +112,9 @@ export interface Source {
   images: (signal: AbortSignal) => Promise<ImageInventory>
   registry?: (signal: AbortSignal) => Promise<Registry>
   replaceRegistry?: (registry: Registry) => Promise<Registry>
+  accessKeys?: (signal: AbortSignal) => Promise<AccessReport>
+  addAccessKey?: (profile: string, key: string) => Promise<AccessReport>
+  removeAccessKey?: (profile: string, fingerprint: string) => Promise<AccessReport>
 }
 export class GatewayError extends Error {
   constructor(
@@ -183,6 +208,34 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
             body: JSON.stringify({ preserve_data: preserveData }),
           })
       : undefined,
+    accessKeys:
+      manage && capabilities.access_keys
+        ? (s) => json<AccessReport>('./api/v1/access-keys', s)
+        : undefined,
+    addAccessKey:
+      manage && capabilities.access_keys
+        ? (profile, key) =>
+            json<AccessReport>('./api/v1/access-keys', undefined, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Ursi-Action': 'manage',
+              },
+              body: JSON.stringify({ profile, key }),
+            })
+        : undefined,
+    removeAccessKey:
+      manage && capabilities.access_keys
+        ? (profile, fingerprint) =>
+            json<AccessReport>('./api/v1/access-keys', undefined, {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Ursi-Action': 'manage',
+              },
+              body: JSON.stringify({ profile, fingerprint }),
+            })
+        : undefined,
     images: (s) => json<ImageInventory>('./api/v1/images', s),
     registry: manage ? (s) => json<Registry>('./api/v1/registry', s) : undefined,
     replaceRegistry: manage

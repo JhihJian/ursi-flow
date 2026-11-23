@@ -89,6 +89,8 @@ export function createConsole(env) {
           rebuild ||
           (req.method === 'POST' && observationPost.test(path)) ||
           (registry && req.method === 'PUT') ||
+          ((req.method === 'POST' || req.method === 'DELETE') &&
+            path === '/api/v1/access-keys') ||
           (req.method === 'POST' &&
             /^\/api\/v1\/sandboxes\/[a-f0-9]{32}\/(start|stop)$/.test(path)) ||
           (req.method === 'DELETE' &&
@@ -110,6 +112,7 @@ export function createConsole(env) {
       readObservation ||
       path === '/api/v1/capabilities' ||
       path === '/api/v1/images' ||
+      path === '/api/v1/access-keys' ||
       registry ||
       /^\/api\/v1\/sandboxes(?:\/[a-f0-9]{32}(?:\/logs\?tail=200|\/endpoints)?)?$/.test(
         path,
@@ -121,7 +124,12 @@ export function createConsole(env) {
       try {
         const headers = { Authorization: `Bearer ${key}` }
         let body
-        if (create || rebuild || (registry && req.method === 'PUT')) {
+        if (
+          create ||
+          rebuild ||
+          (registry && req.method === 'PUT') ||
+          path === '/api/v1/access-keys'
+        ) {
           if (req.headers['content-type'] !== 'application/json')
             return send(415, '{}')
           const chunks = []

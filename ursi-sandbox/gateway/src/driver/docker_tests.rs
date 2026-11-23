@@ -86,22 +86,47 @@ async fn local_inventory_reports_only_requested_references_without_pulling() {
         json!({"Repository":"example.net/custom","Tag":"<none>","Digest":"sha256:manifest","ID":"sha256:custom"}),
         json!({"Repository":"other","Tag":"latest","Digest":"<none>","ID":"sha256:other"}),
     ];
-    let driver = scripted(driver(), vec![(
-        args(&["image", "ls", "--no-trunc", "--digests", "--format", "{{json .}}"]),
-        Ok(CliOutput {
-            success: true,
-            stdout: lines.map(|line| line.to_string()).join("\n").into_bytes(),
-            stderr: vec![],
-            truncated: false,
-        }),
-    )]);
-    let found = driver.local_images(&[
-        "ursi-runtime-pi:local", "example.net/custom@sha256:manifest", "missing:latest",
-    ].map(String::from).into()).await.unwrap();
-    assert_eq!(found, BTreeMap::from([
-        ("ursi-runtime-pi:local".into(), "sha256:pi".into()),
-        ("example.net/custom@sha256:manifest".into(), "sha256:custom".into()),
-    ]));
+    let driver = scripted(
+        driver(),
+        vec![(
+            args(&[
+                "image",
+                "ls",
+                "--no-trunc",
+                "--digests",
+                "--format",
+                "{{json .}}",
+            ]),
+            Ok(CliOutput {
+                success: true,
+                stdout: lines.map(|line| line.to_string()).join("\n").into_bytes(),
+                stderr: vec![],
+                truncated: false,
+            }),
+        )],
+    );
+    let found = driver
+        .local_images(
+            &[
+                "ursi-runtime-pi:local",
+                "example.net/custom@sha256:manifest",
+                "missing:latest",
+            ]
+            .map(String::from)
+            .into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        found,
+        BTreeMap::from([
+            ("ursi-runtime-pi:local".into(), "sha256:pi".into()),
+            (
+                "example.net/custom@sha256:manifest".into(),
+                "sha256:custom".into()
+            ),
+        ])
+    );
     drained(&driver);
 }
 
@@ -953,4 +978,71 @@ async fn real_process_timeout_is_unavailable_without_calling_docker() {
         Err(Error::Unavailable(_))
     ));
     assert!(begin.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn access_mount_overrides_only_the_authorized_keys_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let access = std::sync::Arc::new(
+        crate::access::AccessKeys::open(&directory.path().join("access.json")).unwrap(),
+    );
+    let driver = driver().with_access_keys(access.clone());
+    // 未登记密钥的 profile 不产生覆盖挂载。
+    assert!(driver.access_mount("pi").is_none());
+
+    access
+        .add(
+            "pi",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACiTCENvMi768W+epq2eiN++GZs+YTo/kGT/R0YQeNM ops",
+        )
+        .unwrap();
+    let mount = driver.access_mount("pi").unwrap();
+    let rendered = access.rendered("pi").unwrap();
+    assert_eq!(
+        mount,
+        format!(
+            "type=bind,src={},dst=/run/ursi/config/authorized_keys,readonly",
+            rendered.display()
+        )
+    );
+    // 只覆盖单个文件，不覆盖整个配置目录。
+    assert!(mount.ends_with("dst=/run/ursi/config/authorized_keys,readonly"));
+}
+
+#[tokio::test]
+async fn access_attached_reads_the_container_mount_list() {
+    let directory = tempfile::tempdir().unwrap();
+    let access = std::sync::Arc::new(
+        crate::access::AccessKeys::open(&directory.path().join("access.json")).unwrap(),
+    );
+    let sandbox = sandbox();
+    let mut attached = object(&DockerDriver::new("unit".into()).unwrap(), &sandbox, true);
+    attached["Mounts"] = json!([
+        {"Destination": "/run/ursi/config", "RW": false},
+        {"Destination": "/run/ursi/config/authorized_keys", "RW": false}
+    ]);
+    let mut plain = object(&DockerDriver::new("unit".into()).unwrap(), &sandbox, true);
+    plain["Mounts"] = json!([{"Destination": "/run/ursi/config", "RW": false}]);
+    let driver = scripted(
+        driver().with_access_keys(access),
+        vec![
+            (
+                args(&["container", "inspect", "unit-test-r2"]),
+                output(attached),
+            ),
+            (
+                args(&["container", "inspect", "unit-test-r2"]),
+                output(plain),
+            ),
+        ],
+    );
+    assert_eq!(driver.access_attached(&sandbox).await.unwrap(), Some(true));
+    assert_eq!(driver.access_attached(&sandbox).await.unwrap(), Some(false));
+    drained(&driver);
+}
+
+#[tokio::test]
+async fn access_attached_is_absent_without_configuration() {
+    let driver = driver();
+    assert_eq!(driver.access_attached(&sandbox()).await.unwrap(), None);
 }

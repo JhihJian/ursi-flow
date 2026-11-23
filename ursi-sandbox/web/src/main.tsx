@@ -31,6 +31,7 @@ import {
 import { ObservationRoute } from './ObservationPage'
 import { EndpointWorkbench } from './Workbench'
 import { CreateSandbox, Actions, CliTools } from './Management'
+import { AccessSetup } from './AccessSetup'
 import { CapabilityRegistry } from './CapabilityRegistry'
 import { Button, buttonVariants } from './shared/ui/button'
 import { Badge } from './shared/ui/badge'
@@ -177,6 +178,11 @@ function Header({ source }: { source?: Source }) {
           {source && (
             <NavLink className="nav-link" to="/registry">
               能力注册表
+            </NavLink>
+          )}
+          {source?.manage && source.capabilities.access_keys && (
+            <NavLink className="nav-link" to="/access">
+              接入配置
             </NavLink>
           )}
         </nav>
@@ -588,6 +594,10 @@ function App() {
           <Route
             path="registry"
             element={<CapabilityRegistry source={config.value} />}
+          />
+          <Route
+            path="access"
+            element={<AccessSetup source={config.value} />}
           />
           <Route
             path="sandboxes/:id/observations/:run?"

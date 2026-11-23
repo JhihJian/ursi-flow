@@ -69,6 +69,12 @@ pub fn router(service: Arc<Service>, api_key: String, tunnel_enabled: bool) -> R
         .route("/api/v1/sandboxes/{id}/logs", get(logs))
         .route("/api/v1/sandboxes/{id}/endpoints", get(endpoints))
         .route("/api/v1/sandboxes/{id}/connect/{endpoint}", get(connect))
+        .route(
+            "/api/v1/access-keys",
+            get(access_keys)
+                .post(add_access_key)
+                .delete(remove_access_key),
+        )
         .merge(observations::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
@@ -162,28 +168,31 @@ async fn images(State(state): State<ApiState>) -> Json<serde_json::Value> {
         Err(Error::Unsupported(_)) => "unsupported",
         Err(_) => "unavailable",
     };
-    let rows = references.into_iter().filter_map(|reference| {
-        let local_id = local.as_ref().ok().and_then(|list| list.get(&reference));
-        let registration = registry.images.get(&reference);
-        if local_id.is_none() && registration.is_none() {
-            return None;
-        }
-        let expanded = registration.map(|_| {
-            let bundles = registry.resolved_bundle_ids(&reference)?;
-            let endpoints = registry.expand_image_with_bundles(&reference)?;
-            let runtime = registry.runtime_for_image(&reference)?;
-            Ok::<_, ursi_catalog::RegistryError>((bundles, endpoints, runtime))
-        });
-        let registered = expanded.map(|result| match result {
-            Ok((bundles, endpoints, runtime)) => json!({
-                "bundles": bundles,
-                "endpoints": endpoints,
-                "runtime_min_image_level": runtime.map(|bundle| bundle.min_image_level),
-            }),
-            Err(_) => json!({"invalid": true}),
-        });
-        Some(json!({"reference": reference, "local_id": local_id, "registered": registered}))
-    }).collect::<Vec<_>>();
+    let rows = references
+        .into_iter()
+        .filter_map(|reference| {
+            let local_id = local.as_ref().ok().and_then(|list| list.get(&reference));
+            let registration = registry.images.get(&reference);
+            if local_id.is_none() && registration.is_none() {
+                return None;
+            }
+            let expanded = registration.map(|_| {
+                let bundles = registry.resolved_bundle_ids(&reference)?;
+                let endpoints = registry.expand_image_with_bundles(&reference)?;
+                let runtime = registry.runtime_for_image(&reference)?;
+                Ok::<_, ursi_catalog::RegistryError>((bundles, endpoints, runtime))
+            });
+            let registered = expanded.map(|result| match result {
+                Ok((bundles, endpoints, runtime)) => json!({
+                    "bundles": bundles,
+                    "endpoints": endpoints,
+                    "runtime_min_image_level": runtime.map(|bundle| bundle.min_image_level),
+                }),
+                Err(_) => json!({"invalid": true}),
+            });
+            Some(json!({"reference": reference, "local_id": local_id, "registered": registered}))
+        })
+        .collect::<Vec<_>>();
     Json(json!({"inventory": inventory, "images": rows}))
 }
 
@@ -321,6 +330,83 @@ async fn endpoints(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let sandbox = state.service.get(&sandbox_id(path)?)?;
     Ok(Json(json!({"endpoints": sandbox.endpoints})))
+}
+
+/// 读取授权公钥与可证明的生效状态。不返回私钥，也不证明某个私钥可登录。
+async fn access_keys(State(state): State<ApiState>) -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(json!({"profiles": access_keys_report(&state).await?})))
+}
+
+async fn add_access_key(
+    State(state): State<ApiState>,
+    body: Result<Json<AccessKeyRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let Json(request) = body.map_err(|_| ApiError::invalid("Invalid access key JSON"))?;
+    state
+        .service
+        .access()?
+        .add(&request.profile, &request.key)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"profiles": access_keys_report(&state).await?})),
+    ))
+}
+
+async fn remove_access_key(
+    State(state): State<ApiState>,
+    body: Result<Json<AccessKeyRequest>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let Json(request) = body.map_err(|_| ApiError::invalid("Invalid access key JSON"))?;
+    let fingerprint = request
+        .fingerprint
+        .ok_or_else(|| ApiError::invalid("Missing fingerprint"))?;
+    state
+        .service
+        .access()?
+        .remove(&request.profile, &fingerprint)?;
+    Ok(Json(json!({"profiles": access_keys_report(&state).await?})))
+}
+
+async fn access_keys_report(state: &ApiState) -> Result<Vec<serde_json::Value>, ApiError> {
+    // 驱动不声明该能力时接口不可用，避免出现无挂载证据却看起来已生效的状态。
+    if !state.service.capabilities().access_keys {
+        return Err(Error::Unsupported("SSH 授权公钥".into()).into());
+    }
+    let access = state.service.access()?;
+    let sandboxes = state.service.list()?;
+    let mut reports = Vec::new();
+    for profile in access.list()? {
+        let mut rows = Vec::new();
+        for sandbox in sandboxes
+            .iter()
+            .filter(|sandbox| sandbox.spec.runtime_profile.as_deref() == Some(&profile.profile))
+        {
+            let attached = state.service.access_attached(sandbox).await.ok().flatten();
+            rows.push(json!({
+                "id": sandbox.id,
+                "status": sandbox.status,
+                "generation": sandbox.resource.generation,
+                "attached": attached,
+            }));
+        }
+        reports.push(json!({
+            "profile": profile.profile,
+            "rendered_at": profile.rendered_at,
+            "keys": profile.keys,
+            "sandboxes": rows,
+        }));
+    }
+    Ok(reports)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessKeyRequest {
+    profile: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    fingerprint: Option<String>,
 }
 
 async fn connect(

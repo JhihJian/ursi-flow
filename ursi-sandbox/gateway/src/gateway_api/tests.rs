@@ -108,7 +108,8 @@ async fn image_inventory_keeps_registry_configuration_separate_from_local_presen
 
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(&dir.path().join("gateway.sqlite")).unwrap());
-    let registry = Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
+    let registry =
+        Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
     let state = ApiState {
         observer: None,
         service: Service::new(store, Arc::new(FakeDriver::new()), Arc::new(registry)),
@@ -122,7 +123,10 @@ async fn image_inventory_keeps_registry_configuration_separate_from_local_presen
     let browser = &rows[0];
     assert_eq!(browser["reference"], "ursi-runtime-browser:local");
     assert!(browser["local_id"].is_null());
-    assert_eq!(browser["registered"]["bundles"], json!(["pi-execution", "browser"]));
+    assert_eq!(
+        browser["registered"]["bundles"],
+        json!(["pi-execution", "browser"])
+    );
     assert_eq!(browser["registered"]["endpoints"][0]["name"], "ssh");
     assert_eq!(browser["registered"]["runtime_min_image_level"], 2);
     assert!(!inventory.to_string().contains("artifacts.example.invalid"));
@@ -210,4 +214,61 @@ fn rebuild_requires_an_explicit_boolean_and_logs_reject_bad_queries() {
     ] {
         assert!(Query::<LogsQuery>::try_from_uri(&uri.parse().unwrap()).is_err());
     }
+}
+
+#[cfg(feature = "driver-fake")]
+#[tokio::test]
+async fn access_keys_lifecycle_records_public_keys_without_echoing_secrets() {
+    use crate::{access::AccessKeys, driver::fake::FakeDriver, lifecycle::store::Store};
+
+    const KEY: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACiTCENvMi768W+epq2eiN++GZs+YTo/kGT/R0YQeNM ops@example";
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("gateway.sqlite")).unwrap());
+    let registry =
+        Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
+    let service =
+        Service::with_registry(store, Arc::new(FakeDriver::new()), Arc::new(registry), None);
+    service.attach_access(Arc::new(
+        AccessKeys::open(&dir.path().join("access.json")).unwrap(),
+    ));
+
+    let access = service.access().unwrap();
+    let entry = access.add("browser", KEY).unwrap();
+    assert!(entry.fingerprint.starts_with("SHA256:"));
+    assert_eq!(access.list().unwrap()[0].keys.len(), 1);
+    // 删除最后一个公钥必须拒绝，空集合会让该 profile 的沙箱无法启动。
+    assert!(matches!(
+        access.remove("browser", &entry.fingerprint),
+        Err(Error::Conflict(_))
+    ));
+    // 登记内容只有公开公钥，不含任何私钥材料。
+    assert!(
+        access.list().unwrap()[0].keys[0]
+            .key
+            .starts_with("ssh-ed25519 ")
+    );
+}
+
+#[cfg(feature = "driver-fake")]
+#[tokio::test]
+async fn access_keys_api_is_unsupported_without_configuration() {
+    use crate::{driver::fake::FakeDriver, lifecycle::store::Store};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("gateway.sqlite")).unwrap());
+    let registry =
+        Registry::from_json(include_str!("../../../gateway-registry.example.json")).unwrap();
+    let state = ApiState {
+        observer: None,
+        service: Service::with_registry(
+            store,
+            Arc::new(FakeDriver::new()),
+            Arc::new(registry),
+            None,
+        ),
+        api_key: "test-key".into(),
+        tunnel_enabled: false,
+    };
+    let error = access_keys(State(state)).await.err().unwrap();
+    assert_eq!(error.into_response().status(), StatusCode::NOT_IMPLEMENTED);
 }
