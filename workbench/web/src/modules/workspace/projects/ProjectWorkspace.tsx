@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router'
-import { canvasPath, command, deleteProject, getPlacement, projectPath, projectsPath, renameProject, saveLayout, type Workspace } from '@/shared/api/work-projects'
+import { canvasPath, command, deleteProject, getPlacement, projectPath, projectsPath, readWorkspace, renameProject, saveLayout, type Workspace } from '@/shared/api/work-projects'
 import { ApiError } from '@/shared/http/client'
 import { useMutation } from '@/shared/hooks/use-mutation'
+import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
+import { Sheet, SheetContent, SheetTrigger } from '@/shared/ui/sheet'
 import { ItemInspector } from './ItemInspector'
 import { ProjectGraph } from './ProjectGraph'
+import { ProjectOutline } from './ProjectOutline'
 import { ProjectTodo } from './ProjectTodo'
 import type { ProjectMutation } from './model'
-import { todoPath, useProjectNavigation } from './project-navigation'
+import { rememberProject } from './preferences'
+
+const viewLink = 'border-b-2 border-transparent px-1 py-2 text-sm text-txt2 hover:text-txt aria-[current=page]:border-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-2'
 
 export function ProjectWorkspace() {
   const { projectId = '' } = useParams()
@@ -19,7 +24,7 @@ export function ProjectWorkspace() {
 }
 
 function WorkspaceScope({ projectId }: { projectId: string }) {
-  const { workspace: resource, projects, remember } = useProjectNavigation()
+  const resource = useResource(signal => readWorkspace(projectId, signal), null)
   const mutation = useMutation()
   const navigate = useNavigate()
   const location = useLocation()
@@ -34,14 +39,20 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
   const focusItemId = params.get('focusItemId') ?? undefined
   const focusCardId = params.get('focusCardId') ?? undefined
   const missingCanvas = !!workspace && canvasId !== null && !workspace.canvases.some(canvas => canvas.id === canvasId)
-  const returnTo = todoPath(projectId, location.state)
+  const savedTodo: unknown = location.state?.todoPath
+  const todoPath = `${base}/todo`
+  const returnTo = todo ? `${todoPath}${location.search || '?'}`
+    : typeof savedTodo === 'string' && savedTodo.startsWith(`${todoPath}?`) ? savedTodo : todoPath
+  const viewState = { todoPath: returnTo }
   const recentPath = canvasId && !missingCanvas ? canvasPath(projectId, canvasId) : todo ? `${base}/todo` : `${base}/map`
   const [settings, setSettings] = useState<'rename' | 'delete'>()
   const [locateNote, setLocateNote] = useState('')
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const loadedProjectId = workspace?.project.id
 
   useEffect(() => {
-    if (workspace) remember(projectId, recentPath)
-  }, [workspace, projectId, recentPath, remember])
+    if (loadedProjectId) rememberProject(loadedProjectId, recentPath)
+  }, [loadedProjectId, recentPath])
 
   if (!workspace) return <div className="page-stack">
     <Link className="text-accent-2" to={projectsPath}>返回工作项目</Link>
@@ -85,9 +96,7 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
         return
       }
       const next = new URLSearchParams({ focusItemId: id })
-      navigate(`${canvasPath(projectId, placement.canvasId)}?${next}`, {
-        state: { todoPath: todo ? `${location.pathname}${location.search || '?'}` : returnTo },
-      })
+      navigate(`${canvasPath(projectId, placement.canvasId)}?${next}`, { state: viewState })
     })
   }
 
@@ -99,22 +108,32 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
   </>
 
   return <div className="page-stack min-w-0">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-      <div className="min-w-0">
-        <Link className="text-xs text-accent-2 hover:underline" to={projectsPath}>全部项目</Link>
-        <h1 className="break-words text-xl font-semibold">{workspace.project.name}</h1>
-      </div>
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="min-w-0 break-words text-xl font-semibold">{workspace.project.name}</h1>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={busy} onClick={() => setSettings('rename')}>重命名项目</Button>
         <Button size="sm" variant="danger" disabled={busy} onClick={() => setSettings('delete')}>删除项目</Button>
       </div>
     </header>
+    <div className="flex items-center justify-between gap-2 border-b border-line">
+      <nav aria-label="项目视图" className="flex gap-4">
+        <Link to={`${base}/map`} state={viewState} className={viewLink} aria-current={!todo && canvasId === null ? 'page' : undefined}>地图</Link>
+        <Link to={returnTo} className={viewLink} aria-current={todo ? 'page' : undefined}>待办</Link>
+      </nav>
+      <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
+        <SheetTrigger asChild><Button size="sm" variant="ghost" icon="menu">项目大纲</Button></SheetTrigger>
+        <SheetContent side="right" title="项目大纲">
+          <ProjectOutline workspace={workspace} canvasId={canvasId} cardId={focusCardId} itemId={itemId ?? focusItemId}
+            todoPath={returnTo} onNavigate={() => setOutlineOpen(false)} />
+        </SheetContent>
+      </Sheet>
+    </div>
     {resource.error && <ResourceState error={resource.error} onRetry={resource.reload} />}
     {mutation.error && <p role="alert" className="break-words text-sm text-err">{mutation.error}</p>}
     {settings && <ProjectSettings key={settings} mode={settings} workspace={workspace} disabled={busy}
       error={mutation.error} onClose={() => setSettings(undefined)}
-      onRename={name => run(signal => renameProject(workspace.project, name, signal), () => { projects.reload(); setSettings(undefined) })}
-      onDelete={() => run(signal => deleteProject(projectId, signal), () => { projects.reload(); navigate(projectsPath, { replace: true }) })} />}
+      onRename={name => run(signal => renameProject(workspace.project, name, signal), () => setSettings(undefined))}
+      onDelete={() => run(signal => deleteProject(projectId, signal), () => navigate(projectsPath, { replace: true }))} />}
     {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
       此事项已不在当前画布。{' '}{focusCanvas
         ? <Link className="text-accent-2" to={`${canvasPath(projectId, focusCanvas)}?${new URLSearchParams({ focusItemId })}`}>打开当前画布</Link>
@@ -123,12 +142,12 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
     {todo || missingCanvas ? <div className={`grid min-w-0 items-start gap-4 ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
       {missingCanvas ? <div className="space-y-2">
         <ResourceState empty title="画布不存在" />
-        <Link className="text-accent-2" to={`${base}/map`}>返回 Canvas Map</Link>
+        <Link className="text-accent-2" to={`${base}/map`} state={viewState}>返回地图</Link>
       </div> : <ProjectTodo workspace={workspace} onItem={openItem}
-        onCreate={id => navigate(canvasPath(projectId, id), { state: { todoPath: `${location.pathname}${location.search || '?'}` } })} />}
+        onCreate={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
       {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
     </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
-      itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id))} />}
+      itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
   </div>
 }
 

@@ -1,10 +1,9 @@
-//! 工作清单管理可独立编辑的事项，不包含生成流程。
+//! 事项内容、人工状态和修订。
 mod cleanup;
-mod projects;
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, patches};
+use super::{Error, Store, remove_item};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -18,24 +17,22 @@ use uuid::Uuid;
 const TABLE: &str = "workListItems";
 
 /// 启动时执行自有数据的一次性清理。
-pub(super) fn recover(store: &Store) -> Result<(), Error> {
+pub(in crate::work) fn recover(store: &Store) -> Result<(), Error> {
     cleanup::recover(store)
 }
 
-pub(super) fn routes(store: Store) -> Router {
+pub(super) fn routes() -> Router<Store> {
     Router::new()
         .route("/v2/work-items", get(list).post(create))
         .route(
             "/v2/work-items/{id}",
             get(detail).put(replace).delete(remove),
         )
-        .merge(projects::routes())
-        .with_state(store)
 }
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum Category {
+pub(super) enum Category {
     #[default]
     OneTime,
     Continuous,
@@ -64,7 +61,7 @@ struct Definition {
 }
 
 // An omitted dimension is allowed, but an explicit null is not an enum value.
-fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+pub(super) fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
@@ -106,7 +103,7 @@ fn table_mut(db: &mut Value) -> Result<&mut Map<String, Value>, Error> {
         .as_object_mut()
         .ok_or_else(corrupt)
 }
-pub(super) fn find<'a>(db: &'a Value, id: &str) -> Result<&'a Value, Error> {
+pub(in crate::work) fn find<'a>(db: &'a Value, id: &str) -> Result<&'a Value, Error> {
     db[TABLE].get(id).ok_or_else(missing)
 }
 
@@ -143,18 +140,37 @@ async fn create(
     State(store): State<Store>,
     Json(input): Json<Definition>,
 ) -> Result<Json<Value>, Error> {
-    store.update(|db| Ok(Json(insert_item(db, input)?)))
-}
-
-fn insert_item(db: &mut Value, input: Definition) -> Result<Value, Error> {
     if input.revision.is_some() {
         return Err(Error::Invalid("新建工作项无需修订号".into()));
     }
     if input.status.is_some() {
         return Err(Error::Invalid("新工作项固定为待开始，请勿指定状态".into()));
     }
+    store.update(|db| {
+        Ok(Json(insert(
+            db,
+            input.title,
+            input.description,
+            input.category,
+        )?))
+    })
+}
+
+pub(super) fn insert(
+    db: &mut Value,
+    title: String,
+    description: String,
+    category: Option<Category>,
+) -> Result<Value, Error> {
     let id = Uuid::new_v4().to_string();
-    let row = input.row(&id, 1, None)?;
+    let row = Definition {
+        title,
+        description,
+        category,
+        status: None,
+        revision: None,
+    }
+    .row(&id, 1, None)?;
     table_mut(db)?.insert(id, row.clone());
     Ok(row)
 }
@@ -177,11 +193,15 @@ async fn replace(
         Ok(Json(row))
     })
 }
-async fn remove(State(store): State<Store>, Path(id): Path<String>) -> Result<StatusCode, Error> {
-    store.update(|db| {
-        table_mut(db)?.remove(&id).ok_or_else(missing)?;
-        projects::detach_item(db, &id)?;
-        patches::detach_item(db, &id)?;
-        Ok(StatusCode::NO_CONTENT)
-    })
+pub(super) fn remove_row(db: &mut Value, id: &str) -> Result<(), Error> {
+    table_mut(db)?.remove(id).ok_or_else(missing)?;
+    Ok(())
+}
+
+pub(super) async fn remove(
+    State(store): State<Store>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, Error> {
+    store.update(|db| remove_item(db, &id))?;
+    Ok(StatusCode::NO_CONTENT)
 }

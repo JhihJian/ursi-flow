@@ -37,7 +37,7 @@ describe('应用壳', () => {
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
 
     const mainNav = screen.getByRole('navigation', { name: '主导航' })
-    for (const [name, href] of [['工作清单', '/work-items'], ['平台 MCP 服务', '/mcp-servers'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['资源库', '/resources'], ['执行器', '/executors']]) {
+    for (const [name, href] of [['工作', '/work-items'], ['平台 MCP 服务', '/mcp-servers'], ['工作包', '/work-patches'], ['配置包', '/config-patches'], ['资源库', '/resources'], ['执行器', '/executors']]) {
       expect(within(mainNav).getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(within(mainNav).getByRole('link', { current: 'page' })).toHaveTextContent('Flow 包')
@@ -70,7 +70,7 @@ describe('应用壳', () => {
       check(screen.getByRole('navigation', { name: '主导航' }))
       await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
       check(within(await screen.findByRole('dialog')).getByRole('navigation', { name: '主导航' }))
-      expect(new Set(vi.mocked(fetch).mock.calls.map(([path]) => path))).toEqual(new Set(['/api/v1/flows', '/api/v2/work-projects']))
+      expect(new Set(vi.mocked(fetch).mock.calls.map(([path]) => path))).toEqual(new Set(['/api/v1/flows']))
     } finally { meta.remove() }
   })
 
@@ -80,7 +80,7 @@ describe('应用壳', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
-    expect(within(drawer).getByRole('link', { name: '工作清单' })).toHaveAttribute('href', '/work-items')
+    expect(within(drawer).getByRole('link', { name: /^工作$/ })).toHaveAttribute('href', '/work-items')
     await userEvent.click(within(drawer).getByRole('link', { name: '运行配置' }))
 
     await waitFor(() => { expect(router.state.location.pathname).toBe('/flow-config') })
@@ -95,7 +95,7 @@ describe('应用壳', () => {
     expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
     const nav = within(screen.getByRole('navigation', { name: '主导航' }))
     for (const name of ['Flow 包', '运行记录', '运行配置']) expect(nav.queryByRole('link', { name })).toBeNull()
-    expect(nav.getByRole('link', { name: '工作清单' })).toBeInTheDocument()
+    expect(nav.getByRole('link', { name: /^工作$/ })).toBeInTheDocument()
     await userEvent.click(nav.getByRole('link', { name: '工作包生成器' }))
     expect(await screen.findByRole('heading', { name: '工作包生成器' })).toBeInTheDocument()
     await userEvent.click(nav.getByRole('link', { name: '生成记录' }))
@@ -108,7 +108,7 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', 'Canvas Map', 'Todo', '工作项目', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
+    expect(desktopEntries.map(([title]) => title)).toEqual(['工作', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
@@ -121,7 +121,7 @@ describe('应用壳', () => {
   it('可选模块探测失败时仍能使用工作清单并单独重试', async () => {
     let flowCalls = 0
     const fetch = vi.fn(async (path: string) => {
-      if (path === '/api/v2/work-items' || path === '/api/v2/patches/work' || path === '/api/v2/work-projects') return Response.json([])
+      if (path === '/api/v2/work-items' || path === '/api/v2/patches/work') return Response.json([])
       if (path === '/api/v1/flows') return Response.json([], { status: ++flowCalls === 1 ? 503 : 200 })
       throw Error(`意外 API：${path}`)
     })

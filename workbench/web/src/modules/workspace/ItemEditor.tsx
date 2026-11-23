@@ -9,7 +9,6 @@ import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
 import { categories, getWorkItem, saveWorkItem, statuses, workItemPath, type Category, type WorkItem, type WorkStatus } from '@/shared/api/work-items'
-import { useProjectNavigation } from './projects/project-navigation'
 
 export function ItemEditor() {
   const { id } = useParams()
@@ -22,7 +21,6 @@ function EditExisting({ id }: { id: string }) {
 function Form({ item }: { item?: WorkItem }) {
   const navigate = useNavigate()
   const mutation = useMutation()
-  const { refreshWorkspaces } = useProjectNavigation()
   const [title, setTitle] = useState(item?.title ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
   const [category, setCategory] = useState<Category>(item?.category ?? 'one_time')
@@ -33,10 +31,7 @@ function Form({ item }: { item?: WorkItem }) {
     if (!title.trim()) return setValidation('请填写标题。')
     setValidation('')
     void mutation.run(signal => saveWorkItem({ title: title.trim(), description, category, status }, item, signal),
-      saved => {
-        if (item) refreshWorkspaces()
-        navigate(workItemPath(saved.id), { replace: true })
-      })
+      saved => navigate(workItemPath(saved.id), { replace: true }))
   }
   return <div className="page-stack">
     <PageHeader title={item ? '编辑工作项' : '新建工作项'} />

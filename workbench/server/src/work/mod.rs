@@ -1,12 +1,11 @@
 //! Workbench 持有业务数据，通过平台的消费者接口选版、执行并读取制品。
 mod business_directories;
-mod canvas;
 mod environment;
 mod generation;
 mod mcp;
 mod patches;
+mod planning;
 mod platform_proxy;
-mod worklist;
 use axum::Router;
 use std::{io, path::PathBuf};
 use ursi_executor_platform::work::{Error, Store, directories};
@@ -28,13 +27,13 @@ pub(crate) fn business_routes(store: Store) -> io::Result<Router> {
 }
 
 fn business(store: Store, config_lookup: Option<platform_proxy::Platform>) -> io::Result<Router> {
-    worklist::recover(&store)
+    planning::recover(&store)
         .map_err(|err| io::Error::other(format!("清理工作清单历史数据失败：{err:?}")))?;
     generation::recover(&store)
         .map_err(|err| io::Error::other(format!("恢复生成运行失败：{err:?}")))?;
     let mcp = mcp::platform(&store);
     Ok(business_directories::routes(store.clone())?
-        .merge(worklist::routes(store.clone()))
+        .merge(planning::routes(store.clone()))
         .merge(generation::routes(store.clone(), mcp.clone()))
         .nest("/v2", mcp.routes())
         .merge(environment::routes(store.clone()))

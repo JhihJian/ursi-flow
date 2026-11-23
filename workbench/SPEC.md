@@ -4,6 +4,7 @@ references:
   - README.md
   - ../docs/design/workbench/PATCH-STUDIO.md
   - ../docs/design/workbench/WORK-LIST-DESIGN.md
+  - ../docs/design/workbench/WORK-PROJECTS-DESIGN.md
   - ../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
   - ../docs/design/executor-platform/OVERVIEW.md
   - EXECUTOR-INTEGRATION.md
@@ -13,16 +14,16 @@ references:
 
 ## 功能意图
 
-工作台将[服务端](server/SPEC.md)与[浏览器界面](web/SPEC.md)组织为同一项目。用户通过同源 API 维护工作清单和工作包，使用执行器平台的已发布修订。配置包与执行器在独立管理页维护。启用 Flow 时可另外管理流程包与运行。
+工作台将[服务端](server/SPEC.md)与[浏览器界面](web/SPEC.md)组织为同一项目。用户通过同源 API 维护事项、项目规划和工作包，使用执行器平台的已发布修订。配置包与执行器在独立管理页维护。启用 Flow 时可另外管理流程包与运行。
 
 ## 关键功能与验收
 
-### 工作清单与资源转包
+### 工作事项与项目规划
 
 #### 验收
 
 - 未接入外部服务也能创建、编辑和删除一次性或持续工作，按类别与进度状态组合筛选。
-- 从平台登记的 MCP 服务选择资源，在工作项保存 Python 配方。每次主动生成一个文件型工作包，重试同一次请求只发布一个包。删除工作项时保留包、文件及生成来源，每包当前至多归属一个工作项。详见[工作清单与工作包来源](../docs/design/workbench/WORK-LIST-DESIGN.md)。
+- 从「工作」进入全部事项或项目。项目地图、画布和待办共用工作项内容及人工状态，规划关系仅表示办理先后。移出项目保留事项，删除事项保留已生成的包、文件及生成来源。
 
 ### 工作包生成器
 

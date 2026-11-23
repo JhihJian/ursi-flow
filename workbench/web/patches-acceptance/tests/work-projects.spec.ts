@@ -14,8 +14,14 @@ async function openSidebar(page: Page, desktop: boolean) {
   return drawer
 }
 
-async function sidebarLink(page: Page, desktop: boolean, section: '主导航' | '项目树', name: string) {
-  return (await openSidebar(page, desktop)).getByRole('navigation', { name: section }).getByRole('link', { name, exact: true })
+function projectView(page: Page, name: '地图' | '待办') {
+  return page.getByRole('navigation', { name: '项目视图' }).getByRole('link', { name, exact: true })
+}
+
+async function openOutline(page: Page) {
+  const trigger = page.getByRole('button', { name: '项目大纲', exact: true })
+  await trigger.click()
+  return page.getByRole('dialog', { name: '项目大纲' })
 }
 
 async function addNamed(page: Page, button: string, field: string, name: string) {
@@ -58,8 +64,10 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   const graph = page.locator('.react-flow')
   await expect(desktop ? graph : page.getByRole('list', { name: '画布列表' })).toBeVisible()
   await addNamed(page, '新建画布', '画布名称', '材料准备')
-  await expect(await sidebarLink(page, desktop, '项目树', '材料准备')).toBeVisible()
-  if (!desktop) await page.getByRole('dialog', { name: '工作区导航' }).getByRole('button', { name: '关闭', exact: true }).click()
+  const outline = await openOutline(page)
+  await expect(outline.getByRole('link', { name: '材料准备' })).toBeVisible()
+  await outline.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(outline).toBeHidden()
   const destination = desktop ? graph.locator('.react-flow__node', { hasText: '材料准备' })
     : page.getByRole('list', { name: '画布列表' }).getByRole('listitem').filter({ hasText: '材料准备' })
   if (desktop) {
@@ -98,7 +106,7 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   }
   const cardItems = page.getByRole('list', { name: '卡内 TODO' })
   await expect(cardItems.getByRole('listitem').first()).toContainText('补客户授权')
-  await (await sidebarLink(page, desktop, '主导航', 'Todo')).click()
+  await projectView(page, '待办').click()
   await page.getByRole('combobox', { name: '类别', exact: true }).selectOption('continuous')
   await expect(page.getByText('显示 1 / 2 项')).toBeVisible()
   await expect(page.getByRole('heading', { name: '全项目状态 · 2 项' })).toBeVisible()
@@ -111,8 +119,10 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   await expect(page).toHaveURL(/\/canvases\/.*\?focusItemId=/)
   await expect(cardItems.locator('[aria-current=true]')).toContainText('补客户授权')
   await expect(cardItems.locator('[aria-current=true]')).toContainText('已完成')
-  await expect(await sidebarLink(page, desktop, '项目树', '补客户授权 已完成')).toHaveAttribute('aria-current', 'page')
-  await (await sidebarLink(page, desktop, '主导航', 'Todo')).click()
+  await openOutline(page)
+  await expect(outline.getByRole('link', { name: '补客户授权 已完成' })).toHaveAttribute('aria-current', 'page')
+  await outline.getByRole('button', { name: '关闭', exact: true }).click()
+  await projectView(page, '待办').click()
   await expect(page).toHaveURL(/category=continuous/)
   await expect(page.getByText('显示 1 / 2 项')).toBeVisible()
   const placed = (await snapshot()).items[0].item
@@ -123,7 +133,7 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   await expect(page.getByRole('link', { name: '查看本项的生成记录' })).toBeVisible()
   await page.getByRole('link', { name: '在画布中定位' }).click()
   await expect(cardItems.locator('[aria-current=true]')).toContainText('补客户授权')
-  await (await sidebarLink(page, desktop, '主导航', 'Canvas Map')).click()
+  await projectView(page, '地图').click()
   await expect(destination).toContainText('待开始 1 · 进行中 0 · 已完成 1')
   await page.getByRole('button', { name: '关系', exact: true }).click()
   await mapInspector.getByRole('button', { name: '默认画布 → 材料准备' }).click()
@@ -224,7 +234,7 @@ test('右键按命中对象提供快捷操作，空画布可建卡，删除仍�
   await expect(canvas.getByRole('complementary')).toHaveCount(0)
 })
 
-test('全局侧栏独立展开、选择项目和定位 TODO，刷新后仍能打开对应项目', async ({ page, request }, info) => {
+test('工作入口统一，选择项目后切换视图，从项目大纲精确定位 TODO', async ({ page, request }, info) => {
   const { token, apiBase } = readRuntime()
   const headers = { Authorization: `Bearer ${token}` }
   const root = `${apiBase}/api/v2/work-projects`
@@ -253,39 +263,45 @@ test('全局侧栏独立展开、选择项目和定位 TODO，刷新后仍能打
   await login(page, token)
   const desktop = info.project.name === 'desktop'
   const sidebar = await openSidebar(page, desktop)
-  const tree = sidebar.getByRole('navigation', { name: '项目树' })
-  const todo = sidebar.getByRole('link', { name: 'Todo', exact: true })
-  await expect(todo).toHaveAttribute('href', '/work-projects?view=todo')
-  await todo.click()
-  await expect(page.getByRole('heading', { name: '选择 Todo 项目' })).toBeVisible()
-  await page.getByRole('main').getByRole('link', { name: firstName }).click()
-  await expect(page).toHaveURL(`${first.path}/todo`)
-  await openSidebar(page, desktop)
-  await expect(todo).toHaveAttribute('aria-current', 'page')
-  const secondBranch = tree.getByRole('listitem').filter({ has: page.getByRole('link', { name: secondName, exact: true }) })
-  await secondBranch.getByRole('button', { name: `展开 项目 ${secondName}` }).click()
-  await secondBranch.getByRole('button', { name: '展开 画布 默认画布' }).click()
-  await secondBranch.getByRole('button', { name: '展开 任务卡 交付检查' }).click()
-  await expect(page).toHaveURL(`${first.path}/todo`)
-  const leaf = secondBranch.getByRole('link', { name: /确认交付日期/ })
-  await leaf.click()
-  await expect(page).toHaveURL(`${second.path}/canvases/${second.canvas}?focusItemId=${second.item}&itemId=${second.item}`)
+  const mainNav = sidebar.getByRole('navigation', { name: '主导航' })
+  for (const label of ['工作清单', '工作项目', 'Canvas Map', 'Todo']) {
+    await expect(mainNav.getByRole('link', { name: label, exact: true })).toHaveCount(0)
+  }
+  await mainNav.getByRole('link', { name: '工作', exact: true }).click()
   if (!desktop) await expect(sidebar).toBeHidden()
+  await expect(page).toHaveURL('/work-items')
+  const workViews = page.getByRole('navigation', { name: '工作视图' })
+  await workViews.getByRole('link', { name: '项目', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '工作项目' })).toBeVisible()
+  await page.getByRole('listitem').filter({ hasText: secondName }).getByRole('button', { name: '置顶', exact: true }).click()
+  await page.getByRole('main').getByRole('link', { name: secondName, exact: true }).click()
+  await expect(page).toHaveURL(`${second.path}/map`)
+  await projectView(page, '待办').click()
+  await expect(page).toHaveURL(`${second.path}/todo`)
+  const outline = await openOutline(page)
+  await expect(outline.getByText(firstName, { exact: true })).toHaveCount(0)
+  await outline.getByRole('button', { name: '展开 任务卡 交付检查' }).click()
+  await expect(page).toHaveURL(`${second.path}/todo`)
+  const leaf = outline.getByRole('link', { name: /确认交付日期/ })
+  await leaf.click()
+  const canvasPath = `${second.path}/canvases/${second.canvas}`
+  await expect(page).toHaveURL(`${canvasPath}?focusItemId=${second.item}&itemId=${second.item}`)
+  await expect(outline).toBeHidden()
   await expect(page.getByRole('list', { name: '卡内 TODO' }).locator('[aria-current=true]')).toContainText('确认交付日期')
   await page.reload()
-  await openSidebar(page, desktop)
+  await openOutline(page)
   await expect(leaf).toHaveAttribute('aria-current', 'page')
-  await secondBranch.getByRole('link', { name: '交付检查', exact: true }).click()
-  await expect(page).toHaveURL(`${second.path}/canvases/${second.canvas}?focusCardId=${second.card}`)
-  await (await sidebarLink(page, desktop, '主导航', '工作清单')).click()
-  await expect(page).toHaveURL('/work-items')
-  await (await sidebarLink(page, desktop, '主导航', 'Canvas Map')).click()
-  await expect(page).toHaveURL(`${second.path}/map`)
+  await outline.getByRole('link', { name: '交付检查', exact: true }).click()
+  await expect(page).toHaveURL(`${canvasPath}?focusCardId=${second.card}`)
+  await workViews.getByRole('link', { name: '项目', exact: true }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: secondName }).getByRole('button', { name: '取消置顶' })).toBeVisible()
+  await page.getByRole('link', { name: '继续上次' }).click()
+  await expect(page).toHaveURL(canvasPath)
   await page.goto(`${first.path}/canvases/${first.canvas}?focusItemId=${first.item}`)
-  await expect(await sidebarLink(page, desktop, '主导航', 'Todo')).toHaveAttribute('href', `${first.path}/todo`)
+  await expect(projectView(page, '待办')).toHaveAttribute('href', `${first.path}/todo`)
   await page.goto(`${first.path}/canvases/removed`)
   await expect(page.getByText('画布不存在', { exact: true })).toBeVisible()
-  await page.getByRole('link', { name: '返回 Canvas Map' }).click()
+  await page.getByRole('link', { name: '返回地图' }).click()
   await expect(page).toHaveURL(`${first.path}/map`)
 })
 
@@ -306,11 +322,14 @@ test('全局事项加入、跨画布移动和移出都保留原 ID 与内容修�
   await login(page, token)
   await page.goto(`${path}/map`)
   await addNamed(page, '新建画布', '画布名称', '第二张画布')
-  const desktop = info.project.name === 'desktop'
-  await (await sidebarLink(page, desktop, '项目树', '第二张画布')).click()
+  const outline = await openOutline(page)
+  await outline.getByRole('link', { name: '第二张画布', exact: true }).click()
+  await expect(outline).toBeHidden()
   await addNamed(page, '新建任务卡', '任务卡名称', '归档')
   const targetId = new URL(page.url()).pathname.split('/').at(-1)
-  await (await sidebarLink(page, desktop, '项目树', '默认画布')).click()
+  await openOutline(page)
+  await outline.getByRole('link', { name: '默认画布', exact: true }).click()
+  await expect(outline).toBeHidden()
   await addNamed(page, '新建任务卡', '任务卡名称', '待整理')
   await page.getByRole('button', { name: '加入已有事项' }).click()
   await page.getByRole('combobox', { name: '已有事项' }).selectOption({ label: title })

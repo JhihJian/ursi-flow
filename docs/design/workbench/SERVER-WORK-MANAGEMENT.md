@@ -1,10 +1,10 @@
 # Server v2：业务工作包与执行器平台的边界
 
-Workbench 管理工作清单、生成器、工作包和业务目录。独立的[执行器平台](../../../executor-platform/server/SPEC.md)管理配置包、资源与执行器修订、后端绑定、执行尝试和只读制品。Flow 包、运行配置和节点历史归 [Flow Runtime](SERVER-FLOW.md)。三个服务各自写入私有存储，通过引用和 API 交换数据，不共享目录根。
+Workbench 管理工作规划、生成器、工作包和业务目录。独立的[执行器平台](../../../executor-platform/server/SPEC.md)管理配置包、资源与执行器修订、后端绑定、执行尝试和只读制品。Flow 包、运行配置和节点历史归 [Flow Runtime](SERVER-FLOW.md)。三个服务各自写入私有存储，通过引用和 API 交换数据，不共享目录根。
 
 ## 从清单项到业务文件
 
-[工作清单](../../../workbench/server/src/work/worklist/SPEC.md)保存标题、说明、类别和状态，只承载事项信息。生成文件包时，[工作包生成器](../../../workbench/server/src/work/generation/SPEC.md)读取[已登记 MCP 服务](../../../workbench/server/src/work/mcp/PLATFORM.md)的授权资源，将材料快照交给隔离的 Python 转换器；校验文件并确认事项仍存在后，发布一个归属该事项的工作包。同一生成请求的重试返回原包。
+[工作规划](../../../workbench/server/src/work/planning/SPEC.md)管理事项内容、项目结构和归属。全局清单和项目待办读取同一份事项。生成文件包时，[工作包生成器](../../../workbench/server/src/work/generation/SPEC.md)读取[已登记 MCP 服务](../../../workbench/server/src/work/mcp/PLATFORM.md)的授权资源，将材料快照交给隔离的 Python 转换器；校验文件并确认事项仍存在后，发布一个归属该事项的工作包。同一生成请求的重试返回原包。
 
 [工作包记录](../../../workbench/server/src/work/patches/HTTP.md)通过 `directoryId` 标识本地业务目录。工作包的当前归属可改，生成来源固定。删除清单项时只解除归属，文件和来源仍可查。工作包可按 ID 引用平台配置包，创建时须经平台核验。本地工作包目录只保存业务文件，配置包中的提示词、技能和 MCP 设置由平台管理，与 Workbench 获取业务材料所需的 MCP 凭据分开。
 

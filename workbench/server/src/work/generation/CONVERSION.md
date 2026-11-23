@@ -2,7 +2,7 @@
 
 ## Python 输入与结果
 
-生成器实现 `transform(item, resources)`。不关联工作项的运行（试运行）`item` 为 `None`；关联工作项时 `item` 仅含 `id`、`title`、`description`、`category`、`status`，取自受理时的工作项快照，后两个字段分别表示工作类别与办理状态，取值见[工作清单契约](../worklist/HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
+生成器实现 `transform(item, resources)`。不关联工作项的运行（试运行）`item` 为 `None`；关联工作项时 `item` 仅含 `id`、`title`、`description`、`category`、`status`，取自受理时的工作项快照，后两个字段分别表示工作类别与办理状态，取值见[工作清单契约](../planning/HTTP.md)。`resources[alias]` 包含 `serverId`、`uri` 和 `contents` 数组，数组里的每一项含 `uri`、可选 `mimeType` 和 `text` 或标准 Base64 `blob`。生成来源中的 `sha256` 取自该数组的紧凑 UTF-8 JSON，`readAt` 为 Unix 毫秒。
 
 ```python
 def transform(item, resources):

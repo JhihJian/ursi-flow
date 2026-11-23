@@ -3,7 +3,7 @@ parent: ../../SPEC.md
 depends-on:
   - ../shared/SPEC.md
   - ../modules/agent-backends/SPEC.md
-  - ../modules/work-items/SPEC.md
+  - ../modules/workspace/SPEC.md
   - ../modules/work-patch-generators/SPEC.md
   - ../modules/patches/SPEC.md
   - ../modules/definitions/SPEC.md
@@ -38,9 +38,9 @@ references:
 
 #### 验收
 
-- 桌面侧栏与移动抽屉提供相同分组。日常工作含工作清单、Canvas Map、Todo、工作项目、工作包和生成记录。Canvas Map 和 Todo 打开当前项目的对应视图。没有当前项目时打开项目选择页。工作定义含工作包生成器、配置包、资源库和执行器。平台设置提供 `/settings/agent-backends`、`/mcp-servers` 和 `/platform-env`，独立于 Flow 运行配置与配置包。运行工具保留 `/flows`、`/runs`、`/flow-config` 及原有深链。
+- 桌面侧栏与移动抽屉提供相同分组。日常工作含「工作」、工作包和生成记录。「工作」进入 `/work-items`，在事项、项目及下属视图中保持高亮。工作定义含工作包生成器、配置包、资源库和执行器。平台设置提供 `/settings/agent-backends`、`/mcp-servers` 和 `/platform-env`，独立于 Flow 运行配置与配置包。运行工具保留 `/flows`、`/runs`、`/flow-config` 及原有深链。
 - 配置 `ursi-executor-management-url` 后两种导航都指向专有管理页面，不向该地址发送 Workbench API 请求或令牌。
-- 侧栏下方提供独立滚动的项目树。桌面与移动抽屉共享展开状态和项目数据，点行导航，点箭头展开或折叠。关闭 Flow 时仍可使用项目树和项目视图。
+- 应用壳只挂载工作路由与导航，项目列表和工作区数据按页面加载。关闭 Flow 时仍可进入全部事项及各项目视图。
 - Flow 可用性只由 `/api/v1/flows` 判定。集合返回 404 时收起运行工具的所有导航项；直接打开该模块仍能返回清单。工作包生成器与生成记录的导航和深链保持可用。单条记录的 404 不影响导航。
 - 集合为空仍保留入口。其他服务故障显示对应错误，能单独重试，不阻塞其他模块。退出后不沿用先前会话的探测结果。
 - 抽屉导航后关闭，页面标题与面包屑反映当前位置。明暗与主色独立保持；弹窗、通知和跳到主内容的链接可用键盘操作。

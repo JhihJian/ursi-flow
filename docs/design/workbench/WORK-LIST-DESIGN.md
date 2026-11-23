@@ -1,6 +1,6 @@
 # 工作清单
 
-项目、Canvas Map 和 TODO 的改造方案见[工作清单项目化](WORK-PROJECTS-DESIGN.md)。
+工作清单是「工作」中的「全部事项」视图，覆盖已归入项目和未归入项目的事项。项目视图见[工作区设计](WORK-PROJECTS-DESIGN.md)。
 
 工作清单记录要做的事，工作包保存某一次工作用到的文件。清单只承载事项信息：标题、说明、类别和办理状态。生成工作包由[工作包生成器](WORK-PATCH-GENERATOR-DESIGN.md)独立承担，生成结果可通过归属字段关联到工作项。例如，「每周客户反馈」是一条持续工作，每周用生成器读取一次反馈服务的资源就得到一个独立的包。上周的包仍能打开，本周的包也归在同一工作项下。
 
@@ -23,7 +23,7 @@
 
 ## 页面与接口
 
-「工作清单」页面 `/work-items` 使用独立集合 `/api/v2/work-items`，契约见[工作清单 HTTP](../../../workbench/server/src/work/worklist/HTTP.md)。旧派工记录的处理见[旧数据升级](../../../workbench/server/README.md#旧数据升级)。
+「工作清单」页面 `/work-items` 使用独立集合 `/api/v2/work-items`，契约见[工作清单 HTTP](../../../workbench/server/src/work/planning/HTTP.md)。旧派工记录的处理见[旧数据升级](../../../workbench/server/README.md#旧数据升级)。
 
 ## 验收场景
 

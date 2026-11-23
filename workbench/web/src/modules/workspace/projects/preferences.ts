@@ -15,3 +15,8 @@ export function readPreferences(): Preferences {
 export function writePreferences(value: Preferences) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* Optional browser preference. */ }
 }
+
+export function rememberProject(projectId: string, path: string) {
+  const preferences = readPreferences()
+  if (preferences.recent?.path !== path) writePreferences({ ...preferences, recent: { projectId, path } })
+}

@@ -35,8 +35,13 @@ it('免登录预览在原深链展示规划页面，浏览器不发送令牌或�
   expect(router.state.location.search).toBe('?status=active')
   expect(screen.queryByLabelText('访问令牌')).toBeNull()
   expect(screen.queryByRole('button', { name: '退出登录' })).toBeNull()
-  expect(screen.queryByRole('link', { name: '工作包生成器' })).toBeNull()
-  expect(fetch.mock.calls.map(([path]) => path).sort()).toEqual(['/api/v2/work-items', '/api/v2/work-projects'])
+  const sidebar = within(screen.getByRole('navigation', { name: '主导航' }))
+  expect(sidebar.getAllByRole('link').map(link => link.textContent)).toEqual(['工作'])
+  expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/v2/work-items'])
+  await userEvent.click(within(screen.getByRole('navigation', { name: '工作视图' })).getByRole('link', { name: '项目' }))
+  expect(await screen.findByRole('heading', { name: '工作项目' })).toBeVisible()
+  await waitFor(() => expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/v2/work-items', '/api/v2/work-projects']))
+  expect(sidebar.getByRole('link', { name: '工作' })).toHaveAttribute('aria-current', 'true')
   for (const [, options] of fetch.mock.calls) {
     const headers = new Headers(options.headers)
     expect(headers.has('Authorization')).toBe(false)
@@ -75,10 +80,10 @@ it.each([
   render(<RouterProvider router={router} />)
   expect(await screen.findByRole('heading', { name: '页面未找到' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
-  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['/api/v1/flows', '/api/v2/work-projects'])
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/v1/flows'])
 })
 
-it.each(['/work-items/abc', '/executors/abc/revisions/2'])('工作项和执行器深链在原位置登录：%s', async path => {
+it.each(['/work-items/abc', '/work-projects/abc/todo', '/executors/abc/revisions/2'])('工作项、项目和执行器深链在原位置登录：%s', async path => {
   vi.stubGlobal('fetch', vi.fn())
   const router = createMemoryRouter(createAppRoutes(), { initialEntries: [`${path}?status=review#report`] })
   render(<RouterProvider router={router} />)

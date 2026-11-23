@@ -2,7 +2,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, directories, platform_proxy::Platform, worklist};
+use super::{Error, Store, directories, planning, platform_proxy::Platform};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, State},
@@ -123,7 +123,7 @@ async fn set_owner(
 ) -> Result<Json<Value>, Error> {
     store.update(|db| {
         if let Some(owner) = &input.work_item_id {
-            worklist::find(db, owner)?;
+            planning::find_item(db, owner)?;
         }
         let row = db[TABLE]
             .get_mut(&id)
@@ -209,7 +209,7 @@ async fn create(
             |_| Ok(()),
             |db, directory_id| {
                 if let Some(owner) = &input.work_item_id {
-                    worklist::find(db, owner)?;
+                    planning::find_item(db, owner)?;
                 }
                 let row = Patch {
                     id: Uuid::new_v4().to_string(),

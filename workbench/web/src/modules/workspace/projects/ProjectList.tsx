@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { createProject, projectPath } from '@/shared/api/work-projects'
+import { createProject, listProjects, projectPath } from '@/shared/api/work-projects'
 import { useMutation } from '@/shared/hooks/use-mutation'
+import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
-import { useProjectNavigation } from './project-navigation'
+import { readPreferences, writePreferences } from './preferences'
 
 export function ProjectList() {
-  const { projects, preferences, togglePinned } = useProjectNavigation()
+  const projects = useResource(listProjects, [])
+  const [preferences, setPreferences] = useState(readPreferences)
   const [params] = useSearchParams()
   const view = params.get('view')
   const openView = view === 'todo' ? 'todo' : 'map'
@@ -18,10 +20,14 @@ export function ProjectList() {
   const [name, setName] = useState('')
   const rows = [...projects.data].sort((a, b) => Number(preferences.pinned.includes(b.id)) - Number(preferences.pinned.includes(a.id)))
   const recent = preferences.recent
+  function togglePinned(id: string) {
+    const next = { ...preferences, pinned: preferences.pinned.includes(id) ? preferences.pinned.filter(value => value !== id) : [...preferences.pinned, id] }
+    writePreferences(next)
+    setPreferences(next)
+  }
   function submit(event: FormEvent) {
     event.preventDefault()
     if (name.trim()) void mutation.run(signal => createProject(name.trim(), signal), project => {
-      projects.reload()
       navigate(`${projectPath(project.id)}/${openView}`)
     })
   }

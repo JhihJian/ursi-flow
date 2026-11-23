@@ -529,7 +529,7 @@ async fn item_delete_rolls_back_when_package_detach_fails() {
         .unwrap();
     let before = store.read(|db| Ok(db.clone())).unwrap();
     assert!(matches!(
-        super::super::remove(State(store.clone()), Path(id(&item).into())).await,
+        items::remove(State(store.clone()), Path(id(&item).into())).await,
         Err(Error::Internal(_))
     ));
     assert_eq!(store.read(|db| Ok(db.clone())).unwrap(), before);

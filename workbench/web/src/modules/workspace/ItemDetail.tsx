@@ -11,7 +11,6 @@ import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { categories, deleteWorkItem, getWorkItem, statuses, workItemPath, type WorkItem } from '@/shared/api/work-items'
 import { canvasPath, getPlacement, projectsPath, type Placement } from '@/shared/api/work-projects'
-import { useProjectNavigation } from './projects/project-navigation'
 
 export function ItemDetail() {
   const { id = '' } = useParams()
@@ -23,7 +22,6 @@ function LoadItem({ id }: { id: string }) {
 }
 function Detail({ item }: { item: WorkItem }) {
   const navigate = useNavigate()
-  const { refreshWorkspaces } = useProjectNavigation()
   const preview = isLanPreview()
   const patches = useResource(signal => preview ? Promise.resolve([]) : listPatches('work', signal), [])
   const related = patches.data.filter(p => p.workItemId === item.id)
@@ -51,7 +49,6 @@ function Detail({ item }: { item: WorkItem }) {
     <Modal open={deleting} title="删除工作项" onClose={() => { if (!deletion.busy) setDeleting(false) }} footer={<>
       <Button disabled={deletion.busy} onClick={() => setDeleting(false)}>取消</Button>
       <Button variant="danger" loading={deletion.busy} onClick={() => void deletion.run(signal => deleteWorkItem(item.id, signal), () => {
-        refreshWorkspaces()
         navigate('/work-items', { replace: true })
       })}>确认删除</Button></>}>
       <p>删除「{item.title}」？{!preview && `将解除 ${related.length} 个工作包的关联。包、文件和生成记录会保留。`}</p>

@@ -1,14 +1,14 @@
 ---
-parent: ../../../SPEC.md
+parent: ../SPEC.md
 references:
-  - ../../../../../docs/design/workbench/WORK-PROJECTS-DESIGN.md
-  - ../worklist/PROJECTS-HTTP.md
+  - ../../../../../../docs/design/workbench/WORK-PROJECTS-DESIGN.md
+  - ../PROJECTS-HTTP.md
 ---
 # 规划画布
 
 ## 功能意图
 
-画布模块维护两层规划图：项目地图由画布节点组成，单张画布由任务卡节点组成。关系表达规划先后，布局记录节点位置。事项归属由工作清单协调，画布模块可独立维护空图。
+画布模块维护两层规划图：项目地图由画布节点组成，单张画布由任务卡节点组成。关系表达规划先后，布局记录节点位置。事项归属由工作规划模块协调，画布模块可独立维护空图。
 
 ## 关键功能与验收
 

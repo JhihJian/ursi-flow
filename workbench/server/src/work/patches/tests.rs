@@ -68,7 +68,7 @@ impl Http {
         let app = crate::work::business_directories::routes(store.clone())
             .unwrap()
             .merge(routes_with_platform(store.clone(), None))
-            .merge(worklist::routes(store.clone()));
+            .merge(planning::routes(store.clone()));
         let listener = UnixListener::bind(dir.path("http.sock")).unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { dir, store, task }

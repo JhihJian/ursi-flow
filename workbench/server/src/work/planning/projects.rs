@@ -1,7 +1,10 @@
-//! 项目、事项归属和工作区快照共用工作清单的 Store 事务。
+//! 项目、事项归属和工作区快照。
 
-use super::{Category, Definition, Error, Store, find, insert_item, present};
-use crate::work::canvas::{Graph, Positions, validate_name};
+use super::canvas::{Graph, Positions, validate_name};
+use super::{
+    Error, Store, find_item,
+    items::{self, Category, present},
+};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -251,7 +254,7 @@ async fn workspace(State(store): State<Store>, Path(id): Path<String>) -> Reply 
             .iter()
             .map(|(id, p)| {
                 Ok(PlacedItem {
-                    item: find(db, id)?,
+                    item: find_item(db, id)?,
                     task_card_id: &p.task_card_id,
                     rank: p.rank,
                 })
@@ -268,7 +271,7 @@ async fn workspace(State(store): State<Store>, Path(id): Path<String>) -> Reply 
 
 async fn placement(State(store): State<Store>, Path(id): Path<String>) -> Reply {
     store.read(|db| {
-        find(db, &id)?;
+        find_item(db, &id)?;
         let Some(project_id) = project_with_item(db, &id)? else {
             return Ok(Json(Value::Null));
         };
@@ -386,16 +389,7 @@ impl Command {
                 category,
             } => {
                 entry.graph.canvas_for_card(&task_card_id)?;
-                let item = insert_item(
-                    db,
-                    Definition {
-                        title,
-                        description,
-                        category,
-                        status: None,
-                        revision: None,
-                    },
-                )?;
+                let item = items::insert(db, title, description, category)?;
                 let id = item["id"].as_str().ok_or_else(corrupt)?.to_owned();
                 entry.append_item(id.clone(), task_card_id);
                 return Ok(Some(id));
@@ -404,7 +398,7 @@ impl Command {
                 work_item_id,
                 task_card_id,
             } => {
-                find(db, &work_item_id)?;
+                find_item(db, &work_item_id)?;
                 if project_with_item(db, &work_item_id)?
                     .is_some_and(|owner| owner != entry.project.id)
                 {

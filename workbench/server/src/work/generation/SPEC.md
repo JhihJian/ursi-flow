@@ -4,7 +4,7 @@ depends-on:
   - ../patches/SPEC.md
   - ../directories/SPEC.md
   - ../mcp/SPEC.md
-  - ../worklist/SPEC.md
+  - ../planning/SPEC.md
 references:
   - ../../../../../docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md
   - GENERATORS-HTTP.md

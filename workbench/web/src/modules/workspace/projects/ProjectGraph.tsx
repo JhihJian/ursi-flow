@@ -1,9 +1,8 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Link } from 'react-router'
 import { CanvasGraph, type CanvasContextTarget, type CanvasNode, type CanvasSelection, type Point } from '@/modules/canvas'
 import { ContextMenu, type ContextAction } from '@/shared/ui/context-menu'
 import type { MenuAnchor } from '@/shared/ui/menu-anchor'
-import { projectPath, type Command, type Named, type Relation, type Workspace } from '@/shared/api/work-projects'
+import type { Command, Named, Relation, Workspace } from '@/shared/api/work-projects'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { GraphCanvasSummary, GraphCardItems } from './GraphCardItems'
@@ -336,11 +335,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
   return <section className="min-w-0 space-y-3" aria-label={map ? 'Canvas Map' : '规划画布'}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       {map ? <h2 className={`text-base font-semibold text-txt ${list ? '' : 'sr-only'}`}>Canvas Map</h2>
-        : <div className="flex min-w-0 items-center gap-2">
-          <Link to={`${projectPath(workspace.project.id)}/map`} className="shrink-0 text-xs font-medium text-txt3 hover:text-accent-2">Canvas Map</Link>
-          <span aria-hidden="true" className="text-txt3">›</span>
-          <h2 title={canvas?.name} className="min-w-0 break-words text-sm font-semibold text-txt">{canvas?.name}</h2>
-        </div>}
+        : <h2 className="min-w-0 break-words text-sm font-semibold text-txt">{canvas?.name}</h2>}
       <div className="flex flex-wrap items-center gap-1.5">
         <Button size="sm" icon="plus" variant="primary" disabled={busy} onClick={() => openEditor({ kind: 'create' })}>新建{noun}</Button>
         <Button size="sm" icon="workflow" disabled={busy || nodes.length < 2} onClick={() => openEditor({ kind: 'createRelation' })}>新建关系</Button>

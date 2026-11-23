@@ -2,17 +2,14 @@ import { ApiError, requestJson } from '@/shared/http/client'
 import { useResource } from '@/shared/hooks/use-resource'
 import { isLanPreview } from '@/shared/http/lan-preview'
 import { generationRunsPath, generatorsPath } from '@/shared/api/work-patch-generators'
-import { selectProjectPath, type ProjectView } from '@/modules/work-items/projects/project-navigation'
+import { workAreaRouteId } from '@/modules/workspace/routes'
 
-export interface NavItem { path: string; title: string; icon: string; projectView?: ProjectView; requiresFlow?: boolean; management?: boolean; external?: boolean }
+export interface NavItem { path: string; title: string; icon: string; routeId?: string; lanPreview?: boolean; requiresFlow?: boolean; management?: boolean; external?: boolean }
 export interface NavGroup { title: string; items: NavItem[] }
 
 export const navigationGroups: NavGroup[] = [
   { title: '日常工作', items: [
-    { path: '/work-items', title: '工作清单', icon: 'board' },
-    { path: selectProjectPath('map'), title: 'Canvas Map', icon: 'workflow', projectView: 'map' },
-    { path: selectProjectPath('todo'), title: 'Todo', icon: 'board', projectView: 'todo' },
-    { path: '/work-projects', title: '工作项目', icon: 'folder' },
+    { path: '/work-items', title: '工作', icon: 'board', routeId: workAreaRouteId, lanPreview: true },
     { path: '/work-patches', title: '工作包', icon: 'folder' },
     { path: generationRunsPath, title: '生成记录', icon: 'runs' },
   ] },

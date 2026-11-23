@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, Outlet, useLocation, useMatches } from 'react-router'
 
-import { ProjectNavigationProvider } from '@/modules/work-items/projects/ProjectNavigationProvider'
 import { readToken, subscribeSession } from '@/shared/http/session'
 import { isLanPreview } from '@/shared/http/lan-preview'
 import { FeedbackHost } from './FeedbackHost'
@@ -25,7 +24,7 @@ const readAppSession = () => isLanPreview() ? 'lan-preview' : readToken()
 export default function AppShell() {
   const session = useSyncExternalStore(subscribeSession, readAppSession)
   const signedIn = Boolean(session)
-  return <ProjectNavigationProvider key={session} signedIn={signedIn}><Workspace signedIn={signedIn} /></ProjectNavigationProvider>
+  return <Workspace key={session} signedIn={signedIn} />
 }
 
 function Workspace({ signedIn }: { signedIn: boolean }) {
@@ -34,7 +33,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
   const flow = useFlowAvailability(signedIn)
   const groups = deployedNavigation().map(group => ({ ...group,
     items: group.items.filter(item => isLanPreview()
-      ? Boolean(item.projectView) || item.path === '/work-items' || item.path === '/work-projects'
+      ? item.lanPreview
       : !item.requiresFlow || flow.data),
   })).filter(group => group.items.length > 0)
 
@@ -43,7 +42,8 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
 
   const currentDomain = navigationGroups
     .flatMap((group) => group.items)
-    .find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
+    .find(item => item.routeId ? matches.some(match => match.id === item.routeId)
+      : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
   const unavailable = currentDomain?.requiresFlow && !flow.data
   // 页面标题优先取路由 handle.title，未声明时退回当前导航项标题。
   const pageTitle = useMemo(() => routeTitle(matches) ?? currentDomain?.title ?? '工作台', [matches, currentDomain])
@@ -59,7 +59,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
       <a href="#main-content" className="skip-link">跳到主要内容</a>
       <div className="app-shell">
         <aside className="desktop-sidebar">
-          <AppSidebar groups={groups} signedIn={signedIn} />
+          <AppSidebar groups={groups} signedIn={signedIn} activePath={currentDomain?.path} />
         </aside>
         <div className="shell-col">
           <header className="shell-topbar">
@@ -102,7 +102,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
 
       <Sheet open={drawerOpen} onOpenChange={changeDrawer}>
         <SheetContent side="left" title="工作区导航" className="w-[280px] border-r border-line sm:max-w-[280px]">
-          <AppSidebar groups={groups} signedIn={signedIn} onNavigate={closeDrawer} />
+          <AppSidebar groups={groups} signedIn={signedIn} activePath={currentDomain?.path} onNavigate={closeDrawer} />
         </SheetContent>
       </Sheet>
 

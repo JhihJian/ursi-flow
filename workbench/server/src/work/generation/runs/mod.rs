@@ -1,7 +1,7 @@
 //! Explicit runs are registered before conversion and published with their output.
 use super::{GeneratorRef, Recipe, Resource, generators, resolve};
 use super::convert::{self, WorkContext};
-use crate::work::{Error, Store, directories, patches};
+use crate::work::{Error, Store, directories, patches, planning::find_item};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -59,11 +59,6 @@ struct Job {
 }
 
 
-// 受理与发布只校验工作项仍存在；字段细节归工作项模块所有。
-fn item_row<'a>(db: &'a Value, id: &str) -> Option<&'a Value> {
-    db["workListItems"].get(id)
-}
-
 fn internal() -> Error {
     Error::Internal("生成运行记录不可用".into())
 }
@@ -98,7 +93,7 @@ fn register(service: &Service, id: &str, input: Request) -> Result<(Value, Optio
         let item = input
             .work_item_id
             .as_deref()
-            .map(|id| item_row(db, id).cloned().ok_or_else(|| Error::NotFound("工作项不存在".into())))
+            .map(|id| find_item(db, id).cloned())
             .transpose()?;
         let generator = resolve(db, &input.generator.id, input.generator.revision, &input.resources)?;
         let permit = service.slots.clone().try_acquire_owned()
@@ -244,9 +239,10 @@ fn publish(store: &Store, job: &Job, output: convert::Generated) -> Result<(), E
             if let Some(context) = &job.context {
                 let item_id = context.id.as_str();
                 // 发布时只校验事项仍存在；字段细节归工作项模块所有。
-                if item_row(db, item_id).is_none() {
-                    return Err(Error::Conflict("工作项已修改或删除，生成结果未发布".into()));
-                }
+                find_item(db, item_id).map_err(|error| match error {
+                    Error::NotFound(_) => Error::Conflict("工作项已修改或删除，生成结果未发布".into()),
+                    error => error,
+                })?;
                 let patch = patches::register_generated(
                     db,
                     output.name,

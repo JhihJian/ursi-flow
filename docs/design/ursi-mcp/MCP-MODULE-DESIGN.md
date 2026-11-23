@@ -18,7 +18,7 @@
 
 **Web。** 包导出 `createMcpClient(request)` 和 MCP 管理页路由工厂。Workbench 注入已有的 `requestV2`、平台变量名称列表和管理页链接，注册 `/mcp-servers` 与 `/mcp-servers/:id`。`/platform-env` 及变量增删改留在宿主，浏览器的 MCP 接口只接触变量名。配方编辑器直接调用同一客户端的 `listServers`、`listResources`。React 与 Router 作为 peer 依赖，包内页面只引用本包或显式依赖的 UI 与样式，不通过别名读取 Workbench 的 `@/shared`。
 
-**生成工作包。** [工作清单转换器](../../../workbench/server/src/work/worklist/convert.rs)持有一次生成的操作名额，通过 `Operation::read_resource` 逐项重读材料，再计算快照摘要、执行沙箱和校验路径。工作清单随后幂等发布。名额覆盖整次转换，每次资源读取复用该名额。页面预览与生成使用同一个模块实例，生成独立读取材料。
+**生成工作包。** [工作包转换器](../../../workbench/server/src/work/generation/convert/mod.rs)持有一次生成的操作名额，通过 `Operation::read_resource` 逐项重读材料，再计算快照摘要、执行沙箱和校验路径。生成器随后幂等发布。名额覆盖整次转换，每次资源读取复用该名额。页面预览与生成使用同一个模块实例，生成独立读取材料。
 
 ## 迁移与验收
 
@@ -26,4 +26,4 @@
 2. **接入后端和工作清单。** 通过原 v2 路由验证认证、已登记 ID 和设置仍可用。发现、预览、工具及转换共用 4 个并发名额；操作超时和转换 45 秒总时限保持现状。用已有配方验证来源摘要、重复生成请求只发布一个包、读取失败不执行脚本也不发布。
 3. **抽管理页面并切换引用。** 单独构建 Web 包，用一个最小宿主挂载路由。再在 Workbench 验证登记、深链预览、确认后调用工具、凭据删除后的失败提示，以及配方选择资源。最终由依赖检查确认两个包均不导入 Workbench 私有代码。
 
-通用行为见[后端规格](../../../ursi-mcp/server/SPEC.md)与[前端规格](../../../ursi-mcp/web/SPEC.md)。Workbench 的宿主职责见[后端接入规格](../../../workbench/server/src/work/mcp/SPEC.md)、[页面接入规格](../../../workbench/web/src/modules/mcp/SPEC.md)与[工作包转换契约](../../../workbench/server/src/work/worklist/../generation/CONVERSION.md)。
+通用行为见[后端规格](../../../ursi-mcp/server/SPEC.md)与[前端规格](../../../ursi-mcp/web/SPEC.md)。Workbench 的宿主职责见[后端接入规格](../../../workbench/server/src/work/mcp/SPEC.md)、[页面接入规格](../../../workbench/web/src/modules/mcp/SPEC.md)与[工作包转换契约](../../../workbench/server/src/work/generation/CONVERSION.md)。
