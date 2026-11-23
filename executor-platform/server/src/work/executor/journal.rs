@@ -183,9 +183,21 @@ fn mark_worker_loss(dir: &Path) -> io::Result<()> {
     trace.append_locked(dir, json!({"kind":"gap","reason":"worker_lost"}))
 }
 
-pub(super) fn page(dir: &Path, after: u64) -> Result<Value, Error> {
+// A rename can become visible before its directory sync. This is only a wake-up
+// hint; page still takes the journal lock and commits records before returning them.
+pub(super) fn next_frame_exists(dir: &Path, after: u64) -> Result<bool, Error> {
+    if after > EVENTS {
+        return Ok(false);
+    }
+    event_path(dir, after + 1)
+        .try_exists()
+        .map_err(|_| unavailable())
+}
+
+pub(super) fn page(dir: &Path, after: u64) -> Result<(Value, bool), Error> {
     let _guard = lock(&dir.join("acp-events.lock"), false).map_err(|_| unavailable())?;
-    if !running(dir)?
+    let running = running(dir)?;
+    if !running
         && read(&dir.join("acp-result.json"), 1024)
             .map_err(|_| unavailable())?
             .is_none()
@@ -209,5 +221,5 @@ pub(super) fn page(dir: &Path, after: u64) -> Result<Value, Error> {
         events.push(event);
         cursor = seq;
     }
-    Ok(json!({"events":events,"nextCursor":cursor}))
+    Ok((json!({"events":events,"nextCursor":cursor}), running))
 }

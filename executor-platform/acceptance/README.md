@@ -10,6 +10,8 @@
 - `test_lost_ack`：缺 ACK 时，有对应的用户消息回显与可信终态可成功。缺 ACK 和回显时，即使后端写出了文件并发出了结束通知，仍返回 `unverified`，不发布制品。
 - `test_stale_idle`：用文件信号控制后端恢复时机，确认前台运行之前的 `idle` 不改变尝试状态。根会话运行中收到其他会话的 `idle` 也不会提前结束。
 - `test_restart_and_cancel`：读到运行状态和工具更新后重启平台，用相同 ID 查询与重复提交仍指向原尝试。从原游标读回取消事件，并核对后端只收到一次任务提交、一次取消。
+- `test_events_wait_does_not_block_cancel`：已有记录立即返回，空页按 `waitMs` 等待；并行等待可被新帧或 worker 停止唤醒，且不阻塞同一尝试的取消。
+- `RpcFailureIntegration.test_rpc_error_stays_private`：建会话返回带私有内容的错误，核对事件只留下 RPC 方法和阶段。延迟回执用例另核对会话 ID、幂等键和消息回执 ID 均不进入轨迹。
 - `test_worker_crash_is_unverified`：强制停止 worker，核对受管 Agent 停止、轨迹记录一次缺口，且原尝试不重放、不发布制品。
 - `PiIntegration.test_preflight_and_direct`：平台经私有 wrapper 启动编译后的 `ursi-pi-executor-acp` 入口。预检零模型调用，直接尝试通过本地 OpenAI SSE 桩调用真实 `read_input` 工具。测试核对模型实际收到的冻结提示词、输入工具结果、平台发布的 `answer.md` 和轨迹。同 ID 向平台提交不同输入快照返回 409。全程使用本地端点和测试凭据。
 

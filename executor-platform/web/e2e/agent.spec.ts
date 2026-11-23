@@ -154,13 +154,82 @@ test('归并同一回复的片段，尝试完成后读完事件并打开只读�
   finish = true
   await Promise.all([
     drained,
-    expect(page.getByText('已完成', { exact: true })).toBeVisible(),
+    expect(page.getByRole('status')).toHaveText('已完成'),
     expect(page.getByText('结论：无需修改。', { exact: true })).toBeVisible(),
   ])
 
   const artifacts = page.getByRole('region', { name: '只读文件制品' })
   await artifacts.getByRole('button', { name: file, exact: true }).click()
   await expect(artifacts.getByLabel(`${file} 内容`)).toHaveText(content)
+})
+
+test('ACP 时间线持续更新，断线后续读，不把会话结束当作尝试成功', async ({ page, baseURL, isMobile }) => {
+  let disconnected = false
+  let finish = false
+  const cursors: Array<[number, string | null]> = []
+  const calls = await mockAgentApi(page, baseURL, (route, key, url, attempt) => {
+    if (key === `PUT ${attempt.path}` || key === `GET ${attempt.path}`) {
+      return route.fulfill({ json: { attemptId: attempt.id, status: finish ? 'succeeded' : 'running' } })
+    }
+    if (key !== `GET ${attempt.path}/events`) return
+    const after = Number(url.searchParams.get('after'))
+    const wait = url.searchParams.get('waitMs')
+    cursors.push([after, wait])
+    if (after === 0) return route.fulfill({ json: { events: [
+      { seq: 2, kind: 'rpc', method: 'initialize', phase: 'ack', id: 'private-rpc-id' },
+      { seq: 1, kind: 'rpc', method: 'initialize', phase: 'sent', params: { secret: 'private-prompt' } },
+      { seq: 3, kind: 'message', messageId: 'private-message-id', chunk: true, text: '回复正文' },
+      { seq: 4, kind: 'tool', toolCallId: 'private-tool-id', name: 'list_inputs', status: 'in_progress', output: 'private-output' },
+    ], nextCursor: 4 } })
+    if (after === 4 && !disconnected) {
+      disconnected = true
+      return route.abort('failed')
+    }
+    if (after === 4) return route.fulfill({ json: { events: [
+      { seq: 5, kind: 'tool', toolCallId: 'private-tool-id', status: 'completed' },
+      { seq: 6, kind: 'state', state: 'idle', stopReason: 'end_turn' },
+      { seq: 7, kind: 'rpc', method: 'session/close', phase: 'ack' },
+    ], nextCursor: 7 } })
+    if (after === 7 && wait === null && finish) return route.fulfill({ json: { events: [
+      { seq: 8, kind: 'gap', reason: 'event_write_failed' },
+    ], nextCursor: 8 } })
+    return route.fulfill({ json: emptyPage(after) })
+  })
+  await openAgent(page, calls)
+  const panel = page.getByRole('complementary', { name: 'ACP 执行过程' })
+  const events = panel.getByRole('region', { name: 'ACP 事件' })
+  const status = page.getByRole('status').filter({ hasText: /运行中|已完成/ })
+  if (isMobile) {
+    await expect(events).toBeHidden()
+    await panel.getByRole('button', { name: '展开 ACP 执行过程' }).click()
+  } else {
+    const dialogue = await page.getByLabel('任务对话').boundingBox()
+    const trace = await panel.boundingBox()
+    expect(trace!.x).toBeGreaterThanOrEqual(dialogue!.x + dialogue!.width)
+  }
+  await submitInstruction(page)
+  await expect(panel.getByRole('alert')).toHaveText('读取轨迹失败')
+  await expect(events.getByRole('listitem')).toHaveCount(4)
+  await expect(page.getByText('回复正文', { exact: true })).toBeVisible()
+  await panel.getByRole('button', { name: '重试读取' }).click()
+  await expect(events.getByRole('listitem')).toHaveText([
+    /1.*initialize.*已发送/, /2.*initialize.*收到回执/, /3.*收到回复片段/,
+    /4.*list_inputs.*运行中/, /5.*list_inputs.*已完成/, /6.*会话状态：空闲/, /7.*session\/close.*收到回执/,
+  ])
+  await expect(panel).not.toContainText(/private-|回复正文/)
+  await expect(status).toHaveText('运行中')
+  await expect(panel.getByRole('alert')).toHaveCount(0)
+  expect(cursors.slice(0, 3)).toEqual([[0, null], [4, '8000'], [4, null]])
+
+  finish = true
+  await expect(status).toHaveText('已完成')
+  await expect(events.getByRole('listitem').last()).toContainText('轨迹缺口')
+  await expect.poll(() => cursors).toContainEqual([8, null])
+  expect(calls.filter(key => key.startsWith('PUT '))).toHaveLength(1)
+  if (isMobile) {
+    await panel.getByRole('button', { name: '折叠 ACP 执行过程' }).click()
+    await expect(events).toBeHidden()
+  }
 })
 
 test('停止运行中的尝试后显示服务确认的取消结果，可新建空白尝试', async ({ page, baseURL }) => {

@@ -146,7 +146,7 @@ impl Connection {
         result
     }
 
-    pub(super) async fn initialize(&mut self) -> Result<(), Error> {
+    pub(super) async fn initialize(&mut self, on_sent: impl FnOnce()) -> Result<(), Error> {
         timeout(INITIALIZE_TIMEOUT, async {
             self.send(json!({
                 "jsonrpc": "2.0", "id": "initialize", "method": "initialize",
@@ -157,6 +157,7 @@ impl Connection {
                 }
             }))
             .await?;
+            on_sent();
             let response = self.recv().await?;
             let result = response_result(&response, "initialize")?;
             if result["protocolVersion"].as_u64() != Some(2)
@@ -371,7 +372,7 @@ pub(in crate::work) async fn probe_agent(
     let cwd = workspace.0.to_str().ok_or_else(unavailable)?;
     let mut conn = Connection::spawn_in(bin, policy, root, None, &workspace.0)?;
     let result = timeout(PROBE_TIMEOUT, async {
-        conn.initialize().await?;
+        conn.initialize(|| {}).await?;
         let session = probe_request(
             &mut conn,
             "session/new",

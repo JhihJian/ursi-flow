@@ -2,6 +2,8 @@
 
 根地址进入 `/agent`，使用 [AI Elements](https://ui.shadcn.com/docs/ai-elements) 的对话、回复和输入组件。选择已发布的 Agent 修订后输入任务指令，可查看实时回复和工具状态、停止尝试、打开只读制品。刷新时查回当前标签页的原尝试。浏览器访问同源平台 API，由平台为每个任务建立独立 ACP v2 会话。组件来源见 [AI Elements 来源](src/ai-elements/PROVENANCE.md)。
 
+桌面右栏的「ACP 执行过程」按顺序显示握手、建会话、提交回执、工具更新和收尾。窄屏可展开同一面板。面板与对话共用原尝试的事件游标，收到平台终态后继续读完尾页。
+
 `/executors/new?mode=agent` 创建 Agent 草稿，选择配置包与后端后可试跑、查看制品、发布版本。`/config-patches` 维护提示词、Skills 和 MCP，`/resources` 管理固定版本的资源，`/settings/agent-backends` 检查已登记的后端。
 
 ## 开发与验证

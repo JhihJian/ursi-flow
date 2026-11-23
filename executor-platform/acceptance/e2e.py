@@ -1,5 +1,6 @@
 """Real HTTP services, Workbench-managed daemon, and local stdio ACP backends."""
 from base64 import b64encode
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 import json
 import os
 from pathlib import Path
@@ -163,8 +164,11 @@ class PlatformCase(unittest.TestCase):
                 self.fail(f'{path}: expected {status}, got {result}')
             time.sleep(.1)
 
-    def events(self, api, path, after=0):
-        page = api.request('GET', f'{path}/events?after={after}')
+    def events(self, api, path, after=0, *, wait_ms=None):
+        endpoint = f'{path}/events?after={after}'
+        if wait_ms is not None:
+            endpoint += f'&waitMs={wait_ms}'
+        page = api.request('GET', endpoint)
         self.assertIsInstance(page['events'], list)
         cursor = after
         for event in page['events']:
@@ -175,6 +179,14 @@ class PlatformCase(unittest.TestCase):
         self.assertIs(type(page['nextCursor']), int)
         self.assertEqual(page['nextCursor'], cursor)
         return page
+
+    def rpc_steps(self, events):
+        result = []
+        for event in events:
+            if event['kind'] == 'rpc':
+                self.assertEqual(set(event), {'seq', 'kind', 'method', 'phase'}, event)
+                result.append((event['method'], event['phase']))
+        return result
 
     def wait_events(self, api, path, predicate):
         deadline = time.monotonic() + 15
@@ -278,11 +290,22 @@ class Integration(PlatformCase):
         self.verify_receipt(owner, receipt['artifactDirectoryId'], attempt, marker)
         page = self.verify_events(owner, self.runtime, path, RECEIPT_TOOL)
         events = page['events']
-        self.assertEqual([(e['kind'], e.get('state'), e.get('name'), e.get('text')) for e in events[:4]], [
+        updates = [e for e in events if e['kind'] != 'rpc']
+        self.assertEqual([(e['kind'], e.get('state'), e.get('name'), e.get('text')) for e in updates[:4]], [
             ('state', 'idle', None, None), ('tool', None, EARLY_TOOL, None),
             ('message', None, None, EARLY_MESSAGE), ('state', 'running', None, None),
         ])
-        self.assertNotIn(FOREIGN_MESSAGE, json.dumps(events))
+        self.assertEqual(self.rpc_steps(events), [
+            (method, phase) for method in ('initialize', 'session/new', 'session/prompt', 'session/close')
+            for phase in ('sent', 'ack')
+        ])
+        late_ack = next(e['seq'] for e in events if e.get('method') == 'session/prompt' and e['phase'] == 'ack')
+        self.assertLess(next(e['seq'] for e in events if e.get('stopReason') == 'end_turn'), late_ack)
+        private = json.loads((self.attempt_dir(attempt) / 'acp-session.json').read_text(encoding='utf-8'))
+        encoded = json.dumps(events)
+        for value in (FOREIGN_MESSAGE, DELAYED_ACK, private['sessionId'],
+                      private['idempotencyKey'], private['messageId']):
+            self.assertNotIn(value, encoded)
         self.assertEqual(owner.request('PUT', path, body), receipt)
         self.verify_fixture_calls(attempt)
 
@@ -304,6 +327,9 @@ class Integration(PlatformCase):
                 else:
                     self.assertTrue((self.attempt_dir(attempt) / 'workspace/artifacts/receipt.json').is_file())
                     self.assertIsNone(receipt.get('artifactDirectoryId'), receipt)
+                prompt_steps = [phase for method, phase in self.rpc_steps(self.events(owner, path)['events'])
+                                if method == 'session/prompt']
+                self.assertEqual(prompt_steps, ['sent', 'failed'])
                 self.assertEqual(owner.request('PUT', path, body), receipt)
                 self.verify_fixture_calls(attempt, cancel=None if expected == 'unverified' else False)
 
@@ -347,6 +373,47 @@ class Integration(PlatformCase):
         self.assertTrue(any(e.get('stopReason') == 'cancelled' for e in tail['events']), tail)
         self.assertNotIn(REPLY_TEXT, json.dumps(tail['events']))
         self.assertEqual(owner.request('PUT', path, body), record)
+        self.verify_fixture_calls(attempt, cancel=True)
+
+    def test_events_wait_does_not_block_cancel(self):
+        owner = self.consumer
+        attempt, path, _ = self.start_attempt(owner, CANCEL_INSTRUCTION)
+        self.addCleanup(owner.request, 'POST', path + '/cancel')
+        running = self.wait_events(owner, path, lambda events: any(
+            e.get('name') == RECEIPT_TOOL and e.get('status') == 'in_progress' for e in events))
+        cursor = running['nextCursor']
+        endpoint = f'{path}/events?after={cursor}&waitMs=8000'
+        self.anonymous.request('GET', endpoint, expected=401)
+        for api in (self.runtime, self.management):
+            api.request('GET', endpoint, expected=404)
+
+        start = time.monotonic()
+        self.assertEqual(self.events(owner, path, wait_ms=8000), running)
+        self.assertLess(time.monotonic() - start, 4)
+        empty = {'events': [], 'nextCursor': cursor}
+        start = time.monotonic()
+        self.assertEqual(self.events(owner, path, cursor, wait_ms=200), empty)
+        self.assertGreaterEqual(time.monotonic() - start, .15)
+
+        # A cursor beyond the remaining frames can only wake on worker exit.
+        future_cursor = cursor + 64
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            update = pool.submit(self.events, owner, path, cursor, wait_ms=8000)
+            stopped = pool.submit(self.events, owner, path, future_cursor, wait_ms=8000)
+            with self.assertRaises(FutureTimeout):
+                update.result(timeout=.25)
+            with self.assertRaises(FutureTimeout):
+                stopped.result(timeout=.25)
+            start = time.monotonic()
+            owner.request('POST', path + '/cancel')
+            self.assertLess(time.monotonic() - start, 4, 'events wait delayed cancellation')
+            self.assertIn(('session/cancel', 'sent'), self.rpc_steps(update.result(timeout=4)['events']))
+            self.assertEqual(stopped.result(timeout=4), {'events': [], 'nextCursor': future_cursor})
+        self.wait_attempt(owner, path, attempt, 'cancelled')
+        tail = self.events(owner, path, cursor)
+        self.assertEqual(self.rpc_steps(tail['events']), [
+            ('session/cancel', 'sent'), ('session/close', 'sent'), ('session/close', 'ack'),
+        ])
         self.verify_fixture_calls(attempt, cancel=True)
 
     def test_worker_crash_is_unverified(self):
@@ -409,6 +476,43 @@ class Integration(PlatformCase):
         self.assertEqual(receipt['attemptId'], attempt)
         self.verify_receipt(self.runtime, receipt['artifactDirectoryId'], attempt, marker)
         self.verify_events(self.runtime, self.consumer, path, 'submit_flow_outcome')
+
+
+class RpcFailureIntegration(PlatformCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        backend = cls.root / 'reject-session'
+        fixture = str(HERE / 'backend.py')
+        backend.write_text(f'''#!/usr/bin/python3
+import json, os
+if 'URSI_ACP_JOB' not in os.environ:
+    os.execv({fixture!r}, [{fixture!r}])
+init = json.loads(input())
+assert init['method'] == 'initialize'
+caps = dict(session=dict(systemPrompt=dict(mode=dict(override={{}}))))
+result = dict(protocolVersion=2, info=dict(name='fixture', version='2'), capabilities=caps)
+print(json.dumps(dict(jsonrpc='2.0', id=init['id'], result=result)), flush=True)
+req = json.loads(input())
+assert req['method'] == 'session/new'
+print(json.dumps(dict(jsonrpc='2.0', id=req['id'], error=dict(
+    code=-32603, message='private ACP failure text', data=req['params']))), flush=True)
+''', encoding='utf-8')
+        backend.chmod(0o700)
+        cls.start_platform(backend, {})
+        cls.publish_revisions()
+
+    def test_rpc_error_stays_private(self):
+        owner = self.consumer
+        attempt, path, _ = self.start_attempt(owner, 'private instruction')
+        self.wait_attempt(owner, path, attempt, 'failed')
+        events = self.events(owner, path)['events']
+        self.assertEqual(self.rpc_steps(events), [
+            ('initialize', 'sent'), ('initialize', 'ack'), ('session/new', 'sent'), ('session/new', 'failed'),
+        ])
+        encoded = json.dumps(events)
+        for secret in ('private ACP failure text', self.pinned_prompt, str(self.attempt_dir(attempt))):
+            self.assertNotIn(secret, encoded)
 
 
 class PiIntegration(PlatformCase):

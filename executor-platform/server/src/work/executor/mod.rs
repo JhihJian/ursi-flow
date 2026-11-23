@@ -15,8 +15,11 @@ use axum::{
 pub(in crate::work) use client::probe_agent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{path::PathBuf, sync::Arc};
-use tokio::sync::Mutex;
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::{
+    sync::Mutex,
+    time::{Instant, sleep_until},
+};
 use uuid::Uuid;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -171,11 +174,16 @@ async fn cancel(State(s): State<Arc<Service>>, Path(id): Path<String>) -> Reply 
     run(s, id, Operation::Cancel).await
 }
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Cursor {
     #[serde(default)]
     after: u64,
+    #[serde(default)]
+    wait_ms: u64,
 }
+
+const MAX_EVENT_WAIT_MS: u64 = 8_000;
+const EVENT_POLL: Duration = Duration::from_millis(100);
 async fn events(
     State(s): State<Arc<Service>>,
     Path(id): Path<String>,
@@ -185,24 +193,42 @@ async fn events(
         .ok()
         .filter(|u| u.to_string() == id)
         .ok_or_else(|| Error::Invalid("需要小写标准 UUID".into()))?;
-    // Do not mistake a reservation still in its launch handshake for worker loss.
-    let _guard = s.locks[usize::from(uuid.as_bytes()[15]) % s.locks.len()]
-        .lock()
-        .await;
-    let acp = s.store.read(|db| {
-        db["executorAttempts"]
-            .get(&id)
-            .map(|row| row["backend"] == "acp")
-            .ok_or_else(|| Error::NotFound("尝试不存在".into()))
-    })?;
-    if !acp {
-        return Ok(Json(json!({"events":[],"nextCursor":cursor.after})));
+    let after = cursor.after;
+    let deadline = Instant::now() + Duration::from_millis(cursor.wait_ms.min(MAX_EVENT_WAIT_MS));
+    let dir = s.root.join(&id);
+    let (page, running) = {
+        // Check worker ownership while holding the stripe, past any launch handshake.
+        let _guard = s.locks[usize::from(uuid.as_bytes()[15]) % s.locks.len()]
+            .lock()
+            .await;
+        let acp = s.store.read(|db| {
+            db["executorAttempts"]
+                .get(&id)
+                .map(|row| row["backend"] == "acp")
+                .ok_or_else(|| Error::NotFound("尝试不存在".into()))
+        })?;
+        if !acp {
+            return Ok(Json(json!({"events":[],"nextCursor":after})));
+        }
+        event_page(dir.clone(), after).await?
+    };
+    if !running || page["nextCursor"] != after {
+        return Ok(Json(page));
     }
-    let dir = s.root.join(id);
-    tokio::task::spawn_blocking(move || journal::page(&dir, cursor.after))
+    while Instant::now() < deadline {
+        sleep_until((Instant::now() + EVENT_POLL).min(deadline)).await;
+        // Only probe metadata and the nonblocking worker lock while idle.
+        if journal::next_frame_exists(&dir, after)? || !journal::running(&dir)? {
+            return event_page(dir, after).await.map(|(page, _)| Json(page));
+        }
+    }
+    Ok(Json(page))
+}
+
+async fn event_page(dir: PathBuf, after: u64) -> Result<(Value, bool), Error> {
+    tokio::task::spawn_blocking(move || journal::page(&dir, after))
         .await
         .map_err(|_| binding::unavailable())?
-        .map(Json)
 }
 
 enum Operation {

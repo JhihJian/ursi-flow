@@ -3,12 +3,13 @@ import { cancelAttempt, inspectAttempt, startAttempt, type AttemptResult, type E
 import { ApiError, requestV2 } from '@/shared/http/client'
 import { newUuid } from '@/shared/lib/uuid'
 
-export type TraceEntry = { kind: 'message'; id: string; text: string } | { kind: 'tool'; id: string; name?: string; status?: string }
+type Reply = { id: string; text: string }
 
 type Result = AttemptResult & { artifactError?: string }
 type Phase = 'idle' | 'submitting' | 'observing' | 'settled' | 'unconfirmed'
-type TraceEvent = { seq: number } & (
-  | { kind: 'state' }
+export type TraceEvent = { seq: number } & (
+  | { kind: 'state'; state: string; stopReason?: string }
+  | { kind: 'rpc'; method: string; phase: string }
   | { kind: 'message'; messageId: string; chunk: boolean; text: string }
   | { kind: 'tool'; toolCallId: string; name?: string; status?: string }
   | { kind: 'gap'; reason: string }
@@ -24,8 +25,8 @@ interface View {
   cancelError: string
   cancelling: boolean
   cancelRequested: boolean
-  entries: TraceEntry[]
-  gaps: string[]
+  events: TraceEvent[]
+  replies: Reply[]
   statusRead: number
   traceRead: number
 }
@@ -40,9 +41,14 @@ interface Session {
 
 const storageKey = 'ursi.executor-platform.agent-attempt'
 const pollMs = 1000
+const traceWaitMs = 8000
 const idle: View = {
   id: null, result: undefined, phase: 'idle', statusError: '', traceError: '', cancelError: '',
-  cancelling: false, cancelRequested: false, entries: [], gaps: [], statusRead: 0, traceRead: 0,
+  cancelling: false, cancelRequested: false, events: [], replies: [], statusRead: 0, traceRead: 0,
+}
+
+function traceMode({ phase, result }: View) {
+  return phase === 'observing' || phase === 'unconfirmed' || (phase === 'settled' && result) ? phase : null
 }
 
 function openSession(id: string, phase: Phase): Session {
@@ -75,7 +81,11 @@ function definitelyRejected(cause: unknown) {
   return cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 404 && cause.status !== 408
 }
 
-function mergePage(session: Session, page: EventPage): Pick<View, 'entries' | 'gaps'> {
+function canRetryTrace(cause: unknown) {
+  return cause instanceof TypeError || (cause instanceof ApiError && (cause.status === 408 || cause.status === 429 || cause.status >= 500))
+}
+
+function mergePage(session: Session, page: EventPage): Pick<View, 'events' | 'replies'> {
   const { cursor, events } = session
   if (!Array.isArray(page?.events) || !Number.isSafeInteger(page.nextCursor)
     || (page.events.length ? page.nextCursor <= cursor : page.nextCursor !== cursor)
@@ -85,28 +95,17 @@ function mergePage(session: Session, page: EventPage): Pick<View, 'entries' | 'g
   session.cursor = page.nextCursor
   const size = events.size
   for (const event of page.events) if (!events.has(event.seq)) events.set(event.seq, event)
-  if (size === events.size) return { entries: session.view.entries, gaps: session.view.gaps }
+  if (size === events.size) return { events: session.view.events, replies: session.view.replies }
 
-  // Rebuild the bounded trace in sequence order so late events never undo newer patches.
-  const entries = new Map<string, TraceEntry>()
-  const gaps: string[] = []
-  for (const event of [...events.values()].sort((a, b) => a.seq - b.seq)) {
-    if (event.kind === 'message') {
-      const key = `message:${event.messageId}`
-      const previous = entries.get(key)
-      const prefix = event.chunk && previous?.kind === 'message' ? previous.text : ''
-      entries.set(key, { kind: 'message', id: event.messageId, text: prefix + event.text })
-    } else if (event.kind === 'tool') {
-      const key = `tool:${event.toolCallId}`
-      const previous = entries.get(key)
-      entries.set(key, {
-        ...previous, kind: 'tool', id: event.toolCallId,
-        ...(event.name !== undefined ? { name: event.name } : {}),
-        ...(event.status !== undefined ? { status: event.status } : {}),
-      })
-    } else if (event.kind === 'gap') gaps.push(event.reason)
+  // Derive both views from the same committed sequence.
+  const ordered = [...events.values()].sort((a, b) => a.seq - b.seq)
+  const replies = new Map<string, Reply>()
+  for (const event of ordered) {
+    if (event.kind !== 'message') continue
+    const prefix = event.chunk ? replies.get(event.messageId)?.text ?? '' : ''
+    replies.set(event.messageId, { id: event.messageId, text: prefix + event.text })
   }
-  return { entries: [...entries.values()], gaps }
+  return { events: ordered, replies: [...replies.values()] }
 }
 
 export function useAttempt() {
@@ -159,35 +158,43 @@ export function useAttempt() {
     return () => { controller.abort(); window.clearTimeout(timer) }
   }, [id, phase, statusRead, update])
 
-  // Begin a fresh drain once status is terminal, even if an earlier poll saw an empty page.
-  const traceMode = phase === 'observing' || phase === 'unconfirmed' || (phase === 'settled' && view.result) ? phase : null
+  // Changing modes aborts any wait and starts a fresh drain from the shared cursor.
+  const mode = traceMode(view)
   useEffect(() => {
     const session = current.current
-    if (!session || session.id !== id || !traceMode) return
+    if (!session || session.id !== id || !mode) return
     const controller = new AbortController()
     const { signal } = controller
+    const isCurrent = () => !signal.aborted && current.current === session
+      && session.view.phase === mode && session.view.traceRead === traceRead
+    const path = `/executor-attempts/${encodeURIComponent(session.id)}/events`
+    let first = true
     let timer: number | undefined
 
-    async function readTrace(session: Session) {
+    const readTrace = async () => {
       try {
-        while (!signal.aborted && current.current === session) {
-          const page = await requestV2<EventPage>(`/executor-attempts/${encodeURIComponent(session.id)}/events?after=${session.cursor}`, { signal })
-          if (signal.aborted || current.current !== session) return
+        while (isCurrent()) {
+          const wait = !first && mode === 'observing' ? `&waitMs=${traceWaitMs}` : ''
+          first = false
+          const page = await requestV2<EventPage>(`${path}?after=${session.cursor}${wait}`, { signal })
+          if (!isCurrent()) return
           const trace = mergePage(session, page)
-          if (trace.entries !== session.view.entries || session.view.traceError) update(session, { ...trace, traceError: '' })
+          if (trace.events !== session.view.events || session.view.traceError) update(session, { ...trace, traceError: '' })
           if (!page.events.length) {
-            if (traceMode === 'observing') timer = window.setTimeout(() => void readTrace(session), pollMs)
+            if (mode === 'observing') timer = window.setTimeout(() => void readTrace(), pollMs)
             return
           }
         }
       } catch (cause) {
-        if (!signal.aborted) update(session, { traceError: `读取轨迹失败：${message(cause)}` })
+        if (!isCurrent()) return
+        update(session, { traceError: `读取轨迹失败：${message(cause)}` })
+        if (canRetryTrace(cause)) timer = window.setTimeout(() => void readTrace(), pollMs)
       }
     }
 
-    void readTrace(session)
+    void readTrace()
     return () => { controller.abort(); window.clearTimeout(timer) }
-  }, [id, traceMode, traceRead, update])
+  }, [id, mode, traceRead, update])
 
   function start(ref: ExecutorRef, text: string) {
     if (current.current || !text.trim()) return
@@ -239,10 +246,15 @@ export function useAttempt() {
   function retry() {
     const session = current.current
     if (!session) return
-    const { phase, traceError, cancelError, statusRead, traceRead } = session.view
-    if (phase === 'unconfirmed') update(session, { phase: 'observing', statusError: '', traceError: '', cancelError: '', statusRead: statusRead + 1 })
-    else if (traceError) update(session, { traceError: '', traceRead: traceRead + 1 })
+    const { phase, cancelError, statusRead } = session.view
+    if (phase === 'unconfirmed') update(session, { phase: 'observing', statusError: '', cancelError: '', statusRead: statusRead + 1 })
     else if (phase === 'observing' && cancelError) update(session, { cancelError: '', statusRead: statusRead + 1 })
+  }
+
+  function retryTrace() {
+    const session = current.current
+    if (!session || !traceMode(session.view)) return
+    update(session, { traceError: '', traceRead: session.view.traceRead + 1 })
   }
 
   function reset() {
@@ -257,7 +269,7 @@ export function useAttempt() {
     setView(idle)
   }
 
-  const { result, statusError, traceError, cancelError, cancelling, cancelRequested, entries, gaps } = view
-  const error = [statusError, traceError, cancelError].filter(Boolean).join('\n')
-  return { id, result, phase, error, cancelling, cancelRequested, entries, gaps, start, cancel, retry, reset }
+  const { result, statusError, traceError, cancelError, cancelling, cancelRequested, events, replies } = view
+  const error = [statusError, cancelError].filter(Boolean).join('\n')
+  return { id, result, phase, error, traceError, cancelling, cancelRequested, events, replies, start, cancel, retry, retryTrace, reset }
 }

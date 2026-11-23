@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time::{Instant, sleep, timeout};
+use tokio::time::{Instant, sleep, timeout, timeout_at};
 use uuid::Uuid;
 
 const CLAIM: Duration = Duration::from_secs(3);
@@ -141,19 +141,73 @@ async fn control(conn: &mut Connection, message: &Value) -> Result<bool, Error> 
     Ok(method != "session/update")
 }
 
+#[derive(Clone, Copy)]
+enum Rpc {
+    Initialize,
+    New,
+    Prompt,
+    Cancel,
+    Close,
+}
+
+impl Rpc {
+    fn wire(self) -> (&'static str, Option<&'static str>) {
+        match self {
+            Self::Initialize => ("initialize", Some("initialize")),
+            Self::New => ("session/new", Some("new")),
+            Self::Prompt => ("session/prompt", Some("prompt")),
+            Self::Cancel => ("session/cancel", None),
+            Self::Close => ("session/close", Some("close")),
+        }
+    }
+
+    fn record(self, dir: &Path, trace: &mut Trace, phase: &'static str) {
+        let (method, _) = self.wire();
+        if trace
+            .append(dir, json!({"kind":"rpc","method":method,"phase":phase}))
+            .is_err()
+        {
+            trace.gap(dir, "event_write_failed");
+        }
+    }
+
+    async fn send(
+        self,
+        conn: &mut Connection,
+        dir: &Path,
+        trace: &mut Trace,
+        params: Value,
+    ) -> Result<(), Error> {
+        let (method, id) = self.wire();
+        let mut frame = json!({"jsonrpc":"2.0","method":method,"params":params});
+        if let Some(id) = id {
+            frame["id"] = json!(id);
+        }
+        conn.send(frame).await?;
+        self.record(dir, trace, "sent");
+        Ok(())
+    }
+
+    fn finish<T>(
+        self,
+        dir: &Path,
+        trace: &mut Trace,
+        result: Result<T, Error>,
+    ) -> Result<T, Error> {
+        self.record(dir, trace, if result.is_ok() { "ack" } else { "failed" });
+        result
+    }
+}
+
 async fn open(
     conn: &mut Connection,
     dir: &Path,
-    config: &Value,
+    trace: &mut Trace,
+    text: &str,
 ) -> Result<(String, Vec<Value>, bool), Error> {
-    conn.initialize().await?;
-    let text = config["systemPrompt"]
-        .as_str()
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(unavailable)?;
-    conn.send(json!({"jsonrpc":"2.0","id":"new","method":"session/new","params":{
+    Rpc::New.send(conn, dir, trace, json!({
         "cwd":dir.join("workspace"),"systemPrompt":{"mode":"override","content":[{"type":"text","text":text}]}
-    }})).await?;
+    })).await?;
     let mut early = Vec::new();
     let mut bytes = 0;
     let mut gap = false;
@@ -189,7 +243,22 @@ async fn execute(
     config: &Value,
     trace: &mut Trace,
 ) -> &'static str {
-    let Ok(Ok((sid, early, gap))) = timeout(SETUP, open(conn, dir, config)).await else {
+    let deadline = Instant::now() + SETUP;
+    let setup = async {
+        let init = conn
+            .initialize(|| Rpc::Initialize.record(dir, trace, "sent"))
+            .await;
+        Rpc::Initialize.finish(dir, trace, init)?;
+        let text = config["systemPrompt"]
+            .as_str()
+            .filter(|s| !s.trim().is_empty())
+            .ok_or_else(unavailable)?;
+        let opened = timeout_at(deadline, open(conn, dir, trace, text))
+            .await
+            .unwrap_or_else(|_| Err(unavailable()));
+        Rpc::New.finish(dir, trace, opened)
+    };
+    let Ok((sid, early, gap)) = setup.await else {
         return if requested(dir) {
             "cancelled"
         } else {
@@ -217,11 +286,14 @@ async fn execute(
         if requested(dir) { return Ok("cancelled"); }
         journal::write(&session, &json!({"sessionId":sid,"idempotencyKey":key})).map_err(|_| unavailable())?;
         state.submitted = true;
-        conn.send(json!({"jsonrpc":"2.0","id":"prompt","method":"session/prompt","params":{
+        Rpc::Prompt.send(conn, dir, trace, json!({
             "sessionId":sid,"idempotencyKey":key,"prompt":[{"type":"text","text":request["instruction"]}]
-        }})).await?;
+        })).await?;
         drive(conn, dir, &sid, trace, &protected, &mut state).await
     }.await.unwrap_or("unverified");
+    if state.submitted && state.ack.is_none() {
+        Rpc::Prompt.record(dir, trace, "failed");
+    }
     let saved = journal::write(
         &session,
         &json!({
@@ -231,18 +303,30 @@ async fn execute(
         }),
     )
     .is_ok();
-    let _ = timeout(Duration::from_secs(2), async {
-        conn.send(json!({"jsonrpc":"2.0","id":"close","method":"session/close","params":{"sessionId":sid}})).await?;
+    let closed = timeout(Duration::from_secs(2), async {
+        Rpc::Close
+            .send(conn, dir, trace, json!({"sessionId":sid}))
+            .await?;
         loop {
             let m = conn.recv().await?;
-            if control(conn, &m).await? { continue; }
-            if m["id"] == "close" && m.get("method").is_none() { break; }
+            if control(conn, &m).await? {
+                continue;
+            }
+            if m["id"] == "close" && m.get("method").is_none() {
+                return if m.get("error").is_none() && m["result"].is_object() {
+                    Ok(())
+                } else {
+                    Err(unavailable())
+                };
+            }
             if m["method"] == "session/update" && m["params"]["sessionId"] == sid {
                 observe(dir, trace, &m["params"]["update"], &protected);
             }
         }
-        Ok::<(),Error>(())
-    }).await;
+    })
+    .await
+    .unwrap_or_else(|_| Err(unavailable()));
+    let _ = Rpc::Close.finish(dir, trace, closed);
     if saved { status } else { "unverified" }
 }
 
@@ -341,10 +425,13 @@ async fn drive(
             cancelled = true;
             timed_out = expired;
             deadline = Instant::now() + GRACE;
-            conn.send(
-                json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":sid}}),
-            )
-            .await?;
+            if let Err(err) = Rpc::Cancel
+                .send(conn, dir, trace, json!({"sessionId":sid}))
+                .await
+            {
+                Rpc::Cancel.record(dir, trace, "failed");
+                return Err(err);
+            }
         }
         let m = tokio::select! {
             msg = conn.recv_next() => match msg? { Some(m) => m, None => {
@@ -369,7 +456,7 @@ async fn drive(
             observe(dir, trace, &p["update"], protected);
             continue;
         }
-        if m["id"] != "prompt" || state.ack.is_some() {
+        if m["id"] != "prompt" || m.get("method").is_some() || state.ack.is_some() {
             return Err(unavailable());
         }
         match (m.get("result"), m.get("error")) {
@@ -379,6 +466,7 @@ async fn drive(
                     return Err(unavailable());
                 }
                 state.ack = Some(id.to_owned());
+                Rpc::Prompt.record(dir, trace, "ack");
             }
             (None, Some(error)) if state.echo.is_none() && error["code"].is_i64() => {
                 return Ok(if cancelled && !timed_out && error["code"] == -32800 {
