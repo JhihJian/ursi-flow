@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CatalogEntry, CatalogKind, McpServer, McpSettings } from '../client'
+import { SchemaForm, buildArgs, formable, hydrate, type FormValues } from './SchemaForm'
 import { useMcp } from '../context'
 import { useMutation } from '../lib/use-mutation'
 import { useResource } from '../lib/use-resource'
@@ -47,17 +48,38 @@ export function OperationsPanel(props: Props & { kind: CatalogKind }) {
 function Entry({ server, settings, item, kind, saving }: Props & { item: CatalogEntry; kind: CatalogKind; saving: boolean }) {
   const { client } = useMcp()
   const { confirmAction } = useFeedback()
+  const schema = item.inputSchema
+  const [mode, setMode] = useState<'form' | 'json'>(formable(schema) ? 'form' : 'json')
+  const [values, setValues] = useState<FormValues>(() => formable(schema) ? {} : {})
   const [args, setArgs] = useState('{}')
   const [uri, setUri] = useState(item.uriTemplate ?? '')
   const [output, setOutput] = useState<Record<string, unknown> | null>(null)
   const execution = useMutation()
   const allowed = settings.allowedTools.includes(item.name)
+  function switchMode(next: 'form' | 'json') {
+    if (next === mode) return
+    if (next === 'json') {
+      let input: Record<string, unknown> = {}
+      try { input = buildArgs(schema!, values, true) } catch { /* 保留已填内容能转换的部分 */ }
+      setArgs(JSON.stringify(input, null, 2))
+    } else {
+      try { setValues(hydrate(schema!, JSON.parse(args))) } catch { /* 非法 JSON 时保留原表单值 */ }
+    }
+    setMode(next)
+  }
+  function currentInput(): Record<string, unknown> {
+    if (mode === 'json') {
+      let input: unknown
+      try { input = JSON.parse(args) } catch { throw Error('参数不是合法 JSON') }
+      if (!input || Array.isArray(input) || typeof input !== 'object') throw Error('参数须为 JSON 对象')
+      return input as Record<string, unknown>
+    }
+    return buildArgs(schema!, values)
+  }
   async function run(signal: AbortSignal) {
     setOutput(null)
     if (kind === 'templates') return client.readResource(server.id, uri, signal)
-    let input: unknown
-    try { input = JSON.parse(args) } catch { throw Error('参数不是合法 JSON') }
-    if (!input || Array.isArray(input) || typeof input !== 'object') throw Error('参数须为 JSON 对象')
+    const input = currentInput()
     if (kind === 'tools' && !await confirmAction({ title: `调用 ${item.name}？`, description: `将向 ${server.url} 提交当前参数。此操作可能修改远端数据。`, confirmLabel: '确认调用', danger: true })) return null
     if (signal.aborted) return null
     return client.invoke(server.id, kind, item.name, input, signal)
@@ -65,8 +87,16 @@ function Entry({ server, settings, item, kind, saving }: Props & { item: Catalog
   return <div className="grid min-w-0 gap-3 text-sm">
     {item.description && <p className="whitespace-pre-wrap break-words">{item.description}</p>}
     {kind === 'templates' ? <label>具体资源 URI<Input value={uri} onChange={e => setUri(e.target.value)} /></label> : <>
-      <details><summary>参数定义</summary><pre className={code}>{JSON.stringify(item.inputSchema ?? item.arguments ?? [], null, 2)}</pre></details>
-      <label>调用参数（JSON 对象）<textarea className="input block w-full font-mono" rows={4} value={args} onChange={e => setArgs(e.target.value)} /></label>
+      {formable(schema) && <div role="tablist" aria-label="参数填写方式" className="flex gap-1">
+        <Button size="sm" variant={mode === 'form' ? 'primary' : 'ghost'} aria-pressed={mode === 'form'} onClick={() => switchMode('form')}>表单填写</Button>
+        <Button size="sm" variant={mode === 'json' ? 'primary' : 'ghost'} aria-pressed={mode === 'json'} onClick={() => switchMode('json')}>JSON 模式</Button>
+      </div>}
+      {mode === 'form'
+        ? <SchemaForm schema={schema!} values={values} onChange={setValues} />
+        : <>
+          <details><summary>参数定义</summary><pre className={code}>{JSON.stringify(schema ?? item.arguments ?? [], null, 2)}</pre></details>
+          <label>调用参数（JSON 对象）<textarea className="input block w-full font-mono" rows={4} value={args} onChange={e => setArgs(e.target.value)} /></label>
+        </>}
     </>}
     <Button loading={execution.busy} disabled={saving || (kind === 'tools' && !allowed) || (kind === 'templates' && (!uri || /[{}]/.test(uri)))} onClick={() => void execution.run(run, setOutput)}>{kind === 'tools' ? '调用工具' : kind === 'templates' ? '读取资源' : '获取提示词'}</Button>
     {execution.error && <p role="alert">{execution.error}</p>}

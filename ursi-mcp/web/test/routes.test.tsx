@@ -202,3 +202,79 @@ it('从深链读取正文，工具须先授权，取消确认不调用，确认�
   expect(await screen.findByText(/调用成功/)).toBeVisible()
   expect(calls).toHaveBeenCalledTimes(1)
 })
+
+it('带 inputSchema 的工具默认表单填写，必填校验后确认提交', async () => {
+  const calls = vi.fn(() => ({ content: [{ text: '列出成功' }] }))
+  let invokeBody: unknown
+  const tool = {
+    name: 'list_issues',
+    description: '列出 issues',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string', description: '仓库归属' },
+        state: { type: 'string', enum: ['open', 'closed'], description: '状态' },
+        perPage: { type: 'number', description: '每页数量' },
+        includeBody: { type: 'boolean', description: '含正文' },
+      },
+      required: ['owner'],
+    },
+  }
+  const { user } = mount('/admin/mcp-servers/team%201', (path, options) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    if (path.endsWith('/settings')) return JSON.parse(String(options.body))
+    expect(path.endsWith('/tools/call')).toBe(true)
+    invokeBody = JSON.parse(String(options.body))
+    return calls()
+  })
+  await user.click(await screen.findByRole('button', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: 'list_issues' }))
+  expect(screen.getByRole('button', { name: '表单填写' })).toHaveAttribute('aria-pressed', 'true')
+  // 未填必填项时点击调用：确认弹窗展示，但参数校验先拦截
+  await user.click(screen.getByRole('switch', { name: '允许调用 list_issues' }))
+  await user.click(screen.getByRole('button', { name: '调用工具' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByRole('alert')).toHaveTextContent('缺少必填参数：owner')
+  expect(calls).not.toHaveBeenCalled()
+  // 填写后成功提交
+  await user.type(screen.getByLabelText('参数 owner'), 'octocat')
+  await user.selectOptions(screen.getByLabelText('参数 state'), 'open')
+  await user.type(screen.getByLabelText('参数 perPage'), '20')
+  await user.click(screen.getByRole('switch', { name: '参数 includeBody' }))
+  await user.click(screen.getByRole('button', { name: '调用工具' }))
+  await user.click(screen.getByRole('button', { name: '确认调用' }))
+  expect(await screen.findByText(/列出成功/)).toBeVisible()
+  expect(calls).toHaveBeenCalledTimes(1)
+  expect(invokeBody).toEqual({ name: 'list_issues', arguments: { includeBody: true, owner: 'octocat', perPage: 20, state: 'open' } })
+})
+
+it('表单与 JSON 模式双向切换保留已填参数', async () => {
+  const calls = vi.fn(() => ({ content: [{ text: 'ok' }] }))
+  const tool = {
+    name: 'echo',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' }, count: { type: 'number' } }, required: ['text'] },
+  }
+  const { user } = mount('/admin/mcp-servers/team%201', (path, options) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    if (path.endsWith('/settings')) return JSON.parse(String(options.body))
+    return calls()
+  })
+  await user.click(await screen.findByRole('button', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: 'echo' }))
+  await user.type(screen.getByLabelText('参数 text'), '你好')
+  await user.type(screen.getByLabelText('参数 count'), '3')
+  // 切到 JSON：已填内容转为 JSON 文本
+  await user.click(screen.getByRole('button', { name: 'JSON 模式' }))
+  const textarea = screen.getByLabelText('调用参数（JSON 对象）') as HTMLTextAreaElement
+  expect(JSON.parse(textarea.value)).toEqual({ text: '你好', count: 3 })
+  // JSON 里再改，切回表单后保留
+  await user.clear(textarea)
+  await user.type(textarea, '{{"text":"改过","count":7}')
+  await user.click(screen.getByRole('button', { name: '表单填写' }))
+  expect(screen.getByLabelText('参数 text')).toHaveDisplayValue('改过')
+  expect(screen.getByLabelText('参数 count')).toHaveDisplayValue('7')
+})
