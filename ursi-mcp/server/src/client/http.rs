@@ -1,5 +1,6 @@
 //! HTTP body budgets and endpoint policy for the SDK's Streamable HTTP transport.
 use super::{Error, SNAPSHOT_LIMIT, rpc_err};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
 use reqwest::{
     Client, Method, RequestBuilder, Url,
@@ -33,6 +34,64 @@ fn bad_response() -> HttpError {
     HttpError::Client(io::Error::other(
         "MCP HTTP request failed or response was invalid",
     ))
+}
+
+/// SEP-2243 要求 `tools/call` 为参数补发 `Mcp-Param-*` 头，但 SDK 只为
+/// schema 里显式标注 `x-mcp-header` 的参数发头；GitHub 等远端则按
+/// required 参数强制校验。这里对全部顶层基本类型参数补齐头，多余的头
+/// 不会被远端校验拒绝。
+fn standard_param_headers(message: &ClientJsonRpcMessage, mut headers: Headers) -> Headers {
+    let ClientJsonRpcMessage::Request(request) = message else {
+        return headers;
+    };
+    let ClientRequest::CallToolRequest(call) = &request.request else {
+        return headers;
+    };
+    let Some(arguments) = call.params.arguments.as_ref() else {
+        return headers;
+    };
+    for (key, value) in arguments {
+        let mut owned = String::new();
+        let text = match value {
+            Value::String(text) => text.as_str(),
+            Value::Bool(true) => "true",
+            Value::Bool(false) => "false",
+            Value::Number(number) => {
+                owned = number.to_string();
+                if !owned.chars().all(|c| c.is_ascii()) {
+                    continue;
+                }
+                owned.as_str()
+            }
+            _ => continue,
+        };
+        let name = match HeaderName::from_bytes(
+            format!("mcp-param-{}", key.to_ascii_lowercase()).as_bytes(),
+        ) {
+            Ok(name) => name,
+            Err(_) => continue,
+        };
+        if headers.contains_key(&name) {
+            continue;
+        }
+        if let Ok(value) = HeaderValue::from_str(&encode_header_value(text)) {
+            headers.insert(name, value);
+        }
+    }
+    headers
+}
+
+/// 与 SDK 一致：非可见 ASCII 的值用 `=?base64?..?=` 包装。
+fn encode_header_value(value: &str) -> String {
+    let needs_encoding = !value.is_empty()
+        && (value.starts_with([' ', '\t'])
+            || value.ends_with([' ', '\t'])
+            || value.chars().any(|c| (c as u32) < 0x20 || (c as u32) > 0x7E));
+    if needs_encoding {
+        format!("=?base64?{}?=", BASE64_STANDARD.encode(value.as_bytes()))
+    } else {
+        value.to_owned()
+    }
 }
 
 // The SDK's untagged resource model accepts a text part even when `blob` is present.
@@ -154,6 +213,7 @@ impl StreamableHttpClient for BoundedHttp {
         headers: Headers,
         budget: usize,
     ) -> Result<StreamableHttpPostResponse, HttpError> {
+        let headers = standard_param_headers(&message, headers);
         let is_read = matches!(&message, JsonRpcMessage::Request(request) if matches!(request.request, ClientRequest::ReadResourceRequest(_)));
         let stage = match &message {
             JsonRpcMessage::Request(r) => match &r.request {
