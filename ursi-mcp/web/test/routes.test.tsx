@@ -365,3 +365,22 @@ it('无 structuredContent 时解析 content 文本 JSON 或展示原文', async 
   await user.click(screen.getByRole('button', { name: '确认调用' }))
   expect(await screen.findByText(/调用成功/)).toBeVisible()
 })
+
+
+it('目录列表完整展示工具描述，名称单行截断', async () => {
+  const longDescription = '列出仓库中的 issue。'.repeat(10)
+  const tool = { name: 'list_issues_with_long_name_and_still_truncated', description: longDescription }
+  const { user } = mount('/admin/mcp-servers/team%201', (path) => {
+    if (path === '/mcp-servers') return [server]
+    if (path.endsWith('/inspection')) return { resources: [resource] }
+    if (path.endsWith('/catalog/tools')) return [tool]
+    throw new Error(path)
+  })
+  await user.click(await screen.findByRole('tab', { name: '工具目录' }))
+  await user.click(await screen.findByRole('button', { name: tool.name }))
+  // 描述完整渲染（不折叠），名称容器截断
+  for (const shown of screen.getAllByText(longDescription)) expect(shown).toBeVisible()
+  for (const named of screen.getAllByTitle(tool.name)) expect(named).toHaveClass('truncate')
+  // 选中态
+  expect(screen.getByRole('button', { name: tool.name })).toHaveAttribute('aria-pressed', 'true')
+})

@@ -8,12 +8,10 @@ import { useResource } from '../lib/use-resource'
 import { useFeedback } from '../ui/feedback'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import { DataTable } from '../ui/data-table'
 import { Switch } from '../ui/switch'
 import { Tabs } from '../ui/tabs'
 import { Icon } from '../ui/icon'
 import { Badge } from '../ui/badge'
-import type { ColumnDef } from '@tanstack/react-table'
 import { ResourceState } from '../ui/resource-state'
 import { cn } from '../lib/utils'
 
@@ -31,14 +29,6 @@ export function OperationsPanel(props: Props & { kind: CatalogKind }) {
   const key = (x: CatalogEntry) => x.uriTemplate ?? x.name
   const item = items.find(x => key(x) === selected) ?? (kind === 'tools' ? undefined : items[0])
   const permission = useMutation()
-  const columns: ColumnDef<CatalogEntry>[] = [
-    { id: 'name', header: '名称', cell: ({ row: { original: x } }) => <button className="block max-w-56 truncate text-left font-mono text-xs font-medium text-accent-2" title={x.name} aria-pressed={key(x) === selected} onClick={() => setSelected(key(x))}>{x.name}</button> },
-    { accessorKey: 'description', header: '说明', cell: ({ row }) => <span className="line-clamp-2 text-txt2">{row.original.description || '未提供'}</span> },
-  ]
-  if (kind === 'tools') columns.push({ id: 'permission', header: '允许调用', cell: ({ row: { original: x } }) => <Switch aria-label={`允许调用 ${x.name}`} checked={props.settings.allowedTools.includes(x.name)} disabled={permission.busy} onCheckedChange={on => {
-    const allowedTools = on ? [...props.settings.allowedTools, x.name] : props.settings.allowedTools.filter(n => n !== x.name)
-    void permission.run(signal => client.saveSettings(server.id, { ...props.settings, allowedTools }, signal), props.saved)
-  }} /> })
   const nav = <div className="flex flex-wrap items-center justify-between gap-2">
     <h2 className="text-sm font-semibold text-txt">{titles[kind]}目录<span className="ml-1.5 text-xs font-normal text-txt3">共 {list.data.length} 项</span></h2>
     <Button size="sm" variant="outline" icon="refresh" loading={list.loading} onClick={list.reload}>刷新目录</Button>
@@ -50,11 +40,28 @@ export function OperationsPanel(props: Props & { kind: CatalogKind }) {
         <Input aria-label="搜索目录" placeholder="搜索名称或说明" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
       {list.loading || list.error || !list.data.length ? <ResourceState loading={list.loading} error={list.error} empty onRetry={list.reload} title={list.error ? undefined : '目录为空'} /> : <>
-        <div className="scroll-area min-h-0 flex-1 overflow-auto">
-          {items.length ? <DataTable key={search} label={`${titles[kind]}目录`} columns={columns} data={items} rowId={key} selected={item && key(item)} /> : <p className="p-3 text-sm text-txt3">没有匹配项</p>}
-        </div>
+        {items.length ? <ul key={search} aria-label={`${titles[kind]}目录`} className="scroll-area min-h-0 flex-1 list-none overflow-auto">
+          {items.map(x => {
+            const active = key(x) === selected
+            return <li key={key(x)} className={cn('border-b border-line last:border-b-0', active && 'bg-accent-dim')}>
+              <div className="flex items-start gap-3 p-3">
+                <button type="button" className="min-w-0 flex-1 text-left" aria-label={x.name} aria-pressed={active} onClick={() => setSelected(key(x))}>
+                  <span className="flex items-center gap-1.5">
+                    <span className="min-w-0 truncate font-mono text-xs font-semibold text-txt" title={x.name}>{x.name}</span>
+                    {kind === 'tools' && props.settings.allowedTools.includes(x.name) && <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">已授权</Badge>}
+                  </span>
+                  <span className="mt-1 block whitespace-pre-wrap break-words text-xs leading-relaxed text-txt2">{x.description || '未提供说明'}</span>
+                </button>
+                {kind === 'tools' && <Switch className="mt-0.5 shrink-0" aria-label={`允许调用 ${x.name}`} checked={props.settings.allowedTools.includes(x.name)} disabled={permission.busy} onCheckedChange={on => {
+                  const allowedTools = on ? [...props.settings.allowedTools, x.name] : props.settings.allowedTools.filter(n => n !== x.name)
+                  void permission.run(signal => client.saveSettings(server.id, { ...props.settings, allowedTools }, signal), props.saved)
+                }} />}
+              </div>
+            </li>
+          })}
+        </ul> : <p className="p-3 text-sm text-txt3">没有匹配项</p>}
         {permission.error && <p role="alert" className="border-t border-line p-3 text-sm text-err">{permission.error}</p>}
-        <p className="border-t border-line px-3 py-2 text-xs text-txt3">点选左侧{titles[kind]}名称后在右侧填写参数并调用</p>
+        <p className="border-t border-line px-3 py-2 text-xs text-txt3">点选{titles[kind]}名称后在右侧填写参数并调用</p>
       </>}
     </section>
     <section aria-label={`${titles[kind]}详情`} className="panel min-w-0 self-start">
@@ -115,7 +122,7 @@ function Entry({ server, settings, item, kind, saving }: Props & { item: Catalog
         {formable(schema) && <Tabs className="ml-auto shrink-0" label="参数填写方式" value={mode} onValue={switchMode}
           items={[{ value: 'form', title: '表单填写' }, { value: 'json', title: 'JSON 模式' }]} />}
       </div>
-      {item.description && <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-xs text-txt2">{item.description}</p>}
+      {item.description && <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-txt2">{item.description}</p>}
     </header>
     {kind === 'templates' ? <label className="grid gap-1"><span className="font-medium">具体资源 URI</span><Input className="font-mono text-xs" value={uri} onChange={e => setUri(e.target.value)} /></label> : <>
       {mode === 'form'
