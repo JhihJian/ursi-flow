@@ -3,6 +3,21 @@ import type { Workspace } from '../../src/shared/api/work-projects'
 import { readRuntime } from '../fixtures/runtime'
 import { login } from './support'
 
+async function openSidebar(page: Page, desktop: boolean) {
+  if (desktop) return page.locator('aside.desktop-sidebar')
+  const trigger = page.getByRole('button', { name: '打开导航菜单', includeHidden: true })
+  const drawer = page.getByRole('dialog', { name: '工作区导航' })
+  if (await trigger.getAttribute('aria-expanded') !== 'true') {
+    await expect(drawer).toBeHidden()
+    await trigger.click()
+  }
+  return drawer
+}
+
+async function sidebarLink(page: Page, desktop: boolean, section: '主导航' | '项目树', name: string) {
+  return (await openSidebar(page, desktop)).getByRole('navigation', { name: section }).getByRole('link', { name, exact: true })
+}
+
 async function addNamed(page: Page, button: string, field: string, name: string) {
   await page.getByRole('button', { name: button, exact: true }).click()
   await page.getByLabel(field, { exact: true }).fill(name)
@@ -40,11 +55,11 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
     return await response.json()
   }
   const desktop = info.project.name === 'desktop'
-  const tree = page.getByRole('navigation', { name: '项目树' })
   const graph = page.locator('.react-flow')
   await expect(desktop ? graph : page.getByRole('list', { name: '画布列表' })).toBeVisible()
   await addNamed(page, '新建画布', '画布名称', '材料准备')
-  await expect(tree.getByRole('link', { name: '材料准备' })).toBeVisible()
+  await expect(await sidebarLink(page, desktop, '项目树', '材料准备')).toBeVisible()
+  if (!desktop) await page.getByRole('dialog', { name: '工作区导航' }).getByRole('button', { name: '关闭', exact: true }).click()
   const destination = desktop ? graph.locator('.react-flow__node', { hasText: '材料准备' })
     : page.getByRole('list', { name: '画布列表' }).getByRole('listitem').filter({ hasText: '材料准备' })
   if (desktop) {
@@ -75,7 +90,7 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   await page.getByRole('button', { name: '上移 补客户授权' }).click()
   const cardItems = page.getByRole('list', { name: '卡内 TODO' })
   await expect(cardItems.getByRole('listitem').first()).toContainText('补客户授权')
-  await tree.getByRole('link', { name: '项目 TODO' }).click()
+  await (await sidebarLink(page, desktop, '主导航', 'Todo')).click()
   await page.getByRole('combobox', { name: '类别', exact: true }).selectOption('continuous')
   await expect(page.getByText('显示 1 / 2 项')).toBeVisible()
   await expect(page.getByRole('heading', { name: '全项目状态 · 2 项' })).toBeVisible()
@@ -88,7 +103,8 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   await expect(page).toHaveURL(/\/canvases\/.*\?focusItemId=/)
   await expect(cardItems.locator('[aria-current=true]')).toContainText('补客户授权')
   await expect(cardItems.locator('[aria-current=true]')).toContainText('已完成')
-  await tree.getByRole('link', { name: '项目 TODO' }).click()
+  await expect(await sidebarLink(page, desktop, '项目树', '补客户授权 已完成')).toHaveAttribute('aria-current', 'page')
+  await (await sidebarLink(page, desktop, '主导航', 'Todo')).click()
   await expect(page).toHaveURL(/category=continuous/)
   await expect(page.getByText('显示 1 / 2 项')).toBeVisible()
   const placed = (await snapshot()).items[0].item
@@ -99,12 +115,77 @@ test('关闭 Flow：地图打开画布，编辑和定位 TODO，刷新后保留�
   await expect(page.getByRole('link', { name: '查看本项的生成记录' })).toBeVisible()
   await page.getByRole('link', { name: '在画布中定位' }).click()
   await expect(cardItems.locator('[aria-current=true]')).toContainText('补客户授权')
-  await tree.getByRole('link', { name: 'Canvas Map' }).click()
+  await (await sidebarLink(page, desktop, '主导航', 'Canvas Map')).click()
   await expect(destination).toContainText('共 2 项 · 已完成 1 项')
   await expect(page.getByRole('button', { name: '默认画布 → 材料准备' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width)
   expect(writes.length).toBeGreaterThan(0)
   expect(writes.every(path => /^\/api\/v2\/(work-projects|work-items)(\/|$)/.test(path))).toBeTruthy()
+})
+
+test('全局侧栏独立展开、选择项目和定位 TODO，刷新后仍能打开对应项目', async ({ page, request }, info) => {
+  const { token, apiBase } = readRuntime()
+  const headers = { Authorization: `Bearer ${token}` }
+  const root = `${apiBase}/api/v2/work-projects`
+  async function seed(name: string) {
+    const result = await request.post(root, { headers, data: { name } })
+    expect(result.ok()).toBeTruthy()
+    const { id } = await result.json()
+    const read = async (): Promise<Workspace> => (await request.get(`${root}/${id}/workspace`, { headers })).json()
+    const snapshot = await read()
+    const canvas = snapshot.canvases[0]
+    const card = await request.post(`${root}/${id}/commands`, { headers, data: {
+      revision: snapshot.project.revision, type: 'createTaskCard', canvasId: canvas.id, name: '交付检查',
+    } })
+    expect(card.ok()).toBeTruthy()
+    const { id: taskCardId } = await card.json()
+    const item = await request.post(`${root}/${id}/commands`, { headers, data: {
+      revision: (await read()).project.revision, type: 'createItem', taskCardId, title: '确认交付日期',
+    } })
+    expect(item.ok()).toBeTruthy()
+    return { path: `/work-projects/${id}`, canvas: canvas.id, card: taskCardId, item: (await item.json()).id }
+  }
+  const firstName = `侧栏方案甲-${info.project.name}`
+  const secondName = `侧栏方案乙-${info.project.name}`
+  const first = await seed(firstName)
+  const second = await seed(secondName)
+  await login(page, token)
+  const desktop = info.project.name === 'desktop'
+  const sidebar = await openSidebar(page, desktop)
+  const tree = sidebar.getByRole('navigation', { name: '项目树' })
+  const todo = sidebar.getByRole('link', { name: 'Todo', exact: true })
+  await expect(todo).toHaveAttribute('href', '/work-projects?view=todo')
+  await todo.click()
+  await expect(page.getByRole('heading', { name: '选择 Todo 项目' })).toBeVisible()
+  await page.getByRole('main').getByRole('link', { name: firstName }).click()
+  await expect(page).toHaveURL(`${first.path}/todo`)
+  await openSidebar(page, desktop)
+  await expect(todo).toHaveAttribute('aria-current', 'page')
+  const secondBranch = tree.getByRole('listitem').filter({ has: page.getByRole('link', { name: secondName, exact: true }) })
+  await secondBranch.getByRole('button', { name: `展开 项目 ${secondName}` }).click()
+  await secondBranch.getByRole('button', { name: '展开 画布 默认画布' }).click()
+  await secondBranch.getByRole('button', { name: '展开 任务卡 交付检查' }).click()
+  await expect(page).toHaveURL(`${first.path}/todo`)
+  const leaf = secondBranch.getByRole('link', { name: /确认交付日期/ })
+  await leaf.click()
+  await expect(page).toHaveURL(`${second.path}/canvases/${second.canvas}?focusItemId=${second.item}&itemId=${second.item}`)
+  if (!desktop) await expect(sidebar).toBeHidden()
+  await expect(page.getByRole('list', { name: '卡内 TODO' }).locator('[aria-current=true]')).toContainText('确认交付日期')
+  await page.reload()
+  await openSidebar(page, desktop)
+  await expect(leaf).toHaveAttribute('aria-current', 'page')
+  await secondBranch.getByRole('link', { name: '交付检查', exact: true }).click()
+  await expect(page).toHaveURL(`${second.path}/canvases/${second.canvas}?focusCardId=${second.card}`)
+  await (await sidebarLink(page, desktop, '主导航', '工作清单')).click()
+  await expect(page).toHaveURL('/work-items')
+  await (await sidebarLink(page, desktop, '主导航', 'Canvas Map')).click()
+  await expect(page).toHaveURL(`${second.path}/map`)
+  await page.goto(`${first.path}/canvases/${first.canvas}?focusItemId=${first.item}`)
+  await expect(await sidebarLink(page, desktop, '主导航', 'Todo')).toHaveAttribute('href', `${first.path}/todo`)
+  await page.goto(`${first.path}/canvases/removed`)
+  await expect(page.getByText('画布不存在', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '返回 Canvas Map' }).click()
+  await expect(page).toHaveURL(`${first.path}/map`)
 })
 
 test('全局事项加入、跨画布移动和移出都保留原 ID 与内容修订', async ({ page, request }, info) => {
@@ -124,11 +205,11 @@ test('全局事项加入、跨画布移动和移出都保留原 ID 与内容修�
   await login(page, token)
   await page.goto(`${path}/map`)
   await addNamed(page, '新建画布', '画布名称', '第二张画布')
-  const tree = page.getByRole('navigation', { name: '项目树' })
-  await tree.getByRole('link', { name: '第二张画布' }).click()
+  const desktop = info.project.name === 'desktop'
+  await (await sidebarLink(page, desktop, '项目树', '第二张画布')).click()
   await addNamed(page, '新建任务卡', '任务卡名称', '归档')
   const targetId = new URL(page.url()).pathname.split('/').at(-1)
-  await tree.getByRole('link', { name: '默认画布' }).click()
+  await (await sidebarLink(page, desktop, '项目树', '默认画布')).click()
   await addNamed(page, '新建任务卡', '任务卡名称', '待整理')
   await page.getByRole('button', { name: '加入已有事项' }).click()
   await page.getByRole('combobox', { name: '已有事项' }).selectOption({ label: title })

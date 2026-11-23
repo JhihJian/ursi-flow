@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, Outlet, useLocation, useMatches } from 'react-router'
 
+import { ProjectNavigationProvider } from '@/modules/work-items/projects/ProjectNavigationProvider'
 import { readToken, subscribeSession } from '@/shared/http/session'
 import { FeedbackHost } from './FeedbackHost'
 import { Button } from '@/shared/ui/button'
@@ -20,7 +21,8 @@ function routeTitle(matches: { handle?: unknown }[]): string | undefined {
 
 export default function AppShell() {
   const token = useSyncExternalStore(subscribeSession, readToken)
-  return <Workspace key={token} signedIn={Boolean(token)} />
+  const signedIn = Boolean(token)
+  return <ProjectNavigationProvider key={token} signedIn={signedIn}><Workspace signedIn={signedIn} /></ProjectNavigationProvider>
 }
 
 function Workspace({ signedIn }: { signedIn: boolean }) {

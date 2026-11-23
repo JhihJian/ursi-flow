@@ -1,4 +1,4 @@
-type Preferences = { pinned: string[]; recent?: { projectId: string; path: string } }
+export type Preferences = { pinned: string[]; recent?: { projectId: string; path: string } }
 const key = 'workbench-project-preferences'
 
 export function readPreferences(): Preferences {

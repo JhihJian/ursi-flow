@@ -70,7 +70,7 @@ describe('应用壳', () => {
       check(screen.getByRole('navigation', { name: '主导航' }))
       await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
       check(within(await screen.findByRole('dialog')).getByRole('navigation', { name: '主导航' }))
-      expect(vi.mocked(fetch).mock.calls.every(([path]) => path === '/api/v1/flows')).toBe(true)
+      expect(new Set(vi.mocked(fetch).mock.calls.map(([path]) => path))).toEqual(new Set(['/api/v1/flows', '/api/v2/work-projects']))
     } finally { meta.remove() }
   })
 
@@ -108,7 +108,7 @@ describe('应用壳', () => {
     const entries = (nav: HTMLElement) => [...nav.querySelectorAll('a')].map(link => [link.textContent, link.getAttribute('href')])
     const [desktop] = screen.getAllByRole('navigation', { name: '主导航' })
     const desktopEntries = entries(desktop!)
-    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', '工作项目', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
+    expect(desktopEntries.map(([title]) => title)).toEqual(['工作清单', 'Canvas Map', 'Todo', '工作项目', '工作包', '生成记录', '工作包生成器', '配置包', '资源库', '执行器', 'Agent 后端', '平台 MCP 服务', '环境变量', 'Flow 包', '运行记录', '运行配置', '对话'])
 
     await userEvent.click(screen.getByRole('button', { name: '打开导航菜单' }))
     const drawer = await screen.findByRole('dialog', { name: '工作区导航' })
@@ -121,7 +121,7 @@ describe('应用壳', () => {
   it('可选模块探测失败时仍能使用工作清单并单独重试', async () => {
     let flowCalls = 0
     const fetch = vi.fn(async (path: string) => {
-      if (path === '/api/v2/work-items' || path === '/api/v2/patches/work') return Response.json([])
+      if (path === '/api/v2/work-items' || path === '/api/v2/patches/work' || path === '/api/v2/work-projects') return Response.json([])
       if (path === '/api/v1/flows') return Response.json([], { status: ++flowCalls === 1 ? 503 : 200 })
       throw Error(`意外 API：${path}`)
     })

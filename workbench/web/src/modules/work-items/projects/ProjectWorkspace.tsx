@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, NavLink, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router'
-import { canvasPath, command, deleteProject, getPlacement, listProjects, projectPath, projectsPath, readWorkspace, renameProject, saveLayout, type Workspace } from '@/shared/api/work-projects'
+import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router'
+import { canvasPath, command, deleteProject, getPlacement, projectPath, projectsPath, renameProject, saveLayout, type Workspace } from '@/shared/api/work-projects'
 import { ApiError } from '@/shared/http/client'
 import { useMutation } from '@/shared/hooks/use-mutation'
-import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Modal } from '@/shared/ui/modal'
@@ -12,19 +11,15 @@ import { ItemInspector } from './ItemInspector'
 import { ProjectGraph } from './ProjectGraph'
 import { ProjectTodo } from './ProjectTodo'
 import type { ProjectMutation } from './model'
-import { readPreferences, writePreferences } from './preferences'
+import { todoPath, useProjectNavigation } from './project-navigation'
 
 export function ProjectWorkspace() {
   const { projectId = '' } = useParams()
   return <WorkspaceScope key={projectId} projectId={projectId} />
 }
 
-const navClass = ({ isActive }: { isActive: boolean }) =>
-  `block break-words rounded px-2 py-1.5 text-sm hover:bg-elevated ${isActive ? 'bg-elevated font-semibold text-accent-2' : 'text-txt2'}`
-
 function WorkspaceScope({ projectId }: { projectId: string }) {
-  const resource = useResource(signal => readWorkspace(projectId, signal), null)
-  const projects = useResource(listProjects, [])
+  const { workspace: resource, projects, remember } = useProjectNavigation()
   const mutation = useMutation()
   const navigate = useNavigate()
   const location = useLocation()
@@ -37,17 +32,16 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
   const workspace = resource.data
   const itemId = params.get('itemId')
   const focusItemId = params.get('focusItemId') ?? undefined
+  const focusCardId = params.get('focusCardId') ?? undefined
   const missingCanvas = !!workspace && canvasId !== null && !workspace.canvases.some(canvas => canvas.id === canvasId)
-  const returnTo = typeof location.state?.todoPath === 'string' && location.state.todoPath.startsWith(`${base}/todo?`)
-    ? location.state.todoPath as string : `${base}/todo`
+  const returnTo = todoPath(projectId, location.state)
   const recentPath = canvasId && !missingCanvas ? canvasPath(projectId, canvasId) : todo ? `${base}/todo` : `${base}/map`
   const [settings, setSettings] = useState<'rename' | 'delete'>()
-  const [pinned] = useState(() => readPreferences().pinned)
   const [locateNote, setLocateNote] = useState('')
 
   useEffect(() => {
-    if (workspace) writePreferences({ ...readPreferences(), recent: { projectId, path: recentPath } })
-  }, [workspace, projectId, recentPath])
+    if (workspace) remember(projectId, recentPath)
+  }, [workspace, projectId, recentPath, remember])
 
   if (!workspace) return <div className="page-stack">
     <Link className="text-accent-2" to={projectsPath}>返回工作项目</Link>
@@ -97,7 +91,6 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
     })
   }
 
-  const otherProjects = projects.data.filter(project => project.id !== projectId).sort((a, b) => Number(pinned.includes(b.id)) - Number(pinned.includes(a.id)))
   const focus = workspace.items.find(({ item }) => item.id === focusItemId)
   const focusCanvas = workspace.taskCards.find(card => card.id === focus?.taskCardId)?.canvasId
 
@@ -116,26 +109,8 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
     {mutation.error && <p role="alert" className="break-words text-sm text-err">{mutation.error}</p>}
     {settings && <ProjectSettings key={settings} mode={settings} workspace={workspace} disabled={busy}
       error={mutation.error} onClose={() => setSettings(undefined)}
-      onRename={name => run(signal => renameProject(workspace.project, name, signal), () => setSettings(undefined))}
-      onDelete={() => run(signal => deleteProject(projectId, signal), () => navigate(projectsPath, { replace: true }))} />}
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[10rem_minmax(0,1fr)]">
-      <nav aria-label="项目树" className="min-w-0 space-y-1 border-b border-line pb-3 lg:border-b-0 lg:border-r lg:pr-3">
-        <div className="flex flex-wrap lg:block">
-          <NavLink className={navClass} end to={`${base}/map`}>Canvas Map</NavLink>
-          <NavLink className={navClass} end to={returnTo}>项目 TODO</NavLink>
-        </div>
-        <details key={projectId} open>
-          <summary className="cursor-pointer px-2 py-1 text-sm font-medium">项目画布</summary>
-          <ul className="flex flex-wrap gap-x-1 lg:block">{workspace.canvases.map(canvas => <li key={canvas.id} className="min-w-0">
-            <NavLink className={navClass} to={canvasPath(projectId, canvas.id)}>{canvas.name}</NavLink>
-          </li>)}</ul>
-        </details>
-        {(otherProjects.length > 0 || projects.error) && <details>
-          <summary className="cursor-pointer px-2 py-1 text-sm font-medium">切换项目</summary>
-          {projects.error && <ResourceState error={projects.error} onRetry={projects.reload} />}
-          <ul>{otherProjects.map(project => <li key={project.id}><Link className={navClass({ isActive: false })} to={`${projectPath(project.id)}/map`}>{project.name}</Link></li>)}</ul>
-        </details>}
-      </nav>
+      onRename={name => run(signal => renameProject(workspace.project, name, signal), () => { projects.reload(); setSettings(undefined) })}
+      onDelete={() => run(signal => deleteProject(projectId, signal), () => { projects.reload(); navigate(projectsPath, { replace: true }) })} />}
       <div className={`grid min-w-0 items-start gap-4 ${itemId ? 'xl:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
         <div className="min-w-0 space-y-3">
           {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
@@ -148,7 +123,7 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
             <Link className="text-accent-2" to={`${base}/map`}>返回 Canvas Map</Link>
           </div> : todo ? <ProjectTodo workspace={workspace} onItem={openItem}
             onCreate={id => navigate(canvasPath(projectId, id), { state: { todoPath: `${location.pathname}${location.search || '?'}` } })} />
-            : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} busy={busy} mutate={mutate}
+            : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
               onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id))} />}
         </div>
         {itemId && <div className="order-first min-w-0 xl:order-last">
@@ -156,7 +131,6 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
           <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
         </div>}
       </div>
-    </div>
   </div>
 }
 

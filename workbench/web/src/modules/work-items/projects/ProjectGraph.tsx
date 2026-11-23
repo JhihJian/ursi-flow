@@ -12,6 +12,7 @@ export type ProjectGraphProps = {
   workspace: Workspace
   canvasId: string | null
   locatedItemId?: string
+  locatedCardId?: string
   busy: boolean
   mutate: ProjectMutation
   onItem: (id: string) => void
@@ -37,10 +38,10 @@ function subscribeViewport(change: () => void) {
 function compactViewport() { return window.matchMedia?.(compactQuery)?.matches ?? window.innerWidth < 768 }
 
 export function ProjectGraph(props: ProjectGraphProps) {
-  return <GraphScope key={JSON.stringify([props.workspace.project.id, props.canvasId])} {...props} />
+  return <GraphScope key={JSON.stringify([props.workspace.project.id, props.canvasId, props.locatedCardId, props.locatedItemId])} {...props} />
 }
 
-function GraphScope({ workspace, canvasId, locatedItemId, busy, mutate, onItem, onCanvas }: ProjectGraphProps) {
+function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, mutate, onItem, onCanvas }: ProjectGraphProps) {
   const map = canvasId === null
   const canvas = workspace.canvases.find(node => node.id === canvasId)
   const noun = map ? '画布' : '任务卡'
@@ -49,7 +50,8 @@ function GraphScope({ workspace, canvasId, locatedItemId, busy, mutate, onItem, 
   const layout = map ? workspace.layouts.map : workspace.layouts.canvases[canvasId] ?? emptyLayout
   const { cardItems, canvasCounts } = useMemo(() => projectGraphData(workspace), [workspace])
   const located = !map && locatedItemId ? workspace.items.find(row => row.item.id === locatedItemId) : undefined
-  const focusNodeId = located && nodes.some(node => node.id === located.taskCardId) ? located.taskCardId : undefined
+  const targetCardId = !map ? located?.taskCardId ?? locatedCardId : undefined
+  const focusNodeId = nodes.find(node => node.id === targetCardId)?.id
 
   const [selection, setSelection] = useState<Selection>()
   const [editor, setEditor] = useState<Editor>()
@@ -60,7 +62,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, busy, mutate, onItem, 
   const list = compact || listMode
   const positions = graphPositions(nodes, layout.positions, map)
 
-  const selectedNode = selection?.kind === 'node' ? nodes.find(node => node.id === selection.id) : undefined
+  const selectedNode = nodes.find(node => node.id === (selection ? selection.kind === 'node' ? selection.id : undefined : focusNodeId))
   const selectedRelation = selection?.kind === 'relation' ? relations.find(relation => relation.id === selection.id) : undefined
   const managedNode = map ? selectedNode : canvas
   const names = new Map(nodes.map(node => [node.id, node.name]))
@@ -234,12 +236,13 @@ function GraphScope({ workspace, canvasId, locatedItemId, busy, mutate, onItem, 
           description={map ? '新建画布后即可组织项目。' : '新建任务卡后即可添加 TODO。'} />
           : list ? <ul aria-label={map ? '画布列表' : '任务卡列表'} className="divide-y divide-line border-y border-line">
             {nodes.map(node => <li key={node.id} className="min-w-0 space-y-2 py-3">
-              <h3 className="break-words text-sm font-semibold">{node.name}</h3>
+              <h3 className={`break-words text-sm font-semibold ${node.id === focusNodeId ? 'text-accent-2' : ''}`}
+                ref={node.id === focusNodeId && !locatedItemId ? heading => { heading?.scrollIntoView?.({ block: 'nearest' }) } : undefined}>{node.name}</h3>
               {nodeContent(node)}
               {nodeActions(node, map)}
             </li>)}
           </ul> : <CanvasGraph
-            key={JSON.stringify([lastReset <= layout.revision ? lastReset : 0, nodes.length, focusNodeId ? locatedItemId : null])}
+            key={JSON.stringify([lastReset <= layout.revision ? lastReset : 0, nodes.length])}
             nodes={nodes.map<CanvasNode>(node => ({ ...node, label: node.name, position: positions.get(node.id)!, content: nodeContent(node) }))}
             edges={relations}
             focusNodeId={focusNodeId}

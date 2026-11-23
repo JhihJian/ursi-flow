@@ -8,7 +8,7 @@
 
 | PlanWeave 能力 | Workbench 对应设计 |
 | --- | --- |
-| 项目树中切换项目和画布，恢复上次打开的位置。 | 项目列表和可展开的画布树。支持新建、改名、置顶、切换和删除。创建项目时附带默认画布，画布可继续新增和改名。用服务端项目 ID 取代 Desktop 的本地目录入口。 |
+| 侧栏上部是 Canvas Map 和 Todo 等视图入口，下部是可展开的项目树。 | 「日常工作」提供 Canvas Map 和 Todo，侧栏下方列出项目、画布、任务卡和 TODO。点名称打开对应视图，展开箭头独立操作。创建项目时附带默认画布。 |
 | Canvas Map 上一张画布对应一个节点，显示画布间关系，可选中查看、拖动排布、打开画布。 | 保留项目总览。地图节点显示名称和 TODO 进度，选择画布或关系线打开侧栏，双击节点或点击「打开画布」进入该画布的图编辑器。 |
 | 单张画布上每个 Task 是一个图节点，卡内堆叠多个 Block。 | Task 对应「任务卡」，Block 对应现有 `WorkItem`。可用工具栏创建任务卡，拖动换位置、连线、增删或重接关系。卡内可新建 TODO、加入已有事项、调整顺序和移到其他卡。 |
 | 项目 TODO 视图跨画布汇总 Block，用状态分布、画布阶段卡和分组展示，点击打开 Block Inspector。 | 项目 TODO 面板保留状态分布、画布摘要和分组。用人工办理状态替换执行状态，条目显示「画布 / 任务卡」路径，点击打开浏览器内的事项侧栏，并提供「在画布中定位」。 |
@@ -19,7 +19,8 @@
 
 ### 项目管理和地图
 
-- 左侧项目树始终可切换项目、展开画布。点击项目进入 Canvas Map，点击画布进入图编辑器；「继续上次」可恢复最近项目及画布。置顶和最近位置是浏览器偏好，明确的 URL 优先于偏好。已删除的画布提供返回地图的入口，已删除的项目从列表和「继续上次」入口消失。
+- 全局侧栏下部是独立滚动的项目树，桌面与移动抽屉共用。项目打开 Canvas Map，画布打开编辑器，任务卡和 TODO 分别定位到卡和条目。项目树支持刷新、置顶和进入项目管理。树中的 TODO 展示人工状态，并按卡内顺序排列。
+- 「日常工作」的 Canvas Map 和 Todo 作用于当前项目。离开项目页面后仍可从最近项目进入；无可用项目时打开项目选择页。明确的 URL 优先于浏览器记录。已删除的画布提供返回地图的入口。
 - Canvas Map 支持平移、缩放、拖动和重置坐标。项目级关系可以在地图侧栏通过端点选择器维护，地图上点击线查看来源和目标。PlanWeave 的地图本身只读取关系边，这里的侧栏编辑用于补上 Web 端的关系维护入口，地图拖动仍只保存位置。
 - 保留原 `/work-items` 作为全局清单和存量事项入口。项目和画布改名保持原 ID。画布或项目仍有 TODO 时，提示先移动或移出事项，再允许删除。删除最后一张画布时要求先建替代画布，或删除整个空项目。
 
@@ -57,7 +58,7 @@
 
 ### Web：一个工作区，三种呈现
 
-项目工作区位于 `workbench/web/src/modules/work-items/projects`。入口为 `/work-projects`，工作区提供 `/work-projects/:projectId/map`、`/work-projects/:projectId/canvases/:canvasId` 和 `/work-projects/:projectId/todo`。`?itemId=…` 保留侧栏选中的事项，`?focusItemId=…` 定位画布中的事项。TODO 筛选使用 `canvasId`、`taskCardId` 和 `category`。同一项目的视图共用读取与刷新逻辑；切换项目取消旧读取。
+项目工作区位于 `workbench/web/src/modules/work-items/projects`。入口为 `/work-projects`，工作区提供 `/work-projects/:projectId/map`、`/work-projects/:projectId/canvases/:canvasId` 和 `/work-projects/:projectId/todo`。`?itemId=…` 保留侧栏选中的事项，`?focusItemId=…` 定位画布中的事项。TODO 筛选使用 `canvasId`、`taskCardId` 和 `category`。当前项目的树和三个视图共用工作区读取与刷新逻辑。展开其他项目时按需读取该分支。切换项目会取消当前工作区的旧读取。
 
 地图和画布共用独立的 Web `modules/canvas` 模块。该模块基于 `@xyflow/react` 渲染调用方提供的坐标、边和节点内容，只对外报告拖动、选择、连线等图形事件。项目工作区负责生成地图节点和任务卡节点，处理规划写入。PlanWeave 与 [Flow Runtime Web](../../../flow-runtime/web/package.json) 已使用同一图库。详情侧栏沿用 Workbench 的主题、表单和 HTTP 客户端。借鉴 PlanWeave 的组件结构和交互，按 Workbench 数据模型重写投影。若复制源代码片段，保留 PlanWeave 的 MIT 许可证与版权声明。
 
@@ -73,6 +74,6 @@
 
 PlanWeave 基线 `42d3813`：
 
-- 项目树与恢复：`packages/desktop/src/renderer/sidebar/ProjectSidebar.tsx`、`hooks/useDesktopProjectLoader.ts`。
+- 侧栏、项目树与恢复：`packages/desktop/src/renderer/sidebar/{SidebarNav,ProjectSidebar,ProjectTree,ProjectTreeItem,CanvasTreeItem}.tsx`、`hooks/useDesktopProjectLoader.ts`。
 - 两级图：`packages/runtime/src/projectGraph/schema.ts`、`packages/desktop/src/renderer/views/CanvasMapView.tsx`、`views/GraphView.tsx`、`graph/TaskNodeCard.tsx`。
 - TODO 与定位：`packages/runtime/src/plangraph/projections/todoProjection.ts`、`packages/desktop/src/renderer/views/TodoView.tsx`、`views/WorkspaceTabs.tsx`。原版 TODO 从运行快照汇总 Block，跨画布的详情可寻址；Workbench 另行保证定位时先加载目标画布再聚焦。

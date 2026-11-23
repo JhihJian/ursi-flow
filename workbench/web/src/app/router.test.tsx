@@ -54,7 +54,7 @@ it.each([
   render(<RouterProvider router={router} />)
   expect(await screen.findByRole('heading', { name: '页面未找到' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
-  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['/api/v1/flows'])
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['/api/v1/flows', '/api/v2/work-projects'])
 })
 
 it.each(['/work-items/abc', '/executors/abc/revisions/2'])('工作项和执行器深链在原位置登录：%s', async path => {
