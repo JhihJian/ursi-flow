@@ -1,5 +1,7 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { CanvasGraph, type CanvasNode, type Point } from '@/modules/canvas'
+import { CanvasGraph, type CanvasContextTarget, type CanvasNode, type Point } from '@/modules/canvas'
+import { ContextMenu, type ContextAction } from '@/shared/ui/context-menu'
+import type { MenuAnchor } from '@/shared/ui/menu-anchor'
 import type { Command, Named, Relation, Workspace } from '@/shared/api/work-projects'
 import { Button } from '@/shared/ui/button'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -20,6 +22,7 @@ export type ProjectGraphProps = {
 }
 
 type Selection = { kind: 'node' | 'relation'; id: string }
+type MenuTarget = CanvasContextTarget | { kind: 'todo'; id: string; cardId: string }
 type Editor =
   | { kind: 'create' | 'createRelation' }
   | { kind: 'rename' | 'delete' | 'createItem' | 'addItem' | 'editRelation' | 'deleteRelation'; id: string }
@@ -55,6 +58,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
 
   const [selection, setSelection] = useState<Selection>()
   const [editor, setEditor] = useState<Editor>()
+  const [menu, setMenu] = useState<{ target: MenuTarget; anchor: MenuAnchor }>()
   const [graphError, setGraphError] = useState('')
   const [listMode, setListMode] = useState(false)
   const [lastReset, setLastReset] = useState(0)
@@ -116,6 +120,43 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
     return ''
   }
 
+  function contextActions(target: MenuTarget): { label: string; actions: ContextAction[] } | undefined {
+    if (target.kind === 'pane') return { label: '画布空白处操作', actions: [
+      { label: `新建${noun}`, icon: 'plus', disabled: busy, run: () => openEditor({ kind: 'create' }) },
+      { label: '新建关系', icon: 'workflow', disabled: busy || nodes.length < 2, run: () => openEditor({ kind: 'createRelation' }) },
+      { label: '重置布局', icon: 'refresh', disabled: busy || !Object.keys(layout.positions).length, run: () => savePositions({}, true) },
+    ] }
+    if (target.kind === 'edge') {
+      const edge = relations.find(edge => edge.id === target.id)
+      if (!edge) return
+      return { label: `关系操作：${relationLabel(edge)}`, actions: [
+        { label: '编辑关系', icon: 'edit', disabled: busy, run: () => openEditor({ kind: 'editRelation', id: edge.id }) },
+        { label: '删除关系', icon: 'trash', danger: true, disabled: busy, run: () => openEditor({ kind: 'deleteRelation', id: edge.id }) },
+      ] }
+    }
+    if (target.kind === 'todo') {
+      const item = names.has(target.cardId) && cardItems.get(target.cardId)?.find(row => row.item.id === target.id)?.item
+      if (!item) return
+      return { label: `TODO 操作：${item.title}`, actions: [
+        { label: '打开详情', icon: 'doc', run: () => onItem(item.id) },
+        { label: '移动或移出 TODO', icon: 'arrow-right', disabled: busy,
+          run: () => openEditor({ kind: 'moveItem', id: item.id, sourceCardId: target.cardId }) },
+      ] }
+    }
+    const node = nodes.find(node => node.id === target.id)
+    if (!node) return
+    const blocked = deletionBlock(node, map)
+    return { label: `${noun}操作：${node.name}`, actions: [
+      ...(map ? [{ label: '打开画布', icon: 'folder', run: () => onCanvas(node.id) }] : [
+        { label: '新建 TODO', icon: 'plus', disabled: busy, run: () => openEditor({ kind: 'createItem', id: node.id }) },
+        { label: '加入已有事项', icon: 'layers', disabled: busy, run: () => openEditor({ kind: 'addItem', id: node.id }) },
+      ]),
+      { label: `重命名${noun}`, icon: 'edit', disabled: busy, run: () => openEditor({ kind: 'rename', id: node.id }) },
+      { label: `删除${noun}`, icon: 'trash', danger: true, disabled: busy || Boolean(blocked), hint: blocked || undefined,
+        run: () => openEditor({ kind: 'delete', id: node.id }) },
+    ] }
+  }
+
   function nodeActions(node: Named, isCanvas: boolean) {
     const label = isCanvas ? '画布' : '任务卡'
     const blocked = deletionBlock(node, isCanvas)
@@ -137,7 +178,8 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
       <GraphCardItems graph={!list} rows={cardItems.get(node.id) ?? []} locatedItemId={focusNodeId === node.id ? locatedItemId : undefined}
         busy={busy} onItem={onItem}
         onReorder={itemIds => submit({ type: 'reorderItems', taskCardId: node.id, itemIds })}
-        onMoveItem={id => openEditor({ kind: 'moveItem', id, sourceCardId: node.id })} />
+        onMoveItem={id => openEditor({ kind: 'moveItem', id, sourceCardId: node.id })}
+        onContext={list ? undefined : (id, anchor) => setMenu({ target: { kind: 'todo', id, cardId: node.id }, anchor })} />
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" icon="plus" disabled={busy} onClick={() => openEditor({ kind: 'createItem', id: node.id })}>新建 TODO</Button>
         <Button size="sm" disabled={busy} onClick={() => openEditor({ kind: 'addItem', id: node.id })}>加入已有事项</Button>
@@ -217,6 +259,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
   }
 
   if (!map && !canvas) return <ResourceState empty title="画布不存在" description="该画布可能已被删除。" />
+  const context = menu && !list ? contextActions(menu.target) : undefined
 
   return <section className="min-w-0 space-y-3" aria-label={map ? 'Canvas Map' : '规划画布'}>
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -225,14 +268,15 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
         <Button size="sm" icon="plus" variant="primary" disabled={busy} onClick={() => openEditor({ kind: 'create' })}>新建{noun}</Button>
         <Button size="sm" disabled={busy || nodes.length < 2} onClick={() => openEditor({ kind: 'createRelation' })}>新建关系</Button>
         <Button size="sm" icon="refresh" disabled={busy || !Object.keys(layout.positions).length} onClick={() => savePositions({}, true)}>重置布局</Button>
-        {!compact && nodes.length > 0 && <Button size="sm" aria-pressed={list} onClick={() => setListMode(current => !current)}>列表视图</Button>}
+        {!compact && nodes.length > 0 && <Button size="sm" aria-pressed={list} onClick={() => { setMenu(undefined); setListMode(current => !current) }}>列表视图</Button>}
       </div>
     </div>
     {graphError && <p role="alert" className="break-words text-sm text-err">{graphError}</p>}
     {renderEditor()}
+    {menu && context && <ContextMenu anchor={menu.anchor} {...context} onClose={() => setMenu(undefined)} />}
     <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_14rem]">
-      <div className="min-w-0 [&_.wb-canvas-card-title]:line-clamp-3">
-        {!nodes.length ? <ResourceState empty title={map ? '暂无画布' : '暂无任务卡'}
+      <div className="relative min-w-0 [&_.wb-canvas-card-title]:line-clamp-3">
+        {list && !nodes.length ? <ResourceState empty title={map ? '暂无画布' : '暂无任务卡'}
           description={map ? '新建画布后即可组织项目。' : '新建任务卡后即可添加 TODO。'} />
           : list ? <ul aria-label={map ? '画布列表' : '任务卡列表'} className="divide-y divide-line border-y border-line">
             {nodes.map(node => <li key={node.id} className="min-w-0 space-y-2 py-3">
@@ -251,6 +295,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
             onMove={(id, position) => {
               if (positions.has(id)) savePositions({ ...Object.fromEntries(positions), [id]: position })
             }}
+            onContext={(target, anchor) => setMenu({ target, anchor })}
             onSelectNode={id => setSelection({ kind: 'node', id })}
             onOpenNode={map ? onCanvas : id => { if (!busy) openEditor({ kind: 'rename', id }) }}
             onSelectEdge={id => setSelection({ kind: 'relation', id })}
@@ -260,6 +305,9 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
               if (relation) saveRelation(from, to, relation)
             }}
           />}
+        {!list && !nodes.length && <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <p className="rounded-md bg-surface px-3 py-2 text-sm text-txt3">{map ? '暂无画布' : '暂无任务卡'}</p>
+        </div>}
       </div>
       <aside className="min-w-0 space-y-3 border-t border-line pt-3 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0" aria-label="图管理">
         {(!map || !list) && managedNode && <div className="space-y-2">

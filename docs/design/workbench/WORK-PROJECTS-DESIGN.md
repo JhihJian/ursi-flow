@@ -30,6 +30,8 @@
 - 连线表达**规划先后**，箭头从前项指向后项。地图关系连画布，画布关系连同一画布内的任务卡，两层独立维护。跨画布的详细拆分通过画布关系和导航表达，首版无需跨画布任务卡连线。拒绝跨作用域、重复、自环和成环的关系。所有关系都与办理状态独立：前项仍待开始时，后项也可被人工标记完成。
 - 支持选中、拖动、连接、断开和重接任务卡。条目从一张卡移到另一张卡时，两张卡及其关系保持原样。删除任务卡前须移走卡内所有事项，确认后清理该卡的关系与坐标。窄屏用按任务卡分组的列表完成查看、建项、移动和打开详情。
 
+桌面图形视图可用右键快捷操作。空白处可新建节点或关系、重置布局；地图节点可打开、改名或删除画布；任务卡可添加 TODO、改名或删除；关系线可编辑或删除；卡内 TODO 可打开详情、移动或移出。菜单使用右键命中的对象及现有保存与删除确认流程。
+
 ### 项目 TODO 面板
 
 - 顶部显示全项目办理状态分布和各画布摘要，可点摘要筛选该画布。下方按「待开始」「进行中」「已完成」分组，支持按画布、任务卡和类别过滤，所有条目均可浏览。在筛选状态下明确展示筛选范围，地图计数仍取各画布的完整数据。
@@ -75,5 +77,5 @@
 PlanWeave 基线 `42d3813`：
 
 - 侧栏、项目树与恢复：`packages/desktop/src/renderer/sidebar/{SidebarNav,ProjectSidebar,ProjectTree,ProjectTreeItem,CanvasTreeItem}.tsx`、`hooks/useDesktopProjectLoader.ts`。
-- 两级图：`packages/runtime/src/projectGraph/schema.ts`、`packages/desktop/src/renderer/views/CanvasMapView.tsx`、`views/GraphView.tsx`、`graph/TaskNodeCard.tsx`。
+- 两级图：`packages/runtime/src/projectGraph/schema.ts`、`packages/desktop/src/renderer/views/CanvasMapView.tsx`、`views/GraphView.tsx`、`graph/{CanvasNodeCard,TaskNodeCard,BlockPreviewButton}.tsx`。
 - TODO 与定位：`packages/runtime/src/plangraph/projections/todoProjection.ts`、`packages/desktop/src/renderer/views/TodoView.tsx`、`views/WorkspaceTabs.tsx`。原版 TODO 从运行快照汇总 Block，跨画布的详情可寻址；Workbench 另行保证定位时先加载目标画布再聚焦。

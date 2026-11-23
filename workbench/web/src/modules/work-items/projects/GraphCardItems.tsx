@@ -3,6 +3,7 @@ import { statuses } from '@/shared/api/work-items'
 import type { PlacedItem } from '@/shared/api/work-projects'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { menuAnchor, type MenuAnchor } from '@/shared/ui/menu-anchor'
 import type { Counts } from './graph-data'
 
 export function GraphCanvasProgress({ counts }: { counts?: Counts }) {
@@ -15,9 +16,10 @@ export function GraphCanvasProgress({ counts }: { counts?: Counts }) {
   </div>
 }
 
-export function GraphCardItems({ rows, locatedItemId, graph, busy, onItem, onReorder, onMoveItem }: {
+export function GraphCardItems({ rows, locatedItemId, graph, busy, onItem, onReorder, onMoveItem, onContext }: {
   rows: readonly PlacedItem[]; locatedItemId?: string; graph: boolean; busy: boolean
   onItem: (id: string) => void; onReorder: (ids: string[]) => void; onMoveItem: (id: string) => void
+  onContext?: (id: string, anchor: MenuAnchor) => void
 }) {
   const located = useRef<HTMLLIElement>(null)
   const list = useRef<HTMLOListElement>(null)
@@ -48,6 +50,7 @@ export function GraphCardItems({ rows, locatedItemId, graph, busy, onItem, onReo
     {rows.map(({ item }, index) => {
       const highlighted = locatedItemId === item.id
       return <li key={item.id} ref={highlighted ? located : undefined} aria-current={highlighted || undefined}
+        onContextMenu={onContext ? event => onContext(item.id, menuAnchor(event, event.currentTarget.querySelector('button'))) : undefined}
         className={cn('flex min-w-0 items-center gap-1 py-1', highlighted && 'bg-accent/15 ring-1 ring-inset ring-accent')}>
         <div className="min-w-0 flex-1 px-1">
           <button type="button" className="block max-w-full break-words text-left text-xs text-accent-2 hover:underline focus-visible:outline-accent"

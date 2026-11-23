@@ -7,6 +7,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Button } from '@/shared/ui/button'
+import { menuAnchor, type MenuAnchor } from '@/shared/ui/menu-anchor'
 import './canvas-graph.css'
 
 export interface Point { x: number; y: number }
@@ -19,6 +20,7 @@ export interface CanvasNode {
 }
 
 export interface CanvasEdge { id: string; from: string; to: string }
+export type CanvasContextTarget = { kind: 'pane' } | { kind: 'node' | 'edge'; id: string }
 
 export interface CanvasGraphProps {
   nodes: readonly CanvasNode[]
@@ -30,6 +32,7 @@ export interface CanvasGraphProps {
   onSelectNode?: (id: string) => void
   onOpenNode?: (id: string) => void
   onSelectEdge?: (id: string) => void
+  onContext?: (target: CanvasContextTarget, anchor: MenuAnchor) => void
   onConnect?: (from: string, to: string) => void
   onReconnect?: (id: string, from: string, to: string) => void
 }
@@ -128,9 +131,10 @@ function CanvasControls() {
 
 export function CanvasGraph({
   nodes, edges, focusNodeId, editableEdges = false, showMiniMap = false,
-  onMove, onSelectNode, onOpenNode, onSelectEdge, onConnect, onReconnect,
+  onMove, onSelectNode, onOpenNode, onSelectEdge, onContext, onConnect, onReconnect,
 }: CanvasGraphProps) {
   const graphId = useId()
+  const surface = useRef<HTMLDivElement>(null)
   const [nodeState, setNodeState] = useState(() => ({ input: nodes, view: projectNodes(nodes) }))
   if (nodeState.input !== nodes) {
     setNodeState({ input: nodes, view: projectNodes(nodes, nodeState.view) })
@@ -172,7 +176,10 @@ export function CanvasGraph({
   const validEndpoints = ({ source, target }: Connection) => nodesById.has(source) && nodesById.has(target)
 
   return (
-    <div className="wb-canvas">
+    <div className="wb-canvas" ref={surface} tabIndex={onContext ? 0 : undefined} role="group" aria-label="画布操作"
+      onContextMenu={onContext ? event => {
+        if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
+      } : undefined}>
       <ReactFlow<CardNode, Edge>
         id={graphId}
         aria-label="图形画布"
@@ -212,6 +219,11 @@ export function CanvasGraph({
         onEdgeClick={(_, edge) => {
           if (edge.id === selection.current.edgeId) onSelectEdge?.(edge.id)
         }}
+        onPaneContextMenu={onContext ? event => {
+          if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
+        } : undefined}
+        onNodeContextMenu={onContext ? (event, node) => onContext({ kind: 'node', id: node.id }, menuAnchor(event, surface.current)) : undefined}
+        onEdgeContextMenu={onContext ? (event, edge) => onContext({ kind: 'edge', id: edge.id }, menuAnchor(event, surface.current)) : undefined}
         onNodeDoubleClick={(_, node) => onOpenNode?.(node.id)}
         onNodeDragStop={(_, node) => {
           const original = nodesById.get(node.id)?.position
