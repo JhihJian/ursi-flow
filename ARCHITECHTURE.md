@@ -1,23 +1,23 @@
 # ursi-flow 架构与设计索引
 
-Workbench 管理工作项和工作包，执行器平台管理配置包、执行器修订和执行尝试，Flow Runtime 负责流程编排和运行历史。平台 MCP 提供外部资源和工具，沙箱平台独立提供容器环境和服务端点。
+Workbench 管理工作项和工作包，执行器平台（`executor-platform`）管理配置包、执行器修订和执行尝试，Flow Runtime 负责流程编排和运行历史。MCP 服务管理模块（`ursi-mcp`）提供外部资源和工具，沙箱平台独立提供容器环境和服务端点。
 
 ## 模块职责
 
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
-| [执行器管理平台](executor-platform/server/SPEC.md) | 独立管理页维护配置包、资源、后端和执行器修订。平台保存冻结配置、执行尝试和只读制品。 |
+| [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Flow Runtime](flow-runtime/SPEC.md) | 校验并执行 `FLOW.md` 包，以节点结果决定下一步。`ursi-flowd` 持有流程修订、运行配置、Run 和节点历史，可由独立控制台或 CLI 操作。 |
-| [执行器 SDK](executor-sdk/SPEC.md) | 供 Flow 和 Pi 适配器复用的 Node.js MCP 服务端库，负责协议发现和校验，由后端保存运行状态。 |
-| [平台 MCP](ursi-mcp/SPEC.md) | 管理已登记的 Streamable HTTP MCP 服务，提供资源浏览和授权工具调用。后端库与 Web 页面可嵌入 Workbench，也可由独立管理台托管。 |
+| [执行器 MCP SDK](executor-sdk/SPEC.md) | Node.js MCP 服务端库，供独立的整条 Flow MCP 适配器等服务使用。SDK 负责协议发现和校验，运行状态由使用它的服务持有。 |
+| [MCP 服务管理](ursi-mcp/SPEC.md) | 管理已登记的 Streamable HTTP MCP 服务，提供资源浏览和授权工具调用。后端库与 Web 页面可嵌入 Workbench，也可由独立管理台托管。 |
 | [沙箱平台](ursi-sandbox/SPEC.md) | Builder 构建镜像和服务包，注册表校验组合，容器内 Runtime 装配服务。Gateway 管理实例、工作卷和端点，Observer 可选配。 |
 
 ## 模块关系
 
 - **管理 Flow。** Workbench 的可选 `/api/v1` 通过 Rust `FlowClient` 连接 daemon 的 Unix socket。[CLI](flow-runtime/client/SPEC.md) 直连 daemon，[独立控制台](flow-runtime/web/SPEC.md) 通过自己的同源桥接入。连接同一 daemon 的三个入口共享运行历史。
-- **执行一次工作。** Workbench 提交工作包输入快照，Runtime 可提交 Agent 节点，两者各自用服务令牌调用平台的固定执行器修订。平台负责本机 stdio MCP 调用和制品收集，Runtime 校验节点提交的结果后选边。
-- **生成工作包。** Workbench 通过内嵌的 `ursi-mcp` 读取授权资源，再交给 Python 配方或版本化生成器。文件与生成来源归 Workbench，发布工作包独立于启动 Flow 或 Agent。此处的 HTTP MCP 与执行器的本机 stdio MCP 是两条入口。
+- **执行一次工作。** Workbench 和 Flow Runtime 各自用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。Flow Runtime 校验节点提交的结果后选择后续路径。
+- **生成工作包。** Workbench 通过内嵌的 `ursi-mcp` 读取授权的 HTTP MCP 资源，再交给 Python 配方或版本化生成器。文件与生成来源归 Workbench，发布工作包独立于启动 Flow 或 Agent。
 - **使用沙箱。** 外部调用方通过 Gateway 打开已登记的 SSH、浏览器或 ACP 等端点，业务会话由对应服务持有。现行 Flow 的命令和 Pi 节点直接在本机工作目录运行，无需 Gateway。
 
 ## 设计索引
@@ -31,7 +31,7 @@ Workbench 管理工作项和工作包，执行器平台管理配置包、执行�
 | 工作项与文件包 | [工作清单与包来源](docs/design/workbench/WORK-LIST-DESIGN.md) · [版本化工作包生成器](docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md) · [工作包和配置包编辑台](docs/design/workbench/PATCH-STUDIO.md) |
 | 执行器 | [平台拆分与调用边界](docs/design/executor-platform/OVERVIEW.md) · [平台部署](executor-platform/server/README.md) · [定义与尝试](docs/design/workbench/EXECUTOR-DESIGN.md) · [Flow 执行器](docs/design/workbench/FLOW-EXECUTOR-DESIGN.md) · [Agent 执行器](docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md) · [Runtime MCP 适配器](docs/design/flow-runtime/MCP-ADAPTER.md) |
 | Flow 能力 | [Agent 装配](docs/design/flow-runtime/ability/agent-assembly.md) · [Agent 生命周期](docs/design/flow-runtime/ability/agent-harness.md) · [Agent 会话复用](docs/design/flow-runtime/ability/agent-continuity.md) · [运行时工具](docs/design/flow-runtime/ability/runtime-tools.md) · [命令执行](docs/design/flow-runtime/ability/command-execution.md) · [子 Flow](docs/design/flow-runtime/ability/child-flow.md) · [并行执行](docs/design/flow-runtime/ability/parallel-execution.md) |
-| 平台 MCP | [独立模块与宿主边界](docs/design/ursi-mcp/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/ursi-mcp/EXECUTOR-DISCOVERY-DESIGN.md) |
+| MCP 服务管理 | [独立模块与宿主边界](docs/design/ursi-mcp/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/ursi-mcp/EXECUTOR-DISCOVERY-DESIGN.md) |
 | 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) |
 
 相关入口：[根规格](SPEC.md) · [Flow 导读](flow-runtime/docs/flow-overview.md) · [Flow 文件规范](flow-runtime/docs/flow-spec.md) · [执行器 MCP 协议](docs/EXECUTOR-MCP.md) · [Workbench 执行器接入](workbench/EXECUTOR-INTEGRATION.md)。
