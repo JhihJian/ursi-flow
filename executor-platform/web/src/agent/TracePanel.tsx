@@ -144,8 +144,8 @@ export function TracePanel({ attemptId, phase, events, error, onRetry }: {
   }, [syncScroll])
 
   return (
-    <aside aria-labelledby={headingId} className="min-w-0 self-start rounded-md border border-line bg-surface">
-      <header className="relative flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 pr-9 lg:pr-3">
+    <aside aria-labelledby={headingId} className="min-w-0 self-start border-y border-line bg-surface lg:rounded-md lg:border">
+      <header className="relative flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 pr-9 lg:pr-3">
         <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold text-txt">
           <ListOrdered className="size-4 shrink-0 text-txt3" aria-hidden="true" />
           ACP 执行过程

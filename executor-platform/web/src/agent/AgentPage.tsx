@@ -42,9 +42,9 @@ export default function AgentPage() {
     setSent('')
   }
 
-  return <section aria-labelledby="agent-title" className="mx-auto flex w-full max-w-7xl flex-1 flex-col">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
-      <h1 id="agent-title" className="flex items-center gap-2 text-xl font-semibold"><Bot className="size-5" aria-hidden="true" />Agent 工作区</h1>
+  return <section aria-labelledby="agent-title" className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col">
+    <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+      <h1 id="agent-title" className="flex items-center gap-2 text-base font-semibold"><Bot className="size-5 text-accent-2" aria-hidden="true" />Agent 工作区</h1>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-txt3">ACP v2</span>
         <span role="status" className={outcome === 'failed' ? 'text-err' : 'font-medium text-txt2'}>{status}</span>
@@ -53,14 +53,14 @@ export default function AgentPage() {
       </div>
     </header>
 
-    <div className="mt-3 grid flex-1 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,32%)] lg:grid-rows-[1fr_auto]">
-      <Conversation className="min-h-64 max-h-[55dvh] lg:col-start-1 lg:row-start-1" aria-label="任务对话">
-        <ConversationContent className="min-h-64 gap-5">
-          {!attempt.id && <ConversationEmptyState icon={<Bot className="size-6" aria-hidden="true" />} title="新任务"
-            description={catalog.loading ? '正在读取执行器' : executor ? '等待指令' : '暂无已发布的 Agent'} />}
-          {sent && attempt.id && <Message from="user"><span className="text-xs text-txt3">你</span><MessageContent className="whitespace-pre-wrap break-words">{sent}</MessageContent></Message>}
+    <div className="mt-3 grid flex-1 grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,28%)] lg:grid-rows-[1fr_auto]">
+      <Conversation className="min-h-[40dvh] max-h-[55dvh] lg:col-start-1 lg:row-start-1 lg:min-h-[55dvh] lg:max-h-[65dvh]" aria-label="任务对话">
+        <ConversationContent className="mx-auto min-h-full w-full max-w-[820px] gap-7 px-1 py-6 sm:px-4">
+          {!attempt.id && <ConversationEmptyState icon={<div className="rounded-md border border-line bg-surface p-3"><Bot className="size-6 text-accent-2" aria-hidden="true" /></div>} title="新任务"
+            description={catalog.loading ? '正在读取执行器' : executor ? '选择执行器修订，开始一个任务' : '暂无已发布的 Agent'} />}
+          {sent && attempt.id && <Message from="user" className="max-w-[85%] items-end"><span className="text-xs text-txt3">你</span><MessageContent className="whitespace-pre-wrap break-words border border-line">{sent}</MessageContent></Message>}
           {attempt.replies.map(entry => (
-            <Message key={entry.id} from="assistant"><span className="text-xs text-txt3">Agent</span><MessageContent className="break-words"><MessageResponse>{entry.text}</MessageResponse></MessageContent></Message>
+            <Message key={entry.id} from="assistant" className="max-w-full"><span className="flex items-center gap-2 text-xs font-medium text-txt2"><Bot className="size-4 text-accent-2" aria-hidden="true" />Agent</span><MessageContent className="w-full break-words leading-6"><MessageResponse>{entry.text}</MessageResponse></MessageContent></Message>
           ))}
           {active && <p className="text-sm text-txt3">{attempt.cancelRequested ? '已请求停止，等待确认。' : '等待 Agent 更新…'}</p>}
           {attempt.result?.artifactError && <p role="alert" className="text-sm text-err">制品未通过校验。</p>}
@@ -73,7 +73,7 @@ export default function AgentPage() {
           error={attempt.traceError} onRetry={attempt.retryTrace} />
       </div>
 
-      <div className="min-w-0 space-y-3 border-t border-line pt-3 lg:col-start-1 lg:row-start-2">
+      <div className="mx-auto w-full max-w-[820px] min-w-0 space-y-3 pb-1 lg:col-start-1 lg:row-start-2">
         {catalog.error && <p role="alert" className="text-sm text-err">{catalog.error} <Button type="button" size="sm" onClick={catalog.reload}>重新读取</Button></p>}
         {attempt.id && <p className="break-all text-xs text-txt3">尝试 ID：<code>{attempt.id}</code></p>}
         {attempt.error && <p role="alert" className="whitespace-pre-line text-sm text-err">{attempt.error}</p>}
@@ -107,9 +107,9 @@ function Composer({ executor, choices, choose, locked, draft, setDraft, onSubmit
     event.preventDefault()
     if (canSend && selected) onSubmit({ id: selected.id, revision: selected.revision })
   }
-  return <PromptInput onSubmit={send}>
-    <PromptInputTextarea aria-label="任务指令" value={draft} onChange={event => setDraft(event.target.value)} disabled={locked} placeholder="输入任务指令" />
-    <PromptInputFooter className="flex-wrap">
+  return <PromptInput onSubmit={send} className="shadow-sm">
+    <PromptInputTextarea className="min-h-24 px-4 py-3" aria-label="任务指令" value={draft} onChange={event => setDraft(event.target.value)} disabled={locked} placeholder="输入任务指令" />
+    <PromptInputFooter className="flex-wrap gap-2 px-3 pb-3">
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
         {choices.length > 1 && <select className="input max-w-full" aria-label="Agent 执行器" value={executor?.id ?? ''} disabled={locked} onChange={event => choose(event.target.value)}>
           {choices.map(item => <option key={item.id} value={item.id}>{item.id}</option>)}
