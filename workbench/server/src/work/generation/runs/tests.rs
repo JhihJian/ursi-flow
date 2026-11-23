@@ -92,15 +92,16 @@ fn concurrent_admission_replays_and_restart_closes_unfinished_run() {
 }
 
 #[test]
-fn bound_publication_checks_revision_and_persists_link_after_detach() {
+fn bound_publication_checks_item_exists_and_persists_link_after_detach() {
     let (temp, service) = fixture();
     let id = Uuid::new_v4().to_string();
     let (_, job) = register(&service, &id, bound()).unwrap();
     let job = job.unwrap();
+    // 发布时事项已被删除：结果整体回滚。
     service
         .store
         .update(|db| {
-            db["workListItems"]["item"]["revision"] = json!(2);
+            db["workListItems"].as_object_mut().unwrap().remove("item");
             Ok(())
         })
         .unwrap();
@@ -110,13 +111,21 @@ fn bound_publication_checks_revision_and_persists_link_after_detach() {
     ));
     assert_eq!(temp.0.join("directories").read_dir().unwrap().count(), 0);
     drop(job);
-    let next = Uuid::new_v4().to_string();
-    let (_, job) = register(&service, &next, bound()).unwrap();
-    publish(&service.store, &job.unwrap(), generated()).unwrap();
+    // 事项恢复后再次发布成功。
     service
         .store
         .update(|db| {
-            db["workListItems"].as_object_mut().unwrap().remove("item");
+            db["workListItems"]["item"] = json!({"id":"item","title":"标题","revision":1,"category":"one_time","status":"pending","generator":{"id":"g","revision":1,"resources":[]}});
+            Ok(())
+        })
+        .unwrap();
+    let next = Uuid::new_v4().to_string();
+    let (_, job) = register(&service, &next, bound()).unwrap();
+    publish(&service.store, &job.unwrap(), generated()).unwrap();
+    // 事项删除并解绑后，同请求重放仍返回已发布的包。
+    service
+        .store
+        .update(|db| {
             patches::detach_item(db, "item")
         })
         .unwrap();

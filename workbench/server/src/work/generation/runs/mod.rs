@@ -1,6 +1,7 @@
 //! Explicit runs are registered before conversion and published with their output.
-use super::{Binding, GeneratorRef, Recipe, Resource, convert, find, generate, resolve};
-use crate::work::{Error, Store, directories, generators, patches};
+use super::{Binding, GeneratorRef, Recipe, Resource, generators, resolve};
+use super::convert::{self, WorkContext};
+use crate::work::{Error, Store, directories, patches};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashSet,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -61,9 +63,15 @@ struct Trial {
 
 struct Job {
     row: Value,
-    item: Option<Value>,
+    context: Option<WorkContext>,
     recipe: Recipe,
     _permit: OwnedSemaphorePermit,
+}
+
+
+// 受理与发布只校验工作项仍存在；字段细节归工作项模块所有。
+fn item_row<'a>(db: &'a Value, id: &str) -> Option<&'a Value> {
+    db["workListItems"].get(id)
 }
 
 fn internal() -> Error {
@@ -99,7 +107,7 @@ fn register(service: &Service, id: &str, input: Request) -> Result<(Value, Optio
         }
         let (binding, item) = match input {
             Request::WorkItem(input) => {
-                let item = find(db, &input.work_item_id)?;
+                let item = item_row(db, &input.work_item_id).ok_or_else(|| Error::NotFound("工作项不存在".into()))?;
                 if item["generator"].is_null() {
                     return Err(Error::Invalid("工作项尚未绑定生成器".into()));
                 }
@@ -121,7 +129,18 @@ fn register(service: &Service, id: &str, input: Request) -> Result<(Value, Optio
         }
         let recipe = Recipe { script: generator["script"].as_str().ok_or_else(internal)?.into(), resources: binding.resources };
         db[RUNS][id] = json!({"request":request,"run":row});
-        Ok((row.clone(), Some(Job { row, item, recipe, _permit: permit })))
+        let context = item.map(|row| {
+            let text = |key: &str| row[key].as_str().unwrap_or_default().to_owned();
+            WorkContext {
+                id: text("id"),
+                title: text("title"),
+                description: text("description"),
+                category: row["category"].clone(),
+                status: row["status"].clone(),
+                revision: row["revision"].clone(),
+            }
+        });
+        Ok((row.clone(), Some(Job { row, context, recipe, _permit: permit })))
     })
 }
 
@@ -150,7 +169,7 @@ async fn execute(service: Service, job: Job) {
     let mut progress = convert::Progress::default();
     let output = convert::execute(
         &service.platform,
-        job.item.as_ref(),
+        job.context.as_ref(),
         &job.recipe,
         &mut progress,
     )
@@ -189,6 +208,31 @@ async fn execute(service: Service, job: Job) {
     }
 }
 
+
+// 将生成的文件写入目录根，并同步父目录以保证持久性。
+fn seed(root: &std::path::Path, files: &[(String, Vec<u8>)]) -> Result<(), Error> {
+    if files.is_empty() {
+        return Err(Error::Invalid("转换未返回文件".into()));
+    }
+    let mut dirs = HashSet::new();
+    for (path, bytes) in files {
+        let parts = directories::fs::segments(path, false)?;
+        for depth in 1..parts.len() {
+            let prefix = &parts[..depth];
+            if dirs.insert(prefix.to_vec()) {
+                directories::fs::mkdir(root, prefix)?;
+            }
+        }
+        directories::fs::write(root, &parts, bytes, false)?;
+    }
+    let parent = root
+        .parent()
+        .ok_or_else(|| Error::Internal("工作包目录缺少上级目录".into()))?;
+    std::fs::File::open(parent)
+        .and_then(|dir| dir.sync_all())
+        .map_err(|e| Error::Internal(format!("工作包目录同步失败：{e}")))
+}
+
 fn running<'a>(db: &'a mut Value, id: &str) -> Result<&'a mut Value, Error> {
     db[RUNS]
         .get_mut(id)
@@ -209,14 +253,16 @@ fn publish(store: &Store, job: &Job, output: convert::Generated) -> Result<(), E
     directories::allocate(
         store,
         directories::Rules::default(),
-        |root| generate::seed(root, &output.files),
+        |root| seed(root, &output.files),
         |db, directory_id| {
+            // 发布前复核生成器仍存在且修订未变。
             generators::generator(db, gen_id, revision)?;
             let mut result =
                 json!({"name":output.name,"directoryId":directory_id,"files":manifest});
-            if let Some(item) = &job.item {
-                let item_id = item["id"].as_str().ok_or_else(internal)?;
-                if find(db, item_id).ok().map(|row| &row["revision"]) != Some(&item["revision"]) {
+            if let Some(context) = &job.context {
+                let item_id = context.id.as_str();
+                // 发布时只校验事项仍存在；字段细节归工作项模块所有。
+                if item_row(db, item_id).is_none() {
                     return Err(Error::Conflict("工作项已修改或删除，生成结果未发布".into()));
                 }
                 let patch = patches::register_generated(

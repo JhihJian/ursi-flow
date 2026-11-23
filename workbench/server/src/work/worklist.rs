@@ -1,42 +1,29 @@
-//! 工作清单管理可独立编辑的事项及生成工作包的配方。
-mod convert;
-mod generate;
-mod runs;
+//! 工作清单管理可独立编辑的事项，不包含生成流程。
 #[cfg(test)]
 mod tests;
 
-use super::{Error, Store, generators, patches, valid_label};
+use super::{Error, Store, patches};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 const TABLE: &str = "workListItems";
 
-pub(super) fn routes(store: Store, platform: ursi_mcp::McpPlatform) -> Router {
-    let runs = runs::routes(store.clone(), platform.clone());
+pub(super) fn routes(store: Store) -> Router {
     Router::new()
         .route("/v2/work-items", get(list).post(create))
         .route(
             "/v2/work-items/{id}",
             get(detail).put(replace).delete(remove),
         )
-        .with_state(store.clone())
-        .merge(
-            Router::new()
-                .route("/v2/work-items/{id}/generate", post(generate::handle))
-                .with_state((store, platform)),
-        )
-        .merge(runs)
+        .with_state(store)
 }
-
-pub(super) use runs::recover;
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,61 +42,6 @@ enum Status {
     Completed,
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Resource {
-    alias: String,
-    server_id: String,
-    uri: String,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct GeneratorRef {
-    id: String,
-    revision: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Binding {
-    id: String,
-    revision: u64,
-    resources: Vec<Resource>,
-}
-
-fn resolve<'a>(
-    db: &'a Value,
-    id: &str,
-    revision: u64,
-    resources: &[Resource],
-) -> Result<&'a Value, Error> {
-    let generator = generators::generator(db, id, revision)?;
-    let aliases = generator["aliases"].as_array().ok_or_else(corrupt)?;
-    let unique: HashSet<_> = resources.iter().map(|r| r.alias.as_str()).collect();
-    if resources.len() != aliases.len()
-        || unique.len() != aliases.len()
-        || !aliases
-            .iter()
-            .all(|a| a.as_str().is_some_and(|s| unique.contains(s)))
-        || resources
-            .iter()
-            .any(|r| !valid_label(&r.server_id, 128) || !valid_label(&r.uri, 4096))
-    {
-        return Err(Error::Invalid(
-            "资源引用必须与生成器输入别名一一对应".into(),
-        ));
-    }
-    Ok(generator)
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Recipe {
-    resources: Vec<Resource>,
-    script: String,
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Definition {
@@ -120,8 +52,6 @@ struct Definition {
     category: Option<Category>,
     #[serde(default, deserialize_with = "present")]
     status: Option<Status>,
-    recipe: Option<Recipe>,
-    generator: Option<Binding>,
     revision: Option<u64>,
 }
 
@@ -138,25 +68,6 @@ impl Definition {
         if title.is_empty() || title.chars().any(char::is_control) {
             return Err(Error::Invalid("工作标题不能为空或包含控制字符".into()));
         }
-        if let Some(recipe) = &self.recipe {
-            if self.generator.is_some() {
-                return Err(Error::Invalid("生成器与内嵌配方只能选择一种".into()));
-            }
-            if recipe.script.trim().is_empty() || recipe.resources.is_empty() {
-                return Err(Error::Invalid("配方需要脚本和至少一个资源".into()));
-            }
-            let mut aliases = HashSet::new();
-            for r in &recipe.resources {
-                if [&r.alias, &r.server_id, &r.uri].into_iter().any(|s| {
-                    s.trim().is_empty() || s.trim() != s || s.chars().any(char::is_control)
-                }) {
-                    return Err(Error::Invalid("资源别名、服务标识和 URI 必须有效".into()));
-                }
-                if !aliases.insert(&r.alias) {
-                    return Err(Error::Invalid("配方资源别名重复".into()));
-                }
-            }
-        }
         let category = self
             .category
             .map(|v| json!(v))
@@ -167,18 +78,7 @@ impl Definition {
             .map(|v| json!(v))
             .or_else(|| previous.map(|r| r["status"].clone()))
             .unwrap_or_else(|| json!(Status::default()));
-        let mut row = json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"recipe":self.recipe,"revision":revision});
-        if let Some(binding) = &self.generator {
-            row["generator"] = json!(binding);
-        }
-        Ok(row)
-    }
-
-    fn check_binding(&self, db: &Value) -> Result<(), Error> {
-        if let Some(b) = &self.generator {
-            resolve(db, &b.id, b.revision, &b.resources)?;
-        }
-        Ok(())
+        Ok(json!({"id":id,"title":title,"description":self.description,"category":category,"status":status,"revision":revision}))
     }
 }
 
@@ -242,7 +142,6 @@ async fn create(
     let id = Uuid::new_v4().to_string();
     let row = input.row(&id, 1, None)?;
     store.update(|db| {
-        input.check_binding(db)?;
         table_mut(db)?.insert(id, row.clone());
         Ok(Json(row))
     })
@@ -259,10 +158,7 @@ async fn replace(
             return Err(Error::Conflict("工作项已被修改，请刷新".into()));
         }
         let mut row = input.row(&id, revision, Some(old))?;
-        if &row != old {
-            if row["generator"] != old["generator"] {
-                input.check_binding(db)?;
-            }
+        if row != *old {
             row["revision"] = json!(revision.checked_add(1).ok_or_else(corrupt)?);
             table_mut(db)?.insert(id, row.clone());
         }

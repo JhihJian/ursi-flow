@@ -68,10 +68,7 @@ impl Http {
         let app = crate::work::business_directories::routes(store.clone())
             .unwrap()
             .merge(routes_with_platform(store.clone(), None))
-            .merge(worklist::routes(
-                store.clone(),
-                crate::work::mcp::platform(&store),
-            ));
+            .merge(worklist::routes(store.clone()));
         let listener = UnixListener::bind(dir.path("http.sock")).unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { dir, store, task }
@@ -292,18 +289,18 @@ async fn lists_work_packages_and_rejects_bad_input() {
 }
 
 #[tokio::test]
-async fn failed_conversion_never_claims_request_or_creates_a_directory() {
+async fn work_item_recipe_endpoint_is_gone_and_requests_stay_clean() {
     let app = Http::new();
     let item = app
         .ok("POST", "/v2/work-items", json!({"title":"账单"}))
         .await;
     let path = format!("/v2/work-items/{}", item["id"].as_str().unwrap());
-    let action = format!("{path}/generate");
-    let request = json!({"requestId":"one-click"});
-    assert_eq!(app.call("POST", &action, request.clone()).await.0, 400);
-    let input = json!({"title":"账单", "revision":1,"recipe":{"resources":[{"alias":"bill","serverId":"missing","uri":"r://bill"}],"script":"example"}});
-    app.ok("PUT", &path, input).await;
-    assert_eq!(app.call("POST", &action, request).await.0, 404);
+    assert_eq!(
+        app.call("POST", &format!("{path}/generate"), json!({"requestId":"one-click"}))
+            .await
+            .0,
+        404
+    );
     for list in ["/v2/patches/work", "/v2/directories"] {
         assert_eq!(app.ok("GET", list, Value::Null).await, json!([]));
     }

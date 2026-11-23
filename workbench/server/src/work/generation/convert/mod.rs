@@ -4,6 +4,7 @@ mod sandbox;
 mod tests;
 use crate::work::{Error, directories, mcp::from_mcp_error};
 use base64::{Engine, engine::general_purpose::STANDARD};
+use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -29,6 +30,18 @@ pub(super) struct Generated {
 }
 use super::Recipe;
 
+/// 传给沙箱脚本的可选工作项上下文，仅含描述性字段。
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WorkContext {
+    pub(super) id: String,
+    pub(super) title: String,
+    pub(super) description: String,
+    pub(super) category: Value,
+    pub(super) status: Value,
+    pub(super) revision: Value,
+}
+
 pub(super) struct Progress {
     pub stage: &'static str,
     pub evidence: Vec<Value>,
@@ -42,21 +55,15 @@ impl Default for Progress {
     }
 }
 
-pub(super) async fn convert(platform: &McpPlatform, item: &Value) -> Result<Generated, Error> {
-    let recipe: Recipe =
-        serde_json::from_value(item["recipe"].clone()).map_err(|_| invalid("工作项配方无效"))?;
-    execute(platform, Some(item), &recipe, &mut Progress::default()).await
-}
-
 pub(super) async fn execute(
     platform: &McpPlatform,
-    item: Option<&Value>,
+    context: Option<&WorkContext>,
     recipe: &Recipe,
     progress: &mut Progress,
 ) -> Result<Generated, Error> {
     timeout(
         Duration::from_secs(45),
-        convert_inner(platform, item, recipe, progress),
+        convert_inner(platform, context, recipe, progress),
     )
     .await
     .map_err(|_| unavailable("资源转换超时"))?
@@ -64,7 +71,7 @@ pub(super) async fn execute(
 
 async fn convert_inner(
     platform: &McpPlatform,
-    item: Option<&Value>,
+    context: Option<&WorkContext>,
     recipe: &Recipe,
     progress: &mut Progress,
 ) -> Result<Generated, Error> {
@@ -90,14 +97,14 @@ async fn convert_inner(
     };
     progress.stage = "convert";
     let input =
-        json!({"item":item.map(item_snapshot),"resources":snapshots,"script":recipe.script});
+        json!({"item":context.map(item_snapshot),"resources":snapshots,"script":recipe.script});
     let output = sandbox::run(&input).await?;
     progress.stage = "validate";
     let mut provenance = json!({"scriptSha256":format!("{:x}",Sha256::digest(recipe.script.as_bytes())),"resources":progress.evidence});
-    if let Some(item) = item {
-        provenance["workItemId"] = item["id"].clone();
-        provenance["workItemTitle"] = item["title"].clone();
-        provenance["revision"] = item["revision"].clone();
+    if let Some(context) = context {
+        provenance["workItemId"] = json!(context.id);
+        provenance["workItemTitle"] = json!(context.title);
+        provenance["revision"] = context.revision.clone();
     }
     package(output, provenance)
 }
@@ -128,8 +135,8 @@ async fn read_resources(
     }
     Ok(snapshots)
 }
-fn item_snapshot(item: &Value) -> Value {
-    json!({"id":item["id"],"title":item["title"],"description":item["description"],"category":item["category"],"status":item["status"]})
+fn item_snapshot(context: &WorkContext) -> Value {
+    json!({"id":context.id,"title":context.title,"description":context.description,"category":context.category,"status":context.status})
 }
 
 fn package(output: Value, provenance: Value) -> Result<Generated, Error> {

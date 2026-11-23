@@ -1,4 +1,3 @@
-use super::convert::Generated;
 use super::*;
 use std::{fs, path::PathBuf};
 
@@ -23,17 +22,6 @@ impl Drop for Temp {
 fn input(value: Value) -> Json<Definition> {
     Json(serde_json::from_value(value).unwrap())
 }
-fn generated(paths: &[&str]) -> Generated {
-    Generated {
-        name: "生成包".into(),
-        files: paths
-            .iter()
-            .map(|p| (p.to_string(), vec![0, 255]))
-            .collect(),
-        provenance: json!({"workItemTitle":"原始标题","revision":1}),
-    }
-}
-
 #[tokio::test]
 async fn crud_persists_filters_and_checks_revisions() {
     let temp = Temp::new();
@@ -45,10 +33,10 @@ async fn crud_persists_filters_and_checks_revisions() {
     let id = row["id"].as_str().unwrap().to_owned();
     assert_eq!(
         row,
-        json!({"id":id,"title":"事项","category":"one_time","status":"pending","revision":1,"description":"","recipe":null})
+        json!({"id":id,"title":"事项","category":"one_time","status":"pending","revision":1,"description":""})
     );
     let path = || Path(id.clone());
-    let draft = json!({"title":"事项","revision":1,"category":"continuous","status":"active","recipe":{"resources":[{"alias":"a","serverId":"s","uri":"r://1"}],"script":"example"}});
+    let draft = json!({"title":"事项","revision":1,"category":"continuous","status":"active"});
     let updated = replace(State(store.clone()), path(), input(draft.clone()))
         .await
         .unwrap()
@@ -67,15 +55,6 @@ async fn crud_persists_filters_and_checks_revisions() {
             .0,
         updated
     );
-    let mut duplicate = draft;
-    duplicate["recipe"]["resources"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"alias":"a","serverId":"other","uri":"r://2"}));
-    assert!(matches!(
-        input(duplicate).0.row(&id, 3, Some(&updated)),
-        Err(Error::Invalid(_))
-    ));
     assert!(
         serde_json::from_value::<Definition>(json!({"title":"test","category":"other"})).is_err()
     );
@@ -237,125 +216,3 @@ fn rejects_legacy_or_invalid_dimensions() {
     }
 }
 
-#[tokio::test]
-async fn races_publish_one_directory_and_replay_survives_restart_and_rebinding() {
-    let temp = Temp::new();
-    let store = temp.open();
-    let item = create(State(store.clone()), input(json!({"title":"原始标题"})))
-        .await
-        .unwrap()
-        .0;
-    let id = item["id"].as_str().unwrap();
-    let publish = || {
-        generate::publish(
-            &store,
-            id,
-            "retry",
-            &item["revision"],
-            generated(&["材料/01.bin", "材料/02.bin"]),
-        )
-        .unwrap()
-    };
-    let (a, b) = std::thread::scope(|scope| {
-        let a = scope.spawn(publish);
-        let b = scope.spawn(publish);
-        (a.join().unwrap(), b.join().unwrap())
-    });
-    assert_eq!(a, b);
-    assert_eq!(temp.directory_count(), 1);
-    assert_eq!(a["workItemId"], id);
-    assert_eq!(a["source"], "generated");
-    let dir = temp
-        .0
-        .join("directories")
-        .join(a["directoryId"].as_str().unwrap());
-    assert_eq!(fs::read(dir.join("材料/01.bin")).unwrap(), [0, 255]);
-    let next = generate::publish(
-        &store,
-        id,
-        "another",
-        &item["revision"],
-        generated(&["other"]),
-    )
-    .unwrap();
-    assert_ne!(next["directoryId"], a["directoryId"]);
-    assert_eq!(temp.directory_count(), 2);
-    let patch_id = a["id"].as_str().unwrap();
-    store
-        .update(|db| {
-            patches::detach_item(db, id)?;
-            Ok(())
-        })
-        .unwrap();
-    let _ = replace(
-        State(store.clone()),
-        Path(id.into()),
-        input(json!({"title":"新标题"})),
-    )
-    .await
-    .unwrap();
-    drop(store);
-    let store = temp.open();
-    let replay = generate::handle(
-        State((store.clone(), crate::work::mcp::platform(&store))),
-        Path(id.into()),
-        Json(serde_json::from_value(json!({"requestId":"retry"})).unwrap()),
-    )
-    .await
-    .unwrap()
-    .0;
-    assert_eq!(replay["id"], patch_id);
-    assert_eq!(replay["workItemId"], Value::Null);
-    assert_eq!(replay["provenance"], a["provenance"]);
-    remove(State(store.clone()), Path(id.into())).await.unwrap();
-    assert_eq!(fs::read(dir.join("材料/02.bin")).unwrap(), [0, 255]);
-    assert_eq!(
-        store
-            .read(|db| Ok(db["workPatches"][patch_id].clone()))
-            .unwrap(),
-        replay
-    );
-}
-
-#[tokio::test]
-async fn invalid_files_stale_revisions_and_deletion_roll_back_entire_publication() {
-    let temp = Temp::new();
-    let store = temp.open();
-    let item = create(State(store.clone()), input(json!({"title":"revision"})))
-        .await
-        .unwrap()
-        .0;
-    let id = item["id"].as_str().unwrap();
-    let publish = |files: &[&str]| {
-        generate::publish(&store, id, "retry", &item["revision"], generated(files))
-    };
-    for paths in [
-        &["ok", "../outside"][..],
-        &["a", "a"],
-        &["p/q", "p"],
-        &["p", "p/q"],
-        &[],
-    ] {
-        assert!(publish(paths).is_err());
-        assert_eq!(temp.directory_count(), 0);
-    }
-    let _ = replace(
-        State(store.clone()),
-        Path(id.into()),
-        input(json!({"title":"已修改"})),
-    )
-    .await
-    .unwrap();
-    assert!(matches!(publish(&["ok"]), Err(Error::Conflict(_))));
-    remove(State(store.clone()), Path(id.into())).await.unwrap();
-    assert!(matches!(publish(&["ok"]), Err(Error::Conflict(_))));
-    assert_eq!(temp.directory_count(), 0);
-    store
-        .read(|db| {
-            for table in ["directories", "workPatches", "workListGenerations"] {
-                assert!(db.get(table).is_none());
-            }
-            Ok(())
-        })
-        .unwrap();
-}

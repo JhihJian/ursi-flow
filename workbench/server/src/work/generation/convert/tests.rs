@@ -1,4 +1,5 @@
 use super::*;
+use crate::work::generation::{Recipe, Resource};
 use crate::work::{Store, mcp};
 use axum::{
     Json, Router,
@@ -67,14 +68,33 @@ async fn peer(Json(q): Json<Value>) -> Response {
     };
     Json(json!({"jsonrpc":"2.0","id":q["id"],"result":result})).into_response()
 }
-fn item(id: &str, uri: &str, script: &str) -> Value {
-    json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active","revision":3,"recipe":{"script":script,"resources":[{"alias":"note","serverId":id,"uri":uri}]}})
+fn item(id: &str, uri: &str, script: &str) -> (Value, Recipe) {
+    (
+        json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active","revision":3}),
+        Recipe {
+            resources: vec![Resource {
+                alias: "note".into(),
+                server_id: id.to_owned(),
+                uri: uri.to_owned(),
+            }],
+            script: script.into(),
+        },
+    )
 }
 
 #[test]
 fn python_item_snapshot_contains_category_and_status() {
+    let (item, _) = item("s", "memo:a", "example");
+    let context = WorkContext {
+        id: item["id"].as_str().unwrap().into(),
+        title: item["title"].as_str().unwrap().into(),
+        description: item["description"].as_str().unwrap().into(),
+        category: item["category"].clone(),
+        status: item["status"].clone(),
+        revision: item["revision"].clone(),
+    };
     assert_eq!(
-        item_snapshot(&item("s", "memo:a", "example")),
+        item_snapshot(&context),
         json!({"id":"i","title":"本周","description":"","category":"continuous","status":"active"})
     );
 }
@@ -82,11 +102,9 @@ fn python_item_snapshot_contains_category_and_status() {
 #[tokio::test]
 async fn read_error_and_missing_sandbox_are_terminal() {
     let f = Fixture::new().await;
-    let result = convert(
-        &f.platform,
-        &item(&f.id, "memo:missing", "raise Exception()"),
-    )
-    .await;
+    let (item, recipe) = item(&f.id, "memo:missing", "raise Exception()");
+    let result = execute(&f.platform, Some(&context(&item)), &recipe, &mut Progress::default())
+        .await;
     assert!(matches!(result,Err(Error::Unavailable(s)) if s.contains("memo:missing")));
     assert!(matches!(
         sandbox::execute("/nonexistent/bwrap", &json!({})).await,
@@ -114,7 +132,9 @@ fn rejects_invalid_package_wholesale() {
 async fn isolated_live_read_to_files() {
     let f = Fixture::new().await;
     let script = "def transform(item, resources):\n assert (item['category'], item['status']) == ('continuous', 'active')\n p=resources['note']['contents']\n return {'name':item['title'],'files':[{'path':'材料/a','text':p[0]['text']},{'path':'b','blob':p[1]['blob']}]}";
-    let g = convert(&f.platform, &item(&f.id, "memo:a", script))
+    let (item, recipe) = item(&f.id, "memo:a", script);
+    let mut progress = Progress::default();
+    let g = execute(&f.platform, Some(&context(&item)), &recipe, &mut progress)
         .await
         .unwrap();
     assert_eq!(g.name, "本周");
@@ -153,5 +173,16 @@ async fn isolated_script_has_no_host_files_processes_or_unbounded_output() {
             matches!(sandbox::run(&v).await, Err(Error::Invalid(_))),
             "{command}"
         );
+    }
+}
+
+fn context(item: &Value) -> WorkContext {
+    WorkContext {
+        id: item["id"].as_str().unwrap().into(),
+        title: item["title"].as_str().unwrap().into(),
+        description: item["description"].as_str().unwrap().into(),
+        category: item["category"].clone(),
+        status: item["status"].clone(),
+        revision: item["revision"].clone(),
     }
 }
