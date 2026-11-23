@@ -18,7 +18,13 @@
 
 页面给出四步：生成密钥对、登记公钥到 Runtime Profile、把 `ursi-sandbox-client ssh-config` 的输出追加到本机配置、用 `ssh ursi-沙箱ID` 验证。登记与撤销都经同源代理提交，Gateway 密钥不进入浏览器。
 
-状态区按 profile 列出指纹、备注和渲染时间，以及使用该 profile 的实例和挂载证据。需要明确的三个事实：公钥作用域是整个 Runtime Profile；变更只对之后创建或下次启动的容器生效，运行中的实例需重启；撤销只阻止后续登录，已建立的会话要停止实例才断开。页面显示的状态不证明某个私钥能登录，验证需要用户在本机执行 `ssh` 命令。
+状态区按 profile 列出指纹、备注和渲染时间，以及使用该 profile 的实例和挂载证据。需要明确的三个事实：公钥作用域是整个 Runtime Profile；变更只对之后创建或下次启动的容器生效，运行中的实例需重启；撤销只阻止后续登录，已建立的会话要停止实例才断开。
+
+### 真实登录探活
+
+「控制台探活身份」用控制台自己的 SSH 私钥真实登录实例一次，端到端证明「公钥已登记 → 已渲染 → 容器已挂载 → sshd 接受 → agent 可执行命令」整条链。配置 `URSI_WEB_SSH_KEY_FILE` 后页面显示该身份的公钥指纹，并把公钥填进登记表单；登记后点实例上的「真实登录探活」即可。
+
+探活限制：只证明控制台自己的密钥可用，不证明访客自己的私钥可用；未配置私钥、私钥不可解析、未启用隧道或实例未运行时按分类原因呈现，不显示通过。探活成功会同时返回观察到的沙箱主机指纹，可与 `URSI_WEB_SSH_HOST_PINS_FILE` 对照，但页面不会把它当作已确认记录。
 
 ## 构建与启动
 
@@ -50,8 +56,8 @@ npm start
 | `URSI_WEB_ADMIN_PASSWORD` | 可选。`admin` 管理密码，至少 16 个字符，必须与查看密码和 Gateway 密钥不同 |
 | `URSI_WEB_TLS_CERT` / `URSI_WEB_TLS_KEY` | 直接对外提供 HTTPS 时使用的证书和私钥文件路径 |
 | `URSI_WEB_ORIGIN` | 经反向代理访问时的完整来源，例如 `https://sandbox.example.org`。代理须保留 Host 和 WebSocket Upgrade |
-| `URSI_WEB_SSH_KEY_FILE` | Web 服务专用 SSH 私钥文件。公钥须由管理员加入实例配置的 `authorized_keys` |
-| `URSI_WEB_SSH_HOST_PINS_FILE` | 可信 SSH 主机指纹 JSON 文件。键是沙箱 ID，值是 `ssh-keygen -lf` 输出中的 `SHA256:…` 指纹 |
+| `URSI_WEB_SSH_KEY_FILE` | Web 服务专用 SSH 私钥文件。用于工作台终端和接入探活；对应公钥须加入沙箱登录授权，启用 `URSI_GATEWAY_ACCESS` 后可直接在接入配置页登记 |
+| `URSI_WEB_SSH_HOST_PINS_FILE` | 可信 SSH 主机指纹 JSON 文件。键是沙箱 ID，值是 `ssh-keygen -lf` 输出中的 `SHA256:…` 指纹。只影响工作台，不影响探活 |
 
 查看者可读取整个命名空间的规格及日志。管理员可操作整个命名空间。无 TLS 证书时只监听 `127.0.0.1`，可配合 HTTPS 反向代理或 SSH 端口转发；配置证书后监听 `0.0.0.0`。HTTP Basic 凭据需要受保护的传输链路。对外提供访问时，在 HTTPS 反向代理后运行，并限制控制台端口的直接访问。未配置 Gateway 或 Web 身份时服务拒绝启动。查询失败时页面显示错误并提供重试。
 

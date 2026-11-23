@@ -1,8 +1,10 @@
 import { useEffect, useReducer, useState } from 'react'
-import { Check, Copy, KeyRound, RefreshCw, Trash2 } from 'lucide-react'
+import { Check, Copy, KeyRound, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import {
   type AccessReport,
   type ProfileAccess,
+  type ProbeIdentity,
+  type ProbeResult,
   type Source,
   GatewayError,
 } from './data'
@@ -23,6 +25,19 @@ import { Textarea } from './shared/ui/textarea'
 
 const sshConfigCommand = 'ursi-sandbox-client ssh-config >> ~/.ssh/config'
 const keygenCommand = 'ssh-keygen -t ed25519 -f ~/.ursi/id_ed25519 -N ""'
+const probeReasons: Record<string, string> = {
+  unconfigured: '控制台未配置探活身份私钥（URSI_WEB_SSH_KEY_FILE）',
+  invalid_key: '控制台探活身份私钥无法读取或解析',
+  auth_failed: '认证失败：控制台探活公钥可能尚未登记到该 Runtime Profile',
+  not_running: '实例未运行或有待处理操作',
+  endpoint_not_ready: 'SSH 端点未就绪',
+  not_found: '实例不存在',
+  gateway_error: 'Gateway 请求失败',
+  tunnel_closed: '隧道关闭，Gateway 可能未启用隧道',
+  ssh_unavailable: 'SSH 握手失败',
+  exec_failed: '已登录但命令执行失败',
+  timeout: '探活超时',
+}
 const statusNames: Record<string, string> = {
   running: '运行中',
   preparing: '准备中',
@@ -40,6 +55,8 @@ export function AccessSetup({ source }: { source: Source }) {
   const [profile, setProfile] = useState('')
   const [publicKey, setPublicKey] = useState('')
   const [busy, setBusy] = useState(false)
+  const [identity, setIdentity] = useState<ProbeIdentity>()
+  const [probes, setProbes] = useState<Record<string, ProbeResult>>({})
 
   useEffect(() => {
     if (!source.accessKeys) {
@@ -64,6 +81,19 @@ export function AccessSetup({ source }: { source: Source }) {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
+  }, [source, revision])
+
+  useEffect(() => {
+    let alive = true
+    source
+      .probeIdentity?.()
+      .then((value) => {
+        if (alive) setIdentity(value)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
   }, [source, revision])
 
   if (!source.accessKeys || !source.addAccessKey || !source.removeAccessKey)
@@ -117,6 +147,24 @@ export function AccessSetup({ source }: { source: Source }) {
       setBusy(false)
     }
   }
+
+  async function probe(sandboxId: string) {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await source.probeSandbox?.(sandboxId)
+      if (result) setProbes((current) => ({ ...current, [sandboxId]: result }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '探活请求失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const consoleRegistered = Boolean(
+    identity?.fingerprint &&
+      profiles.some((item) => item.keys.some((key) => key.fingerprint === identity.fingerprint)),
+  )
 
   return (
     <main className="page-shell page-content space-y-8">
@@ -214,6 +262,46 @@ export function AccessSetup({ source }: { source: Source }) {
         </ol>
       </section>
 
+      <section aria-labelledby="probe-identity" className="space-y-2">
+        <h2 id="probe-identity" className="text-lg font-semibold">
+          控制台探活身份
+        </h2>
+        {!identity?.configured && (
+          <Alert>
+            {probeReasons[identity?.reason ?? 'unconfigured']}
+          </Alert>
+        )}
+        {identity?.configured && (
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">
+              {'控制台用自己的 SSH 身份真实登录一次实例，用来证明公钥已登记、已渲染、容器已挂载且 sshd 接受登录。它不会读取你的私钥。'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
+                {identity.fingerprint}
+              </code>
+              <Badge variant="outline">
+                {consoleRegistered ? '已登记' : '未登记'}
+              </Badge>
+            </div>
+            {!consoleRegistered && profile && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy || !identity.public_key}
+                onClick={() => {
+                  setPublicKey(identity.public_key ?? '')
+                  setNotice('已填入控制台探活公钥，确认 Runtime Profile 后提交即可登记。')
+                }}
+              >
+                <KeyRound className="size-3.5" />
+                填入登记表单
+              </Button>
+            )}
+          </div>
+        )}
+      </section>
+
       <section aria-labelledby="state" className="space-y-3">
         <h2 id="state" className="text-lg font-semibold">
           状态
@@ -227,6 +315,9 @@ export function AccessSetup({ source }: { source: Source }) {
             key={item.profile}
             profile={item}
             busy={busy}
+            probes={probes}
+            canProbe={Boolean(source.probeSandbox)}
+            onProbe={probe}
             onRemove={(fingerprint) => remove(item, fingerprint)}
           />
         ))}
@@ -241,10 +332,16 @@ export function AccessSetup({ source }: { source: Source }) {
 function ProfileCard({
   profile,
   busy,
+  probes,
+  canProbe,
+  onProbe,
   onRemove,
 }: {
   profile: ProfileAccess
   busy: boolean
+  probes: Record<string, ProbeResult>
+  canProbe: boolean
+  onProbe: (sandboxId: string) => void
   onRemove: (fingerprint: string) => void
 }) {
   return (
@@ -298,21 +395,45 @@ function ProfileCard({
           <p className="text-sm text-muted-foreground">暂无实例。</p>
         ) : (
           <ul className="space-y-1">
-            {profile.sandboxes.map((sandbox) => (
-              <li key={sandbox.id} className="flex flex-wrap items-center gap-2 text-sm">
-                <code className="text-xs">{sandbox.id}</code>
-                <Badge variant="outline">
-                  {statusNames[sandbox.status] ?? sandbox.status}
-                </Badge>
-                <span className="text-muted-foreground">
-                  {sandbox.attached === true
-                    ? '已挂载授权文件'
-                    : sandbox.attached === false
-                      ? '需重建才会带上授权挂载'
-                      : '无挂载证据'}
-                </span>
-              </li>
-            ))}
+            {profile.sandboxes.map((sandbox) => {
+              const result = probes[sandbox.id]
+              return (
+                <li key={sandbox.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <code className="text-xs">{sandbox.id}</code>
+                  <Badge variant="outline">
+                    {statusNames[sandbox.status] ?? sandbox.status}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {sandbox.attached === true
+                      ? '已挂载授权文件'
+                      : sandbox.attached === false
+                        ? '需重建才会带上授权挂载'
+                        : '无挂载证据'}
+                  </span>
+                  {canProbe && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || sandbox.status !== 'running'}
+                      onClick={() => onProbe(sandbox.id)}
+                    >
+                      <ShieldCheck className="size-3.5" />
+                      真实登录探活
+                    </Button>
+                  )}
+                  {result && (
+                    <span
+                      className={result.ok ? 'text-ok' : 'text-err'}
+                      role="status"
+                    >
+                      {result.ok
+                        ? `登录成功（${result.ms}ms），主机指纹 ${result.host_fingerprint}`
+                        : probeReasons[result.reason ?? ''] ?? `探活失败：${result.reason}`}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>

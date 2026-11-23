@@ -269,3 +269,51 @@ test('分段错误保留 JSON 状态码，传输中断不追加错误响应', as
   await assert.rejects(reader.read())
   assert.equal((await request(segmentPath)).status, 409)
 })
+
+test('探活身份只公开公钥与指纹，写探活需要管理员', async (t) => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const path = await import('node:path')
+  const { generateKeyPairSync } = await import('node:crypto')
+  const dir = mkdtempSync(path.join(tmpdir(), 'ursi-probe-'))
+  const keyFile = path.join(dir, 'id_ed25519')
+  // openssh 私钥格式由 ssh-keygen 生成，测试里用 ssh2 兼容的 PEM 表达同一能力。
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  writeFileSync(keyFile, privateKey.export({ type: 'pkcs1', format: 'pem' }))
+
+  const url = await listen(t, http.createServer((_req, res) => res.end('{}')))
+  const pass = 'example-admin-password'
+  const base = await listen(
+    t,
+    createConsole({
+      URSI_GATEWAY_URL: url,
+      URSI_GATEWAY_KEY: 'test-only-gateway-key',
+      URSI_WEB_ADMIN_PASSWORD: pass,
+      URSI_WEB_SSH_KEY_FILE: keyFile,
+    }),
+  )
+  const admin = 'Basic ' + Buffer.from('admin:' + pass).toString('base64')
+  assert.equal((await fetch(base + '/access/probe')).status, 401)
+  const identity = await (
+    await fetch(base + '/access/probe', { headers: { Authorization: admin } })
+  ).json()
+  assert.equal(identity.configured, true)
+  assert.match(identity.fingerprint, /^SHA256:[A-Za-z0-9+/]{43}$/)
+  assert.match(identity.public_key, /^ssh-(rsa|ed25519) /)
+  // 公开响应不含私钥材料。
+  assert.equal(JSON.stringify(identity).includes('PRIVATE'), false)
+
+  const body = JSON.stringify({ sandbox_id: 'a'.repeat(32) })
+  const post = (headers) =>
+    fetch(base + '/access/probe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body,
+    })
+  assert.equal((await post({})).status, 401)
+  const headers = { Authorization: admin, 'X-Ursi-Action': 'manage' }
+  // 同源校验通过，但 Gateway 不可达时按探活失败返回，不返回 5xx 崩溃。
+  const result = await (await post(headers)).json()
+  assert.equal(result.ok, false)
+  assert.equal(typeof result.reason, 'string')
+})

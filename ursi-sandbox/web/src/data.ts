@@ -99,6 +99,19 @@ export interface ProfileAccess {
 export interface AccessReport {
   profiles: ProfileAccess[]
 }
+export interface ProbeIdentity {
+  configured: boolean
+  public_key?: string
+  fingerprint?: string
+  reason?: string
+}
+export interface ProbeResult {
+  ok: boolean
+  reason?: string
+  host_fingerprint?: string
+  probe_fingerprint?: string
+  ms?: number
+}
 export interface Source {
   manage: boolean
   sshSandboxes?: string[]
@@ -115,6 +128,8 @@ export interface Source {
   accessKeys?: (signal: AbortSignal) => Promise<AccessReport>
   addAccessKey?: (profile: string, key: string) => Promise<AccessReport>
   removeAccessKey?: (profile: string, fingerprint: string) => Promise<AccessReport>
+  probeIdentity?: () => Promise<ProbeIdentity>
+  probeSandbox?: (sandboxId: string) => Promise<ProbeResult>
 }
 export class GatewayError extends Error {
   constructor(
@@ -234,6 +249,19 @@ export async function loadSource(signal: AbortSignal): Promise<Source> {
                 'X-Ursi-Action': 'manage',
               },
               body: JSON.stringify({ profile, fingerprint }),
+            })
+        : undefined,
+    probeIdentity: () => json<ProbeIdentity>('./access/probe'),
+    probeSandbox:
+      manage && capabilities.access_keys
+        ? (sandboxId) =>
+            json<ProbeResult>('./access/probe', undefined, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Ursi-Action': 'manage',
+              },
+              body: JSON.stringify({ sandbox_id: sandboxId }),
             })
         : undefined,
     images: (s) => json<ImageInventory>('./api/v1/images', s),

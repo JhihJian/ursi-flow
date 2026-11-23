@@ -21,7 +21,7 @@ function opened(ws) {
 }
 
 // Translate the Gateway's binary frames and directional EOF into a byte stream.
-function tunnel(ws, signal) {
+export function tunnel(ws, signal) {
   let ended = false
   const stream = new Duplex({
     allowHalfOpen: true,
@@ -64,34 +64,52 @@ function tunnel(ws, signal) {
   return stream
 }
 
+/// 控制台自己的 SSH 身份私钥。同一把密钥同时用于工作台和接入探活。
+export function webSshKey(env) {
+  return env.URSI_WEB_SSH_KEY_FILE ? readFileSync(env.URSI_WEB_SSH_KEY_FILE) : null
+}
+
 function sshSettings(env) {
   const key = env.URSI_WEB_SSH_KEY_FILE
   const hosts = env.URSI_WEB_SSH_HOST_PINS_FILE
   if (!key && !hosts) return null
-  if (!key || !hosts) throw Error('Web SSH 需要同时配置私钥和主机指纹文件')
+  // 只配置私钥时用于接入探活：工作台仍需逐沙箱指纹记录，未记录的一律拒绝。
+  if (!key) throw Error('Web SSH 主机指纹文件需要配合私钥使用')
+  if (!hosts) return { privateKey: webSshKey(env), pins: {} }
   const pins = JSON.parse(readFileSync(hosts, 'utf8'))
   if (!pins || typeof pins !== 'object' || Array.isArray(pins) ||
     !Object.entries(pins).every(([id, pin]) => /^[a-f0-9]{32}$/.test(id) && typeof pin === 'string' && /^SHA256:[A-Za-z0-9+/]{43}$/.test(pin)))
     throw Error('Web SSH 主机指纹文件格式无效')
-  return { privateKey: readFileSync(key), pins }
+  return { privateKey: webSshKey(env), pins }
 }
 
-function openSsh(stream, options, pin) {
-  return new Promise((resolve, reject) => {
+export const fingerprint = (key) =>
+  'SHA256:' + createHash('sha256').update(key).digest('base64').replace(/=$/, '')
+
+/// pin 为 undefined 时不校验主机密钥，只记录观察到的指纹，供探活补全指纹记录。
+export function openSsh(stream, options, pin) {
+  const observed = { fingerprint: undefined }
+  const ready = new Promise((resolve, reject) => {
     const ssh = new Client()
-    const fail = () => reject(Error('SSH session unavailable'))
+    // 保留原因供调用方分类，工作台只把它映射为 502，不回传浏览器。
+    const fail = (error) => reject(Error(error?.message || 'SSH session unavailable'))
     stream.once('close', () => { ssh.destroy(); fail() })
     ssh.on('error', fail)
-    ssh.once('close', fail)
+    ssh.once('close', () => fail())
     ssh.once('ready', () => resolve(ssh))
     ssh.connect({
       sock: stream,
       username: 'agent',
       privateKey: options.privateKey,
       readyTimeout: timeout,
-      hostVerifier: (key) => 'SHA256:' + createHash('sha256').update(key).digest('base64').replace(/=$/, '') === pin,
+      hostVerifier: (key) => {
+        observed.fingerprint = fingerprint(key)
+        if (pin === undefined) return true
+        return observed.fingerprint === pin
+      },
     })
   })
+  return { ready, observed }
 }
 
 function sshChannel(ssh, start) {
@@ -203,7 +221,7 @@ export function attachWorkbench(server, { env, url, key, isAdmin }) {
       if (mode !== 'desktop' && !endpoint('ssh', 'ssh')) return reject('409 Conflict')
       if (mode === 'terminal') {
         const bytes = await connect('ssh')
-        const client = await openSsh(bytes, ssh, ssh.pins[id])
+        const client = await openSsh(bytes, ssh, ssh.pins[id]).ready
         const shell = await sshChannel(client, (done) => client.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, done))
         return upgrade((browser) => relayTerminal(browser, shell, bytes))
       }
@@ -220,7 +238,7 @@ export function attachWorkbench(server, { env, url, key, isAdmin }) {
       await opened(remote)
       if (target) {
         const sshBytes = await connect('ssh')
-        try { await cdpNavigation(await openSsh(sshBytes, ssh, ssh.pins[id]), target.port) }
+        try { await cdpNavigation(await openSsh(sshBytes, ssh, ssh.pins[id]).ready, target.port) }
         finally { sshBytes.destroy() }
       }
       upgrade((browser) => {

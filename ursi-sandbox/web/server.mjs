@@ -6,6 +6,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { pipeline } from 'node:stream/promises'
 import { attachWorkbench } from './workbench.mjs'
+import { probeIdentity, probeSandbox } from './probe.mjs'
 
 const dist = new URL('./dist/', import.meta.url)
 const hash = (s) => createHash('sha256').update(s).digest()
@@ -67,6 +68,67 @@ export function createConsole(env) {
     }
     const path = req.url
     const write = req.method !== 'GET'
+    // 接入探活：只读身份可看到身份指纹，只有管理员能发起真实登录。
+    if (path === '/access/probe' && (req.method === 'GET' || req.method === 'POST')) {
+      let identity
+      try {
+        identity = probeIdentity(env)
+      } catch {
+        return send(200, JSON.stringify({ configured: false, reason: 'invalid_key' }))
+      }
+      if (!identity)
+        return send(200, JSON.stringify({ configured: false, reason: 'unconfigured' }))
+      if (req.method === 'GET')
+        return send(
+          200,
+          JSON.stringify({
+            configured: true,
+            public_key: identity.publicKey,
+            fingerprint: identity.fingerprint,
+          }),
+        )
+      if (!manage) return send(403, '{}')
+      const origin = env.URSI_WEB_ORIGIN || `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}`
+      if (
+        req.headers['x-ursi-action'] !== 'manage' ||
+        (req.headers.origin !== undefined && req.headers.origin !== origin) ||
+        ['same-site', 'cross-site'].includes(req.headers['sec-fetch-site']) ||
+        req.headers['content-type'] !== 'application/json'
+      )
+        return send(403, '{}')
+      const chunks = []
+      let size = 0
+      for await (const chunk of req) {
+        size += chunk.length
+        if (size > 1024) return send(413, '{}')
+        chunks.push(chunk)
+      }
+      let sandbox
+      try {
+        sandbox = JSON.parse(Buffer.concat(chunks).toString()).sandbox_id
+      } catch {
+        return send(400, '{}')
+      }
+      if (typeof sandbox !== 'string' || !/^[a-f0-9]{32}$/.test(sandbox))
+        return send(400, '{}')
+      let privateKey
+      try {
+        privateKey = readFileSync(env.URSI_WEB_SSH_KEY_FILE)
+      } catch {
+        return send(200, JSON.stringify({ ok: false, reason: 'invalid_key' }))
+      }
+      const result = await probeSandbox({
+        url,
+        key,
+        privateKey,
+        id: sandbox,
+        signal: AbortSignal.timeout(20000),
+      })
+      return send(
+        200,
+        JSON.stringify({ ...result, probe_fingerprint: identity.fingerprint }),
+      )
+    }
     if (!write && path === '/console-config.json')
       return send(
         200,

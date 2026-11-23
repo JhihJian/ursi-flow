@@ -50,6 +50,48 @@ for (const width of [320, 1280]) {
   })
 }
 
+test('探活身份与真实登录探活结果按实例展示', async ({ page }) => {
+  await admin(page)
+  await page.route('**/access/probe', (r) =>
+    r.fulfill({
+      json: {
+        configured: true,
+        public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIERO48Z83aOFQZozDFGTutPqWEPYXCfl2bY0EesLHyMy ursi-console-probe',
+        fingerprint: 'SHA256:juzt0MAPNf7z8kYGnoa7NjTe5W+QCK/SXNVJV1Pl0e4',
+      },
+    }),
+  )
+  await page.route('**/api/v1/access-keys', (r) => r.fulfill({ json: report }))
+  await page.goto('./#/access')
+  await expect(page.getByText('控制台探活身份')).toBeVisible()
+  await expect(page.getByText('SHA256:juzt0MAPNf7z8kYGnoa7NjTe5W+QCK/SXNVJV1Pl0e4')).toBeVisible()
+  await expect(page.getByText('未登记', { exact: true })).toBeVisible()
+
+  await page.unroute('**/access/probe')
+  await page.route('**/access/probe', (r) =>
+    r.fulfill({
+      json: {
+        ok: true,
+        host_fingerprint: 'SHA256:JTpnd4BcoQcXUOsm9flEi+893M+srheguAAnBk2YpHc',
+        probe_fingerprint: 'SHA256:juzt0MAPNf7z8kYGnoa7NjTe5W+QCK/SXNVJV1Pl0e4',
+        ms: 195,
+      },
+    }),
+  )
+  await page.getByRole('button', { name: '真实登录探活' }).click()
+  await expect(page.getByText(/登录成功（195ms）/)).toBeVisible()
+  await expect(page.getByText(/SHA256:JTpnd4BcoQcXUOsm9flEi/)).toBeVisible()
+})
+
+test('探活失败时展示分类原因而不是通过', async ({ page }) => {
+  await admin(page)
+  await page.route('**/access/probe', (r) => r.fulfill({ json: { configured: false, reason: 'unconfigured' } }))
+  await page.route('**/api/v1/access-keys', (r) => r.fulfill({ json: report }))
+  await page.goto('./#/access')
+  await expect(page.getByText(/控制台未配置探活身份私钥/)).toBeVisible()
+  await expect(page.getByText('已登记', { exact: true })).toHaveCount(0)
+})
+
 test('没有接入权限的只读身份看不到入口', async ({ page }) => {
   await page.route('**/console-config.json', (r) =>
     r.fulfill({ json: { mode: 'gateway', manage: false } }),

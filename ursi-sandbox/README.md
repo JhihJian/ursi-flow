@@ -23,7 +23,7 @@ target/debug/ursi-sandbox-client --help
 
 发布时分别交付 Gateway、客户端、环境镜像和经 SHA-256 校验的 bundle。部署者提供可供容器下载的 bundle 地址、Docker daemon、私有配置目录和访问身份。不要将模型凭据放入这些产物。
 
-- [沙箱资源控制台](web/README.md)：独立预览或连接 Gateway，查看实例、端点与日志，并在管理员身份下完成 SSH 接入安装（登记公钥、生成配置、检查状态）。
+- [沙箱资源控制台](web/README.md)：独立预览或连接 Gateway，查看实例、端点与日志，并在管理员身份下完成 SSH 接入安装（登记公钥、生成配置、检查状态、真实登录探活）。
 - [Gateway 部署](gateway/README.md)：配置 Docker、SQLite、profile 和端点策略。
 - [Observer 使用说明](observer/README.md)：与 Gateway 一对一配对，经鉴权 API 启停观测、查看丢包计数并下载 PCAP。Observer 尚未正式部署。
 - [构建器](builder/README.md)和[启动契约](runtime/CONTRACT.md)：选择服务组合并准备对应的运行配置。
