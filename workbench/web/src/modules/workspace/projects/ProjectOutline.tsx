@@ -9,14 +9,16 @@ import { projectGraphData } from './graph-data'
 const row = 'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-2 text-sm text-txt2 hover:bg-overlay/50 hover:text-txt focus-visible:outline-accent aria-current:bg-accent-dim aria-current:text-accent-2'
 const branch = 'ml-3 space-y-0.5 border-l border-line pl-2'
 
-function Branch({ name, defaultOpen, link, children }: {
-  name: string; defaultOpen: boolean; link: ReactNode; children: ReactNode
+function Branch({ name, defaultOpen, revealKey, link, children }: {
+  name: string; defaultOpen: boolean; revealKey?: string; link: ReactNode; children: ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [state, setState] = useState({ revealKey, open: defaultOpen })
+  if (state.revealKey !== revealKey) setState({ revealKey, open: revealKey !== undefined || state.open })
+  const open = state.open
   const label = `${open ? '折叠' : '展开'} ${name}`
   return <li>
     <div className="flex min-w-0 items-center gap-1">
-      <button type="button" className="icon-button size-8 shrink-0" aria-label={label} aria-expanded={open} title={label} onClick={() => setOpen(!open)}>
+      <button type="button" className="icon-button size-8 shrink-0" aria-label={label} aria-expanded={open} title={label} onClick={() => setState({ revealKey, open: !open })}>
         <Icon name="chevron-right" size={14} className={cn('motion-safe:transition-transform', open && 'rotate-90')} />
       </button>
       {link}
@@ -25,9 +27,9 @@ function Branch({ name, defaultOpen, link, children }: {
   </li>
 }
 
-export function ProjectOutline({ workspace, canvasId, cardId, itemId, todoPath, onNavigate }: {
+export function ProjectOutline({ workspace, canvasId, cardId, itemId, navigationKey, todoPath, onNavigate }: {
   workspace: Workspace; canvasId: string | null; cardId?: string | null; itemId?: string | null
-  todoPath: string; onNavigate: () => void
+  navigationKey: string; todoPath: string; onNavigate?: () => void
 }) {
   const { cardItems } = projectGraphData(workspace)
   const focusedCard = workspace.items.find(placed => placed.item.id === itemId)?.taskCardId ?? cardId
@@ -37,8 +39,9 @@ export function ProjectOutline({ workspace, canvasId, cardId, itemId, todoPath, 
       const cards = workspace.taskCards.filter(card => card.canvasId === canvas.id)
       const current = canvas.id === canvasId
       const path = canvasPath(workspace.project.id, canvas.id)
+      const reveal = current || cards.some(card => card.id === focusedCard)
       return <Branch key={canvas.id} name={`画布 ${canvas.name}`}
-        defaultOpen={current || workspace.canvases.length === 1 || cards.some(card => card.id === focusedCard)}
+        defaultOpen={reveal || workspace.canvases.length === 1} revealKey={reveal ? navigationKey : undefined}
         link={<Link to={path} state={state} onClick={onNavigate} className={row} aria-current={current ? 'true' : undefined}>
           <Icon name="workflow" size={15} className="shrink-0" /><span className="min-w-0 break-words">{canvas.name}</span>
         </Link>}>
@@ -46,7 +49,7 @@ export function ProjectOutline({ workspace, canvasId, cardId, itemId, todoPath, 
         {cards.map(card => {
           const items = cardItems.get(card.id) ?? []
           const focused = card.id === focusedCard
-          return <Branch key={card.id} name={`任务卡 ${card.name}`} defaultOpen={focused}
+          return <Branch key={card.id} name={`任务卡 ${card.name}`} defaultOpen={focused} revealKey={focused ? navigationKey : undefined}
             link={<Link to={`${path}?${new URLSearchParams({ focusCardId: card.id })}`} state={state} onClick={onNavigate}
               aria-current={focused && !itemId ? 'true' : undefined} className={row}>
               <Icon name="layers" size={15} className="shrink-0" /><span className="min-w-0 break-words">{card.name}</span>

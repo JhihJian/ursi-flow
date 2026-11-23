@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router'
 import { canvasPath, command, deleteProject, getPlacement, projectPath, projectsPath, readWorkspace, renameProject, saveLayout, type Workspace } from '@/shared/api/work-projects'
 import { ApiError } from '@/shared/http/client'
@@ -17,6 +17,21 @@ import type { ProjectMutation } from './model'
 import { rememberProject } from './preferences'
 
 const viewLink = 'border-b-2 border-transparent px-1 py-2 text-sm text-txt2 hover:text-txt aria-[current=page]:border-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-2'
+const dockQuery = '(min-width: 1360px)'
+const wideOutline = () => window.matchMedia?.(dockQuery)?.matches ?? false
+function subscribeOutlineWidth(change: () => void) {
+  const media = window.matchMedia?.(dockQuery)
+  media?.addEventListener('change', change)
+  return () => media?.removeEventListener('change', change)
+}
+
+function OutlineDrawer({ children }: { children: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return <Sheet open={open} onOpenChange={setOpen}>
+    <SheetTrigger asChild><Button size="sm" variant="ghost" icon="panel-left">项目大纲</Button></SheetTrigger>
+    <SheetContent side="left" title="项目大纲">{children(() => setOpen(false))}</SheetContent>
+  </Sheet>
+}
 
 export function ProjectWorkspace() {
   const { projectId = '' } = useParams()
@@ -47,7 +62,9 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
   const recentPath = canvasId && !missingCanvas ? canvasPath(projectId, canvasId) : todo ? `${base}/todo` : `${base}/map`
   const [settings, setSettings] = useState<'rename' | 'delete'>()
   const [locateNote, setLocateNote] = useState('')
-  const [outlineOpen, setOutlineOpen] = useState(false)
+  const docked = useSyncExternalStore(subscribeOutlineWidth, wideOutline, () => false)
+  const [dockOpen, setDockOpen] = useState(true)
+  const outlineId = useId()
   const loadedProjectId = workspace?.project.id
 
   useEffect(() => {
@@ -102,6 +119,8 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
 
   const focus = workspace.items.find(({ item }) => item.id === focusItemId)
   const focusCanvas = workspace.taskCards.find(card => card.id === focus?.taskCardId)?.canvasId
+  const outline = (onNavigate?: () => void) => <ProjectOutline workspace={workspace} canvasId={canvasId} cardId={focusCardId}
+    itemId={itemId ?? focusItemId} navigationKey={location.key} todoPath={returnTo} onNavigate={onNavigate} />
   const inspector = itemId && <>
     {locateNote && <p role="status" className="mb-2 text-sm text-txt3">{locateNote}</p>}
     <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
@@ -120,13 +139,8 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
         <Link to={`${base}/map`} state={viewState} className={viewLink} aria-current={!todo && canvasId === null ? 'page' : undefined}>地图</Link>
         <Link to={returnTo} className={viewLink} aria-current={todo ? 'page' : undefined}>待办</Link>
       </nav>
-      <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
-        <SheetTrigger asChild><Button size="sm" variant="ghost" icon="menu">项目大纲</Button></SheetTrigger>
-        <SheetContent side="right" title="项目大纲">
-          <ProjectOutline workspace={workspace} canvasId={canvasId} cardId={focusCardId} itemId={itemId ?? focusItemId}
-            todoPath={returnTo} onNavigate={() => setOutlineOpen(false)} />
-        </SheetContent>
-      </Sheet>
+      {docked ? <Button size="sm" variant="ghost" icon="panel-left" aria-controls={outlineId} aria-expanded={dockOpen}
+        onClick={() => setDockOpen(open => !open)}>项目大纲</Button> : <OutlineDrawer>{outline}</OutlineDrawer>}
     </div>
     {resource.error && <ResourceState error={resource.error} onRetry={resource.reload} />}
     {mutation.error && <p role="alert" className="break-words text-sm text-err">{mutation.error}</p>}
@@ -134,20 +148,28 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
       error={mutation.error} onClose={() => setSettings(undefined)}
       onRename={name => run(signal => renameProject(workspace.project, name, signal), () => setSettings(undefined))}
       onDelete={() => run(signal => deleteProject(projectId, signal), () => navigate(projectsPath, { replace: true }))} />}
-    {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
-      此事项已不在当前画布。{' '}{focusCanvas
-        ? <Link className="text-accent-2" to={`${canvasPath(projectId, focusCanvas)}?${new URLSearchParams({ focusItemId })}`}>打开当前画布</Link>
-        : <Link className="text-accent-2" to={`/work-items/${encodeURIComponent(focusItemId)}`}>查看工作项详情</Link>}
-    </p>}
-    {todo || missingCanvas ? <div className={`grid min-w-0 items-start gap-4 ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
-      {missingCanvas ? <div className="space-y-2">
-        <ResourceState empty title="画布不存在" />
-        <Link className="text-accent-2" to={`${base}/map`} state={viewState}>返回地图</Link>
-      </div> : <ProjectTodo workspace={workspace} onItem={openItem}
-        onCreate={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
-      {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
-    </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
-      itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
+    <div className="flex min-w-0 items-start gap-4">
+      {docked && <aside id={outlineId} aria-label="项目大纲" hidden={!dockOpen}
+        className="scroll-area max-h-[62dvh] w-48 shrink-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-surface">
+        {outline()}
+      </aside>}
+      <div className="min-w-0 flex-1 space-y-3">
+        {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
+          此事项已不在当前画布。{' '}{focusCanvas
+            ? <Link className="text-accent-2" state={viewState} to={`${canvasPath(projectId, focusCanvas)}?${new URLSearchParams(itemId === focusItemId ? { focusItemId, itemId } : { focusItemId })}`}>打开当前画布</Link>
+            : <Link className="text-accent-2" to={`/work-items/${encodeURIComponent(focusItemId)}`}>查看工作项详情</Link>}
+        </p>}
+        {todo || missingCanvas ? <div className={`grid min-w-0 items-start gap-4 ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
+          {missingCanvas ? <div className="space-y-2">
+            <ResourceState empty title="画布不存在" />
+            <Link className="text-accent-2" to={`${base}/map`} state={viewState}>返回地图</Link>
+          </div> : <ProjectTodo workspace={workspace} onItem={openItem}
+            onCreate={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
+          {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
+        </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
+          itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
+      </div>
+    </div>
   </div>
 }
 
