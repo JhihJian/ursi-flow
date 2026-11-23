@@ -93,6 +93,10 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
 
   const focus = workspace.items.find(({ item }) => item.id === focusItemId)
   const focusCanvas = workspace.taskCards.find(card => card.id === focus?.taskCardId)?.canvasId
+  const inspector = itemId && <>
+    {locateNote && <p role="status" className="mb-2 text-sm text-txt3">{locateNote}</p>}
+    <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
+  </>
 
   return <div className="page-stack min-w-0">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
@@ -111,26 +115,20 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
       error={mutation.error} onClose={() => setSettings(undefined)}
       onRename={name => run(signal => renameProject(workspace.project, name, signal), () => { projects.reload(); setSettings(undefined) })}
       onDelete={() => run(signal => deleteProject(projectId, signal), () => { projects.reload(); navigate(projectsPath, { replace: true }) })} />}
-      <div className={`grid min-w-0 items-start gap-4 ${itemId ? 'xl:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
-        <div className="min-w-0 space-y-3">
-          {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
-            此事项已不在当前画布。{' '}{focusCanvas
-              ? <Link className="text-accent-2" to={`${canvasPath(projectId, focusCanvas)}?${new URLSearchParams({ focusItemId })}`}>打开当前画布</Link>
-              : <Link className="text-accent-2" to={`/work-items/${encodeURIComponent(focusItemId)}`}>查看工作项详情</Link>}
-          </p>}
-          {missingCanvas ? <div className="space-y-2">
-            <ResourceState empty title="画布不存在" />
-            <Link className="text-accent-2" to={`${base}/map`}>返回 Canvas Map</Link>
-          </div> : todo ? <ProjectTodo workspace={workspace} onItem={openItem}
-            onCreate={id => navigate(canvasPath(projectId, id), { state: { todoPath: `${location.pathname}${location.search || '?'}` } })} />
-            : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
-              onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id))} />}
-        </div>
-        {itemId && <div className="order-first min-w-0 xl:order-last">
-          {locateNote && <p role="status" className="mb-2 text-sm text-txt3">{locateNote}</p>}
-          <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
-        </div>}
-      </div>
+    {focusItemId && canvasId && focusCanvas !== canvasId && <p role="status" className="text-sm text-txt3">
+      此事项已不在当前画布。{' '}{focusCanvas
+        ? <Link className="text-accent-2" to={`${canvasPath(projectId, focusCanvas)}?${new URLSearchParams({ focusItemId })}`}>打开当前画布</Link>
+        : <Link className="text-accent-2" to={`/work-items/${encodeURIComponent(focusItemId)}`}>查看工作项详情</Link>}
+    </p>}
+    {todo || missingCanvas ? <div className={`grid min-w-0 items-start gap-4 ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}`}>
+      {missingCanvas ? <div className="space-y-2">
+        <ResourceState empty title="画布不存在" />
+        <Link className="text-accent-2" to={`${base}/map`}>返回 Canvas Map</Link>
+      </div> : <ProjectTodo workspace={workspace} onItem={openItem}
+        onCreate={id => navigate(canvasPath(projectId, id), { state: { todoPath: `${location.pathname}${location.search || '?'}` } })} />}
+      {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
+    </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
+      itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id))} />}
   </div>
 }
 

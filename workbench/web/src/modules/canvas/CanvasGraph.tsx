@@ -3,10 +3,10 @@ import {
   Background, Handle, MarkerType, MiniMap, Panel, Position, ReactFlow,
   applyNodeChanges, useInternalNode, useNodesInitialized, useReactFlow, useStore,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps, type NodeTypes,
-  type OnSelectionChangeParams,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Button } from '@/shared/ui/button'
+import { Icon } from '@/shared/ui/icon'
 import { menuAnchor, type MenuAnchor } from '@/shared/ui/menu-anchor'
 import './canvas-graph.css'
 
@@ -15,30 +15,32 @@ export interface Point { x: number; y: number }
 export interface CanvasNode {
   id: string
   label: string
+  icon?: string
   position: Point
   content?: ReactNode
 }
 
 export interface CanvasEdge { id: string; from: string; to: string }
-export type CanvasContextTarget = { kind: 'pane' } | { kind: 'node' | 'edge'; id: string }
+export type CanvasSelection = { kind: 'node' | 'edge'; id: string }
+export type CanvasContextTarget = { kind: 'pane' } | CanvasSelection
 
 export interface CanvasGraphProps {
   nodes: readonly CanvasNode[]
   edges: readonly CanvasEdge[]
   focusNodeId?: string
+  focusKey?: string
+  selection: CanvasSelection | null
   editableEdges?: boolean
   showMiniMap?: boolean
   onMove: (id: string, position: Point) => void
-  onSelectNode?: (id: string) => void
+  onSelection?: (selection: CanvasSelection | null) => void
   onOpenNode?: (id: string) => void
-  onSelectEdge?: (id: string) => void
   onContext?: (target: CanvasContextTarget, anchor: MenuAnchor) => void
   onConnect?: (from: string, to: string) => void
   onReconnect?: (id: string, from: string, to: string) => void
 }
 
-type CardNode = Node<{ label: string; content?: ReactNode }, 'card'>
-type Selection = { nodeId?: string; edgeId?: string }
+type CardNode = Node<{ label: string; icon?: string; content?: ReactNode }, 'card'>
 
 const minZoom = 0.2
 const maxZoom = 2
@@ -54,7 +56,10 @@ function NodeCard({ data, isConnectable }: NodeProps<CardNode>) {
     <div className="wb-canvas-card">
       <Handle type="target" position={Position.Left} isConnectable={isConnectable}
         isConnectableStart={isConnectable && canStartConnection} />
-      <div className="wb-canvas-card-title">{data.label}</div>
+      <div className="wb-canvas-card-title">
+        {data.icon && <Icon name={data.icon} size={14} />}
+        <span title={data.label}>{data.label}</span>
+      </div>
       {data.content != null && (
         <div
           className="wb-canvas-card-content nodrag nopan nowheel nokey"
@@ -74,16 +79,15 @@ const nodeTypes = { card: NodeCard } satisfies NodeTypes
 
 function projectNodes(input: readonly CanvasNode[], previous: CardNode[] = []): CardNode[] {
   const byId = new Map(previous.map((node) => [node.id, node]))
-  return input.map(({ id, label, position, content }) => {
+  return input.map(({ id, label, icon, position, content }) => {
     const old = byId.get(id)
     return {
       id,
       type: 'card',
       position: old?.dragging ? old.position : position,
-      data: { label, content },
+      data: { label, icon, content },
       ariaLabel: label,
       measured: old?.measured,
-      selected: old?.selected,
       dragging: old?.dragging,
     }
   })
@@ -130,8 +134,8 @@ function CanvasControls() {
 }
 
 export function CanvasGraph({
-  nodes, edges, focusNodeId, editableEdges = false, showMiniMap = false,
-  onMove, onSelectNode, onOpenNode, onSelectEdge, onContext, onConnect, onReconnect,
+  nodes, edges, focusNodeId, focusKey, selection, editableEdges = false, showMiniMap = false,
+  onMove, onSelection, onOpenNode, onContext, onConnect, onReconnect,
 }: CanvasGraphProps) {
   const graphId = useId()
   const surface = useRef<HTMLDivElement>(null)
@@ -140,8 +144,9 @@ export function CanvasGraph({
     setNodeState({ input: nodes, view: projectNodes(nodes, nodeState.view) })
   }
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string>()
-  const selection = useRef<Selection>({})
+  const selectedNodeId = selection?.kind === 'node' ? selection.id : undefined
+  const selectedEdgeId = selection?.kind === 'edge' ? selection.id : undefined
+  const flowNodes = useMemo(() => nodeState.view.map(node => ({ ...node, selected: node.id === selectedNodeId })), [nodeState.view, selectedNodeId])
   const flowEdges = useMemo<Edge[]>(() => edges.flatMap(({ id, from, to }) => {
     const source = nodesById.get(from)
     const target = nodesById.get(to)
@@ -152,38 +157,40 @@ export function CanvasGraph({
   }), [edges, nodesById, selectedEdgeId])
 
   const changeNodes = useCallback((changes: NodeChange<CardNode>[]) => {
-    setNodeState((state) => ({
-      ...state,
-      view: applyNodeChanges(changes.flatMap<NodeChange<CardNode>>((change) => {
-        if (change.type === 'dimensions' || change.type === 'select') return [change]
-        if (change.type !== 'position' || !nodesById.has(change.id)) return []
-        // End the visual override on drop. Caller coordinates then take effect, including rollback.
-        return [change.dragging ? change : { ...change, position: nodesById.get(change.id)?.position }]
-      }), state.view),
-    }))
+    const geometry = changes.flatMap<NodeChange<CardNode>>((change) => {
+      if (change.type === 'dimensions') return [change]
+      if (change.type !== 'position' || !nodesById.has(change.id)) return []
+      // End the visual override on drop. Caller coordinates take effect, including rollback.
+      return [change.dragging ? change : { ...change, position: nodesById.get(change.id)?.position }]
+    })
+    if (geometry.length) setNodeState(state => ({ ...state, view: applyNodeChanges(geometry, state.view) }))
   }, [nodesById])
 
-  const selectionChanged = useCallback(({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams<CardNode, Edge>) => {
-    const nodeId = selectedNodes[0]?.id
-    const edgeId = selectedEdges[0]?.id
-    const last = selection.current
-    selection.current = { nodeId, edgeId }
-    if (nodeId !== undefined && nodeId !== last.nodeId) onSelectNode?.(nodeId)
-    if (edgeId !== undefined && edgeId !== last.edgeId) onSelectEdge?.(edgeId)
-  }, [onSelectEdge, onSelectNode])
+  function selectOnKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    if (event.key === 'Escape' && (target === event.currentTarget || target.matches('.react-flow__node, .react-flow__edge'))) {
+      onSelection?.(null)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      const id = target.getAttribute('data-id')
+      if (!id) return
+      if (target.matches('.react-flow__node')) onSelection?.({ kind: 'node', id })
+      if (target.matches('.react-flow__edge')) onSelection?.({ kind: 'edge', id })
+    }
+  }
 
   const canEditEdges = editableEdges && Boolean(onConnect || onReconnect)
   const validEndpoints = ({ source, target }: Connection) => nodesById.has(source) && nodesById.has(target)
 
   return (
-    <div className="wb-canvas" ref={surface} tabIndex={onContext ? 0 : undefined} role="group" aria-label="画布操作"
+    <div className="wb-canvas" ref={surface} tabIndex={onContext ? 0 : undefined} role="group" aria-label="画布操作" onKeyDown={selectOnKey}
       onContextMenu={onContext ? event => {
         if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
       } : undefined}>
       <ReactFlow<CardNode, Edge>
         id={graphId}
         aria-label="图形画布"
-        nodes={nodeState.view}
+        nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -202,23 +209,9 @@ export function CanvasGraph({
         connectOnClick={canEditEdges && Boolean(onConnect)}
         edgesReconnectable={canEditEdges && Boolean(onReconnect)}
         onNodesChange={changeNodes}
-        onEdgesChange={(changes) => {
-          setSelectedEdgeId((id) => {
-            for (const change of changes) {
-              if (change.type !== 'select') continue
-              if (change.selected) id = change.id
-              else if (id === change.id) id = undefined
-            }
-            return id
-          })
-        }}
-        onSelectionChange={selectionChanged}
-        onNodeClick={(_, node) => {
-          if (node.id === selection.current.nodeId) onSelectNode?.(node.id)
-        }}
-        onEdgeClick={(_, edge) => {
-          if (edge.id === selection.current.edgeId) onSelectEdge?.(edge.id)
-        }}
+        onPaneClick={() => onSelection?.(null)}
+        onNodeClick={(_, node) => onSelection?.({ kind: 'node', id: node.id })}
+        onEdgeClick={(_, edge) => onSelection?.({ kind: 'edge', id: edge.id })}
         onPaneContextMenu={onContext ? event => {
           if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
         } : undefined}
@@ -244,7 +237,7 @@ export function CanvasGraph({
         <CanvasControls />
         {showMiniMap && <MiniMap ariaLabel="画布缩略图" pannable zoomable />}
         {focusNodeId !== undefined && nodesById.has(focusNodeId) && (
-          <CanvasFocus key={focusNodeId} nodeId={focusNodeId} />
+          <CanvasFocus key={JSON.stringify([focusNodeId, focusKey])} nodeId={focusNodeId} />
         )}
       </ReactFlow>
     </div>

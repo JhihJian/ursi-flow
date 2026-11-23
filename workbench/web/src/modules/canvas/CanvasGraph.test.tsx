@@ -43,7 +43,7 @@ afterEach(cleanup)
 function layout() { act(() => [...measure].forEach((flush) => flush())) }
 
 function renderCanvas(options: Partial<CanvasGraphProps> = {}) {
-  const props = { nodes, edges, onMove: vi.fn(), ...options }
+  const props: CanvasGraphProps = { nodes, edges, selection: null, onMove: vi.fn(), ...options }
   const view = render(<CanvasGraph {...props} />)
   return { update: (changes: Partial<CanvasGraphProps>) => view.rerender(<CanvasGraph {...props} {...changes} />) }
 }
@@ -86,32 +86,39 @@ describe('CanvasGraph', () => {
   })
 
   it('selects a node or edge, opens on double click and leaves custom actions independent', () => {
-    const onSelectNode = vi.fn()
-    const onSelectEdge = vi.fn()
+    const onSelection = vi.fn()
     const onOpenNode = vi.fn()
     const action = vi.fn()
-    renderCanvas({
+    const { update } = renderCanvas({
       nodes: [{ ...nodes[0], content: <button onClick={action}>卡内操作</button> }, ...nodes.slice(1)],
-      onSelectNode, onSelectEdge, onOpenNode, showMiniMap: true,
+      onSelection, onOpenNode, showMiniMap: true,
     })
     layout()
     fireEvent.click(screen.getByRole('button', { name: '卡内操作' }))
     fireEvent.doubleClick(screen.getByRole('button', { name: '卡内操作' }))
     expect(action).toHaveBeenCalledOnce()
-    expect(onSelectNode).not.toHaveBeenCalled()
+    expect(onSelection).not.toHaveBeenCalled()
     expect(onOpenNode).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByText('准备'))
+    expect(onSelection).toHaveBeenCalledExactlyOnceWith({ kind: 'node', id: 'a' })
+    update({ selection: { kind: 'node', id: 'a' } })
     expect(node('a')).toHaveClass('selected')
-    expect(onSelectNode).toHaveBeenCalledExactlyOnceWith('a')
     fireEvent.doubleClick(screen.getByText('准备'))
     expect(onOpenNode).toHaveBeenCalledExactlyOnceWith('a')
 
     const edge = screen.getByRole('group', { name: '准备 → 验收' })
     fireEvent.click(edge)
+    expect(onSelection).toHaveBeenLastCalledWith({ kind: 'edge', id: 'ab' })
+    update({ selection: { kind: 'edge', id: 'ab' } })
     expect(edge).toHaveClass('selected')
     expect(node('a')).not.toHaveClass('selected')
-    expect(onSelectEdge).toHaveBeenCalledExactlyOnceWith('ab')
+    fireEvent.keyDown(edge, { key: 'Escape' })
+    expect(onSelection).toHaveBeenLastCalledWith(null)
+    update({ selection: null })
+    expect(edge).not.toHaveClass('selected')
+    fireEvent.keyDown(node('c'), { key: 'Enter' })
+    expect(onSelection).toHaveBeenLastCalledWith({ kind: 'node', id: 'c' })
     expect(screen.getByLabelText('画布缩略图')).toBeInTheDocument()
   })
 
@@ -167,5 +174,11 @@ describe('CanvasGraph', () => {
 
     update({ nodes, focusNodeId: 'a' })
     await waitFor(() => expect(viewport().style.transform).toBe('translate(496.4px,214px) scale(1.2)'))
+
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    const newZoom = viewport().style.transform.match(/scale\(([^)]+)\)/)?.[1]
+    expect(newZoom).not.toBe('1.2')
+    update({ nodes, focusNodeId: 'a', focusKey: 'todo-in-a' })
+    await waitFor(() => expect(viewport().style.transform).toMatch(new RegExp(`scale\\(${newZoom}\\)$`)))
   })
 })

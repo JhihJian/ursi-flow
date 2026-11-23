@@ -22,6 +22,15 @@ export function projectGraphData(workspace: Workspace) {
   return { cardItems, canvasCounts }
 }
 
+export function reorderedItems(rows: readonly PlacedItem[], id: string, step: -1 | 1) {
+  const index = rows.findIndex(row => row.item.id === id)
+  const target = index + step
+  if (index < 0 || target < 0 || target >= rows.length) return
+  const ids = rows.map(row => row.item.id)
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+  return ids
+}
+
 export function graphPositions(nodes: readonly Named[], saved: Record<string, Point>, map: boolean) {
   const occupied = nodes.flatMap(({ id }) => saved[id] ? [saved[id]] : [])
   const rowHeight = map ? 220 : 380

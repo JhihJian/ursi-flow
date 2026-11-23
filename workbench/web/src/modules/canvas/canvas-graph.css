@@ -1,7 +1,7 @@
 .wb-canvas {
   width: 100%;
   min-width: 0;
-  height: clamp(24rem, 62dvh, 52rem);
+  height: var(--wb-canvas-height, clamp(24rem, 62dvh, 52rem));
   overflow: hidden;
   border: 1px solid rgb(var(--c-line));
   border-radius: 8px;
@@ -37,20 +37,31 @@
   border-radius: 8px;
   background: rgb(var(--c-surface));
   color: rgb(var(--c-txt));
-  box-shadow: var(--shadow-card);
 }
 
 .wb-canvas-card-title {
-  padding: 0.625rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
   font-size: 0.875rem;
   font-weight: 600;
-  overflow-wrap: anywhere;
+}
+
+.wb-canvas-card-title svg {
+  flex: none;
+  color: rgb(var(--c-txt3));
+}
+
+.wb-canvas-card-title span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .wb-canvas-card-content {
   min-width: 0;
-  padding: 0.5rem 0.75rem 0.75rem;
-  border-top: 1px solid rgb(var(--c-line));
+  padding: 0 0.625rem 0.5rem;
   cursor: auto;
   overflow-wrap: anywhere;
 }
@@ -66,6 +77,10 @@
   height: 10px;
   border: 2px solid rgb(var(--c-surface));
   background: rgb(var(--c-txt3));
+}
+
+.wb-canvas .react-flow__handle:not(.connectable) {
+  opacity: 0;
 }
 
 .wb-canvas .react-flow__handle.connectable {

@@ -10,7 +10,7 @@
 | --- | --- |
 | 侧栏上部是 Canvas Map 和 Todo 等视图入口，下部是可展开的项目树。 | 「日常工作」提供 Canvas Map 和 Todo，侧栏下方列出项目、画布、任务卡和 TODO。点名称打开对应视图，展开箭头独立操作。创建项目时附带默认画布。 |
 | Canvas Map 上一张画布对应一个节点，显示画布间关系，可选中查看、拖动排布、打开画布。 | 保留项目总览。地图节点显示名称和 TODO 进度，选择画布或关系线打开侧栏，双击节点或点击「打开画布」进入该画布的图编辑器。 |
-| 单张画布上每个 Task 是一个图节点，卡内堆叠多个 Block。 | Task 对应「任务卡」，Block 对应现有 `WorkItem`。可用工具栏创建任务卡，拖动换位置、连线、增删或重接关系。卡内可新建 TODO、加入已有事项、调整顺序和移到其他卡。 |
+| 单张画布上每个 Task 是一个图节点，卡内堆叠多个 Block。 | Task 对应「任务卡」，Block 对应现有 `WorkItem`。可用工具栏创建任务卡，拖动换位置、连线、增删或重接关系。卡内预览 TODO，选中卡可新建或加入事项，条目菜单可排序或移动。 |
 | 项目 TODO 视图跨画布汇总 Block，用状态分布、画布阶段卡和分组展示，点击打开 Block Inspector。 | 项目 TODO 面板保留状态分布、画布摘要和分组。用人工办理状态替换执行状态，条目显示「画布 / 任务卡」路径，点击打开浏览器内的事项侧栏，并提供「在画布中定位」。 |
 
 例如，「客户交付」项目有「材料准备」和「验收」两张画布。地图上用箭头标出两张画布的计划顺序。进入「材料准备」，拖放两张任务卡「材料收集」和「材料核对」，把「收齐样本」「补客户授权」放在第一张卡，把「核对客户名单」放在第二张卡。之后从全项目 TODO 点开「补客户授权」，可直接跳回「材料准备」并突出显示对应任务卡里的这一条。办完后手动改为已完成，画布、地图与 TODO 同步反映进度。
@@ -21,12 +21,12 @@
 
 - 全局侧栏下部是独立滚动的项目树，桌面与移动抽屉共用。项目打开 Canvas Map，画布打开编辑器，任务卡和 TODO 分别定位到卡和条目。项目树支持刷新、置顶和进入项目管理。树中的 TODO 展示人工状态，并按卡内顺序排列。
 - 「日常工作」的 Canvas Map 和 Todo 作用于当前项目。离开项目页面后仍可从最近项目进入；无可用项目时打开项目选择页。明确的 URL 优先于浏览器记录。已删除的画布提供返回地图的入口。
-- Canvas Map 支持平移、缩放、拖动和重置坐标。项目级关系可以在地图侧栏通过端点选择器维护，地图上点击线查看来源和目标。PlanWeave 的地图本身只读取关系边，这里的侧栏编辑用于补上 Web 端的关系维护入口，地图拖动仍只保存位置。
+- Canvas Map 保留图形与检查栏的双栏结构。地图节点只显示名称、一行人工状态统计和打开入口；右栏显示所选画布的前序和后续关系，或所选连线的前项、后项。点空白可清空选择。右栏标题处重置地图布局，「关系」入口可按需列出和维护关系。
 - 保留原 `/work-items` 作为全局清单和存量事项入口。项目和画布改名保持原 ID。画布或项目仍有 TODO 时，提示先移动或移出事项，再允许删除。删除最后一张画布时要求先建替代画布，或删除整个空项目。
 
 ### 画布编辑器
 
-- 任务卡是画布的图节点，可先用空卡搭骨架。每张卡有名称和有序的 TODO 行。通过卡内操作新建 TODO、加入未归属事项、排序或移到同项目的另一张卡（包括其他画布）。「移出」清除事项在项目中的位置，事项仍保留在全局清单。空画布先建任务卡，再向卡中添加 TODO。
+- 任务卡显示名称和按顺序排列的 TODO 标题、状态。单张画布默认只显示图；任务卡、关系、画布设置和 TODO 详情共用一栏，按需打开。选中任务卡可新建或加入已有事项；条目菜单可排序、移动或移出。移出只解除归属，事项保留在全局清单。窄屏列表保留这些操作。
 - 连线表达**规划先后**，箭头从前项指向后项。地图关系连画布，画布关系连同一画布内的任务卡，两层独立维护。跨画布的详细拆分通过画布关系和导航表达，首版无需跨画布任务卡连线。拒绝跨作用域、重复、自环和成环的关系。所有关系都与办理状态独立：前项仍待开始时，后项也可被人工标记完成。
 - 支持选中、拖动、连接、断开和重接任务卡。条目从一张卡移到另一张卡时，两张卡及其关系保持原样。删除任务卡前须移走卡内所有事项，确认后清理该卡的关系与坐标。窄屏用按任务卡分组的列表完成查看、建项、移动和打开详情。
 
@@ -77,5 +77,5 @@
 PlanWeave 基线 `42d3813`：
 
 - 侧栏、项目树与恢复：`packages/desktop/src/renderer/sidebar/{SidebarNav,ProjectSidebar,ProjectTree,ProjectTreeItem,CanvasTreeItem}.tsx`、`hooks/useDesktopProjectLoader.ts`。
-- 两级图：`packages/runtime/src/projectGraph/schema.ts`、`packages/desktop/src/renderer/views/CanvasMapView.tsx`、`views/GraphView.tsx`、`graph/{CanvasNodeCard,TaskNodeCard,BlockPreviewButton}.tsx`。
+- 两级图：`packages/runtime/src/projectGraph/schema.ts`、`packages/desktop/src/renderer/views/CanvasMapView.tsx`、`views/{CanvasMapInspector,GraphView}.tsx`、`graph/{CanvasNodeCard,TaskNodeCard,BlockPreviewButton}.tsx`。
 - TODO 与定位：`packages/runtime/src/plangraph/projections/todoProjection.ts`、`packages/desktop/src/renderer/views/TodoView.tsx`、`views/WorkspaceTabs.tsx`。原版 TODO 从运行快照汇总 Block，跨画布的详情可寻址；Workbench 另行保证定位时先加载目标画布再聚焦。
