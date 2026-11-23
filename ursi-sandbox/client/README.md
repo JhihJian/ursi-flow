@@ -85,6 +85,42 @@ $CLIENT sftp-get SANDBOX_ID ssh /private/id_ed25519 /private/known_hosts ./calcu
 
 SSH 固定使用 `agent` 用户、公钥和指定私钥，禁用密码及交互认证。客户端会为 SSH/SFTP 自动创建本地临时 bridge；命令本身不解析 bridge 内的 SSH 协议。命令文件经 stdin 交给远端 `sh -se`。专用 known_hosts 使用首次连接信任（TOFU），后续主机密钥变化拒绝连接。每个沙箱使用独立 known_hosts，stop/start 复用同一文件。
 
+### 供标准 SSH 工具接入的 `proxy` 与 `ssh-config`
+
+只支持 `ssh user@host` 的第三方工具（例如 pi coding-agent 的 ssh extension）不需要改造。`proxy` 把本地 stdin/stdout 直通到逻辑端点，用作 `ProxyCommand`；`ssh-config` 打印一次性静态配置块。
+
+```bash
+# 打印配置块，追加到 ~/.ssh/config。不写文件、不访问 Gateway。
+$CLIENT ssh-config >> ~/.ssh/config
+
+# 之后任意支持 ssh_config 的工具都可以直接使用。
+ssh ursi-abc123 'pwd'
+# 以 pi 的 ssh extension 为例，沙箱 ID 作为主机名，工作目录跟在冒号后。
+pi -e ./ssh.ts --ssh ursi-abc123:/ursi/workspace/repo
+```
+
+`ssh-config` 输出的主体是固定匹配：
+
+```text
+Host ursi-*
+  User agent
+  ProxyCommand /usr/local/bin/ursi-sandbox-client proxy %h ssh
+  IdentityFile ~/.ursi/id_ed25519
+  UserKnownHostsFile ~/.ursi/known_hosts
+  StrictHostKeyChecking accept-new
+```
+
+`proxy` 从 `%h` 剥掉 `ursi-` 前缀得到沙箱 ID，因此别名与沙箱一一对应，不依赖端口或 DNS。每个 SSH 连接独立建立一条 `ursi-tcp-v1` WebSocket，路由由 URL 路径显式指定，不靠源端口推断。`proxy` 的 stdout 只承载隧道字节，错误写入 stderr 并返回非零，因此不会污染 SSH 协议流。
+
+选项：`--binary PATH` 指定 `ProxyCommand` 使用的客户端绝对路径，`--identity`、`--known-hosts` 覆盖默认路径，`--endpoint` 改端点名（默认 `ssh`），`--host-key-policy pin|ignore` 选择主机密钥策略。
+
+必须知道的边界：
+
+- `URSI_GATEWAY_URL` 与 `URSI_GATEWAY_KEY[_FILE]` 必须存在于调用 `ssh` 的进程环境中，因为 `ProxyCommand` 继承调用方环境。推荐 `URSI_GATEWAY_KEY_FILE` 加 0600 文件，避免凭据进入 `/proc/<pid>/environ`。
+- `User` 必须是 `agent`。工具若硬编码 `root@host` 会覆盖配置块并认证失败。
+- 沙箱 sshd 禁止 TCP 转发（`AllowTcpForwarding no`），不要使用 `ssh -L`/`-R`，需要端口转发时用 `forward`。
+- 主机密钥在容器内生成，保数据重建或销毁重建后会变化，但 stop/start 不变。默认 `pin` 策略下重建后需 `ssh-keygen -R ursi-<id> -f ~/.ursi/known_hosts` 再连接；`ignore` 策略不记录主机密钥，信任锚退到 Gateway Bearer 通道。
+
 ### ACP 会话
 
 ```bash

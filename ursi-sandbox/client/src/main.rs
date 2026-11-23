@@ -17,6 +17,8 @@ const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP 客户端
   gateway create SPEC_JSON_FILE
   gateway status|start|stop|delete|endpoints SANDBOX_ID
   forward SANDBOX_ID ENDPOINT_NAME [LOCAL_ADDR]
+  proxy HOST [ENDPOINT_NAME]
+  ssh-config [--binary PATH] [--identity PATH] [--known-hosts PATH] [--endpoint NAME] [--host-key-policy pin|ignore]
   ssh SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE SCRIPT_FILE
   sftp-put|sftp-get SANDBOX_ID ENDPOINT_NAME PRIVATE_KEY_FILE KNOWN_HOSTS_FILE LOCAL_FILE REMOTE_FILE
 
@@ -26,6 +28,8 @@ const HELP: &str = r#"ursi-sandbox-client：独立 Gateway、SSH/SFTP 客户端
   URSI_CLIENT_TIMEOUT_SECS          每操作总期限，默认 120 秒
 
 SSH 固定 agent 用户、仅公钥，独立 known_hosts 首次信任，之后拒绝密钥变化。
+proxy 是 SSH ProxyCommand 入口，stdout 只承载隧道字节，主机名形如 ursi-SANDBOX_ID。
+ssh-config 打印可直接追加到 ~/.ssh/config 的静态 Host 块，不写入文件。
 "#;
 
 fn arg(args: &[String], index: usize) -> Result<&str> {
@@ -181,6 +185,25 @@ async fn run(args: &[String]) -> Result<i32> {
         }
         #[cfg(feature = "acp")]
         "acp" => return acp_cli::run(args, timeout).await,
+        "proxy" => {
+            if !(args.len() == 2 || args.len() == 3) {
+                return Err(Error::Invalid("参数数量错误，运行 --help 查看说明".into()));
+            }
+            let sandbox_id = sandbox_id_from_host(arg(args, 1)?)?;
+            let endpoint = args.get(2).map(String::as_str).unwrap_or("ssh");
+            let gateway = Gateway::new(
+                &env("URSI_GATEWAY_URL")?,
+                Secret::from_env("URSI_GATEWAY_KEY")?,
+                timeout,
+            )?;
+            gateway.proxy_stdio(&sandbox_id, endpoint).await?;
+            return Ok(0);
+        }
+        "ssh-config" => {
+            print!("{}", ssh_config(args)?);
+            let _ = io::stdout().flush();
+            return Ok(0);
+        }
         "ssh" | "sftp-put" | "sftp-get" => {
             let operation = arg(args, 0)?;
             count(args, if operation == "ssh" { 6 } else { 7 })?;
@@ -235,4 +258,96 @@ async fn run(args: &[String]) -> Result<i32> {
         _ => return Err(Error::Invalid("未知命令，运行 --help 查看说明".into())),
     }
     Ok(0)
+}
+
+/// ProxyCommand 传入的主机名形如 `ursi-SANDBOX_ID`，也接受 `user@ursi-SANDBOX_ID`。
+fn sandbox_id_from_host(host: &str) -> Result<String> {
+    const PREFIX: &str = "ursi-";
+    let host = host.rsplit('@').next().unwrap_or(host);
+    let id = host
+        .strip_prefix(PREFIX)
+        .ok_or_else(|| Error::Invalid(format!("主机名必须以 {PREFIX} 开头")))?;
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err(Error::Invalid("主机名中的沙箱 ID 无效".into()));
+    }
+    Ok(id.to_owned())
+}
+
+/// 生成可直接追加到 `~/.ssh/config` 的静态 `Host ursi-*` 块。不写入文件、不访问 Gateway。
+fn ssh_config(args: &[String]) -> Result<String> {
+    let mut binary = std::env::current_exe()
+        .map_err(|_| Error::Invalid("无法确定客户端路径，请用 --binary 指定".into()))?
+        .display()
+        .to_string();
+    let mut identity = "~/.ursi/id_ed25519".to_owned();
+    let mut known_hosts = "~/.ursi/known_hosts".to_owned();
+    let mut endpoint = "ssh".to_owned();
+    let mut pin = true;
+    let mut index = 1;
+    while index < args.len() {
+        let name = args[index].as_str();
+        let value = arg(args, index + 1)?.to_owned();
+        match name {
+            "--binary" => binary = value,
+            "--identity" => identity = value,
+            "--known-hosts" => known_hosts = value,
+            "--endpoint" => endpoint = value,
+            "--host-key-policy" => match value.as_str() {
+                "pin" => pin = true,
+                "ignore" => pin = false,
+                _ => {
+                    return Err(Error::Invalid(
+                        "--host-key-policy 只能是 pin 或 ignore".into(),
+                    ));
+                }
+            },
+            _ => return Err(Error::Invalid(format!("未知选项 {name}"))),
+        }
+        index += 2;
+    }
+    if endpoint.is_empty() || endpoint.contains(char::is_whitespace) {
+        return Err(Error::Invalid("--endpoint 无效".into()));
+    }
+    for value in [&binary, &identity, &known_hosts] {
+        if value.contains(['"', '\n', '\r']) {
+            return Err(Error::Invalid("路径不能包含引号或换行".into()));
+        }
+    }
+    let quote = |value: &String| {
+        if value.contains(' ') {
+            format!("\"{value}\"")
+        } else {
+            value.clone()
+        }
+    };
+    let mut block = String::from("Host ursi-*\n  User agent\n");
+    block.push_str(&format!(
+        "  ProxyCommand {} proxy %h {}\n",
+        quote(&binary),
+        endpoint
+    ));
+    block.push_str(&format!("  IdentityFile {}\n", quote(&identity)));
+    block.push_str(
+        "  IdentitiesOnly yes\n  BatchMode yes\n  \
+         PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  \
+         ServerAliveInterval 10\n  ServerAliveCountMax 2\n",
+    );
+    if pin {
+        block.push_str(&format!(
+            "  StrictHostKeyChecking accept-new\n  UserKnownHostsFile {}\n  \
+             GlobalKnownHostsFile /dev/null\n",
+            quote(&known_hosts)
+        ));
+    } else {
+        block.push_str(
+            "  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  \
+             GlobalKnownHostsFile /dev/null\n",
+        );
+    }
+    Ok(block)
 }

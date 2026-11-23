@@ -11,7 +11,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, split},
     net::{TcpListener, TcpStream},
     sync::watch,
 };
@@ -185,6 +185,16 @@ impl Gateway {
         endpoint_name: &str,
         listen: SocketAddr,
     ) -> Result<Bridge> {
+        self.ready_endpoint(sandbox_id, endpoint_name).await?;
+        Ok(Bridge {
+            gateway: self.clone(),
+            sandbox_id: sandbox_id.to_owned(),
+            endpoint_name: endpoint_name.to_owned(),
+            listener: TcpListener::bind(listen).await?,
+        })
+    }
+
+    async fn ready_endpoint(&self, sandbox_id: &str, endpoint_name: &str) -> Result<Endpoint> {
         validate_identifier(sandbox_id, "沙箱 ID")?;
         validate_identifier(endpoint_name, "端点名")?;
         let endpoint = self
@@ -196,12 +206,19 @@ impl Gateway {
         if !endpoint.ready || endpoint.state != "ready" {
             return Err(Error::Invalid("端点尚未就绪".into()));
         }
-        Ok(Bridge {
-            gateway: self.clone(),
-            sandbox_id: sandbox_id.to_owned(),
-            endpoint_name: endpoint_name.to_owned(),
-            listener: TcpListener::bind(listen).await?,
-        })
+        Ok(endpoint)
+    }
+
+    /// 把本地 stdin/stdout 直通到逻辑端点，作为 SSH `ProxyCommand` 使用。
+    /// stdout 只承载隧道字节，不输出任何结构化结果。
+    pub async fn proxy_stdio(&self, sandbox_id: &str, endpoint_name: &str) -> Result<()> {
+        self.ready_endpoint(sandbox_id, endpoint_name).await?;
+        let websocket = self.connect_tunnel(sandbox_id, endpoint_name).await?;
+        relay_stream(
+            tokio::io::join(tokio::io::stdin(), tokio::io::stdout()),
+            websocket,
+        )
+        .await
     }
 
     async fn connect_tunnel(
@@ -318,44 +335,78 @@ async fn relay_connection(
     endpoint_name: &str,
 ) -> Result<()> {
     let websocket = gateway.connect_tunnel(sandbox_id, endpoint_name).await?;
-    let (mut tcp_read, mut tcp_write) = tcp.into_split();
+    relay_stream(tcp, websocket).await
+}
+
+/// 双向中继一个本地字节流与一条 Gateway 隧道，保持 `eof` 半关闭与 Ping 保活语义。
+///
+/// 本地读放在独立任务里，避免 `select!` 取消挂起的读 future。`tokio::io::stdin`
+/// 的读由阻塞池完成，取消挂起的读会丢失已读字节。
+async fn relay_stream<S>(
+    stream: S,
+    websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (mut local_read, mut local_write) = split(stream);
     let (mut ws_write, mut ws_read) = websocket.split();
-    let mut buffer = vec![0u8; MAX_TCP_MESSAGE];
+    let (chunks, mut incoming) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+    let reader = tokio::spawn(async move {
+        let mut buffer = vec![0u8; MAX_TCP_MESSAGE];
+        loop {
+            match local_read.read(&mut buffer).await {
+                Ok(0) | Err(_) => return,
+                Ok(count) => {
+                    if chunks.send(buffer[..count].to_vec()).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
     let mut local_eof = false;
     let mut remote_eof = false;
-    let mut ping = tokio::time::interval(Duration::from_secs(20));
+    let mut ping = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(20),
+        Duration::from_secs(20),
+    );
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         if local_eof && remote_eof {
             let _ = ws_write.send(Message::Close(None)).await;
-            return Ok(());
+            break;
         }
         tokio::select! {
-            count = tcp_read.read(&mut buffer), if !local_eof => {
-                let count = count?;
-                if count == 0 {
-                    ws_write.send(Message::Text("eof".into())).await.map_err(|_| Error::Transport)?;
-                    local_eof = true;
-                } else {
-                    ws_write.send(Message::Binary(buffer[..count].to_vec().into())).await.map_err(|_| Error::Transport)?;
+            chunk = incoming.recv(), if !local_eof => {
+                match chunk {
+                    Some(bytes) => {
+                        ws_write.send(Message::Binary(bytes.into())).await.map_err(|_| Error::Transport)?;
+                    }
+                    None => {
+                        ws_write.send(Message::Text("eof".into())).await.map_err(|_| Error::Transport)?;
+                        local_eof = true;
+                    }
                 }
             }
             message = ws_read.next(), if !remote_eof => {
                 let message = message.ok_or(Error::Closed)?.map_err(|_| Error::Transport)?;
                 match message {
                     Message::Binary(bytes) if bytes.len() <= MAX_TCP_MESSAGE => {
-                        tcp_write.write_all(&bytes).await?;
+                        local_write.write_all(&bytes).await?;
+                        // 本地写端可能是行缓冲的标准输出，SSH 报文不含换行时必须显式 flush。
+                        local_write.flush().await?;
                     }
                     Message::Text(text) if text == "eof" => {
-                        tcp_write.shutdown().await?;
+                        local_write.shutdown().await?;
                         remote_eof = true;
                     }
                     Message::Ping(payload) => {
                         ws_write.send(Message::Pong(payload)).await.map_err(|_| Error::Transport)?;
                     }
                     Message::Pong(_) => {}
-                    Message::Close(_) => return Ok(()),
+                    Message::Close(_) => break,
                     Message::Binary(_) | Message::Text(_) => {
                         return Err(Error::Protocol("ursi-tcp-v1 消息超限或无效".into()));
                     }
@@ -367,6 +418,9 @@ async fn relay_connection(
             }
         }
     }
+    reader.abort();
+    let _ = reader.await;
+    Ok(())
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<()> {
