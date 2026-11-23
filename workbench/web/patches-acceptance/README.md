@@ -17,7 +17,7 @@ cd web
 npm run test:patches-acceptance
 ```
 
-需要 Node.js 24、Web 依赖和 Playwright Chromium。生成用例另外需要[服务端转换契约](../../server/src/work/worklist/CONVERSION.md)列出的 Linux 用户命名空间、bwrap、系统 Python 和 libseccomp。试运行和绑定生成均使用真实隔离环境。
+需要 Node.js 24、Web 依赖和 Playwright Chromium。生成用例另外需要[服务端转换契约](../../server/src/work/generation/CONVERSION.md)列出的 Linux 用户命名空间、bwrap、系统 Python 和 libseccomp。试运行和关联工作项的生成均使用真实隔离环境。
 
 可追加 `-- --project desktop` 或 `-- --project mobile` 单独运行一种视口，或追加 `-- work-patch-generators.spec.ts` 只运行生成器用例。
 

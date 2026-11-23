@@ -106,7 +106,7 @@ test('主导航可打开工作包生成器和生成记录', async ({ page }, inf
   await openNavigation(page, mobile, '生成记录', runs)
 })
 
-test('工作包生成器：试运行、绑定旧版生成、重试及记录深链', async ({ page, request }, info) => {
+test('工作包生成器：试运行、关联工作项生成、重试及记录深链', async ({ page, request }, info) => {
   test.setTimeout(150_000)
   const mobile = info.project.name === 'mobile'
   const api = workApi(request)
@@ -164,27 +164,14 @@ test('工作包生成器：试运行、绑定旧版生成、重试及记录深�
       return { v1, trialPath, trialContent }
     })
 
-    const item = await test.step('绑定第 1 版，再发布并试运行第 2 版', async () => {
-      const generator = { ...v1, resources }
-      await page.goto('/work-items/new')
-      const main = page.getByRole('main')
-      await main.getByLabel('标题').fill(title)
-      await main.getByLabel('类别').selectOption('continuous')
-      await main.getByRole('combobox', { name: '生成器', exact: true }).selectOption(generatorId)
-      await main.getByLabel('生成器版本').selectOption('1')
-      await main.getByLabel('report 的 MCP 服务').selectOption(resources[0].serverId)
-      await main.getByLabel('report 的 MCP 资源').selectOption(resources[0].uri)
-      await main.getByRole('button', { name: '保存工作项' }).click()
-      await expect(page).toHaveURL(url => /^\/work-items\/[0-9a-f-]{36}$/.test(url.pathname))
-      const item = { id: new URL(page.url()).pathname.split('/').at(-1)! }
-      expect(fixture.resourceReads).toEqual([mcpResource.uri])
+    const item = await test.step('创建工作项，再发布并试运行第 2 版', async () => {
+      const item = await api.json<{ id: string }>('POST', '/work-items', { title, category: 'continuous' })
       const v2 = await publish(2)
-      expect(fixture.resourceReads).toEqual([mcpResource.uri])
       const trialPath = `${runs}/${randomUUID()}`
       const payload = { generator: v2, resources }
       await api.json<Run>('PUT', trialPath, payload)
       await expectOutput(patches, await completedRun(api, trialPath, payload), 2, 'trial')
-      expect(await api.json('GET', `/work-items/${item.id}`)).toMatchObject({ generator, category: 'continuous', status: 'pending' })
+      expect(await api.json('GET', `/work-items/${item.id}`)).toMatchObject({ title, category: 'continuous', status: 'pending' })
       expect(fixture.resourceReads).toEqual([mcpResource.uri, mcpResource.uri])
       return item
     })
@@ -213,12 +200,11 @@ test('工作包生成器：试运行、绑定旧版生成、重试及记录深�
     })
 
     const itemPath = `/work-items/${item.id}`
-    const { runPath, patchPath } = await test.step('在工作项发起生成，核对旧版、归属及同 ID 重试', async () => {
-      await page.goto(itemPath)
-      await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
-      const payload = { workItemId: item.id }
-      const runPath = await submitFromBrowser(page, '生成工作包', payload)
-      const result = await completedRun(api, runPath, { ...payload, generator: v1, resources })
+    const { runPath, patchPath } = await test.step('以工作项为上下文生成，核对旧版、归属及同 ID 重试', async () => {
+      const payload = { generator: v1, resources, workItemId: item.id }
+      const runPath = `${runs}/${randomUUID()}`
+      await api.json<Run>('PUT', runPath, payload)
+      const result = await completedRun(api, runPath, payload)
       await expectOutput(patches, result, 1, title)
       const patchId = result.workPatchId
       if (!patchId) throw new Error(`${runPath} 没有关联工作包`)
@@ -240,7 +226,7 @@ test('工作包生成器：试运行、绑定旧版生成、重试及记录深�
       await expect(main.getByText('持续工作', { exact: true })).toBeVisible()
       await expect(main.getByText('待开始', { exact: true })).toBeVisible()
       await expect(linkTo(page, patchPath)).toHaveText(`反馈 v1 ${title}`)
-      await main.getByRole('link', { name: '生成记录', exact: true }).click()
+      await main.getByRole('link', { name: '查看本项的生成记录' }).click()
       await expect(page).toHaveURL(url => url.pathname === runs && url.searchParams.get('workItemId') === item.id)
       const boundRecord = linkTo(page, runPath)
       await expect(boundRecord).toBeVisible()

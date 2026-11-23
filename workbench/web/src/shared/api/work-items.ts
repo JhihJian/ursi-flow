@@ -1,5 +1,4 @@
 import { requestV2 } from '@/shared/http/client'
-import type { GeneratorBinding } from './work-patch-generators'
 
 export const categories = {
   one_time: '一次性工作', continuous: '持续工作',
@@ -7,7 +6,7 @@ export const categories = {
 export type Category = keyof typeof categories
 export const statuses = { pending: '待开始', active: '进行中', completed: '已完成' }
 export type WorkStatus = keyof typeof statuses
-export type WorkDraft = { title: string; description: string; category: Category; status: WorkStatus; generator?: GeneratorBinding | null }
+export type WorkDraft = { title: string; description: string; category: Category; status: WorkStatus }
 export type WorkItem = WorkDraft & { id: string; revision: number }
 
 export const workItemPath = (id: string) => `/work-items/${encodeURIComponent(id)}`
