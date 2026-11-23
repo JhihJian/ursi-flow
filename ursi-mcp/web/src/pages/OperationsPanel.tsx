@@ -33,8 +33,8 @@ export function OperationsPanel(props: Props & { kind: CatalogKind }) {
     <h2 className="text-sm font-semibold text-txt">{titles[kind]}目录<span className="ml-1.5 text-xs font-normal text-txt3">共 {list.data.length} 项</span></h2>
     <Button size="sm" variant="outline" icon="refresh" loading={list.loading} onClick={list.reload}>刷新目录</Button>
   </div>
-  return <div className="grid min-h-0 min-w-0 content-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-    <section aria-label={`${titles[kind]}列表`} className="panel flex min-h-[16rem] min-w-0 flex-col overflow-hidden">
+  return <div className="grid min-h-0 min-w-0 flex-1 content-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
+    <section aria-label={`${titles[kind]}列表`} className="panel flex min-h-[16rem] min-w-0 flex-col overflow-hidden max-h-[24rem] xl:max-h-none">
       {nav}
       <div className="border-b border-line p-3">
         <Input aria-label="搜索目录" placeholder="搜索名称或说明" value={search} onChange={e => setSearch(e.target.value)} />
