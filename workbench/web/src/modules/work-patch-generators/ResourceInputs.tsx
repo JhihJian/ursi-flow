@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { mcpClient } from '@/shared/api/mcp'
-import type { ResourceRef } from '@/shared/api/work-items'
+import type { ResourceRef } from '@/shared/api/work-patch-generators'
 import { useResource } from '@/shared/hooks/use-resource'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { Select } from '@/shared/ui/select'

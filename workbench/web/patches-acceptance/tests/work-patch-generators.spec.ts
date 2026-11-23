@@ -166,14 +166,10 @@ test('工作包生成器：试运行、绑定旧版生成、重试及记录深�
 
     const item = await test.step('绑定第 1 版，再发布并试运行第 2 版', async () => {
       const generator = { ...v1, resources }
-      const invalid = await api.send('POST', '/work-items', { title, generator, recipe: { resources, script: script(1) } })
-      expect([400, 422], `同时提交生成器与配方：HTTP ${invalid.status()} ${await invalid.text()}`).toContain(invalid.status())
       await page.goto('/work-items/new')
       const main = page.getByRole('main')
       await main.getByLabel('标题').fill(title)
       await main.getByLabel('类别').selectOption('continuous')
-      await main.getByRole('checkbox', { name: '配置工作包来源' }).check()
-      await main.getByLabel('工作包来源类型').selectOption('generator')
       await main.getByRole('combobox', { name: '生成器', exact: true }).selectOption(generatorId)
       await main.getByLabel('生成器版本').selectOption('1')
       await main.getByLabel('report 的 MCP 服务').selectOption(resources[0].serverId)
@@ -291,7 +287,7 @@ test('工作包生成失败保留阶段与输入摘要，不发布目录或包',
     const v2 = await api.json<GeneratorRef>('POST', generators, { ...definition, script: script(2) })
     const resources = [{ alias: 'report', serverId, uri: mcpResource.uri }]
     const generator = { id, revision: v2.revision, resources }
-    const item = await api.json<{ id: string; revision: number }>('POST', '/work-items', { title: '等待核对修订', generator })
+    const item = await api.json<{ id: string }>('POST', '/work-items', { title: '读取时已删除', generator })
     const directoriesBefore = await api.json('GET', '/directories')
     const patchesBefore = await api.json('GET', '/patches/work')
 
@@ -315,10 +311,8 @@ test('工作包生成失败保留阶段与输入摘要，不发布目录或包',
     await fails({ generator: { id, revision: v1.revision }, resources: [{ ...resources[0], uri: 'feedback://missing' }] }, 'read', 0)
     await fails({ generator: { id, revision: v1.revision }, resources }, 'validate', 1)
     afterRead = async () => {
-      const updated = await api.json<{ revision: number }>('PUT', `/work-items/${item.id}`, {
-        title: '读取时已更新工作项', revision: item.revision, generator,
-      })
-      expect(updated.revision).toBe(item.revision + 1)
+      const removed = await api.send('DELETE', `/work-items/${item.id}`)
+      expect(removed.status()).toBe(204)
     }
     await fails({ workItemId: item.id }, 'publish', 1)
     expect(await api.json('GET', '/directories')).toEqual(directoriesBefore)

@@ -10,7 +10,7 @@ test('工作项深链在原址登录，退出后隐藏数据', async ({ page }) 
     seen.push(path)
     expect(route.request().headers().authorization).toBe(`Bearer ${token}`)
     if (path === '/api/v2/work-items/example') return route.fulfill({ json: {
-      id: 'example', revision: 1, title: '本周反馈', category: 'continuous', status: 'active', description: '整理复核结论', recipe: null,
+      id: 'example', revision: 1, title: '本周反馈', category: 'continuous', status: 'active', description: '整理复核结论',
     } })
     expect(['/api/v1/flows', '/api/v2/patches/work']).toContain(path)
     return route.fulfill({ json: [] })

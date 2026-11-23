@@ -4,7 +4,7 @@ const items = [
   { id: 'weekly', title: '每周复核', category: 'continuous', status: 'active' },
   { id: 'daily', title: '每日整理', category: 'continuous', status: 'pending' },
   { id: 'audit', title: '季度验收', category: 'one_time', status: 'active' },
-].map(item => ({ ...item, description: '', revision: 1, recipe: null }))
+].map(item => ({ ...item, description: '', revision: 1 }))
 
 test('类别与状态组合筛选，刷新和清除单个条件保留另一维度', async ({ page }) => {
   await page.route('**/api/**', route => {

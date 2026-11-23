@@ -30,7 +30,7 @@ describe('Runtime HTTP', () => {
     const fetch = vi.fn(async (_path: string, _init: RequestInit) => Response.json({ id: 'item-1' }))
     vi.stubGlobal('fetch', fetch)
     const { signal } = new AbortController()
-    const body = JSON.stringify({ title: '周报', category: 'continuous', status: 'active', description: '', recipe: null })
+    const body = JSON.stringify({ title: '周报', category: 'continuous', status: 'active', description: '' })
     await expect(requestV2('/work-items', { method: 'POST', signal, body })).resolves.toEqual({ id: 'item-1' })
     const [url, options] = fetch.mock.calls[0]!
     expect(url).toBe('/api/v2/work-items')

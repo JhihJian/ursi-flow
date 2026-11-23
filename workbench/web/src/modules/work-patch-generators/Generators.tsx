@@ -4,7 +4,7 @@ import {
   generationHistoryPath, generatorPath, generatorRevisionPath, generatorRevisionsPath, generatorsPath, newGeneratorPath,
   getGenerator, getGeneratorRevision, listGeneratorRevisions, listGenerators, type Generator,
 } from '@/shared/api/work-patch-generators'
-import type { ResourceRef } from '@/shared/api/work-items'
+import type { ResourceRef } from '@/shared/api/work-patch-generators'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { PageHeader } from '@/shared/ui/page-header'

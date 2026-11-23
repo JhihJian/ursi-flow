@@ -34,7 +34,7 @@ test('只填标题创建工作项，类别和状态可分别修改并保存', as
   await expect(row).toContainText('进行中')
 })
 
-test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读取', async ({ page, request }, info) => {
+test('清单：登记服务浏览资源与工具调用，工作项只承载事项信息', async ({ page, request }, info) => {
   const { token, apiBase } = readRuntime()
   const title = `每周反馈-${info.project.name}`
   const { uri } = mcpResource
@@ -97,22 +97,8 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     await page.goto('/work-items/new')
     await page.getByLabel('标题').fill(title)
     await page.getByRole('combobox', { name: '类别', exact: true }).selectOption('continuous')
-    await page.getByLabel('配置工作包来源').check()
-    const option = page.getByLabel('资源服务').getByRole('option', { name: new RegExp(title) })
-    await page.getByLabel('资源服务').selectOption(await option.getAttribute('value') as string)
-    await page.getByLabel(`周报 · ${uri}`).check()
-    await page.getByLabel('资源别名 1').fill('report')
-    await page.getByLabel('Python 脚本').fill("def transform(item, resources):\n    return {'name': item['title'], 'files': [{'path':'feedback.txt','text':resources['report']['contents'][0]['text']}]}\n")
     await page.getByRole('button', { name: '保存工作项' }).click()
     await expect(page.getByRole('heading', { name: title })).toBeVisible()
-    const detailUrl = page.url()
-    await page.getByRole('button', { name: '生成工作包' }).click()
-    await expect(page.getByTestId('patch-studio')).toBeVisible()
-    const packageUrl = page.url()
-    const headers = { Authorization: `Bearer ${token}` }
-    const patch = await (await request.get(`${apiBase}/api/v2/patches/work/${packageUrl.split('/').at(-1)}`, { headers })).json()
-    expect(patch.workItemId).toEqual(detailUrl.split('/').at(-1))
-    await page.goto(detailUrl)
     await page.getByRole('link', { name: '编辑工作项' }).click()
     await expect(page.getByRole('combobox', { name: '类别', exact: true })).toHaveValue('continuous')
     const status = page.getByRole('combobox', { name: '状态', exact: true })
@@ -122,13 +108,9 @@ test('清单：从所选 MCP 资源生成文件包，删除工作项后仍可读
     await expect(page.getByText('持续工作', { exact: true })).toBeVisible()
     await expect(page.getByText('已完成', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '删除工作项' }).click()
-    await expect(page.getByRole('dialog')).toContainText('解除 1 个工作包')
+    await expect(page.getByRole('dialog')).toContainText('解除 0 个工作包')
     await page.getByRole('button', { name: '确认删除' }).click()
     await expect(page.getByRole('heading', { name: '工作清单' })).toBeVisible()
-    await page.goto(packageUrl)
-    await expect(page.getByText('未关联', { exact: true })).toBeVisible()
-    const file = await request.get(`${apiBase}/api/v2/directories/${patch.directoryId}/file?path=feedback.txt`, { headers })
-    expect(await file.text()).toBe('本周反馈原文')
     await page.goto('/mcp-servers')
     await page.getByRole('button', { name: `删除 ${title}`, exact: true }).click()
     await expect(page.getByRole('dialog')).toContainText('已生成的工作包会保留')

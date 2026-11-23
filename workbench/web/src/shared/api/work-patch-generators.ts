@@ -1,5 +1,6 @@
 import { requestV2 } from '@/shared/http/client'
-import type { ResourceRef } from './work-items'
+
+export type ResourceRef = { alias: string; serverId: string; uri: string }
 
 export type GeneratorRef = { id: string; revision: number }
 export type GeneratorDraft = { id: string; name: string; aliases: string[]; script: string }

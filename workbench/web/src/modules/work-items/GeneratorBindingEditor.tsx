@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { Button } from '@/shared/ui/button'
 import { generatorsPath, listGeneratorRevisions, listGenerators, type GeneratorBinding } from '@/shared/api/work-patch-generators'
 import { useResource } from '@/shared/hooks/use-resource'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -10,6 +11,8 @@ export type BindingDraft = GeneratorBinding & { aliases: string[] }
 export function GeneratorBindingEditor({ draft, change }: { draft: BindingDraft; change: (draft: BindingDraft) => void }) {
   const catalog = useResource(listGenerators, [])
   return <div className="grid min-w-0 gap-3 border-l-2 border-line pl-4">
+    <div className="flex items-center gap-3"><h3 className="text-sm font-medium">工作包生成器</h3>
+      {draft.id && <Button type="button" size="sm" variant="ghost" onClick={() => change({ id: '', revision: 0, aliases: [], resources: [] })}>清除绑定</Button>}</div>
     <ResourceState loading={catalog.loading} error={catalog.error} onRetry={catalog.reload} />
     {!catalog.loading && !catalog.error && !catalog.data.length && <p>暂无已发布的生成器。<Link className="text-accent-2 underline" to={generatorsPath}>工作包生成器</Link></p>}
     <label>生成器<Select value={draft.id} onChange={e => change({ id: e.target.value, revision: 0, aliases: [], resources: [] })}>

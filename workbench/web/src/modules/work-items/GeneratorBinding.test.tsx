@@ -12,15 +12,15 @@ const generatorId = 'report'
 const newest = { id: generatorId, name: '新版', revision: 2, aliases: [], script: 'pass' }
 const older = { ...newest, name: '旧版', revision: 1, aliases: ['Source'] }
 const ref = { alias: 'Source', serverId: 'docs', uri: 'doc://source' }
-const initial: WorkItem = { id: 'item-1', title: '周报整理', description: '', status: 'active', category: 'continuous', revision: 1, recipe: null }
+const initial: WorkItem = { id: 'item-1', title: '周报整理', description: '', status: 'active', category: 'continuous', revision: 1 }
 
 beforeEach(() => setToken('test-token'))
 afterEach(() => { cleanup(); setToken(''); vi.unstubAllGlobals() })
 
-it('可从配方切到旧版生成器，绑定后使用已保存配置运行，并可解除绑定', async () => {
+it('可绑定生成器并用已保存配置运行，也可解除绑定', async () => {
   const user = userEvent.setup()
   const updates: unknown[] = []
-  let item = { ...initial, recipe: { script: 'pass', resources: [ref] } } as WorkItem
+  let item = { ...initial, generator: null } as WorkItem
   const fetch = vi.fn(async (url: string, init: RequestInit) => {
     if (url === `/api/v2${itemPath}`) {
       if (init.method === 'PUT') {
@@ -46,9 +46,7 @@ it('可从配方切到旧版生成器，绑定后使用已保存配置运行，�
   vi.stubGlobal('fetch', fetch)
   const router = createMemoryRouter([...workItemRoutes, ...workPatchGeneratorRoutes], { initialEntries: [`${itemPath}/edit`] })
   render(<RouterProvider router={router} />)
-  expect(await screen.findByLabelText('Python 脚本')).toHaveValue('pass')
-  await user.selectOptions(screen.getByLabelText('工作包来源类型'), 'generator')
-  const generator = screen.getByLabelText('生成器', { exact: true })
+  const generator = await screen.findByLabelText('生成器', { exact: true })
   await within(generator).findByRole('option', { name: '新版 · report' })
   await user.selectOptions(generator, generatorId)
   const revision = screen.getByLabelText('生成器版本')
@@ -63,7 +61,7 @@ it('可从配方切到旧版生成器，绑定后使用已保存配置运行，�
   await user.selectOptions(resource, ref.uri)
   await user.click(screen.getByRole('button', { name: '保存工作项' }))
   expect(await screen.findByRole('link', { name: 'report · 第 1 版' })).toHaveAttribute('href', '/work-patch-generators/report/revisions/1')
-  expect(updates[0]).toMatchObject({ revision: 1, category: 'continuous', status: 'active', recipe: null,
+  expect(updates[0]).toMatchObject({ revision: 1, category: 'continuous', status: 'active',
     generator: { id: generatorId, revision: 1, resources: [ref] } })
   expect(screen.getByRole('link', { name: '生成记录' })).toHaveAttribute('href', '/work-patch-generation-runs?workItemId=item-1')
   await user.click(screen.getByRole('button', { name: '生成工作包' }))
@@ -71,8 +69,8 @@ it('可从配方切到旧版生成器，绑定后使用已保存配置运行，�
   await user.click(screen.getByRole('link', { name: item.title }))
   await user.click(await screen.findByRole('link', { name: '编辑工作项' }))
   expect(await screen.findByLabelText('生成器版本')).toHaveValue('1')
-  await user.click(screen.getByLabelText('配置工作包来源'))
+  await user.click(screen.getByRole('button', { name: '清除绑定' }))
   await user.click(screen.getByRole('button', { name: '保存工作项' }))
   expect(await screen.findByText('未配置工作包来源')).toBeInTheDocument()
-  expect(updates[1]).toMatchObject({ revision: 2, recipe: null, generator: null })
+  expect(updates[1]).toMatchObject({ revision: 2, generator: null })
 })

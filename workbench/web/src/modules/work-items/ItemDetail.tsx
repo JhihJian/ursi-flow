@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { listPatches } from '@/modules/patches/api'
 import { patchPath } from '@/modules/patches/PatchModel'
@@ -9,7 +9,7 @@ import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
-import { categories, deleteWorkItem, generatePatch, getWorkItem, statuses, workItemPath, type WorkItem } from '@/shared/api/work-items'
+import { categories, deleteWorkItem, getWorkItem, statuses, workItemPath, type WorkItem } from '@/shared/api/work-items'
 
 export function ItemDetail() {
   const { id = '' } = useParams()
@@ -25,23 +25,13 @@ function Detail({ item }: { item: WorkItem }) {
   const related = patches.data.filter(p => p.workItemId === item.id)
   const [deleting, setDeleting] = useState(false)
   const deletion = useMutation()
-  const generation = useMutation()
   const generatorRun = useStartGeneration()
-  const requestId = useRef('')
-  function generate() {
-    // 响应丢失后仍用同一标识；成功后再生成是另一次主动操作。
-    requestId.current ||= Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
-    void generation.run(signal => generatePatch(item.id, requestId.current, signal), patch => {
-      requestId.current = ''
-      navigate(patchPath('work', patch.id))
-    })
-  }
   return <div className="page-stack break-words">
     <header className="space-y-2"><Link className="text-sm text-accent-2" to="/work-items">返回工作清单</Link>
       <h1 className="break-all text-xl font-semibold">{item.title}</h1>
       <div className="flex flex-wrap items-center gap-3"><span>{categories[item.category]}</span><span>{statuses[item.status]}</span>
         <Button asChild><Link to={`${workItemPath(item.id)}/edit`}>编辑工作项</Link></Button>
-        <Button variant="danger" disabled={patches.loading || !!patches.error || generation.busy || generatorRun.busy} onClick={() => setDeleting(true)}>删除工作项</Button></div>
+        <Button variant="danger" disabled={patches.loading || !!patches.error || generatorRun.busy} onClick={() => setDeleting(true)}>删除工作项</Button></div>
     </header>
     <section className="space-y-2 border-t border-line pt-4"><h2 className="font-semibold">工作说明</h2><p className="whitespace-pre-wrap text-sm">{item.description || '暂无说明'}</p></section>
     <section className="space-y-2 border-t border-line pt-4">
@@ -56,10 +46,6 @@ function Detail({ item }: { item: WorkItem }) {
           {generatorRun.error ? '重试生成工作包' : '生成工作包'}
         </Button>
         {generatorRun.error && <p role="alert" className="text-err">{generatorRun.error}</p>}
-      </> : item.recipe ? <><ol className="list-inside list-decimal break-all text-sm">{item.recipe.resources.map(ref => <li key={ref.alias}><strong>{ref.alias}</strong> · {ref.serverId} · {ref.uri}</li>)}</ol>
-        <details><summary>Python 脚本</summary><pre className="overflow-auto bg-base p-3 text-sm">{item.recipe.script}</pre></details>
-        <Button variant="primary" loading={generation.busy} onClick={generate}>{generation.error ? '重试生成工作包' : '生成工作包'}</Button>
-        {generation.error && <p role="alert" className="text-err">{generation.error}</p>}
       </> : <p className="text-sm text-txt3">未配置工作包来源</p>}
     </section>
     <section className="space-y-2 border-t border-line pt-4"><h2 className="font-semibold">关联工作包</h2>
