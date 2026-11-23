@@ -1,7 +1,7 @@
 //! 元数据先于外部副作用提交，按沙箱互斥执行，并以稳定代际接回中断操作。
 pub mod store;
 
-use crate::{driver::Driver, models::*};
+use crate::{access::AccessKeys, driver::Driver, models::*};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
@@ -31,6 +31,7 @@ pub struct Service {
     registry_path: Option<PathBuf>,
     locks: Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
     stopping: std::sync::atomic::AtomicBool,
+    access: std::sync::OnceLock<Arc<AccessKeys>>,
 }
 
 impl Service {
@@ -51,6 +52,7 @@ impl Service {
             registry_path,
             locks: Mutex::new(HashMap::new()),
             stopping: std::sync::atomic::AtomicBool::new(false),
+            access: std::sync::OnceLock::new(),
         })
     }
     pub fn new_without_registry(store: Arc<Store>, driver: Arc<dyn Driver>) -> Arc<Self> {
@@ -65,7 +67,10 @@ impl Service {
             .clone()
     }
 
-    pub async fn local_images(&self, references: &BTreeSet<String>) -> Result<BTreeMap<String, String>> {
+    pub async fn local_images(
+        &self,
+        references: &BTreeSet<String>,
+    ) -> Result<BTreeMap<String, String>> {
         self.driver.local_images(references).await
     }
 
@@ -80,6 +85,20 @@ impl Service {
         }
         *self.registry.write().expect("registry lock poisoned") = registry;
         Ok(())
+    }
+    /// 接入管理员维护的 SSH 授权公钥，只影响后续创建的容器。
+    pub fn attach_access(&self, keys: Arc<AccessKeys>) {
+        let _ = self.access.set(keys);
+    }
+    pub fn access(&self) -> Result<&AccessKeys> {
+        self.access
+            .get()
+            .map(Arc::as_ref)
+            .ok_or_else(|| Error::Unsupported("SSH 授权公钥未配置".into()))
+    }
+    /// 容器是否已叠加挂载授权渲染文件。None 表示驱动不提供该证据。
+    pub async fn access_attached(&self, sandbox: &Sandbox) -> Result<Option<bool>> {
+        self.driver.access_attached(sandbox).await
     }
     pub fn is_stopping(&self) -> bool {
         self.stopping.load(std::sync::atomic::Ordering::Acquire)
