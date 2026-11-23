@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useMatches } from 'react-router'
 
 import { ProjectNavigationProvider } from '@/modules/work-items/projects/ProjectNavigationProvider'
 import { readToken, subscribeSession } from '@/shared/http/session'
+import { isLanPreview } from '@/shared/http/lan-preview'
 import { FeedbackHost } from './FeedbackHost'
 import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
@@ -19,10 +20,12 @@ function routeTitle(matches: { handle?: unknown }[]): string | undefined {
   return undefined
 }
 
+const readAppSession = () => isLanPreview() ? 'lan-preview' : readToken()
+
 export default function AppShell() {
-  const token = useSyncExternalStore(subscribeSession, readToken)
-  const signedIn = Boolean(token)
-  return <ProjectNavigationProvider key={token} signedIn={signedIn}><Workspace signedIn={signedIn} /></ProjectNavigationProvider>
+  const session = useSyncExternalStore(subscribeSession, readAppSession)
+  const signedIn = Boolean(session)
+  return <ProjectNavigationProvider key={session} signedIn={signedIn}><Workspace signedIn={signedIn} /></ProjectNavigationProvider>
 }
 
 function Workspace({ signedIn }: { signedIn: boolean }) {
@@ -30,7 +33,9 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
   const matches = useMatches()
   const flow = useFlowAvailability(signedIn)
   const groups = deployedNavigation().map(group => ({ ...group,
-    items: group.items.filter(item => !item.requiresFlow || flow.data),
+    items: group.items.filter(item => isLanPreview()
+      ? Boolean(item.projectView) || item.path === '/work-items' || item.path === '/work-projects'
+      : !item.requiresFlow || flow.data),
   })).filter(group => group.items.length > 0)
 
   const [drawerPath, setDrawerPath] = useState<string | null>(null)

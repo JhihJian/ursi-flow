@@ -37,6 +37,21 @@ URSI_ALLOWED_HOSTS=workbench.lan,.example.com npm run dev
 
 开发服务默认将 `/api/v1` 与 `/api/v2` 转发到 `http://127.0.0.1:8080`，可通过 `URSI_API_PROXY` 修改目标；`vite preview` 提供构建产物时使用同一套代理。生产环境使用 `npm run build` 生成的 `dist/`，由独立的静态服务提供页面，并通过反向代理将同源 `/api` 请求转发给 Server，仅对前端路由启用 SPA 回退。Server 不提供静态资源。令牌通过请求头传递，不写入 URL 或构建配置。
 
+### 隔离样例预览免登录
+
+`lan-preview` 只开放工作清单和项目规划，包括地图、画布和 Todo。受信网段内的访客都可编辑样例数据。使用独立的 Workbench Server 与数据目录，关闭 Flow，并将 API 绑定到 IPv4 回环地址。服务令牌文件应仅对服务账户可读（`0600`），放在静态目录外。
+
+```sh
+npm run build -- --mode lan-preview
+URSI_API_PROXY=http://127.0.0.1:18201 \
+URSI_LAN_PREVIEW_ORIGIN=http://192.168.1.135:4281 \
+URSI_LAN_PREVIEW_CIDR=192.168.1.0/24 \
+URSI_LAN_PREVIEW_TOKEN_FILE="$HOME/.local/state/workbench-preview/access-token" \
+npx vite preview --mode lan-preview --host 0.0.0.0 --port 4281 --strictPort
+```
+
+此模式生成独立的 `dist-lan/`。只通过配置的 IPv4 地址和端口直接访问，转发头不参与来源判断。代理从私有文件读取令牌并转发给回环 API。普通开发、静态部署与预览继续使用默认的 `dist/` 和令牌登录。
+
 ## 执行器平台接入
 
 在部署后的 `index.html` 中设置管理入口，无需重新编译：

@@ -9,6 +9,7 @@ import AppShell from './AppShell'
 import { LoginGate } from './LoginGate'
 import NotFoundView from './NotFoundView'
 import { RouteErrorAlert } from './RouteErrorAlert'
+import { isLanPreview } from '@/shared/http/lan-preview'
 
 const protectedRoutes: RouteObject[] = [
   ...workItemRoutes,
@@ -26,7 +27,7 @@ const protectedRoutes: RouteObject[] = [
 export function createAppRoutes(): RouteObject[] {
   return [{ path: '/', element: <AppShell />, children: [
     { index: true, element: <Navigate to="/work-items" replace /> },
-    { errorElement: <RouteErrorAlert />, children: [{ element: <LoginGate />, children: protectedRoutes }, ...chatRoutes] },
+    { errorElement: <RouteErrorAlert />, children: isLanPreview() ? workItemRoutes : [{ element: <LoginGate />, children: protectedRoutes }, ...chatRoutes] },
     { path: '*', element: <NotFoundView />, handle: { title: '页面未找到' } },
   ] }]
 }

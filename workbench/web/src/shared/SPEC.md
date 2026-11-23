@@ -17,7 +17,7 @@ references:
 
 - `requestJson<T>` 读取 `/api/v1`，`requestV2<T>` 读取 `/api/v2`，均直接返回业务 JSON；`204` 返回无内容。
 - `requestV2File` 按 `application/octet-stream` 读取目录文件，保留原始字节，允许空文件。
-- 三种请求使用同源相对路径，保留请求方法、正文与 AbortSignal。仅通过 Bearer 请求头发送会话令牌，拒绝无令牌请求和绝对地址。
+- 三种请求使用同源相对路径，保留请求方法、正文与 AbortSignal。默认通过 Bearer 请求头发送会话令牌，拒绝无令牌请求。`lan-preview` 改用专用请求头，不读取或发送令牌。所有模式拒绝绝对地址。
 - 错误保留 HTTP 状态并从消息中隐藏令牌。仅当前令牌的 401 清除会话；其他错误或旧会话的迟到响应不影响新登录。浏览器地址和 localStorage 均不记录令牌。
 - 资源重新加载时旧响应不能覆盖新数据，组件卸载取消读取。
 - Agent 后端客户端通过 `GET /api/v2/agent-backends` 读取公开的 `id`、`label`、`capabilities`、`configured`、`status`、`checkedAt`（毫秒时间戳或 null）；带 `configPackageId` 的查询额外返回 `compatible`。`POST /api/v2/agent-backends/{id}/check` 返回单个后端的最新公开状态。

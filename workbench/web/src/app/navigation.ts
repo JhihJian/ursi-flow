@@ -1,5 +1,6 @@
 import { ApiError, requestJson } from '@/shared/http/client'
 import { useResource } from '@/shared/hooks/use-resource'
+import { isLanPreview } from '@/shared/http/lan-preview'
 import { generationRunsPath, generatorsPath } from '@/shared/api/work-patch-generators'
 import { selectProjectPath, type ProjectView } from '@/modules/work-items/projects/project-navigation'
 
@@ -50,6 +51,7 @@ export function deployedNavigation(): NavGroup[] {
 // 只保存集合是否挂载，不缓存集合内容。详情页的 404 不影响导航。
 export function useFlowAvailability(signedIn: boolean) {
   return useResource(async signal => {
+    if (isLanPreview()) return false
     if (!signedIn) return true
     try {
       await requestJson('/flows', { signal })

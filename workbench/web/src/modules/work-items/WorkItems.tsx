@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from 'react-router'
 import { listPatches } from '@/modules/patches/api'
 import { useResource } from '@/shared/hooks/use-resource'
+import { isLanPreview } from '@/shared/http/lan-preview'
 import { Button } from '@/shared/ui/button'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -9,7 +10,8 @@ import { categories, listWorkItems, statuses, workItemPath } from '@/shared/api/
 
 export function WorkItems() {
   const items = useResource(listWorkItems, [])
-  const patches = useResource(signal => listPatches('work', signal), [])
+  const preview = isLanPreview()
+  const patches = useResource(signal => preview ? Promise.resolve([]) : listPatches('work', signal), [])
   const [params, setParams] = useSearchParams()
   const category = params.get('category') || ''
   const status = params.get('status') || ''
@@ -38,7 +40,7 @@ export function WorkItems() {
       {visible.map(item => <li className="flex flex-wrap items-center gap-3 border-b border-line py-3 text-sm" key={item.id}>
         <Link className="min-w-0 flex-auto break-all font-medium text-accent-2 hover:underline" to={workItemPath(item.id)}>{item.title}</Link>
         <span>{categories[item.category]}</span><span>{statuses[item.status]}</span>
-        <span className="text-txt3">关联工作包：{patches.error || patches.loading ? '待获取' : counts.get(item.id) ?? 0}</span>
+        {!preview && <span className="text-txt3">关联工作包：{patches.error || patches.loading ? '待获取' : counts.get(item.id) ?? 0}</span>}
       </li>)}
     </ul>}
   </div>

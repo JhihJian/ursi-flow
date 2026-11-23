@@ -3,6 +3,7 @@ target/
 /workbench/data/
 node_modules
 /workbench/web/dist/
+/workbench/web/dist-lan/
 /workbench/web/coverage/
 /workbench/web/test-results/
 /workbench/web/patches-acceptance/.run/

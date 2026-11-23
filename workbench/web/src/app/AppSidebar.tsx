@@ -4,6 +4,7 @@ import { ProjectTree } from '@/modules/work-items/projects/ProjectTree'
 import { todoPath, useProjectNavigation } from '@/modules/work-items/projects/project-navigation'
 import { Icon } from '@/shared/ui/icon'
 import { setToken } from '@/shared/http/session'
+import { isLanPreview } from '@/shared/http/lan-preview'
 import { useThemeStore } from './theme'
 import type { NavGroup } from './navigation'
 
@@ -53,7 +54,7 @@ export function AppSidebar({ groups, signedIn, onNavigate }: { groups: NavGroup[
         <button type="button" className="icon-button" title={mono ? '彩色主题' : '黑白主题'} aria-label={mono ? '切换到彩色主题' : '切换到黑白主题'} onClick={togglePalette}>
           <Icon name="contrast" />
         </button>
-        {signedIn && <button type="button" className="icon-button ml-auto" title="退出登录" aria-label="退出登录" onClick={() => { setToken(''); onNavigate?.() }}><Icon name="logout" /></button>}
+        {signedIn && !isLanPreview() && <button type="button" className="icon-button ml-auto" title="退出登录" aria-label="退出登录" onClick={() => { setToken(''); onNavigate?.() }}><Icon name="logout" /></button>}
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { readToken, setToken } from './session'
+import { isLanPreview, lanPreviewHeader } from './lan-preview'
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message) }
@@ -10,20 +11,24 @@ function httpFailure(status: number, reason: string): ApiError {
 
 async function request(version: 'v1' | 'v2', path: string, accept: string, options: RequestInit): Promise<Response> {
   if (!path.startsWith('/') || path.startsWith('//')) throw new TypeError('无效 API 路径：只接受同源相对路径。')
-  const token = readToken()
-  if (!token) throw new ApiError(401, '请输入访问令牌。')
+  const preview = isLanPreview()
+  const token = preview ? '' : readToken()
+  if (!preview && !token) throw new ApiError(401, '请输入访问令牌。')
   const headers = new Headers(options.headers)
-  headers.set('Authorization', `Bearer ${token}`)
+  if (preview) {
+    headers.delete('Authorization')
+    headers.set(lanPreviewHeader, '1')
+  } else headers.set('Authorization', `Bearer ${token}`)
   headers.set('Accept', accept)
   if (options.body != null && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   const response = await fetch(`/api/${version}${path}`, { ...options, headers, redirect: 'error', cache: 'no-store' })
   if (!response.ok) {
     // 只让当前会话的 401 生效：旧令牌的迟到响应不能注销后来换上的令牌。
-    if (response.status === 401 && readToken() === token) setToken('', true)
+    if (token && response.status === 401 && readToken() === token) setToken('', true)
     const body = await response.json().catch(() => null)
     const detail = body?.error?.message ?? body?.message ?? body?.error
-    const reason = (typeof detail === 'string' ? detail : response.statusText).replaceAll(token, '[已隐藏]')
-    throw httpFailure(response.status, reason)
+    const reason = typeof detail === 'string' ? detail : response.statusText
+    throw httpFailure(response.status, token ? reason.replaceAll(token, '[已隐藏]') : reason)
   }
   return response
 }

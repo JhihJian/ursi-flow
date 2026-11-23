@@ -7,7 +7,7 @@ import { readToken, setToken } from '@/shared/http/session'
 
 const probe = async (path: string) => path === '/api/v1/flows' ? Response.json([]) : Response.json({}, { status: 404 })
 
-afterEach(() => { cleanup(); sessionStorage.clear() })
+afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllEnvs() })
 it('在深链登录，退出后隐藏运行数据', async () => {
   const fetch = vi.fn(async (path: string) => Response.json(path === '/api/v1/flows' ? ['sample'] : []))
   vi.stubGlobal('fetch', fetch)
@@ -22,6 +22,27 @@ it('在深链登录，退出后隐藏运行数据', async () => {
   expect(readToken()).toBe('')
   expect(await screen.findByLabelText('访问令牌')).toBeInTheDocument()
   expect(screen.queryByText('sample')).toBeNull()
+})
+
+it('免登录预览在原深链展示规划页面，浏览器不发送令牌或请求其他模块', async () => {
+  vi.stubEnv('MODE', 'lan-preview')
+  const fetch = vi.fn(async (_path: string, _options: RequestInit) => Response.json([]))
+  vi.stubGlobal('fetch', fetch)
+  const router = createMemoryRouter(createAppRoutes(), { initialEntries: ['/work-items?status=active'] })
+  render(<RouterProvider router={router} />)
+  expect(await screen.findByRole('heading', { name: '工作清单' })).toBeVisible()
+  expect(await screen.findByText('暂无工作项')).toBeVisible()
+  expect(router.state.location.search).toBe('?status=active')
+  expect(screen.queryByLabelText('访问令牌')).toBeNull()
+  expect(screen.queryByRole('button', { name: '退出登录' })).toBeNull()
+  expect(screen.queryByRole('link', { name: '工作包生成器' })).toBeNull()
+  expect(fetch.mock.calls.map(([path]) => path).sort()).toEqual(['/api/v2/work-items', '/api/v2/work-projects'])
+  for (const [, options] of fetch.mock.calls) {
+    const headers = new Headers(options.headers)
+    expect(headers.has('Authorization')).toBe(false)
+    expect(headers.get('X-Ursi-Lan-Preview')).toBe('1')
+  }
+  expect(sessionStorage.length).toBe(0)
 })
 
 it('根地址和未知页均可到达工作清单', async () => {
