@@ -139,18 +139,22 @@
  */
 .ws-separator .ws-separator-pin {
   position: absolute;
-  top: 6px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
-  min-width: 16px;
-  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  min-height: 34px;
+  padding: 0;
   border: 1px solid var(--ws-line);
   border-radius: 2px;
   background: #fff;
   color: var(--ws-muted);
-  font-size: 10px;
-  line-height: 12px;
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer !important;
 }
 
