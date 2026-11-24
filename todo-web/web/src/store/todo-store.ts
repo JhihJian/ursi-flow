@@ -114,7 +114,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   toggleDayFilter: async (date) => {
-    set({ dayFilter: get().dayFilter === date ? null : date, detail: null })
+    set({ dayFilter: get().dayFilter === date ? null : date })
     await get().refreshTasks()
   },
 
