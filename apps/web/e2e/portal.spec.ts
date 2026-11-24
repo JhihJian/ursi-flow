@@ -3,11 +3,15 @@ import { expect, test } from '@playwright/test'
 test('home stays usable with no plugins enabled and remembers preferences', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1, name: 'ursi-flow' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Workbench/ })).toHaveAttribute('href', 'http://127.0.0.1:5173/work-items')
+  const navigation = page.getByRole('navigation', { name: '应用导航' })
+  await expect(navigation.getByRole('link', { name: /Workbench/ })).toHaveAttribute('href', 'http://127.0.0.1:5173/work-items')
+  await expect(page.getByRole('button', { name: '应用导航' })).toBeHidden()
   const sidebar = page.getByRole('complementary')
   await expect(sidebar).toContainText('项目链接')
   const main = await page.getByRole('main').boundingBox()
   const aside = await sidebar.boundingBox()
+  const nav = await navigation.boundingBox()
+  expect(nav!.x + nav!.width).toBeLessThan(main!.x)
   expect(aside!.x).toBeGreaterThan(main!.x + main!.width)
   expect(aside!.y).toBe(main!.y)
   await page.keyboard.press('Tab')
@@ -64,9 +68,40 @@ test('a contribution that fails to render does not break the portal', async ({ p
 test('narrow view keeps the settings and contributions within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 })
   await page.goto('/')
-  await expect(page.getByRole('complementary')).toBeVisible()
-  const main = await page.getByRole('main').boundingBox()
-  const aside = await page.getByRole('complementary').boundingBox()
-  expect(aside!.y).toBeGreaterThan(main!.y + main!.height)
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360)
+  const navigation = page.getByRole('navigation', { name: '应用导航' })
+  const toggle = page.getByRole('button', { name: '应用导航' })
+  await expect(navigation).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('main')).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: '项目仓库' })).toBeFocused()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  const workbench = navigation.getByRole('link', { name: /Workbench/ })
+  await workbench.focus()
+  await expect(workbench).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(navigation).toBeHidden()
+  await expect(toggle).toBeFocused()
+
+  for (const name of ['布局设置', '插件管理']) {
+    const button = page.getByRole('button', { name })
+    await button.click()
+    await expect(page.getByRole('dialog', { name })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(button).toBeFocused()
+  }
+
+  const aside = page.getByRole('complementary')
+  await expect(aside).toBeVisible()
+  for (const width of [360, 768, 880, 1024]) {
+    await page.setViewportSize({ width, height: 740 })
+    const mainBox = (await page.getByRole('main').boundingBox())!
+    const asideBox = (await aside.boundingBox())!
+    if (width < 1024) expect(asideBox.y).toBeGreaterThan(mainBox.y + mainBox.height)
+    else expect(asideBox.x).toBeGreaterThan(mainBox.x + mainBox.width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  }
 })

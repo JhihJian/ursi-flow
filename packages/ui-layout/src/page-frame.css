@@ -22,6 +22,15 @@
   clip-path: inset(50%);
 }
 
+.ursi-page-frame__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ursi-page-frame__nav:not([data-open]) {
+  display: none;
+}
+
 .ursi-page-frame__body {
   display: flex;
   flex-direction: column;
@@ -37,6 +46,18 @@
  * Copyright (c) 2026 DeepSeek. MIT, see ../LICENSE.
  */
 @media (min-width: 768px) {
+  .ursi-page-frame__columns[data-has-navigation] {
+    grid-template-columns: var(--ursi-page-frame-nav-width, 224px) minmax(0, 1fr);
+  }
+
+  .ursi-page-frame__nav:not([data-open]) {
+    display: block;
+  }
+
+  .ursi-page-frame__nav-toggle {
+    display: none;
+  }
+
   .ursi-page-frame__body[data-aside-placement="right"] {
     --_ursi-frame-gap: var(--ursi-page-frame-gap, 24px);
     --_ursi-main-min: var(--ursi-page-frame-main-min, 400px);

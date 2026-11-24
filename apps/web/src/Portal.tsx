@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Boxes, Columns2, PanelsTopLeft, Puzzle, Rows2, Workflow, X } from 'lucide-react'
+import { Columns2, House, PanelLeft, PanelsTopLeft, Puzzle, Rows2, Workflow, X } from 'lucide-react'
 import { PageFrame } from '@ursi/ui-layout'
 import { SlotContent, useSlotEntries } from '@ursi/ui-slots'
 import { createPortalRegistry, type PluginDefinition, type PortalContext } from './portal-contract'
@@ -60,23 +60,31 @@ export function Portal({ context, manifest }: { context: PortalContext; manifest
           <button type="button" className="tool" onClick={() => setDialog('plugins')}><Puzzle size={17} aria-hidden="true" />插件管理</button>
         </nav>
       </div>}
-      main={<>
-        <section className="project-intro" aria-labelledby="project-title">
-          <div className="project-kicker"><Boxes size={18} aria-hidden="true" /> 项目</div>
-          <h1 id="project-title">{project.name}</h1>
-          <p>{project.description}</p>
-        </section>
-        <section className="entry-list" aria-labelledby="entry-title">
-          <h2 id="entry-title">应用入口</h2>
-          {entries.length ? <SlotContent entries={entries} context={context} /> : <p className="muted">暂无应用入口</p>}
-        </section>
-      </>}
-      aside={aside.length ? <div className="sidebar" aria-label="项目侧栏"><SlotContent entries={aside} context={context} /></div> : undefined}
+      navigation={{
+        label: '应用导航',
+        toggle: <PanelLeft size={20} aria-hidden="true" />,
+        content: <>
+          <a className="nav-home" href="/" aria-current="page"><House size={17} aria-hidden="true" />项目概览</a>
+          <section className="entry-list" aria-labelledby="entry-title">
+            <h2 id="entry-title">应用入口</h2>
+            {entries.length ? <SlotContent entries={entries} context={context} /> : <p className="muted">暂无应用入口</p>}
+          </section>
+        </>,
+      }}
+      main={<section className="project-intro" aria-labelledby="project-title">
+        <div className="project-kicker">项目概览</div>
+        <h1 id="project-title">{project.name}</h1>
+        <p>{project.description}</p>
+        <dl className="project-facts">
+          <div><dt>项目标识</dt><dd>{project.id}</dd></div>
+        </dl>
+      </section>}
+      aside={aside.length ? <div className="sidebar"><SlotContent entries={aside} context={context} /></div> : undefined}
       asidePlacement={preferences.placement}
     />
     {dialog === 'layout' && <SettingsDialog title="布局设置" onClose={() => setDialog(null)}>
       <fieldset>
-        <legend>扩展区域位置</legend>
+        <legend>宽屏扩展区位置</legend>
         <div className="placement">
           <label><input type="radio" name="placement" checked={preferences.placement === 'right'} onChange={() => changePlacement('right')} /><Columns2 size={18} aria-hidden="true" /> 右侧</label>
           <label><input type="radio" name="placement" checked={preferences.placement === 'below'} onChange={() => changePlacement('below')} /><Rows2 size={18} aria-hidden="true" /> 下方</label>
