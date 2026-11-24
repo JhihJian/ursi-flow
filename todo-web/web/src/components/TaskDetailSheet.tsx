@@ -191,39 +191,45 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         </div>
 
         <div className="detail-meta">
-          <select
-            className="detail-inline-select"
-            value={status}
-            aria-label="Status"
-            disabled={detail.mode === 'new'}
-            onChange={(event) => setStatus(event.target.value as TaskStatus)}
-          >
-            {statuses.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <select
-            className="detail-inline-select"
-            value={priority}
-            aria-label="Priority"
-            onChange={(event) => setPriority(event.target.value as Priority)}
-          >
-            {priorities.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <input
-            className="detail-inline-input"
-            type="text"
-            placeholder="tags, comma separated"
-            value={tags}
-            aria-label="Tags"
-            onChange={(event) => setTags(event.target.value)}
-          />
+          <label className="detail-inline-field">
+            <span className="detail-inline-label">status</span>
+            <select
+              className="detail-inline-select"
+              value={status}
+              disabled={detail.mode === 'new'}
+              onChange={(event) => setStatus(event.target.value as TaskStatus)}
+            >
+              {statuses.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="detail-inline-field">
+            <span className="detail-inline-label">pri</span>
+            <select
+              className="detail-inline-select"
+              value={priority}
+              onChange={(event) => setPriority(event.target.value as Priority)}
+            >
+              {priorities.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="detail-inline-field">
+            <span className="detail-inline-label">tags</span>
+            <input
+              className="detail-inline-input"
+              type="text"
+              placeholder="comma separated"
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+            />
+          </label>
           <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
         </div>
 

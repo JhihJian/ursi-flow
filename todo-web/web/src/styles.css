@@ -999,6 +999,19 @@ button {
   border-bottom: 1px solid var(--gray-200);
 }
 
+.detail-inline-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.detail-inline-label {
+  font-size: 10px;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .detail-inline-select,
 .detail-inline-input {
   padding: 2px var(--space-xs);
