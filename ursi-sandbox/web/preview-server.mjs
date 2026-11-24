@@ -1,6 +1,7 @@
 // 本地预览服务：静态托管 dist 并模拟 Gateway API，无需真实沙箱环境。
 // 用法：npm run build && node preview-server.mjs，打开 http://127.0.0.1:14482/dist/
 import http from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -282,21 +283,61 @@ const server = http.createServer(async (req, res) => {
       })
     if (p === dist + '/api/v1/sandboxes' && req.method === 'GET')
       return send(res, 200, { sandboxes })
+    if (p === dist + '/api/v1/sandboxes' && req.method === 'POST') {
+      const spec = await readBody(req)
+      const row = {
+        id: randomBytes(16).toString('hex'),
+        status: 'running',
+        spec: {
+          image: typeof spec?.image === 'string' ? spec.image : 'alpine:3.22',
+          labels: spec?.labels ?? {},
+          cpus: spec?.cpus ?? 1,
+          memory_mb: spec?.memory_mb ?? 256,
+          runtime_profile: spec?.runtime_profile ?? null,
+        },
+        revision: 1,
+        resource: { generation: 1, data_generation: 1 },
+        operation: null,
+        error: null,
+        endpoints: [
+          {
+            name: 'ssh',
+            bundle: 'ssh',
+            protocol: 'ssh',
+            port: 2222,
+            state: 'ready',
+            ready: true,
+          },
+        ],
+      }
+      sandboxes.push(row)
+      return send(res, 200, row)
+    }
     const mSbx = p.match(/^\/dist\/api\/v1\/sandboxes\/([0-9a-f]{32})$/)
     if (mSbx) {
       const row = sandboxes.find((s) => s.id === mSbx[1])
       if (!row) return send(res, 404, { error: { message: '资源不存在' } })
       if (req.method === 'GET') return send(res, 200, row)
       if (req.method === 'DELETE') {
-        row.status = 'stopped'
-        row.operation = null
+        const index = sandboxes.findIndex((s) => s.id === mSbx[1])
+        if (index >= 0) sandboxes.splice(index, 1)
         return send(res, 200, row)
       }
-      if (req.method === 'POST') {
-        row.operation = null
+    }
+    const mAction = p.match(
+      /^\/dist\/api\/v1\/sandboxes\/([0-9a-f]{32})\/(start|stop|rebuild)$/,
+    )
+    if (mAction && req.method === 'POST') {
+      const row = sandboxes.find((s) => s.id === mAction[1])
+      if (!row) return send(res, 404, { error: { message: '资源不存在' } })
+      if (mAction[2] === 'start') row.status = 'running'
+      else if (mAction[2] === 'stop') row.status = 'stopped'
+      else if (mAction[2] === 'rebuild') {
+        row.resource.generation += 1
         row.status = 'running'
-        return send(res, 200, row)
       }
+      row.operation = null
+      return send(res, 200, row)
     }
     const mLogs = p.match(
       /^\/dist\/api\/v1\/sandboxes\/([0-9a-f]{32})\/logs/,
