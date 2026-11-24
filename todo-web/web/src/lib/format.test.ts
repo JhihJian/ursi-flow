@@ -82,7 +82,7 @@ describe('symbols', () => {
     expect(prioritySymbol('medium')).toBe('-')
     expect(prioritySymbol('low')).toBe('○')
     expect(statusSymbol('done')).toBe('✓')
-    expect(statusSymbol('in_progress')).toBe('▶')
+    expect(statusSymbol('in_progress')).toBe('▷')
     expect(statusSymbol('blocked')).toBe('⊘')
     expect(statusSymbol('pending')).toBe('□')
   })

@@ -8,7 +8,7 @@ const prioritySymbols: Record<Priority, string> = {
 
 const statusSymbols: Record<TaskStatus, string> = {
   done: '✓',
-  in_progress: '▶',
+  in_progress: '▷',
   blocked: '⊘',
   pending: '□',
   cancelled: '✕',
