@@ -44,8 +44,19 @@ export function WorkspacePanel() {
     : null
 
   if (url) {
+    // 嵌入时关掉被嵌页自带的头部，避免宿主栏与页面栏叠成两条。
+    const embedUrl = (() => {
+      try {
+        const next = new URL(url, window.location.origin)
+        next.searchParams.set('embed', '1')
+        return next.toString()
+      } catch {
+        return url
+      }
+    })()
+
     return (
-      <div className="workspace-panel">
+      <div className="workspace-panel has-frame">
         <div className="workspace-bar">
           <span className="workspace-bar-title">{target?.label}</span>
           <span className="workspace-bar-task">{task?.title}</span>
@@ -55,7 +66,7 @@ export function WorkspacePanel() {
         </div>
         <iframe
           className="workspace-frame"
-          src={url}
+          src={embedUrl}
           title={`${target?.label} for ${task?.title ?? 'task'}`}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           referrerPolicy="no-referrer"

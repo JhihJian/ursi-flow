@@ -36,6 +36,16 @@ cd ../server && npm start
 
 页面配色与看板一致：`web/src/tokens.css` 放看板的灰阶与字体变量，`web/src/theme.css` 把组件库的 `--dsw-*` 主题变量映射过去（圆角归零、品牌色改深灰、状态色降饱和），再用少量 `[data-timeline-span]` 覆盖把时间线色块压成灰阶。加载顺序是组件库 CSS → tokens → theme → shell。
 
+## 嵌入模式
+
+被其他页面以 iframe 嵌入时加 `?embed=1`，页面不再渲染自己的头部（会话 ID、项目、体积、Raw JSONL 那一条），只留轨迹组件，避免和宿主的栏叠成两条：
+
+```text
+/?session=<uuid>&embed=1
+```
+
+单独打开时保持完整头部。
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |

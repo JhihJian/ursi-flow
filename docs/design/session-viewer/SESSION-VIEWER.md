@@ -62,6 +62,7 @@ CC 风格： queue-operation / attribution-snapshot / user / assistant / last-pr
 ```
 
 - 头部显示项目名、cwd、大小、修改时间、来自 `stats` 的 turns/messages/tool 计数。
+- `?embed=1` 时不渲染头部，只留轨迹；宿主（看板工作台）自己提供标题与「Open in new tab」，避免两条栏叠加。
 - 状态：加载中、404（找不到会话）、413（文件过大）、解析失败（附文件路径尾段与错误行号）、空会话。
 - 解析放在主线程但用 `startTransition` + 骨架屏；实测超过 1 秒再迁到 Web Worker。
 - 引入库的主题 CSS，页面只提供外壳背景与头部，不覆盖组件样式。

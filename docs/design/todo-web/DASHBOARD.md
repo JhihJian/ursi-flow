@@ -124,6 +124,8 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 窄条与任务列表右上角的收放按钮共用 `.rail-toggle`：19×19、无边框、默认浅灰，悬停加深并加浅灰底，高度与状态标签对齐。左侧项目栏的 `«` / `»` 也用同一个类，避免三处各写一份样式。
 
+嵌入时给地址补 `embed=1`，被嵌页面据此收起自己的头部，只留内容区，宿主那条栏负责标题与「Open in new tab」，不会出现两条头。工作台在嵌入成功后切换到 `.has-frame` 的细实线边框，只有占位态用虚线。
+
 工作台不实现执行详情，只当嵌入宿主：读 `public/workspace-config.json` 里的 `{ label, urlTemplate }`，把任务字段填进模板后渲染 `iframe`。模板支持 `{id}`、`{project}`、`{workspace}`、`{sessionId}` 四个占位符，值统一 `encodeURIComponent`；地址只接受 `http(s)` 或 `/` 开头的站内路径。没有配置文件、没有选中任务、任务没填 workspace 与会话时都退回占位说明，不会白屏。`iframe` 带 `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"`、`referrerPolicy="no-referrer"` 与 `loading="lazy"`，顶栏给出标题和「Open in new tab」。
 
 ### 为什么用 URL 契约而不是源码依赖

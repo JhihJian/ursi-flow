@@ -223,6 +223,11 @@ button {
   overflow: hidden;
 }
 
+/* 嵌入真实页面时改用细实线，占位态才用虚线 */
+.workspace-panel.has-frame {
+  border: 1px solid var(--gray-200);
+}
+
 .workspace-bar {
   display: flex;
   flex: none;

@@ -53,7 +53,7 @@ cd .. && cargo build --release
 { "label": "Runs", "urlTemplate": "https://runs.example.com/task/{id}?session={sessionId}" }
 ```
 
-`urlTemplate` 支持 `http(s)` 地址或 `/` 开头的站内路径，占位符有 `{id}`、`{project}`、`{workspace}`、`{sessionId}`。没有该文件时工作台显示占位说明。
+`urlTemplate` 支持 `http(s)` 地址或 `/` 开头的站内路径，占位符有 `{id}`、`{project}`、`{workspace}`、`{sessionId}`。加载时会给地址补上 `embed=1`，让被嵌页面收起自己的头部；嵌入成功后工作台边框改为细实线，占位态仍用虚线。没有该文件时显示占位说明。
 
 ## 使用
 
