@@ -16,8 +16,7 @@ fn setup() -> Connection {
             name TEXT NOT NULL UNIQUE,
             description TEXT,
             path TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT
+            created_at TEXT NOT NULL
         );
         CREATE TABLE tasks (
             id TEXT PRIMARY KEY,
@@ -31,8 +30,7 @@ fn setup() -> Connection {
             started_at TEXT,
             finished_at TEXT,
             blocked_reason TEXT,
-            result TEXT,
-            updated_at TEXT
+            result TEXT
         );",
     )
     .unwrap();

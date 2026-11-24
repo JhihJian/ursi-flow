@@ -364,8 +364,6 @@ pub fn update_project(
         return Ok(());
     }
 
-    updates.push("updated_at = ?");
-    params.push(Box::new(Utc::now().to_rfc3339()));
     params.push(Box::new(id.to_string()));
 
     let sql = format!("UPDATE projects SET {} WHERE id = ?", updates.join(", "));
@@ -453,8 +451,6 @@ pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> 
         return Ok(());
     }
 
-    updates.push("updated_at = ?");
-    params.push(Box::new(Utc::now().to_rfc3339()));
     params.push(Box::new(id.to_string()));
 
     let sql = format!("UPDATE tasks SET {} WHERE id = ?", updates.join(", "));
