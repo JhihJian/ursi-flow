@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -154,6 +154,20 @@ test('登记 Run 前拒绝无效节点执行器', async () => {
   const args = { id: 'bad-ref', flow: 'review', cwd: home, variables: { 任务: 'test' }, executorRef: { ...ref, revision: 99 } };
   await assert.rejects(rpc('run.start', args), /404/);
   await assert.rejects(rpc('run.get', {id: args.id}));
+});
+
+test('启动前清理陈旧 socket 文件，不留死锁', async () => {
+  // before() 启动的 daemon 还在跑，直接 SIGKILL 模拟断电，socket 文件残留。
+  const closed = once(daemon, 'exit');
+  daemon.kill('SIGKILL');
+  await closed;
+  const dead = join(home, 'runtime.sock');
+  assert.ok((await lstat(dead)).isSocket(), '残留文件应是 socket');
+  await boot();
+  assert.equal((await rpc('flow.get', { id: 'review' })).id, 'review');
+  // 后续测试还要用 daemon，重新拉起而不是留在停止状态。
+  await shutdown();
+  await boot();
 });
 
 test('启动回执丢失并重启 daemon，恢复只查询原尝试并按制品选边', async () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { createServer } from "node:net";
-import { lstat, mkdir } from "node:fs/promises";
+import { connect, createServer } from "node:net";
+import { lstat, mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { Catalog, optional, readJson, save } from "./catalog.ts";
@@ -214,7 +214,24 @@ const server = createServer({ allowHalfOpen: true }, (socket) => {
 			.catch((e) => console.error(e));
 	});
 });
-server.listen(join(home, "runtime.sock"), () => {
+const socketFile = join(home, "runtime.sock");
+// 断电等异常退出会留下没人监听的 socket 文件。先探活：连得上说明已有 daemon 在跑（保留文件，交给 listen 报占用），连不上才清理。
+const stale = await lstat(socketFile)
+	.then(
+		() =>
+			new Promise<boolean>((resolve) => {
+				const probe = connect(socketFile);
+				probe.once("connect", () => {
+					probe.destroy();
+					resolve(false);
+				});
+				probe.once("error", () => resolve(true));
+			}),
+		() => false,
+	)
+	.catch(() => false);
+if (stale) await rm(socketFile);
+server.listen(socketFile, () => {
 	if (process.env.URSI_FLOWD_NOTIFY === "1") process.stdout.write("ready-v1\n");
 });
 for (const signal of ["SIGTERM", "SIGINT"])
