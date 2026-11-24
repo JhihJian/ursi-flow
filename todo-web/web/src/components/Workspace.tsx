@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/ui'
 import { ActiveTasksPanel } from './ActiveTasksPanel'
 import { ContentRail } from './ContentRail'
+import { WorkspacePanel } from './WorkspacePanel'
 import { ProjectEditorSheet } from './ProjectEditorSheet'
 import { ProjectSidebar } from './ProjectSidebar'
 import { TaskDetailSheet } from './TaskDetailSheet'
@@ -80,14 +81,7 @@ export function Workspace() {
         {workspaceOpen ? (
           <>
             <ContentRail onExpand={() => toggleWorkspace(false)} />
-            <div className="workspace-panel" role="region" aria-label="Task execution workspace">
-              <div className="workspace-placeholder">
-                <span className="workspace-placeholder-title">Workspace</span>
-                <span className="workspace-placeholder-text">
-                  Task execution details will appear here.
-                </span>
-              </div>
-            </div>
+            <WorkspacePanel />
           </>
         ) : (
           <>

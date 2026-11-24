@@ -7,7 +7,7 @@
 - `core/`：`todo-core` crate，任务与项目的实体、状态机与错误码，最早来自 SUMM-Todo，现在由本目录维护。
 - `server/`：Rust + axum + rusqlite，读写 `~/.todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
 - `Cargo.toml`：workspace，成员为 `core` 与 `server`，构建产物在 `target/`。
-- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 正文用 ProseMirror 做成所见即所得编辑器。
+- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 正文用 ProseMirror 做成所见即所得编辑器。工作台区域通过 `public/workspace-config.json` 嵌入外部页面，不实现执行详情。
 
 ## 本地开发
 
@@ -46,6 +46,14 @@ cd .. && cargo build --release
 | `TODO_DB_PATH` | `~/.todo/todo.db` | SUMM-Todo 本机库 |
 | `PORT` | `8090` | HTTP 监听端口，绑定 `0.0.0.0` |
 | `TODO_WEB_STATIC_DIR` | `web/dist` | 静态文件目录 |
+
+工作台嵌入配置放在构建产物的 `workspace-config.json`（源文件 `web/public/workspace-config.json`）：
+
+```json
+{ "label": "Runs", "urlTemplate": "https://runs.example.com/task/{id}?session={sessionId}" }
+```
+
+`urlTemplate` 支持 `http(s)` 地址或 `/` 开头的站内路径，占位符有 `{id}`、`{project}`、`{workspace}`、`{sessionId}`。没有该文件时工作台显示占位说明。
 
 ## 使用
 
