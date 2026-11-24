@@ -20,6 +20,9 @@ import type {
 // A remote operation may still be running. Preserve its cursor for inspection.
 export class AttemptUnconfirmed extends Error {}
 
+/** 确认门禁挂起哨兵：confirm 节点渲染完成后抛出，由宿主捕获并转 waiting_input。 */
+export class AwaitingInput extends Error {}
+
 export interface AgentNodeExecutionRequest {
 	attemptId?: string;
 	inspectOnly?: boolean;

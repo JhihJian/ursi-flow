@@ -894,7 +894,7 @@ export class FlowCoordinator {
 			throw error;
 		}
 		try {
-			let outcome: NodeOutcome;
+			let outcome: NodeOutcome | undefined;
 			const nodeInput =
 				newInputSemantics && record.enteredFrom.kind === "start"
 					? undefined
@@ -930,7 +930,7 @@ export class FlowCoordinator {
 					variables: structured?.variables,
 				};
 				record.commandResult = commandResult;
-			} else {
+			} else if (node.action.kind !== "confirm") {
 				const profile = renderAgentProfile(
 					node.action.profile,
 					nodeInput,
@@ -986,6 +986,11 @@ export class FlowCoordinator {
 				outcome = result.outcome;
 				record.session = result.session;
 			}
+			if (!outcome)
+				throw new FlowRuntimeError(
+					"outcome_validation",
+					`节点 ${node.ref} 未产生结果`,
+				);
 			await this.completeNode(run, record, outcome, round, branchRef);
 			return { record, outcome };
 		} catch (error) {

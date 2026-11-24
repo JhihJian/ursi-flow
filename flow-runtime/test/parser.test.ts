@@ -552,3 +552,63 @@ describe("Flow Agent 能力声明", () => {
 		).toThrow(FlowSyntaxError);
 	});
 });
+
+describe("人工确认节点", () => {
+	const confirmFlow = (options: { prompt?: string; node?: string; results?: string } = {}) =>
+		`---
+name: 确认流程
+description: 人工确认门禁。
+---
+
+\`\`\`mermaid
+flowchart TD
+  start((开始)) --> gate[确认]
+  gate -->|${options.results ?? "已知悉"}| finish((结束))
+\`\`\`
+
+## 确认
+\`\`\`confirm
+${options.prompt ?? "请确认发布内容。"}
+\`\`\`
+### ${options.results ?? "已知悉"}
+${options.node === "vars" ? "确认完成。\n\n| 变量 | 含义 |\n| --- | --- |\n| 摘要 | 确认说明 |" : "确认完成。"}
+`;
+
+	it("解析 confirm 标记为 ConfirmAction", () => {
+		const flow = parseFlow(confirmFlow(), "confirm-parse");
+		expect(flow.nodes.get("gate")?.action).toEqual({
+			kind: "confirm",
+			prompt: "请确认发布内容。",
+		});
+	});
+
+	it("confirm 提示支持变量模板", () => {
+		const flow = parseFlow(confirmFlow({ prompt: "发布 {var.任务} 前请确认。" }), "confirm-template");
+		expect(flow.nodes.get("gate")?.action).toEqual({
+			kind: "confirm",
+			prompt: "发布 {var.任务} 前请确认。",
+		});
+	});
+
+	it("confirm 提示不能多行", () => {
+		expect(() => parseFlow(confirmFlow({ prompt: "第一行\n第二行" }), "confirm-multiline"))
+			.toThrow(FlowSyntaxError);
+	});
+
+	it("confirm 结果说明不能声明变量表", () => {
+		expect(() =>
+			parseFlow(confirmFlow({ node: "vars" }), "confirm-vars"),
+		).toThrow(FlowSyntaxError);
+	});
+
+	it("confirm 允许多条结果边和单条已知悉边", () => {
+		const markdown = confirmFlow({ results: "通过" })
+			.replace("### 通过", "### 通过\n补充说明。\n\n### 退回\n退回说明。")
+			.replace(
+				"  gate -->|通过| finish((结束))",
+				"  gate -->|通过| finish((结束))\n  gate -->|退回| finish((结束))",
+			);
+		const flow = parseFlow(markdown, "confirm-multi");
+		expect([...flow.nodes.get("gate")!.successors.keys()]).toEqual(["通过", "退回"]);
+	});
+});

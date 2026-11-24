@@ -117,7 +117,9 @@ export function parseFlow(markdown: string, id: string): FlowDefinition {
 					? (node.action.request as unknown as FlowValue)
 					: node.action.kind === "执行Flow"
 						? (node.action.inputs ?? {})
-						: {};
+						: node.action.kind === "confirm"
+							? node.action.prompt
+							: {};
 		validateTemplates(
 			value,
 			node.ref === definition.startNodeRef,
@@ -295,6 +297,13 @@ function parseAction(nodeName: string, actionArea: string): FlowAction {
 		return { ...agent, executor: executorSuffix };
 	}
 	if (marker === "执行Flow") return parseFlowReferenceAction(nodeName, content);
+	if (marker === "confirm") {
+		if (content.includes("\n"))
+			throw new FlowSyntaxError(
+				`节点“${nodeName}”的 confirm 提示必须是一段纯文本`,
+			);
+		return { kind: "confirm", prompt: content };
+	}
 	if (marker !== "执行自定义命令")
 		throw new FlowSyntaxError(`节点“${nodeName}”的动作标记无效: ${marker}`);
 	return parseCommandAction(nodeName, content);
@@ -636,6 +645,15 @@ function validateAndWireGraph(
 		) {
 			throw new FlowSyntaxError(`命令节点 ${node.ref} 必须只有“已执行”结果边`);
 		}
+		if (
+			node.action.kind === "confirm" &&
+			[...node.resultVariables?.values() ?? []].some(
+				(declarations) => Object.keys(declarations).length,
+			)
+		)
+			throw new FlowSyntaxError(
+				`确认节点 ${node.ref} 的结果说明不能声明变量表`,
+			);
 	}
 	for (const parallelRef of graph.parallels)
 		validateParallel(definition, parallelRef, incoming, outgoing);

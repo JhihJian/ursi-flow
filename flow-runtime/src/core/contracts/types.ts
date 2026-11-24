@@ -64,6 +64,13 @@ export interface CommandAction {
 	branchReferences: string[];
 }
 
+/** 人工确认门禁：渲染提示文本后挂起，等待人在控制台选择一条结果边。 */
+export interface ConfirmAction {
+	kind: "confirm";
+	/** 展示给决策人的提示正文，支持 {var.}/{input.} 模板。 */
+	prompt: string;
+}
+
 export interface FlowReferenceAction {
 	kind: "执行Flow";
 	/** 目标 Flow 标识，即同目录下兄弟包的目录名。 */
@@ -72,7 +79,11 @@ export interface FlowReferenceAction {
 	inputs?: FlowVariables;
 }
 
-export type FlowAction = AgentAction | CommandAction | FlowReferenceAction;
+export type FlowAction =
+	| AgentAction
+	| CommandAction
+	| ConfirmAction
+	| FlowReferenceAction;
 
 export interface FlowNode {
 	ref: string;
@@ -228,6 +239,7 @@ export type RunPhase =
 	| "executing_node"
 	| "waiting_parallel"
 	| "routing"
+	| "awaiting_input"
 	| "completed"
 	| "failed"
 	| "interrupted";
@@ -309,6 +321,14 @@ export interface NodeRunRecord {
 	commandResult?: CommandResult;
 	/** 执行Flow 节点启动的子 Run 标识。 */
 	childRunId?: string;
+	/** 确认门禁挂起信息：等人选边期间记录，消费后清除。 */
+	pendingInput?: PendingInput;
+}
+
+/** 确认门禁挂起信息：message 为渲染后的提问正文，options 为可选结果边。 */
+export interface PendingInput {
+	message: string;
+	options: string[];
 }
 
 /** A persisted edge selection. It is never reconstructed from a current Flow file. */
@@ -610,6 +630,7 @@ export interface FlowRunInspectorApi {
 
 export type FlowObservationEventType =
 	| "run.started"
+	| "run.awaiting_input"
 	| "run.resumed"
 	| "run.completed"
 	| "run.failed"

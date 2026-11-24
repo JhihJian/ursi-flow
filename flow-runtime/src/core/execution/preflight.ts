@@ -33,12 +33,21 @@ export async function preflightFlow(
 	if (options.sessionReference)
 		requireCapability(options.agent?.continuity, "Agent Continuity");
 
+	if ([...flow.nodes.values()].some((node) => node.action.kind === "confirm"))
+		throw new Error("本地执行器暂不支持人工确认节点: confirm");
+
 	const visit = (definition: FlowDefinition) => {
 		if (visited.has(definition)) return;
 		visited.add(definition);
 		const capabilities = normalizeAgentCapabilities(definition.capabilities);
 		if (options.agent?.continuity?.toolSchemaMode === "fixed")
 			assertFixedToolSchemas(definition);
+		if (
+			[...definition.nodes.values()].some(
+				(node) => node.action.kind === "confirm",
+			)
+		)
+			throw new Error("引用闭包内不支持人工确认节点: confirm");
 		if (definition.parallels.size) {
 			requireCapability(options.execution?.parallel, "Parallel Executor");
 			for (const parallel of definition.parallels.values()) {
