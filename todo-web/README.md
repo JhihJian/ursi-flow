@@ -7,7 +7,7 @@
 - `core/`：`todo-core` crate，任务与项目的实体、状态机与错误码，最早来自 SUMM-Todo，现在由本目录维护。
 - `server/`：Rust + axum + rusqlite，读写 `~/.todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
 - `Cargo.toml`：workspace，成员为 `core` 与 `server`，构建产物在 `target/`。
-- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 预览用 `react-markdown` + `remark-gfm`。
+- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 正文用 ProseMirror 做成所见即所得编辑器。
 
 ## 本地开发
 
@@ -56,7 +56,8 @@ cd .. && cargo build --release
   - 删除都要二次确认，菜单标题行显示 `Delete "名称"?`，再点一次才执行。
 - 点击任务行、活动任务或任务列表右键菜单里的 `New task`，详情面板会从任务列表下方升起；`×` 或 `Esc` 收起。
 - 详情是一份连续文档：大标题、一行元信息（状态、优先级、标签、时间）、Markdown 正文，不切成表单块。拖动顶部横条可调整面板高度，双击横条复位，右上角 `⤢` 一键展开／还原。
-- 正文用 Markdown 书写，左侧输入右侧即时渲染，无需切换预览；支持 GFM 表格、任务列表、删除线和自动链接，未开启原始 HTML 渲染，HTML 只作为文本显示。两边按比例联动滚动，窄窗口自动改为上下排列。
+- 正文是所见即所得的 Markdown 编辑区：输入 `**加粗**` 立刻变成加粗文本，输入 `# ` 变成标题，`- ` 变成列表，`> ` 变成引用，不再需要预览或源码切换。选中文字后 `Ctrl/Cmd+B`、`Ctrl/Cmd+I`、`Ctrl/Cmd+\`` 可切换加粗、斜体、行内代码。
+- 编辑区覆盖 CommonMark 子集：标题、段落、列表、引用、代码块、行内代码、链接、粗斜体、分隔线、图片。GFM 表格等扩展语法不在此编辑器内，输入后按普通文本保存。
 - 任务行首的 `⠿` 是拖拽手柄。拖动后状态标签与左侧项目项出现虚线放置提示；拖到状态标签改状态，拖到项目项改归属。状态迁移遵循 SUMM-Todo 状态机：完成任务前要先在详情里填写结果，阻塞要填写原因。
 - 两条分隔线可拖动调整三栏宽度，悬停时显示 `⋮` 和拖动光标；双击分隔线恢复默认宽度。布局保存在浏览器本地。
 - Projects 侧边栏点 `«` 可折叠成 32px 单列窄条：文字整体侧转 90° 并从下往上读，拉丁字母随行旋转、中文保持直立，依次显示当前项目名称、活跃任务数和累计时间，名称过长时截断，悬停看完整信息。点 `»` 或窄条展开，宽度回到折叠前的值。把分隔线拖到最小宽度也会自动折叠。

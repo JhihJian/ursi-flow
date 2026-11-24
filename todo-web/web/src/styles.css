@@ -1042,68 +1042,130 @@ button {
   color: var(--gray-900);
 }
 
-/* 左写右看：编辑区与渲染区并排，滚动按比例联动。 */
+/* 所见即所得：编辑区就是渲染结果，不再分左右两栏。 */
 .detail-note {
   display: flex;
   flex: 1;
-  gap: 0;
   min-height: 0;
-  padding-top: var(--space-sm);
+  padding-top: var(--space-xs);
+  overflow: hidden;
 }
 
-.detail-note-input {
-  flex: 1 1 50%;
+.markdown-editor {
+  display: flex;
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 0 var(--space-md) 0 0;
-  border: 0;
-  background: none;
-  resize: none;
+}
+
+.markdown-editor .ProseMirror {
+  flex: 1;
+  min-height: 0;
+  padding: 0 0 var(--space-sm);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.7;
   color: var(--gray-900);
-}
-
-.detail-note-input:focus {
   outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.detail-note-input::placeholder {
-  color: var(--gray-400);
+.markdown-editor .ProseMirror > * + * {
+  margin-top: var(--space-sm);
 }
 
-.detail-note-preview {
-  flex: 1 1 50%;
-  min-width: 0;
-  min-height: 0;
-  padding: 0 0 var(--space-sm) var(--space-md);
-  border-left: 1px solid var(--gray-200);
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+.markdown-editor .ProseMirror h1,
+.markdown-editor .ProseMirror h2,
+.markdown-editor .ProseMirror h3,
+.markdown-editor .ProseMirror h4,
+.markdown-editor .ProseMirror h5,
+.markdown-editor .ProseMirror h6 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-@media (max-width: 900px) {
-  .detail-note {
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
+.markdown-editor .ProseMirror h1 {
+  font-size: 18px;
+}
 
-  .detail-note-input {
-    flex: 0 0 45%;
-    padding: 0;
-  }
+.markdown-editor .ProseMirror h2 {
+  font-size: 15px;
+}
 
-  .detail-note-preview {
-    flex: 1 1 auto;
-    padding: var(--space-sm) 0 0;
-    border-top: 1px solid var(--gray-200);
-    border-left: 0;
-  }
+.markdown-editor .ProseMirror h3,
+.markdown-editor .ProseMirror h4,
+.markdown-editor .ProseMirror h5,
+.markdown-editor .ProseMirror h6 {
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+.markdown-editor .ProseMirror ul,
+.markdown-editor .ProseMirror ol {
+  padding-left: var(--space-lg);
+}
+
+.markdown-editor .ProseMirror li > p {
+  margin: 0;
+}
+
+.markdown-editor .ProseMirror code {
+  padding: 1px 4px;
+  background: var(--gray-200);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.markdown-editor .ProseMirror pre {
+  padding: var(--space-sm);
+  background: var(--gray-200);
+  overflow-x: auto;
+}
+
+.markdown-editor .ProseMirror pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown-editor .ProseMirror blockquote {
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--gray-400);
+  color: var(--gray-600);
+}
+
+.markdown-editor .ProseMirror hr {
+  height: 1px;
+  margin: var(--space-md) 0;
+  border: 0;
+  background: var(--gray-200);
+}
+
+.markdown-editor .ProseMirror a {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+.markdown-editor .ProseMirror img {
+  max-width: 100%;
+}
+
+.markdown-editor .ProseMirror-selectednode {
+  outline: 1px solid var(--gray-900);
 }
 
 .detail-note-empty {
   color: var(--gray-400);
+}
+
+.editor-placeholder {
+  position: absolute;
+  color: var(--gray-400);
+  pointer-events: none;
+  user-select: none;
 }
 
 .detail-footer {
@@ -1146,145 +1208,6 @@ button {
   flex: 1;
   font-size: 12px;
   color: var(--gray-900);
-}
-
-/* Markdown preview */
-.markdown-body {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--gray-900);
-}
-
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  line-height: 1.35;
-  margin: 0 0 var(--space-sm);
-}
-
-.markdown-body h1 {
-  font-size: 18px;
-}
-
-.markdown-body h2 {
-  font-size: 15px;
-}
-
-.markdown-body h3,
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 {
-  font-size: 13px;
-  color: var(--gray-600);
-}
-
-.markdown-body p,
-.markdown-body ul,
-.markdown-body ol,
-.markdown-body pre,
-.markdown-body blockquote {
-  margin: 0 0 var(--space-sm);
-}
-
-.markdown-body ul,
-.markdown-body ol {
-  padding-left: var(--space-lg);
-}
-
-.markdown-body li {
-  margin-bottom: 2px;
-}
-
-.markdown-body code {
-  padding: 1px 4px;
-  background: var(--gray-200);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.markdown-body pre {
-  padding: var(--space-sm);
-  background: var(--gray-200);
-  overflow-x: auto;
-}
-
-.markdown-body pre code {
-  padding: 0;
-  background: none;
-}
-
-.markdown-body blockquote {
-  padding-left: var(--space-md);
-  border-left: 2px solid var(--gray-400);
-  color: var(--gray-600);
-}
-
-.markdown-body hr {
-  height: 1px;
-  margin: var(--space-md) 0;
-  border: 0;
-  background: var(--gray-200);
-}
-
-.markdown-body a {
-  color: var(--gray-900);
-  text-decoration: underline;
-  word-break: break-word;
-}
-
-.markdown-body del {
-  color: var(--gray-400);
-}
-
-.markdown-body table {
-  margin: 0 0 var(--space-sm);
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.markdown-body th,
-.markdown-body td {
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--gray-200);
-  text-align: left;
-}
-
-.markdown-body th {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  color: var(--gray-600);
-  background: var(--gray-200);
-}
-
-.markdown-body .contains-task-list {
-  padding-left: 0;
-  list-style: none;
-}
-
-.markdown-body .task-list-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-sm);
-  list-style: none;
-}
-
-.markdown-body .task-list-item input[type="checkbox"] {
-  margin: 0;
-  accent-color: var(--gray-900);
-}
-
-.markdown-body sup {
-  font-size: 10px;
-}
-
-.markdown-body img {
-  max-width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

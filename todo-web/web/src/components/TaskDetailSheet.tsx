@@ -1,22 +1,13 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react'
+import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
+const MarkdownEditor = lazy(() => import('./MarkdownEditor'))
+
 const priorities: Priority[] = ['high', 'medium', 'low']
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done', 'cancelled']
-
-const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
 const HEIGHT_KEY = 'todo-web.detail-height'
 const DEFAULT_HEIGHT = 360
@@ -46,16 +37,11 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
   const [note, setNote] = useState(task?.result ?? '')
-  // 预览跟着输入走，deferred 让打字不被渲染阻塞。
-  const renderedNote = useDeferredValue(note)
   const [height, setHeight] = useState(readStoredHeight)
   const [maximized, setMaximized] = useState(false)
 
   const sheetRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
-  const noteRef = useRef<HTMLTextAreaElement>(null)
-  const previewRef = useRef<HTMLDivElement>(null)
-  const scrollOwner = useRef<'editor' | 'preview' | null>(null)
   const heightRef = useRef(height)
 
   const confirmDelete = detail.confirmDelete
@@ -73,12 +59,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     element.style.height = 'auto'
     element.style.height = `${element.scrollHeight}px`
   }, [title, maximized, height])
-
-  useEffect(() => {
-    const element = noteRef.current
-    if (!element) return
-    element.scrollTop = 0
-  }, [task?.id])
 
   // 用 window 监听拖动：指针移出面板甚至移出窗口时也能继续调整。
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -127,7 +107,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     // 完成任务必须写明结果，规则来自 todo-core 的状态机。
     if (missingResult) {
       alert('Completing a task requires a result')
-      noteRef.current?.focus()
+      sheetRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus()
       return
     }
     const parsedTags = tags
@@ -142,24 +122,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       tags: parsedTags,
       result: note.trim() ? note : null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
-  }
-
-  // 两边按比例同步滚动，长文能对着看。程序化滚动不再反向触发。
-  const syncScroll = (from: 'editor' | 'preview') => {
-    if (scrollOwner.current && scrollOwner.current !== from) {
-      scrollOwner.current = null
-      return
-    }
-    const editor = noteRef.current
-    const preview = previewRef.current
-    if (!editor || !preview) return
-    const source = from === 'editor' ? editor : preview
-    const target = from === 'editor' ? preview : editor
-    const sourceRange = source.scrollHeight - source.clientHeight
-    const targetRange = target.scrollHeight - target.clientHeight
-    if (sourceRange <= 0 || targetRange <= 0) return
-    scrollOwner.current = from
-    target.scrollTop = (source.scrollTop / sourceRange) * targetRange
   }
 
   return (
@@ -256,28 +218,13 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         </div>
 
         <div className="detail-note">
-          <textarea
-            ref={noteRef}
-            className="detail-note-input"
-            placeholder="Write notes in Markdown: **bold**, `code`, - list"
-            value={note}
-            aria-label="Notes"
-            onChange={(event) => setNote(event.target.value)}
-            onScroll={() => syncScroll('editor')}
-          />
-          <div
-            ref={previewRef}
-            className="detail-note-preview"
-            onScroll={() => syncScroll('preview')}
-          >
-            {renderedNote.trim() ? (
-              <Suspense fallback={<p className="detail-note-empty">Rendering…</p>}>
-                <MarkdownPreview source={renderedNote} />
-              </Suspense>
-            ) : (
-              <p className="detail-note-empty">Nothing written yet</p>
-            )}
-          </div>
+          <Suspense fallback={<p className="detail-note-empty">Loading editor…</p>}>
+            <MarkdownEditor
+              value={note}
+              placeholder="Write notes: # heading, **bold**, - list"
+              onChange={setNote}
+            />
+          </Suspense>
         </div>
       </div>
 
