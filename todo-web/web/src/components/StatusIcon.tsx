@@ -3,14 +3,14 @@ import {
   RiCheckboxCircleLine,
   RiCloseCircleLine,
   RiForbidLine,
-  RiPlayCircleLine,
+  RiProgress3Line,
 } from '@remixicon/react'
 import type { TaskStatus } from '@/api/types'
 
 /** 状态图标统一取自 Remix Icon 的圆形系列，保证五个符号视觉大小一致。 */
 const statusIcons: Record<TaskStatus, typeof RiCheckboxBlankCircleLine> = {
   pending: RiCheckboxBlankCircleLine,
-  in_progress: RiPlayCircleLine,
+  in_progress: RiProgress3Line,
   blocked: RiForbidLine,
   done: RiCheckboxCircleLine,
   cancelled: RiCloseCircleLine,
