@@ -1,11 +1,13 @@
 import {
-  closestCenter,
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -17,6 +19,12 @@ import { Workspace } from '@/components/Workspace'
 import { useNotificationPolling } from '@/hooks/useNotificationPolling'
 import { errorMessage, readDropData, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
+
+/** 指针拖拽按光标位置判定落点；键盘拖拽没有指针坐标，退回元素中心距离。 */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args)
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args)
+}
 
 export default function App() {
   const bootstrap = useTodoStore((state) => state.bootstrap)
@@ -82,7 +90,7 @@ export default function App() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragCancel={() => setDraggingTask(null)}
       onDragEnd={handleDragEnd}
