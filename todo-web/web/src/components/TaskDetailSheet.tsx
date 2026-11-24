@@ -1,7 +1,9 @@
 import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
-import { errorMessage } from '@/lib/ui'
+import { copyText } from '@/lib/clipboard'
+import { buildTaskMarkdown } from '@/lib/task-markdown'
+import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
 const MarkdownEditor = lazy(() => import('./MarkdownEditor'))
@@ -35,6 +37,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
   const [note, setNote] = useState(task?.result ?? '')
+  const [copied, setCopied] = useState(false)
   const [height, setHeight] = useState(readStoredHeight)
 
   const sheetRef = useRef<HTMLElement>(null)
@@ -89,6 +92,27 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const resetHeight = () => {
     applyHeight(DEFAULT_HEIGHT)
     localStorage.setItem(HEIGHT_KEY, String(DEFAULT_HEIGHT))
+  }
+
+  const copyAsMarkdown = async () => {
+    const markdown = buildTaskMarkdown({
+      title,
+      status,
+      priority,
+      tags: tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+      note,
+      timeInfo: task ? taskTimeInfo(task) : null,
+    })
+    try {
+      await copyText(markdown)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch (error) {
+      alert(`Failed to copy task: ${errorMessage(error)}`)
+    }
   }
 
   const save = () => {
@@ -153,6 +177,17 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
             onChange={(event) => setTitle(event.target.value)}
             autoFocus={detail.mode === 'new'}
           />
+          <div className="detail-tools">
+            <button
+              type="button"
+              className={cx('detail-tool', copied && 'is-copied')}
+              title={copied ? 'Copied' : 'Copy as Markdown'}
+              aria-label="Copy task as Markdown"
+              onClick={() => void copyAsMarkdown()}
+            >
+              {copied ? '✓' : '⧉'}
+            </button>
+          </div>
         </div>
 
         <div className="detail-meta">

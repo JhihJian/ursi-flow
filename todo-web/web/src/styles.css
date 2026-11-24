@@ -955,6 +955,34 @@ button {
   outline: none;
 }
 
+.detail-tools {
+  display: flex;
+  flex: none;
+  gap: var(--space-xs);
+}
+
+.detail-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0 var(--space-xs);
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--gray-400);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-tool:hover,
+.detail-tool.is-copied {
+  background: var(--gray-200);
+  color: var(--gray-900);
+}
+
 .detail-meta {
   display: flex;
   flex: none;

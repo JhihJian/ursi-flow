@@ -81,7 +81,7 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 ### 连续文档
 
-详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（状态、优先级、标签、时间）、Markdown 正文、底部 `Close` / `Save`。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。
+详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（状态、优先级、标签、时间）、Markdown 正文、底部 `Close` / `Save`。标题行右侧只有一个复制按钮 `⧉`，点击把面板内容拼成 Markdown 交给剪贴板：标题写成一级标题，状态、优先级、标签、时间写成无序列表，正文原样接在后面，逻辑在 `src/lib/task-markdown.ts`。复制成功时图标短暂变为 `✓`。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。
 
 正文是所见即所得的 Markdown 编辑区，没有源码与预览两栏，也不存在「写／预览」切换。做法对齐 prosemirror.net/examples/markdown：
 
@@ -89,6 +89,8 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 - 输入规则即时把语法变成样式：`**加粗**`、`*斜体*`、`` `代码` `` 去掉标记后套用 mark；`# `、`- `、`1. `、`> `、```` ``` ```` 和 `---` 在行首直接换块类型。行内规则的左侧边界接受任意非单词字符，所以中文标点后面接着写 `**加粗**` 也生效。
 - 键位用 `prosemirror-keymap` 拼装：`Ctrl/Cmd+B`、`Ctrl/Cmd+I`、`Ctrl/Cmd+\`` 切换 mark，列表里 `Enter` 拆项、`Tab` 缩进、`Shift-Tab` 提升，`Ctrl/Cmd+Z` 撤销，其余交给 `baseKeymap`。
 - 空文档用一个 widget 装饰显示占位提示；编辑器与 `markdown-it`、ProseMirror 相关代码放成独立分块，由 `React.lazy` 在打开详情时加载，主包维持在 350KB 左右。
+
+局域网用 `http://192.168.x.x` 打开时不是安全上下文，`navigator.clipboard` 为 `undefined`。复制统一走 `src/lib/clipboard.ts`：安全上下文用 `navigator.clipboard.writeText`，否则插入一个离屏 `textarea` 执行 `execCommand('copy')`。任务 ID 复制和详情复制都用它，避免只在 https 下可用。
 
 编辑器只覆盖 CommonMark 子集。GFM 表格、任务列表、删除线不在 schema 里，输入后会按普通文本保存；真实待办库里没有这类内容，需要时再补 schema 与解析规则。原始 HTML 不会被解析成标签，写进去只是文本。
 

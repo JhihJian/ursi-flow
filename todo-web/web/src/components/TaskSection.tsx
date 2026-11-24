@@ -2,6 +2,7 @@ import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
+import { copyText } from '@/lib/clipboard'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
@@ -68,7 +69,7 @@ function TaskRow({
 
   const copyId = async () => {
     try {
-      await navigator.clipboard.writeText(task.id)
+      await copyText(task.id)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1000)
     } catch (error) {
