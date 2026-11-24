@@ -65,5 +65,8 @@ parent: ../../SPEC.md
 
 ## 边界
 
+模块接入的具体规范见 [MODULE-CONTRACT.md](MODULE-CONTRACT.md)。
+
 - 不提供路由、鉴权、数据获取和领域状态。
+- 模块的接入要求（契约、样式作用域、副作用开关、交付物与检查清单）写在 `MODULE-CONTRACT.md`。
 - 不做运行时插件加载，模块在构建期登记。
