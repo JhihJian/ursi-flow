@@ -33,6 +33,9 @@ function TaskRow({ task }: { task: Task }) {
     id: task.id,
     data: { type: 'task', task },
   })
+  const selected = useTodoStore(
+    (state) => state.detail?.mode === 'view' && state.detail.task.id === task.id,
+  )
   const [copied, setCopied] = useState(false)
 
   const copyId = async () => {
@@ -48,7 +51,11 @@ function TaskRow({ task }: { task: Task }) {
   return (
     <tr
       ref={setNodeRef}
-      className={cx(`status-${task.status}`, isDragging && 'is-dragging')}
+      className={cx(
+        `status-${task.status}`,
+        selected && 'is-selected',
+        isDragging && 'is-dragging',
+      )}
       onClick={() => openTask(task)}
     >
       <td className="col-priority">

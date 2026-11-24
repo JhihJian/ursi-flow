@@ -8,6 +8,9 @@ export function ActiveTasksPanel() {
   const projects = useTodoStore((state) => state.projects)
   const selectProject = useTodoStore((state) => state.selectProject)
   const openTask = useTodoStore((state) => state.openTask)
+  const selectedId = useTodoStore((state) =>
+    state.detail?.mode === 'view' ? state.detail.task.id : null,
+  )
 
   return (
     <div className="active-tasks-panel">
@@ -25,11 +28,13 @@ export function ActiveTasksPanel() {
         {activeTasks.map((task) => {
           const project = projects.find((candidate) => candidate.id === task.project_id)
           const blocked = task.status === 'blocked'
+          const selected = task.id === selectedId
           const elapsed = elapsedMinutes(task.started_at)
           return (
             <li
               key={task.id}
-              className={cx('active-task-item', blocked && 'blocked')}
+              className={cx('active-task-item', blocked && 'blocked', selected && 'selected')}
+              aria-current={selected ? 'true' : undefined}
               onClick={() => {
                 void (async () => {
                   if (task.project_id) await selectProject(task.project_id)
