@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { DemoRoot } from "./DemoRoot";
+import { LiveRoot } from "./live/LiveRoot";
 
 export default function Home() {
   return (
     <Suspense>
-      <DemoRoot />
+      <LiveRoot />
     </Suspense>
   );
 }

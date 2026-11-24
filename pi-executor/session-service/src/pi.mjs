@@ -28,7 +28,14 @@ export async function createPi({ root, cwd, modelId, baseUrl, apiKey, reference 
     parameters: Type.Object({}),
     async execute() { return { content: [{ type: 'text', text: reference }], details: {} }; },
   }];
-  return async sessionManager => {
+  const systemPrompt = 'You are a helpful assistant.';
+  const runtimeInfo = {
+    systemPrompt,
+    model: { id: model.id, name: model.name, provider: model.provider },
+    tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters, active: true })),
+    skills: [],
+  };
+  async function openPi(sessionManager) {
     const runtime = createExtensionRuntime();
     const { session } = await createAgentSession({
       cwd, agentDir: root, modelRuntime, model, thinkingLevel: 'off',
@@ -42,12 +49,13 @@ export async function createPi({ root, cwd, modelId, baseUrl, apiKey, reference 
         getPrompts: () => ({ prompts: [], diagnostics: [] }),
         getThemes: () => ({ themes: [], diagnostics: [] }),
         getAgentsFiles: () => ({ agentsFiles: [] }),
-        getSystemPrompt: () => 'You are a helpful assistant.',
+        getSystemPrompt: () => systemPrompt,
         getSystemPromptSource: () => undefined,
         getAppendSystemPrompt: () => [], getAppendSystemPromptSources: () => [],
         extendResources() {}, async reload() {},
       },
     });
     return session;
-  };
+  }
+  return { openPi, runtimeInfo };
 }

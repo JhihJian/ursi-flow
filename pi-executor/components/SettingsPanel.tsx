@@ -24,6 +24,7 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import type { RuntimeInfo } from "@/app/live/api";
 import { ModelsConfig } from "./ModelsConfig";
 import { setupPushSubscription } from "@/lib/push-client";
 import { SkillsConfig } from "./SkillsConfig";
@@ -33,6 +34,8 @@ import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
   live?: boolean;
+  runtime?: RuntimeInfo | null;
+  runtimeError?: string | null;
   cwd: string | null;
   sessionId: string | null;
   initialSection: SettingsSection;
@@ -354,7 +357,30 @@ function GeneralSettings({ live, sessionId, onSessionReloaded, quoteSelectionEna
   );
 }
 
-export function SettingsPanel({ live, cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
+function RuntimeSettings({ kind, runtime, error }: { kind: "models" | "skills"; runtime?: RuntimeInfo | null; error?: string | null }) {
+  const { t } = useI18n();
+  return (
+    <div className="settings-general">
+      <section className="settings-general-section">
+        <h2 className="settings-general-heading">{t("live.runtimeInfo")}</h2>
+        {error ? <p role="alert" className="settings-general-error">{error}</p> : !runtime ? (
+          <p role="status" className="settings-general-description">{t("workspace.opening")}</p>
+        ) : kind === "models" ? (
+          <dl className="grid gap-1 text-sm break-all">
+            <dt className="text-text-muted">{runtime.model.provider}</dt>
+            <dd title={runtime.model.id}>{runtime.model.name}</dd>
+          </dl>
+        ) : runtime.skills.length ? (
+          <dl className="grid gap-2 text-sm">
+            {runtime.skills.map(skill => <div key={skill.name}><dt>{skill.name}</dt><dd className="text-text-muted">{skill.description}</dd></div>)}
+          </dl>
+        ) : <p className="settings-general-description">{t("live.noSkills")}</p>}
+      </section>
+    </div>
+  );
+}
+
+export function SettingsPanel({ live, runtime, runtimeError, cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
@@ -362,10 +388,10 @@ export function SettingsPanel({ live, cwd, sessionId, initialSection, onClose, o
   );
   const sections: { id: SettingsSection; label: string; requiresProject: boolean }[] = [
     { id: "general", label: t("settings.general"), requiresProject: false },
+    { id: "models", label: t("common.models"), requiresProject: false },
+    { id: "skills", label: t("common.skills"), requiresProject: !live },
   ];
   if (!live) sections.push(
-    { id: "models", label: t("common.models"), requiresProject: false },
-    { id: "skills", label: t("common.skills"), requiresProject: true },
     { id: "agents", label: t("common.agents"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
   );
@@ -384,11 +410,11 @@ export function SettingsPanel({ live, cwd, sessionId, initialSection, onClose, o
   }, [onClose]);
 
   useEffect(() => {
-    if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
+    if (live || cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
     setSection("general");
     setMountedSections((current) => new Set(current).add("general"));
     setLastSettingsSection("general");
-  }, [cwd, section]);
+  }, [live, cwd, section]);
 
   const activateSection = (nextSection: SettingsSection) => {
     setMountedSections((current) => new Set(current).add(nextSection));
@@ -454,8 +480,12 @@ export function SettingsPanel({ live, cwd, sessionId, initialSection, onClose, o
 
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings live={live} sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
-          {sectionHost("models", <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
-          {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
+          {sectionHost("models", live
+            ? <RuntimeSettings kind="models" runtime={runtime} error={runtimeError} />
+            : <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
+          {sectionHost("skills", live
+            ? <RuntimeSettings kind="skills" runtime={runtime} error={runtimeError} />
+            : cwd && <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
         </main>

@@ -1,6 +1,6 @@
 # Pi SDK 会话服务
 
-服务在同一进程内调用 Pi SDK。外部任务和 [Pi Web 实时页](../README.md) 通过 HTTP 访问同一会话，运行时实例与 Pi JSONL 历史由服务管理。服务可单独运行，也可为实时页提供同源静态文件。
+服务在同一进程内调用 Pi SDK。外部任务和 [Pi Web 工作区](../README.md) 通过 HTTP 访问同一会话，运行实例与 Pi JSONL 历史由服务管理。服务可单独运行，也可在 `/` 托管 Pi Web。
 
 ## 启动
 
@@ -25,13 +25,16 @@
 
 | 方法与路径 | 最低权限 | 成功响应 |
 | --- | --- | --- |
-| `GET /access` | 只读 | `200`，`{ "canWrite": false }` 或 `true`。 |
+| `GET /access` | 只读 | `200`，`{ "canWrite": false }` 或 `{ "canWrite": true }`。 |
+| `GET /runtime` | 只读 | `200`，`{ systemPrompt, model: { id, name, provider }, tools, skills }`。 |
 | `GET /sessions` | 只读 | `200`，`{ sessions: [...] }`，按更新时间倒序。 |
 | `GET /sessions/:id` | 只读 | `200`，当前快照。 |
 | `GET /sessions/:id/events` | 只读 | `200`，SSE，先发送当前快照，随后随会话更新发送新的快照。 |
 | `POST /sessions` | 对话 | `201`，会话摘要。请求体为 `{}` 或 `{ "title": "任务名称" }`。 |
 | `POST /sessions/:id/prompt` | 对话 | `202`，已受理。请求体为 `{ "message": "任务内容" }`。 |
 | `POST /sessions/:id/cancel` | 对话 | `202`，已请求停止。最终状态从快照读取。 |
+
+`GET /runtime` 返回服务当前使用的系统提示、模型标识和工具定义。仅配置参考文件时才列出 `read_reference`，`skills` 为空数组。响应不包含密钥、模型端点、参考文件路径或内容。读取配置不会创建 Agent 或请求模型。
 
 会话摘要含 `id`、`title`、`updatedAt`（Unix 毫秒）和 `status`。状态包括 `idle`、`running`、`completed`、`failed`、`cancelled` 和 `interrupted`。快照还包含最新 100 条公开消息、正在生成的 `partial` 和当前运行的 `activeTool`。SSE 每个 `data` 帧携带一份 JSON 快照，慢连接在恢复时获得最新状态。连接中断后重新订阅即可；命令与事件流彼此独立。
 
@@ -53,7 +56,7 @@ curl -fsS "$api/sessions/$session_id/prompt" \
   -d '{"message":"请整理三个交付检查项"}'
 ```
 
-通过受信 Web 入口分享 `/live/?session=<id>` 链接。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
+通过受信 Web 入口分享 `/?session=<id>` 链接。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
 
 ## 重启与验证
 

@@ -7,6 +7,8 @@ export const zhCNLocale: LocalePlugin = {
   messages: {
     "common.ok": "确定",
     "live.readOnly": "只读",
+    "live.runtimeInfo": "当前服务配置",
+    "live.noSkills": "未加载技能",
     "live.noFiles": "暂无可浏览的文件",
     "live.reconnecting": "正在重连…",
     "live.failed": "运行失败。",

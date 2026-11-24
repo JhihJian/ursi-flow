@@ -27,7 +27,6 @@ import { FrontmatterCard } from "./FrontmatterCard";
 import { diffGapLabel, parseUnifiedPatch, unifiedDiffLines, type SplitDiffGap, type UnifiedDiffLine } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
-import { staticFileUrlForApi } from "@/mock/files";
 import {
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
@@ -224,7 +223,7 @@ function getFileApiUrl(
     if (value !== undefined) searchParams.set(key, String(value));
   }
   // Demo: images, media and downloads load straight from the static snapshot.
-  return staticFileUrlForApi(`/api/files/${encoded}?${searchParams.toString()}`);
+  return `/api/files/${encoded}?${searchParams.toString()}`;
 }
 
 function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceSessionId?: string | null }) {

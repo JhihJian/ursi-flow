@@ -2,7 +2,7 @@
   "name": "pi-executor",
   "version": "0.9.2",
   "private": true,
-  "description": "Static Pi executor UI based on the Pi Web demo",
+  "description": "Pi Web frontend for the Pi SDK session service",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 30143",
     "build": "next build",

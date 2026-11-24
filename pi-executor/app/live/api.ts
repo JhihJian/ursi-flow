@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@/lib/types";
+import type { ToolEntry } from "@/lib/tool-presets";
 
 export const statuses = {
   idle: "待开始", running: "运行中", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断",
@@ -6,6 +7,13 @@ export const statuses = {
 
 export type Summary = { id: string; title: string; updatedAt: number; status: keyof typeof statuses };
 export type Snapshot = Summary & { messages: AgentMessage[]; partial: AgentMessage | null; activeTool: string | null };
+
+export type RuntimeInfo = {
+  systemPrompt: string;
+  model: { id: string; name: string; provider: string };
+  tools: ToolEntry[];
+  skills: { name: string; description: string }[];
+};
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }

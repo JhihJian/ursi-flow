@@ -11,7 +11,7 @@
 | [页面布局](packages/ui-layout/SPEC.md) · [UI 插槽](packages/ui-slots/SPEC.md) | 布局包负责响应式排列，插槽包负责注册与渲染贡献。两者可由其他 React 页面单独使用。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
-| [Pi Web 前端](pi-executor/SPEC.md) | 独立静态前端。首页保留模拟演示，实时页按权限观察或继续 Pi 会话。 |
+| [Pi Web 前端](pi-executor/SPEC.md) | 独立静态前端。首页连接会话服务，按权限观察或继续 Pi 会话。 |
 | [Pi SDK 会话服务](pi-executor/session-service/SPEC.md) | 独立 HTTP 服务，持有 Pi 会话运行实例与 JSONL 历史，提供提交、停止和只读订阅。 |
 | [Flow Runtime](flow-runtime/SPEC.md) | 校验并执行 `FLOW.md` 包，以节点结果决定下一步。`ursi-flowd` 持有流程修订、运行配置、Run 和节点历史，可由独立控制台或 CLI 操作。 |
 | [执行器 MCP SDK](executor-sdk/SPEC.md) | Node.js MCP 服务端库，供独立的整条 Flow MCP 适配器等服务使用。SDK 负责协议发现和校验，运行状态由使用它的服务持有。 |

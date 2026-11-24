@@ -1,7 +1,7 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import Image from "next/image";
-import { demoAssetPath } from "@/mock/base-path";
+import { assetPath } from "@/lib/asset-path";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
@@ -18,14 +18,13 @@ import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
-import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import type { AgentPhase, NoticeItem } from "@/hooks/useAgentSession";
 import { useLiveSession, type ChatDriver } from "@/app/live/useLiveSession";
 import type { LiveWorkspace } from "@/app/live/workspace";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import type { AppUpdateResponse } from "@/lib/api-types";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
 import {
@@ -95,71 +94,6 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
-
-function NewSessionUpdateLink({
-  label,
-}: {
-  label: (version: string) => string;
-}) {
-  const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/app-update", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return response.json() as Promise<AppUpdateResponse>;
-      })
-      .then((result) => {
-        if (result?.updateAvailable && result.latestVersion && result.releaseUrl) {
-          setUpdate(result);
-        }
-      })
-      .catch(() => {
-        // Update checks are best-effort and must not interrupt a new session.
-      });
-    return () => controller.abort();
-  }, []);
-
-  if (!update) return null;
-  const accessibleLabel = label(update.latestVersion);
-
-  return (
-    <a
-      href={update.releaseUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
-      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        alignSelf: "center",
-        gap: 3,
-        minHeight: 32,
-        minWidth: 0,
-        padding: "0 4px",
-        background: "transparent",
-        borderRadius: 5,
-        color: "var(--accent)",
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1.2,
-        textDecoration: "none",
-        transition: "background 0.12s",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M7 17 17 7" />
-        <path d="M7 7h10v10" />
-      </svg>
-    </a>
-  );
-}
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -250,35 +184,11 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
 
 export function ChatWindow(props: Props) {
   return props.live && props.session ?
-    <LiveChatWindow {...props} live={props.live} session={props.session} /> : <DemoChatWindow {...props} />;
+    <LiveChatWindow {...props} live={props.live} session={props.session} /> : null;
 }
 
 function LiveChatWindow(props: Props & { live: LiveWorkspace; session: SessionInfo }) {
   const driver = useLiveSession(props.live, props.session.id, props.chatInputRef);
-  return <ChatWindowView {...props} driver={driver} />;
-}
-
-function DemoChatWindow(props: Props) {
-  const { session, searchTarget, initialScrollPosition, onAgentEnd, soundEnabled = true, playDoneSound = () => {} } = props;
-  const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
-
-  // Wrap onAgentEnd to play the completion sound. This is more reliable than
-  // wrapping handleAgentEventRef because useAgentSession overwrites that ref
-  // on every render (it syncs the latest callback), which would blow away an
-  // externally-installed wrapper after the first re-render.
-  const playDoneSoundRef = useRef(playDoneSound);
-  playDoneSoundRef.current = playDoneSound;
-  const soundEnabledRef = useRef(soundEnabled);
-  soundEnabledRef.current = soundEnabled;
-  const wrappedOnAgentEnd = useCallback(() => {
-    if (completionNotificationsEnabled && soundEnabledRef.current) {
-      playDoneSoundRef.current();
-    }
-    onAgentEnd?.();
-  }, [completionNotificationsEnabled, onAgentEnd]);
-
-  const [deferInitialScroll] = useState(() => !searchTarget && initialScrollPosition?.atBottom === false);
-  const driver = useAgentSession({ ...props, onAgentEnd: wrappedOnAgentEnd, deferInitialScroll });
   return <ChatWindowView {...props} driver={driver} />;
 }
 
@@ -1397,9 +1307,8 @@ function ChatWindowView({ live, driver, session, searchTarget, onSearchTargetHan
           <div className="mb-3 w-full" style={{ paddingLeft: 16, paddingRight: isMobile ? 16 : 52 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto", fontFamily: "var(--font-mono)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <Image src={demoAssetPath("/icons/apple-touch-icon.png")} width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
+                <Image src={assetPath("/icons/apple-touch-icon.png")} width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
-                {!live && <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />}
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>

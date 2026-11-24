@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { json, type Summary } from "./api";
+import { json, type RuntimeInfo, type Summary } from "./api";
 
 export const liveCwd = "/Pi Sessions";
 
@@ -19,6 +19,8 @@ export function useLiveWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const list = useRef<AbortController | null>(null);
   const opening = useRef(false);
   const refresh = useCallback(async () => {
@@ -53,6 +55,18 @@ export function useLiveWorkspace() {
     return () => { stopped = true; clearTimeout(timer); list.current?.abort(); };
   }, [refresh]);
 
+  const hasAccess = canWrite !== null;
+  useEffect(() => {
+    if (!hasAccess) return;
+    const controller = new AbortController();
+    void json<RuntimeInfo>("/runtime", { signal: controller.signal }).then(data => {
+      if (!controller.signal.aborted) setRuntime(data);
+    }, error => {
+      if (!controller.signal.aborted) setRuntimeError(error instanceof Error ? error.message : String(error));
+    });
+    return () => controller.abort();
+  }, [hasAccess]);
+
   const create = useCallback(async () => {
     if (!canWrite || opening.current) return null;
     opening.current = true;
@@ -73,7 +87,7 @@ export function useLiveWorkspace() {
 
   const sessions = useMemo(() => summaries.map(s => liveSessionInfo(s.id, s)), [summaries]);
   const running = useMemo(() => summaries.filter(s => s.status === "running").map(s => s.id), [summaries]);
-  return { canWrite, sessions, running, loading, error, creating, refresh, create };
+  return { canWrite, sessions, running, loading, error, creating, refresh, create, runtime, runtimeError };
 }
 
 export type LiveWorkspace = ReturnType<typeof useLiveWorkspace>;

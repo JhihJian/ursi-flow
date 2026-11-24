@@ -138,7 +138,7 @@ export async function startService(env = process.env) {
       if (!info.isFile() || info.size > 12_000) throw new Error('Use a reference text file of at most 12000 bytes');
       reference = await readFile(env.PI_SESSION_REFERENCE_FILE, 'utf8');
     }
-    const openPi = await createPi({ root, cwd, modelId, baseUrl: modelUrl.href, apiKey, reference });
+    const { openPi, runtimeInfo } = await createPi({ root, cwd, modelId, baseUrl: modelUrl.href, apiKey, reference });
     const sessions = createSessions({ root, cwd, openPi, apiKey });
     await sessions.restore();
     const streamClosers = new Set();
@@ -155,7 +155,10 @@ export async function startService(env = process.env) {
         const canWrite = authorize(req);
         const parts = url.pathname.slice(api.length + 1).split('/');
         const [resource, id, action] = parts;
-        if (resource === 'access' && parts.length === 1 && req.method === 'GET') return json(res, 200, { canWrite });
+        if (parts.length === 1 && req.method === 'GET') {
+          if (resource === 'access') return json(res, 200, { canWrite });
+          if (resource === 'runtime') return json(res, 200, runtimeInfo);
+        }
         if (resource !== 'sessions' || parts.length > 3 || (parts.length > 1 && !sessionId.test(id))) throw new RequestError(404, '接口不存在');
         if (req.method === 'GET') {
           if (parts.length === 1) return json(res, 200, { sessions: sessions.list() });

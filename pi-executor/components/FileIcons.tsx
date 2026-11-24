@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { demoAssetPath } from "@/mock/base-path";
+import { assetPath } from "@/lib/asset-path";
 
 interface IconProps {
   size?: number;
@@ -39,7 +39,7 @@ type CatppuccinIconName =
   | "yaml"
   | "go";
 
-const CATPPUCCIN_ICONS_ROOT = demoAssetPath("/icons/catppuccin");
+const CATPPUCCIN_ICONS_ROOT = assetPath("/icons/catppuccin");
 
 function CatppuccinIcon({ name, size = 14 }: IconProps & { name: CatppuccinIconName }) {
   const style = {

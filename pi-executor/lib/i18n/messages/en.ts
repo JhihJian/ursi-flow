@@ -7,6 +7,8 @@ export const enLocale: LocalePlugin = {
   messages: {
     "common.ok": "OK",
     "live.readOnly": "Read only",
+    "live.runtimeInfo": "Current service configuration",
+    "live.noSkills": "No skills loaded",
     "live.noFiles": "No files available",
     "live.reconnecting": "Reconnecting…",
     "live.failed": "The run failed.",

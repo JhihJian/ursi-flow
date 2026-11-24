@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Mono } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
-import { demoAssetPath } from "@/mock/base-path";
+import { assetPath } from "@/lib/asset-path";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
@@ -14,19 +14,19 @@ const notoSansMono = Noto_Sans_Mono({
 
 export const metadata: Metadata = {
   title: "Pi Web",
-  description: "Interactive demo of Pi Web, the browser UI for the pi coding agent",
+  description: "Pi Web workspace for shared Pi SDK sessions",
   applicationName: "Pi Web",
   icons: {
     icon: [
       {
-        url: demoAssetPath("/icons/icon-192.png"),
+        url: assetPath("/icons/icon-192.png"),
         sizes: "192x192",
         type: "image/png",
       },
     ],
     apple: [
       {
-        url: demoAssetPath("/icons/apple-touch-icon.png"),
+        url: assetPath("/icons/apple-touch-icon.png"),
         sizes: "180x180",
         type: "image/png",
       },

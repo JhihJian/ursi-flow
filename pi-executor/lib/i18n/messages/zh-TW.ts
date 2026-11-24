@@ -7,6 +7,8 @@ export const zhTWLocale: LocalePlugin = {
   messages: {
     "common.ok": "確定",
     "live.readOnly": "唯讀",
+    "live.runtimeInfo": "目前的服務設定",
+    "live.noSkills": "未載入技能",
     "live.noFiles": "沒有可瀏覽的檔案",
     "live.reconnecting": "正在重新連線…",
     "live.failed": "執行失敗。",

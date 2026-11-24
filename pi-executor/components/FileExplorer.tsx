@@ -1,7 +1,6 @@
 "use client";
 
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
-import { staticFileUrlForApi } from "@/mock/files";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import {
   encodeFilePathForApi,
@@ -398,7 +397,7 @@ function TreeNode({
         )}
         {hovered && !node.isDir && (
           <a
-            href={staticFileUrlForApi(`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`)}
+            href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
             download={node.name}
             onClick={(e) => e.stopPropagation()}
             title={t("files.download")}

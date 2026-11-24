@@ -68,6 +68,20 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal((await request('/sessions')).status, 401);
   assert.deepEqual(await (await request('/access', reader)).json(), { canWrite: false });
   assert.deepEqual(await (await request('/access', writer)).json(), { canWrite: true });
+  assert.equal((await request('/runtime')).status, 401);
+  const runtime = await request('/runtime', reader);
+  assert.equal(runtime.status, 200);
+  assert.equal(runtime.headers.get('cache-control'), 'no-store');
+  const configuration = await runtime.json();
+  assert.deepEqual(configuration, {
+    systemPrompt: 'You are a helpful assistant.',
+    model: { id: model, name: model, provider: 'ursi-session' },
+    tools: [{ name: 'read_reference', description: 'Read the reference material provided by the operator.', parameters: { type: 'object', properties: {} }, active: true }],
+    skills: [],
+  });
+  assert.deepEqual(await (await request('/runtime', writer)).json(), configuration);
+  assert.equal(provider.requests.length, 0);
+  assert.deepEqual((await readdir(root)).filter(name => name.endsWith('.jsonl')), []);
   assert.equal((await request('/sessions', reader, 'POST', {})).status, 403);
   const created = await request('/sessions', writer, 'POST', { title: 'External run' });
   assert.equal(created.status, 201);
@@ -83,6 +97,8 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal((await request(`${session}/prompt`, writer, 'POST', { message })).status, 202);
   await t.waitFor(() => assert.equal(provider.requests.length, 2));
   assert.ok(provider.requests[0].body.tools.some(tool => tool.function.name === 'read_reference'));
+  assert.ok(provider.requests[0].body.messages.some(entry => entry.role === 'system' && entry.content.includes(configuration.systemPrompt)));
+  assert.equal(provider.requests[0].body.model, configuration.model.id);
   assert.deepEqual(provider.requests[0].body.tools.map(tool => tool.function.name), ['read_reference']);
   const midflight = await observe(await request(`${session}/events`, reader), signal);
   const first = await midflight.until(data => text(data.partial).includes('第一段输出'));
@@ -162,6 +178,9 @@ for (const role of ['read', 'write']) {
     assert.equal((await request('/access', { headers: { authorization: 'Bearer invalid' } })).status, 401);
     assert.equal((await request('/access', { headers: { authorization: [`Bearer ${writer}`, `Bearer ${reader}`] } })).status, 401);
     assert.deepEqual(await (await request('/access')).json(), { canWrite: role === 'write' });
+    assert.deepEqual((await (await request('/runtime')).json()).tools, []);
+    assert.equal((await request('/runtime', { headers: { origin: 'https://other.example.test' } })).status, 403);
+    assert.equal((await request('/runtime', { headers: { authorization: 'Bearer invalid' } })).status, 401);
     assert.equal((await request('/sessions', { headers: { 'sec-fetch-site': 'same-site' } })).status, 403);
     assert.equal((await create({ origin: 'https://other.example.test' })).status, 403);
     assert.equal((await create({ origin: 'null' })).status, 403);
