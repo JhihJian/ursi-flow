@@ -48,6 +48,13 @@ interface GraphEdge {
 	to: string;
 }
 
+interface MarkdownHeading {
+	level: number;
+	text: string;
+	start: number;
+	end: number;
+}
+
 interface ParsedSection {
 	action: FlowAction;
 	results: Map<string, string>;
@@ -213,8 +220,12 @@ function parseGraph(diagram: string): {
 	const nodes = new Map<string, string>();
 	const parallels = new Set<string>();
 	const edges: GraphEdge[] = [];
+	let startDeclared = false;
+	let finishDeclared = false;
 	for (const rawLine of diagram.split(/\r?\n/).slice(1)) {
 		let line = rawLine;
+		if (/\bstart\s*\(\(开始\)\)/.test(line)) startDeclared = true;
+		if (/\bfinish\s*\(\(结束\)\)/.test(line)) finishDeclared = true;
 		for (const match of line.matchAll(NODE_DECLARATION)) {
 			if (match[1] === "start" || match[1] === "finish")
 				throw new FlowSyntaxError("start 和 finish 不能作为工作节点引用");
@@ -244,39 +255,77 @@ function parseGraph(diagram: string): {
 		NODE_DECLARATION.lastIndex = 0;
 		PARALLEL_DECLARATION.lastIndex = 0;
 	}
+	if (!startDeclared)
+		throw new FlowSyntaxError("开始节点必须写为 start((开始))");
+	if (!finishDeclared)
+		throw new FlowSyntaxError("结束节点必须写为 finish((结束))");
 	return { nodes, parallels, edges };
 }
 
 function parseSections(markdown: string): Map<string, ParsedSection> {
-	const heading = /^## (.+?)\s*$/gm;
-	const headers = [...markdown.matchAll(heading)];
+	const headings = markdownHeadings(markdown);
+	const nodeHeadings = headings.filter((heading) => heading.level === 2);
+	const resultHeadings = headings.filter((heading) => heading.level === 3);
 	const sections = new Map<string, ParsedSection>();
-	for (let index = 0; index < headers.length; index++) {
-		const name = headers[index][1].trim();
+	for (let index = 0; index < nodeHeadings.length; index++) {
+		const heading = nodeHeadings[index];
+		const name = heading.text;
 		if (sections.has(name)) throw new FlowSyntaxError(`二级标题重复: ${name}`);
-		const bodyStart = matchIndex(headers[index]) + headers[index][0].length;
+		const bodyStart = heading.end;
 		const bodyEnd =
-			index + 1 < headers.length
-				? matchIndex(headers[index + 1])
+			index + 1 < nodeHeadings.length
+				? nodeHeadings[index + 1].start
 				: markdown.length;
 		const body = markdown.slice(bodyStart, bodyEnd);
-		const firstOutcome = /^### /m.exec(body);
-		const action = parseAction(
-			name,
-			body.slice(0, firstOutcome?.index ?? body.length),
+		const firstOutcome = resultHeadings.find(
+			(result) => result.start >= bodyStart && result.start < bodyEnd,
 		);
+		const splitAt = firstOutcome ? firstOutcome.start - bodyStart : body.length;
+		const action = parseAction(name, body.slice(0, splitAt));
 		const resultVariables: NonNullable<FlowNode["resultVariables"]> = new Map();
 		sections.set(name, {
 			action,
 			resultVariables,
-			results: parseResults(
-				name,
-				body.slice(firstOutcome?.index ?? body.length),
-				resultVariables,
-			),
+			results: parseResults(name, body.slice(splitAt), resultVariables),
 		});
 	}
 	return sections;
+}
+
+/**
+ * 只把代码块之外的 `##`/`###` 行当作标题。动作提示词与结果说明里可以正常写
+ * Markdown 标题，Fenced 范围内的行不参与章节划分。
+ */
+function markdownHeadings(markdown: string): MarkdownHeading[] {
+	const headings: MarkdownHeading[] = [];
+	let fence: string | undefined;
+	let offset = 0;
+	for (const raw of markdown.split("\n")) {
+		const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+		const opened = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+		if (fence) {
+			if (
+				opened &&
+				opened[1][0] === fence[0] &&
+				opened[1].length >= fence.length &&
+				!opened[2].trim()
+			)
+				fence = undefined;
+		} else if (opened) {
+			fence = opened[1];
+		} else {
+			const match = /^(#{2,3}) (.+?)\s*$/.exec(line);
+			if (match)
+				headings.push({
+					level: match[1].length,
+					text: match[2].trim(),
+					start: offset,
+					end: offset + raw.length,
+				});
+		}
+		offset += raw.length + 1;
+	}
+	return headings;
 }
 
 function parseAction(nodeName: string, actionArea: string): FlowAction {
@@ -427,16 +476,31 @@ function parseCommandAction(nodeName: string, content: string): CommandAction {
 	const references = [...content.matchAll(BRANCH_REFERENCE)].map(
 		(match) => match[1],
 	);
-	const replaced = content.replace(BRANCH_REFERENCE, (match) =>
-		JSON.stringify(match),
+	const replaced = content.replace(
+		BRANCH_REFERENCE,
+		(
+			match: string,
+			_branch: string,
+			_variable: string,
+			offset: number,
+			whole: string,
+		) =>
+			whole[offset - 1] === '"' && whole[offset + match.length] === '"'
+				? match
+				: JSON.stringify(match),
 	);
+	// 带引号的引用本身就是合法字符串，优先按原文解析；裸占位符才需要补引号。
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(replaced);
-	} catch (error) {
-		throw new FlowSyntaxError(
-			`节点“${nodeName}”的命令不是有效 JSON: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		parsed = JSON.parse(content);
+	} catch {
+		try {
+			parsed = JSON.parse(replaced);
+		} catch (error) {
+			throw new FlowSyntaxError(
+				`节点“${nodeName}”的命令不是有效 JSON: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 	if (
 		!isRecord(parsed) ||
@@ -451,15 +515,10 @@ function parseCommandAction(nodeName: string, content: string): CommandAction {
 	) {
 		throw new FlowSyntaxError(`节点“${nodeName}”的 args 必须是字符串数组`);
 	}
-	if (
-		parsed.cwd !== undefined &&
-		(typeof parsed.cwd !== "string" || !parsed.cwd.trim())
-	)
-		throw new FlowSyntaxError(`节点“${nodeName}”的 cwd 必须是非空字符串`);
 	if (parsed.output !== undefined && parsed.output !== "variables")
 		throw new FlowSyntaxError(`节点“${nodeName}”的 output 只允许 "variables"`);
 	for (const key of Object.keys(parsed)) {
-		if (!["command", "args", "stdin", "cwd", "output"].includes(key))
+		if (!["command", "args", "stdin", "output"].includes(key))
 			throw new FlowSyntaxError(`节点“${nodeName}”的命令不允许字段: ${key}`);
 	}
 	if (
@@ -484,7 +543,7 @@ function branchReferencesAreStandalone(
 	const standalone = [
 		...content.matchAll(
 			new RegExp(
-				`(?:^|[:,\\[])\\s*\\{branch\\.(${IDENTIFIER})\\.[\\p{L}\\p{N}_-]+\\}\\s*(?=[,}\\]])`,
+				`(?:^|[:,\\[])\\s*"?\\{branch\\.(${IDENTIFIER})\\.[\\p{L}\\p{N}_-]+\\}"?\\s*(?=[,}\\]])`,
 				"gmu",
 			),
 		),
@@ -518,16 +577,15 @@ function parseResults(
 	resultArea: string,
 	resultVariables: NonNullable<FlowNode["resultVariables"]>,
 ): Map<string, string> {
-	const heading = /^### (.+?)\s*$/gm;
-	const headers = [...resultArea.matchAll(heading)];
+	const headers = markdownHeadings(resultArea).filter(
+		(heading) => heading.level === 3,
+	);
 	const results = new Map<string, string>();
 	for (let index = 0; index < headers.length; index++) {
-		const result = headers[index][1].trim();
-		const start = matchIndex(headers[index]) + headers[index][0].length;
+		const result = headers[index].text;
+		const start = headers[index].end;
 		const end =
-			index + 1 < headers.length
-				? matchIndex(headers[index + 1])
-				: resultArea.length;
+			index + 1 < headers.length ? headers[index + 1].start : resultArea.length;
 		const description = resultArea.slice(start, end).trim();
 		if (!result || !description || results.has(result))
 			throw new FlowSyntaxError(`节点“${nodeName}”的结果说明必须唯一且非空`);
@@ -842,12 +900,6 @@ function groupEdges(
 		grouped.set(edge[key], items);
 	}
 	return grouped;
-}
-
-function matchIndex(match: RegExpMatchArray): number {
-	if (match.index === undefined)
-		throw new FlowSyntaxError("Markdown 标题缺少位置");
-	return match.index;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -361,13 +361,31 @@ describe("并行汇合命令", () => {
 	it.each([
 		'{"test":{branch.test.状态}}',
 		'{"test":{branch.test.状态},"other":{branch.other.状态}}',
-		'{"test":"{branch.test.状态}","lint":{branch.lint.状态}}',
 		'{"test":"前缀{branch.test.状态}","lint":{branch.lint.状态}}',
 		'{"test":{test.outcome},"lint":{lint.outcome}}',
 	])("拒绝未覆盖分支或非独立引用 %s", (stdin) => {
 		expect(() => parseFlow(parallel(stdin), "invalid-join")).toThrow(
 			FlowSyntaxError,
 		);
+	});
+
+	it("双引号包裹的独立引用与裸占位符等价", () => {
+		const flow = parseFlow(
+			parallel('{"test":"{branch.test.状态}","lint":{branch.lint.状态}}'),
+			"quoted-join",
+		);
+		const action = flow.nodes.get("merge")?.action;
+		if (action?.kind !== "执行自定义命令") throw new Error("expected command");
+		expect(
+			renderCommandRequest(
+				action.request,
+				undefined,
+				new Map([
+					["test", { 状态: ["甲", "乙"] }],
+					["lint", { 状态: true }],
+				]),
+			).stdin,
+		).toEqual({ test: ["甲", "乙"], lint: true });
 	});
 
 	it("拒绝 stdin 外的引用和把引用作为对象键", () => {
@@ -610,5 +628,41 @@ ${options.node === "vars" ? "确认完成。\n\n| 变量 | 含义 |\n| --- | ---
 			);
 		const flow = parseFlow(markdown, "confirm-multi");
 		expect([...flow.nodes.get("gate")!.successors.keys()]).toEqual(["通过", "退回"]);
+	});
+});
+
+describe("图与 Markdown 结构", () => {
+	it("开始与结束必须使用固定写法", () => {
+		expect(() =>
+			parseFlow(serial().replace("start((开始))", "start"), "bare-start"),
+		).toThrow(/start\(\(开始\)\)/);
+		expect(() =>
+			parseFlow(serial().replace("finish((结束))", "finish"), "bare-finish"),
+		).toThrow(/finish\(\(结束\)\)/);
+	});
+
+	it("动作代码块内的 Markdown 标题不参与章节划分", () => {
+		const prompt = "按下列标题整理：\n## 背景\n### 目标\n先读代码";
+		const flow = parseFlow(serial({ first: prompt }), "prompt-headings");
+		expect(flow.nodes.get("analyze")?.action).toEqual({
+			kind: "新建Agent",
+			prompt,
+		});
+	});
+
+	it("结果说明的代码块内标题不参与结果划分", () => {
+		const description =
+			"说明：\n\n```markdown\n## 不是节点\n### 不是结果\n```\n\n写作要求如上。";
+		const flow = parseFlow(serial({ result: description }), "result-fence");
+		expect(flow.nodes.get("analyze")?.results.get("已分析")).toBe(description);
+	});
+
+	it("命令不接受规范之外的字段", () => {
+		expect(() =>
+			parseFlow(
+				parallel().replace('{"command":"test"}', '{"command":"test","cwd":"/tmp"}'),
+				"command-cwd",
+			),
+		).toThrow(/不允许字段: cwd/);
 	});
 });

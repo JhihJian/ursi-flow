@@ -175,7 +175,7 @@ Agent 节点的提示词只由三部分组成：动作代码块内容（替换�
 
 ## 4. 输入与结果引用
 
-一次 Flow 运行通过已声明的全局变量启动。节点提示词和命令模板使用 `{var.xxx}` 读取全局变量，使用 `{input.xxx}` 读取上一节点声明的下一跳变量。结果只包含 `result` 和可选的 `variables`，不存在任务或正文模板。
+一次 Flow 运行通过已声明的全局变量启动。节点提示词和命令模板使用 `{var.xxx}` 读取全局变量，使用 `{input.xxx}` 读取上一节点声明的下一跳变量。结果只包含 `outcome`（节点记录中写作 `result`）和可选的 `variables`，不存在任务或正文模板。
 
 结果变量必须在对应结果说明中声明：
 
@@ -196,16 +196,17 @@ Agent 使用 `submit_flow_outcome` 提交：
 }
 ```
 
-SDK 的 `submitOutcome` 回调使用 `result` 和可选的 `variables`，例如：
+Flow Core 的 `submit` 接收带 `stepId` 的 `outcome` 和可选的 `variables`，例如：
 
 ```json
 {
-  "result": "已分析",
+  "stepId": "本次访问的标识",
+  "outcome": "已分析",
   "variables": { "结论": "可以开始修改" }
 }
 ```
 
-`result` 只选择结果边。元信息中声明的变量写入 Run 全局状态，结果表中声明的其他变量只传给实际进入的下一节点。未声明的变量不能提交，变量也没有删除协议。
+`outcome` 只选择结果边。元信息中声明的变量写入 Run 全局状态，结果表中声明的其他变量只传给实际进入的下一节点。未声明的变量不能提交，变量也没有删除协议。
 
 首节点只读取全局变量，没有 `input`。下一跳变量仅对实际进入的下一节点可见，离开后不会继续保留。`var` 与 `input` 支持整值替换和字符串内嵌替换：整值保留原 JSON 类型，内嵌值转换为文本。变量名是单个名称，不能用对象路径访问内部属性。
 
@@ -248,9 +249,9 @@ SDK 的 `submitOutcome` 回调使用 `result` 和可选的 `variables`，例如�
 
 ## 5. 节点结果与 Agent
 
-每个工作节点只提交一次 `result`，并可提交结果表声明的 `variables`。结果变量成为普通下一节点的 `input`。
+每个工作节点只提交一次 `outcome`，并可提交结果表声明的 `variables`。结果变量成为普通下一节点的 `input`。
 
-Agent 动作结束时，运行模型把当前节点允许提交的结果名、变量声明和提交指令提供给 Agent。Agent 从中提交 `result` 和可选的 `variables`。运行模型只接受当前节点声明的结果名和变量。
+Agent 动作结束时，运行模型把当前节点允许提交的结果名、变量声明和提交指令提供给 Agent。Agent 从中提交 `outcome` 和可选的 `variables`。运行模型只接受当前节点声明的结果名和变量。
 
 命令动作结束时，运行模型提交`已执行`。`commandResult`固定记录`status`、`exitCode`、`stdout`和`stderr`，退出码为`0`时`status`为`success`，其他退出码对应`failure`。只有设置 `output: "variables"` 时，标准输出中的 `{ "variables": {...} }` 才会成为业务变量；命令证据本身不会自动进入变量。
 

@@ -36,15 +36,15 @@ flowchart LR
   flow[可复用 Flow] --> run
   run --> node[当前节点]
   node --> action[执行一个动作]
-  action --> result[提交 result 与 variables]
-  result --> route{按 result 选择去向}
+  action --> submitted[提交 outcome 与 variables]
+  submitted --> route{按 outcome 选择去向}
   route --> node
   route --> finish((结束))
 ```
 
 运行时为首节点提供 `{var.xxx}` 全局变量。普通节点同时可读取上一节点传来的 `{input.xxx}`。并行汇合节点还可读取本轮各分支隔离的 `{branch.<分支引用>.<变量>}`。
 
-`result` 只选择结果边。结果说明中声明的变量通过 `variables` 传递：若名称属于元信息 `variables`，写入 Run 全局状态；其他变量只进入下一节点的 `input`。未声明的变量不能提交。
+`outcome` 只选择结果边。结果说明中声明的变量通过 `variables` 传递：若名称属于元信息 `variables`，写入 Run 全局状态；其他变量只进入下一节点的 `input`。未声明的变量不能提交。
 
 每次进入节点都会创建一条 NodeRun。返工再次访问同一节点时，会产生新的 NodeRun，不覆盖历史记录。
 
@@ -57,7 +57,7 @@ flowchart LR
 - `执行自定义命令`：执行 Flow 中定义的 JSON 命令。
 - `执行Flow`：按显式 `inputs` 启动独立子 Run。
 
-Agent 节点从声明的结果边中选择一个，并提交 `result` 与可选的 `variables`。命令节点固定提交 `已执行`，命令输出只有在声明 `output: "variables"` 时才解析为业务变量，执行证据仍单独保存在 `commandResult` 中。
+Agent 节点从声明的结果边中选择一个，并提交 `outcome` 与可选的 `variables`。命令节点固定提交 `已执行`，命令输出只有在声明 `output: "variables"` 时才解析为业务变量，执行证据仍单独保存在 `commandResult` 中。
 
 ## 并行与返工
 
