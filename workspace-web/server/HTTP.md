@@ -9,14 +9,14 @@
 | read | POST | `{ workspaceId, path }` | `{ content, mtime, size }`（>2MB 或含 NUL 报错） |
 | write | POST | `{ workspaceId, path, content, expectMtime?, overwrite? }` | `{ mtime }`；mtime 不一致返回 409 `conflict`；`overwrite: true` 跳过检查 |
 | stat | POST | `{ workspaceId, path }` | `EntryDto` |
-| git-status | POST | `{ workspaceId }` | `{ isRepo, root, branch, upstream?, changes: [{ path, index, worktree, kind }], additions, deletions }`；阶段 1.5 实现，见下方注释 |
+| git-status | POST | `{ workspaceId }` | `{ isRepo, root, branch, upstream?, changes: [{ path, index, worktree, kind }], additions, deletions }`；见下方注释 |
 | mkdir | POST | `{ workspaceId, path }` | `EntryDto`；已存在返回 409 `exists` |
 | rename | POST | `{ workspaceId, path, newName }` | `EntryDto` |
 | delete | POST | `{ workspaceId, path }` | `{ ok: true }`；目录递归删除 |
 
 `EntryDto = { name, type: 'dir' \| 'file', size, mtime }`。
 
-## git-status（阶段 1.5）
+## git-status
 
 只读 Git 状态快照，与用户终端的 git 操作并存：服务端用 `git --no-optional-locks` 只跑只读命令（`status --porcelain=v1 -z --branch`、`rev-parse --show-toplevel`、`diff --numstat HEAD`），永不执行暂存、提交、推送。
 
