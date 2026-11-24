@@ -61,7 +61,7 @@ curl -fsS "$api/sessions/$session_id/prompt" \
   -d '{"message":"请整理三个交付检查项"}'
 ```
 
-通过受信 Web 入口分享 `/?session=<id>` 链接。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
+通过受信 Web 入口分享 `/conversation/?session=<id>` 链接。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
 
 ## 重启与验证
 

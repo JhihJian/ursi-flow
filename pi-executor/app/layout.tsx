@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+import { I18nProvider } from "@/hooks/useI18n";
 import { Noto_Sans_Mono } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { assetPath } from "@/lib/asset-path";
 import "katex/dist/katex.min.css";
 import "./globals.css";
-import "./settings.css";
 
 const notoSansMono = Noto_Sans_Mono({
   subsets: ["latin", "cyrillic"],
@@ -14,7 +15,7 @@ const notoSansMono = Noto_Sans_Mono({
 
 export const metadata: Metadata = {
   title: "Pi Web",
-  description: "Pi Web workspace for shared Pi SDK sessions",
+  description: "Independent views for shared Pi SDK sessions",
   applicationName: "Pi Web",
   icons: {
     icon: [
@@ -69,7 +70,7 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate" suppressHydrationWarning>
-        {children}
+        <I18nProvider><Suspense>{children}</Suspense></I18nProvider>
       </body>
     </html>
   );

@@ -7,7 +7,7 @@ export type TranslationParams = Record<string, string | number>;
 /** 可注册的语言包定义。 */
 export interface LocalePlugin {
   /** 语言包唯一标识。 */
-  id: string;
+  id: Locale;
   /** 用于语言选择菜单的显示名称。 */
   label: string;
   /** 以稳定 key 索引的翻译消息。 */
