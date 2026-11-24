@@ -15,6 +15,7 @@ import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
+import { liveCwd, type LiveWorkspace } from "@/app/live/workspace";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
@@ -106,6 +107,7 @@ function sessionListUrl(summary: boolean, force: boolean): string {
 }
 
 interface Props {
+  live?: LiveWorkspace;
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
@@ -382,16 +384,20 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ live, selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
-  const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const isLive = Boolean(live);
+  const [demoSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const allSessions = live?.sessions ?? demoSessions;
   // Tracked in a ref only: the version is compared against the polled value to
   // decide whether the list needs reloading, and no render reads it.
   const sessionListVersionRef = useRef<number | null>(null);
   const sessionLoadIdRef = useRef(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
+  const [demoLoading, setLoading] = useState(true);
+  const [demoError, setError] = useState<string | null>(null);
+  const loading = live ? live.loading : demoLoading;
+  const error = live ? live.error : demoError;
+  const [selectedCwd, setSelectedCwd] = useState<string | null>(live ? liveCwd : null);
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
@@ -419,11 +425,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
-  const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
+  const sessionSearchActive = !live && sessionSearchOpen && Boolean(sessionSearchQuery.trim());
   const [changesCount, setChangesCount] = useState(0);
   const [changesCollapsed, setChangesCollapsed] = useState(true);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
-  const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
+  const [demoRunningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
+  const liveRunning = live?.running;
+  const liveRunningIds = useMemo(() => new Set(liveRunning), [liveRunning]);
+  const runningSessionIds = live ? liveRunningIds : demoRunningSessionIds;
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
@@ -498,6 +507,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [sessionSearchActive]);
 
   const loadSessions = useCallback(async (showLoading = false, force = false, summary = false) => {
+    if (isLive) return;
     const loadId = ++sessionLoadIdRef.current;
     try {
       if (showLoading) setLoading(true);
@@ -540,10 +550,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     } finally {
       if (loadId === sessionLoadIdRef.current) setLoading(false);
     }
-  }, []);
+  }, [isLive]);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
+    if (isLive) return;
     const isFirst = !initialLoadDone.current;
     initialLoadDone.current = true;
     let active = true;
@@ -570,7 +581,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         detailsHydrationTimerRef.current = null;
       }
     };
-  }, [loadSessions, refreshKey]);
+  }, [isLive, loadSessions, refreshKey]);
 
   // Browser storage is unavailable during server rendering. Restore the panel
   // preference after hydration so a collapsed explorer stays collapsed on reload.
@@ -585,6 +596,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [unreadSessionIds]);
 
   useEffect(() => {
+    if (isLive) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let controller: AbortController | null = null;
@@ -652,7 +664,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       controller?.abort();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [loadSessions]);
+  }, [isLive, loadSessions]);
 
   useEffect(() => {
     onRunningSessionIdsChange?.(runningSessionIds);
@@ -716,10 +728,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [explorerRefreshKey]);
 
   useEffect(() => {
+    if (isLive) return;
     fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
       if (d.home) setHomeDir(d.home);
     }).catch(() => {});
-  }, []);
+  }, [isLive]);
 
   const restoredRef = useRef(false);
 
@@ -783,7 +796,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Load worktrees for the current effective cwd
   const [wtRefreshKey, setWtRefreshKey] = useState(0);
   useLayoutEffect(() => {
-    if (!selectedCwd) {
+    if (isLive || !selectedCwd) {
       setWorktreeState(null);
       setWorktreeLoadingCwd(null);
       return;
@@ -816,11 +829,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }
       });
     return () => { cancelled = true; };
-  }, [selectedCwd, wtRefreshKey, refreshKey]);
+  }, [isLive, selectedCwd, wtRefreshKey, refreshKey]);
 
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
-    if (allSessions.length === 0 || skipInitialProjectSelection) return;
+    if (isLive || allSessions.length === 0 || skipInitialProjectSelection) return;
 
     if (selectedCwd === null) {
       // If restoring a session, set cwd to match that session
@@ -838,7 +851,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       const projects = getRecentProjects(allSessions);
       if (projects.length > 0) setSelectedCwd(projects[0].root);
     }
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
+  }, [isLive, allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and
@@ -1044,9 +1057,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     [projectActivity, selectedProject],
   );
 
-  const filteredSessions = selectedProject
-    ? sessionsForProject(allSessions, selectedProject.key)
-    : allSessions;
+  const filteredSessions = live && sessionSearchOpen && sessionSearchQuery.trim()
+    ? allSessions.filter(s => `${s.name ?? ""} ${s.id}`.toLowerCase().includes(sessionSearchQuery.trim().toLowerCase()))
+    : selectedProject ? sessionsForProject(allSessions, selectedProject.key) : allSessions;
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1119,9 +1132,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <PiWebTitle />
           <div style={{ display: "flex", gap: 6 }}>
-            <button
+            {(!live || live.canWrite) && <button
               onClick={handleNewSession}
-              disabled={!selectedCwd}
+              disabled={!selectedCwd || live?.creating}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                 background: "var(--bg-hover)",
@@ -1156,7 +1169,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 <line x1="1" y1="6" x2="11" y2="6" />
               </svg>
               {t("sidebar.new")}
-            </button>
+            </button>}
             <button
               type="button"
               onClick={() => {
@@ -1179,7 +1192,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         {/* CWD picker */}
         <div ref={dropdownRef} style={{ position: "relative" }}>
           <button
-            onClick={() => setDropdownOpen((v) => !v)}
+            onClick={live ? undefined : () => setDropdownOpen((v) => !v)}
+            disabled={isLive}
             title={selectedProject?.root ?? selectedCwd ?? ""}
             style={{
               width: "100%",
@@ -1767,7 +1781,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           overflow: "hidden",
         }}
       >
-        <SessionSearch open={sessionSearchOpen} query={sessionSearchQuery} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
+        <SessionSearch open={!live && sessionSearchOpen} query={sessionSearchQuery} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
         <div
           ref={listScrollRef}
           onScroll={handleListScroll}
@@ -1817,6 +1831,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 >
                   <SessionItem
                     session={displaySession}
+                    managed={isLive}
                     isSelected={familySessions.some((session) => session.id === selectedSessionId)}
                     isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
                     isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
@@ -1927,7 +1942,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 </svg>
               </ToolbarIconButton>
             )}
-            {explorerOpen && (
+            {!live && explorerOpen && (
               <ToolbarIconButton
                 onClick={() => {
                   setFileSearchOpen((open) => !open);
@@ -1942,7 +1957,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 </svg>
               </ToolbarIconButton>
             )}
-            {explorerOpen && (
+            {!live && explorerOpen && (
               <ToolbarIconButton
                 onClick={() => fileExplorerRef.current?.openUploadPicker()}
                 disabled={explorerUploadBusy}
@@ -1958,13 +1973,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             )}
             <ToolbarIconButton
               onClick={() => {
-                if (onExplorerRefresh) onExplorerRefresh();
+                if (live) void live.refresh();
+                else if (onExplorerRefresh) onExplorerRefresh();
                 else setExplorerKey((k) => k + 1);
                 setExplorerRefreshDone(true);
                 if (explorerRefreshTimerRef.current) clearTimeout(explorerRefreshTimerRef.current);
                 explorerRefreshTimerRef.current = setTimeout(() => setExplorerRefreshDone(false), 2000);
               }}
-              title={t("sidebar.refreshExplorer")}
+              title={t(live ? "sidebar.refresh" : "sidebar.refreshExplorer")}
               skipHover={explorerRefreshDone}
               color={explorerRefreshDone ? "#4ade80" : "var(--text-dim)"}
               background={explorerRefreshDone ? "rgba(74,222,128,0.18)" : "none"}
@@ -1984,7 +2000,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
           {explorerOpen && (
             <div ref={explorerScrollRef} className="scrollbar-subtle" style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-              <FileExplorer
+              {live ? <p className="px-3 py-2 text-xs text-text-muted">{t("live.noFiles")}</p> : <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}
                 onOpenFile={onOpenFile ?? (() => {})}
@@ -1996,7 +2012,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 onChangesCountChange={setChangesCount}
                 fileSearchOpen={fileSearchOpen}
                 onFileSearchOpenChange={setFileSearchOpen}
-              />
+              />}
             </div>
           )}
         </div>
@@ -2114,6 +2130,7 @@ function showProjectActivity(
 
 function SessionItem({
   session,
+  managed = false,
   isSelected,
   isRunning,
   isUnread,
@@ -2126,6 +2143,7 @@ function SessionItem({
   onToggleCollapse,
 }: {
   session: SessionInfo;
+  managed?: boolean;
   isSelected: boolean;
   isRunning?: boolean;
   isUnread?: boolean;
@@ -2237,7 +2255,7 @@ function SessionItem({
   return (
     <div
       onClick={confirmDelete || renaming ? undefined : onClick}
-      onContextMenu={confirmDelete || renaming ? undefined : handleContextMenu}
+      onContextMenu={managed || confirmDelete || renaming ? undefined : handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
@@ -2401,7 +2419,7 @@ function SessionItem({
           )}
 
           {/* Action buttons — shown on hover */}
-          {hovered && !session.transient && (
+          {hovered && !managed && !session.transient && (
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
               <button
                 onClick={startRename}

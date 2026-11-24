@@ -1,6 +1,6 @@
 # Pi Web 前端
 
-这是基于 [Pi Web 静态演示版](https://github.com/agegr/pi-web/tree/432366bd510c72ce7b678a6cb1220f9cac1ed56c/demo) 的独立前端。`/` 保留上游模拟会话、文件和终端交互；`/live/` 复用 Pi Web 的消息和输入组件，连接 [Pi SDK 会话服务](session-service/README.md)。上游版本见 [`upstream.json`](upstream.json)，使用 [MIT 许可证](LICENSE)。
+这是基于 [Pi Web 静态演示版](https://github.com/agegr/pi-web/tree/432366bd510c72ce7b678a6cb1220f9cac1ed56c/demo) 的独立前端。`/` 提供上游模拟会话、文件和终端交互，`/live/` 连接 [Pi SDK 会话服务](session-service/README.md)。两页共用 Pi Web 的布局、侧栏、消息区、输入区、文件面板和外观设置，沿用同一套字体和图标。上游版本见 [`upstream.json`](upstream.json)，使用 [MIT 许可证](LICENSE)。
 
 ## 构建与部署
 
@@ -20,4 +20,6 @@ npm run build
 
 访问 `/live/` 并输入会话令牌。会话列表可手动刷新；外部系统可直接分享 `/live/?session=<id>`。链接只包含会话 ID，访问权限由令牌决定。
 
-对话令牌可新建会话、发送文本和停止运行。只读令牌可查看历史、当前输出和工具结果。令牌在当前标签页的会话存储中保留，点击「断开」将其清除。刷新页面或网络重连时，实时页从服务端重新订阅当前快照。
+对话令牌可新建会话、发送文本和停止运行。只读令牌可查看历史、当前输出和工具结果，页面隐藏写入控件。实时页的文件面板显示空态。终端和模型配置等操作仅在演示页提供。
+
+令牌保存在当前标签页，在设置中选择「退出登录」可将其清除。刷新页面或网络重连时，实时页通过只读订阅获取当前快照。

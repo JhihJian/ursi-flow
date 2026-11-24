@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useEffectEvent, useLayoutEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
@@ -62,6 +62,7 @@ import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getAgentsBadge, getSessionFamily } from "@/lib/session-family";
 import { demoRouterPath } from "@/mock/base-path";
+import { liveCwd, liveSessionInfo, type LiveWorkspace } from "@/app/live/workspace";
 import { PROJECT_ROOT as DEMO_PROJECT_ROOT } from "@/mock/paths";
 import { openDemoHistory } from "@/mock/export";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
@@ -80,10 +81,13 @@ function parkedNewSessionDraftKey(cwd: string): string {
   return `parked-new:${cwd}`;
 }
 
-export function AppShell() {
+export function AppShell({ live }: { live?: LiveWorkspace }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [initialNavigation, setInitialNavigation] = useState(() => getInitialNavigation(searchParams));
+  const isLive = Boolean(live);
+  const [initialNavigation, setInitialNavigation] = useState(() => getInitialNavigation({
+    get: key => isLive && key === "cwd" ? null : searchParams.get(key),
+  }));
   // Keep the system-theme subscription mounted for the lifetime of the app.
   useTheme();
   const { locale, t: translate } = useI18n();
@@ -95,10 +99,10 @@ export function AppShell() {
   // subscription so the server can notify backgrounded PWAs (notably iOS,
   // which suspends page JS and never receives the SSE completion event).
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (isLive || typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
     void setupPushSubscription(locale);
-  }, [locale]);
+  }, [isLive, locale]);
   // Audio ownership lives here (not in ChatWindow) so the completion tone can
   // also fire for tasks finishing in a non-active workspace whose ChatWindow
   // is not mounted. ChatWindow receives the audio callbacks as props.
@@ -123,7 +127,8 @@ export function AppShell() {
   const handleBackgroundTaskDone = useCallback(() => {
     if (soundEnabledRef.current) playDoneSound();
   }, [playDoneSound, soundEnabledRef]);
-  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(() =>
+    live && initialNavigation.sessionId ? liveSessionInfo(initialNavigation.sessionId) : null);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
@@ -478,6 +483,7 @@ export function AppShell() {
   }))];
 
   useEffect(() => {
+    if (isLive) return;
     try {
       const saved = restoreTerminalTabs(window.sessionStorage.getItem(TERMINAL_TABS_KEY));
       setTerminalTabs(saved.tabs);
@@ -487,7 +493,7 @@ export function AppShell() {
       }
     } catch { /* storage is optional */ }
     setTerminalsRestored(true);
-  }, []);
+  }, [isLive]);
 
   useEffect(() => {
     if (!terminalsRestored) return;
@@ -527,19 +533,20 @@ export function AppShell() {
   }, [isMobile]);
 
   const initialSessionId = initialNavigation.sessionId;
-  const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  const [activeCwd, setActiveCwd] = useState<string | null>(live ? liveCwd : null);
   const activeProjectKeyRef = useRef<string | null>(null);
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
-  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
+  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => isLive || !initialSessionId);
   // sessionStorage is empty during SSR. Applying the tab's remembered session
   // in the useState initializer made the first client tree differ from the
   // server HTML (sidebar "select project" vs ""). Restore after mount instead.
   useLayoutEffect(() => {
+    if (isLive) return;
     const next = withTabOpen(initialNavigation, getTabOpen());
     if (next === initialNavigation) return;
     setInitialNavigation(next);
     if (next.sessionId) setInitialSessionRestored(false);
-  }, [initialNavigation]);
+  }, [initialNavigation, isLive]);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
   // Guards the async workspace restore so a slow response from an earlier
@@ -558,6 +565,7 @@ export function AppShell() {
   // New session is a selection too: remember the composer cwd so reload stays
   // on that UI instead of resurrecting the previous chat.
   useEffect(() => {
+    if (isLive) return;
     if (selectedSession) {
       const projectKey = selectedSession.projectKey
         ?? activeProjectKeyRef.current
@@ -567,7 +575,7 @@ export function AppShell() {
       return;
     }
     if (newSessionCwd) setTabOpenNewSession(newSessionCwd);
-  }, [newSessionCwd, selectedSession]);
+  }, [isLive, newSessionCwd, selectedSession]);
 
   useEffect(() => {
     const requestedCwd = initialNavigation.requestedCwd;
@@ -790,10 +798,38 @@ export function AppShell() {
     // replace in production Next.js triggers a Suspense remount loop.
     // Tab-memory restore lands on `/` and must write `?session=` so reload
     // and copy-link keep this session.
-    if (!isRestore || new URLSearchParams(window.location.search).get("session") !== session.id) {
+    if (isLive) {
+      const url = new URL(window.location.href);
+      if (!isRestore && url.searchParams.get("session") !== session.id) {
+        url.searchParams.set("session", session.id);
+        window.history.pushState(null, "", url);
+      }
+    } else if (!isRestore || new URLSearchParams(window.location.search).get("session") !== session.id) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, router, isMobile, newSessionCwd, selectedSession]);
+  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, isLive, router, isMobile, newSessionCwd, selectedSession]);
+
+  const liveSessionId = isLive ? searchParams.get("session") : null;
+  const restoreLiveSession = useEffectEvent((id: string | null) => {
+    if (id === (selectedSession?.id ?? null)) return;
+    if (id) handleSelectSession(sessionCatalog.find(s => s.id === id) ?? liveSessionInfo(id), true);
+    else {
+      invalidateWorkspaceRestore();
+      setSelectedSession(null);
+      setSessionKey(key => key + 1);
+    }
+  });
+  useEffect(() => {
+    if (isLive) restoreLiveSession(liveSessionId);
+  }, [isLive, liveSessionId]);
+
+  const createLiveSession = live?.create;
+  const handleLiveNewSession = useCallback(async () => {
+    if (!createLiveSession) return;
+    const current = workspaceRestoreTokenRef.current;
+    const next = await createLiveSession();
+    if (next && current === workspaceRestoreTokenRef.current) handleSelectSession(next);
+  }, [createLiveSession, handleSelectSession]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     invalidateWorkspaceRestore();
@@ -825,7 +861,7 @@ export function AppShell() {
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
-    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
+    onNewSession: live ? (live.canWrite ? handleLiveNewSession : undefined) : (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
     activeCwd,
   });
 
@@ -856,6 +892,7 @@ export function AppShell() {
       handleSelectSession(catalogued);
       return;
     }
+    if (isLive) return;
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       const data = await response.json() as { info?: SessionInfo; error?: string };
@@ -864,7 +901,7 @@ export function AppShell() {
     } catch (error) {
       console.error("[pi-web] failed to open session:", error instanceof Error ? error.message : error);
     }
-  }, [handleSelectSession, sessionCatalog]);
+  }, [handleSelectSession, isLive, sessionCatalog]);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
@@ -1074,7 +1111,7 @@ export function AppShell() {
   // reload into the scratch project keeps it too: that folder has no README.
   const demoReadmeOpenedRef = useRef(false);
   useEffect(() => {
-    if (demoReadmeOpenedRef.current || isMobile || !selectedSession || !activeCwd) return;
+    if (isLive || demoReadmeOpenedRef.current || isMobile || !selectedSession || !activeCwd) return;
     demoReadmeOpenedRef.current = true;
     const projectRoot = selectedSession.projectRoot ?? activeCwd;
     if (projectRoot !== DEMO_PROJECT_ROOT) return;
@@ -1090,7 +1127,7 @@ export function AppShell() {
     }]);
     setActiveFileTabId(tabId);
     setRightPanelOpen(true);
-  }, [activeCwd, isMobile, selectedSession]);
+  }, [activeCwd, isLive, isMobile, selectedSession]);
 
   const handleOpenLinkedFile = useCallback((filePath: string, page?: number) => {
     handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null, page });
@@ -1144,7 +1181,7 @@ export function AppShell() {
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
-  const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
+  const showChat = selectedSession !== null || (!isLive && effectiveNewSessionCwd !== null);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
@@ -1153,7 +1190,7 @@ export function AppShell() {
     setProjectTrust(null);
     setProjectTrustDialogOpen(false);
     setProjectTrustError(null);
-    if (!projectTrustCwd) return;
+    if (isLive || !projectTrustCwd) return;
 
     const controller = new AbortController();
     fetch(`/api/project-trust?cwd=${encodeURIComponent(projectTrustCwd)}`, {
@@ -1169,7 +1206,7 @@ export function AppShell() {
         console.error("Failed to load project trust:", error);
       });
     return () => controller.abort();
-  }, [projectTrustCwd]);
+  }, [isLive, projectTrustCwd]);
 
   const handleTrustProject = useCallback(async () => {
     if (!projectTrustCwd || projectTrustBusy) return;
@@ -1212,18 +1249,19 @@ export function AppShell() {
   const sidebarContent = (
     <>
       <SessionSidebar
+        live={live}
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
-        onNewSession={handleNewSession}
+        onNewSession={live ? (live.canWrite ? handleLiveNewSession : undefined) : handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
         onInitialRestoreDone={handleInitialRestoreDone}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
-        onCwdChange={handleCwdChange}
-        onOpenFile={handleOpenFile}
-        onOpenTerminal={handleOpenTerminal}
+        onCwdChange={isLive ? undefined : handleCwdChange}
+        onOpenFile={isLive ? undefined : handleOpenFile}
+        onOpenTerminal={isLive ? undefined : handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
@@ -1237,14 +1275,14 @@ export function AppShell() {
           ["models", translate("common.models")],
           ["skills", translate("common.skills")],
         ] as const).map(([section, label]) => {
-          const disabled = section !== "models" && !projectTrustCwd;
+          const disabled = isLive || (section !== "models" && !projectTrustCwd);
           return (
             <button
               key={section}
               type="button"
               onClick={() => setSettingsSection(section)}
               disabled={disabled}
-              title={disabled ? translate("settings.projectRequired") : label}
+              title={disabled && !isLive ? translate("settings.projectRequired") : label}
               aria-label={label}
               style={{
                 flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1263,7 +1301,7 @@ export function AppShell() {
         })}
         <button
           type="button"
-          onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
+          onClick={() => setSettingsSection(isLive ? "general" : getLastSettingsSection(projectTrustCwd))}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
@@ -1346,7 +1384,7 @@ export function AppShell() {
             handleViewFullHistory();
             if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
           }}
-          disabled={!selectedSession}
+          disabled={isLive || !selectedSession}
           title={selectedSession ? translate("history.full") : translate("history.unsaved")}
           aria-label={translate("history.full")}
           style={{
@@ -1401,13 +1439,13 @@ export function AppShell() {
           </svg>
           {!mobile && <span>{translate("history.label")}</span>}
         </button>
-        {(() => {
+        {(!live || live.canWrite) && (() => {
           // 上下文压缩后当前消息可能不再包含 user 消息，需同时参考会话文件的消息总数。
           const hasMessages = Boolean(
             selectedSession
             && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
           );
-          const disabled = !selectedSession || selectedSession.transient || !hasMessages || autoNameStatus.kind === "naming";
+          const disabled = isLive || !selectedSession || selectedSession.transient || !hasMessages || autoNameStatus.kind === "naming";
           const isSuccess = autoNameStatus.kind === "success";
           const isError = autoNameStatus.kind === "error";
           const label = autoNameStatus.kind === "naming"
@@ -1575,7 +1613,7 @@ export function AppShell() {
           ref={systemBtnRef}
           type="button"
           onClick={() => handleSystemInfoToggle("system", mobile)}
-          disabled={mobile && !showChat}
+          disabled={isLive || (mobile && !showChat)}
           title={translate("system.prompt")}
           aria-label={translate("system.prompt")}
           aria-pressed={activeTopPanel === "system"}
@@ -1612,7 +1650,7 @@ export function AppShell() {
         <button
           type="button"
           onClick={() => handleSystemInfoToggle("tools", mobile)}
-          disabled={mobile && !showChat}
+          disabled={isLive || (mobile && !showChat)}
           title={translate("tools.title")}
           aria-label={translate("tools.title")}
           aria-pressed={activeTopPanel === "tools"}
@@ -2093,6 +2131,7 @@ export function AppShell() {
               {renderSessionStatsButton(false)}
             </>
           )}
+          {live && !live.canWrite && <span className="px-2 text-[11px] text-text-muted">{translate("live.readOnly")}</span>}
           {!isMobile && renderMainFileToggle(false)}
           {isMobile && sessionHasBranches && (
             <BranchNavigator
@@ -2359,6 +2398,7 @@ export function AppShell() {
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           {showChat ? (
             <ChatWindow
+              live={live}
               key={sessionKey}
               session={selectedSession}
               searchTarget={searchTarget?.sessionId === selectedSession?.id ? searchTarget : null}
@@ -2381,10 +2421,10 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
-              onOpenFile={handleOpenLinkedFile}
+              onOpenFile={isLive ? undefined : handleOpenLinkedFile}
               onOpenSession={handleOpenSession}
-              onAskInNewChat={handleAskInNewChat}
-              quoteSelectionEnabled={quoteSelectionEnabled}
+              onAskInNewChat={isLive ? undefined : handleAskInNewChat}
+              quoteSelectionEnabled={!isLive && quoteSelectionEnabled}
               initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
               onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
               soundEnabled={soundEnabled}
@@ -2567,6 +2607,7 @@ export function AppShell() {
     </div>
     {settingsSection && (
       <SettingsPanel
+        live={live}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}
         initialSection={settingsSection}

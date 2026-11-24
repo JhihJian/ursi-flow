@@ -32,6 +32,7 @@ import { PluginsConfig } from "./PluginsConfig";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
+  live?: { canWrite: boolean; onDisconnect: () => void };
   cwd: string | null;
   sessionId: string | null;
   initialSection: SettingsSection;
@@ -62,7 +63,7 @@ export function SettingsSectionIcon({ section, size = 16, strokeWidth = 1.8 }: {
   return <svg {...common}><path d="M9 7V2M15 7V2M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0ZM12 19v3" /></svg>;
 }
 
-function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
+function GeneralSettings({ live, sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Pick<Props, "live" | "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
@@ -72,19 +73,22 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [pushRegistering, setPushRegistering] = useState(false);
   const [pushStatus, setPushStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
+  const localOnly = Boolean(live);
   const [webAuthEnabled, setWebAuthEnabled] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
+    if (localOnly) return;
     void fetch("/api/web-auth")
       .then((response) => response.ok ? response.json() : null)
       .then((data: { enabled?: boolean } | null) => setWebAuthEnabled(data?.enabled === true))
       .catch(() => {});
-  }, []);
+  }, [localOnly]);
 
   const logOut = async () => {
+    if (live) { live.onDisconnect(); return; }
     setLoggingOut(true);
     setLogoutError("");
     try {
@@ -99,6 +103,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   };
 
   useEffect(() => {
+    if (localOnly) return;
     let cancelled = false;
     void fetch("/api/tools/settings")
       .then(async (response) => {
@@ -110,7 +115,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         if (!cancelled) setShellError(cause instanceof Error ? cause.message : String(cause));
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [localOnly]);
 
   const togglePowerShell = async (enabled: boolean) => {
     setShellSaving(true);
@@ -257,14 +262,14 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               onChange={(event) => setFontSize(Number(event.target.value))}
             />
           </div>
-          <div className="settings-chat-option settings-chat-switch-option">
+          {!live && <div className="settings-chat-option settings-chat-switch-option">
             <span>{t("settings.quoteSelection")}</span>
             <ConfigSwitch
               checked={quoteSelectionEnabled}
               label={t("settings.quoteSelection")}
               onChange={onQuoteSelectionChange}
             />
-          </div>
+          </div>}
         </div>
       </section>
 
@@ -285,7 +290,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         </section>
       )}
 
-      <section className="settings-general-section">
+      {!live && <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>
         <p className="settings-general-description">{t("settings.pushPermissionDescription")}</p>
         <div className="settings-shell-option">
@@ -308,7 +313,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             {pushStatus.message}
           </p>
         )}
-      </section>
+      </section>}
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("common.language")}</h3>
@@ -335,7 +340,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         </div>
       </section>
 
-      {webAuthEnabled && (
+      {(live || webAuthEnabled) && (
         <section className="settings-general-section">
           <ConfigButton variant="secondary" disabled={loggingOut} onClick={() => void logOut()}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -350,7 +355,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   );
 }
 
-export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
+export function SettingsPanel({ live, cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
@@ -358,13 +363,16 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   );
   const sections: { id: SettingsSection; label: string; requiresProject: boolean }[] = [
     { id: "general", label: t("settings.general"), requiresProject: false },
+  ];
+  if (!live) sections.push(
     { id: "models", label: t("common.models"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: true },
     { id: "agents", label: t("common.agents"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
-  ];
+  );
 
-  useEffect(() => setLastSettingsSection(initialSection), [initialSection]);
+  const localOnly = Boolean(live);
+  useEffect(() => { if (!localOnly) setLastSettingsSection(initialSection); }, [initialSection, localOnly]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -446,7 +454,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
         </div>
 
         <main className="settings-dialog-main">
-          {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
+          {sectionHost("general", <GeneralSettings live={live} sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
           {sectionHost("models", <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}

@@ -19,6 +19,8 @@ import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useLiveSession, type ChatDriver } from "@/app/live/useLiveSession";
+import type { LiveWorkspace } from "@/app/live/workspace";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
@@ -36,6 +38,7 @@ import {
 } from "@/lib/chat-lazy-load";
 
 interface Props {
+  live?: LiveWorkspace;
   session: SessionInfo | null;
   searchTarget?: { sessionId: string; entryId: string; blockIndex?: number } | null;
   onSearchTargetHandled?: (target: { sessionId: string; entryId: string }) => void;
@@ -70,6 +73,8 @@ interface Props {
   playDoneSound?: () => void;
   unlockAudio?: () => void;
 }
+
+const emptyToolResults = new Map<string, ToolResultMessage>();
 
 function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, string | number>) => string): string | null {
   if (phase?.kind === "running_tools") {
@@ -243,9 +248,18 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
-  const { t } = useI18n();
-  const isMobile = useIsMobile();
+export function ChatWindow(props: Props) {
+  return props.live && props.session ?
+    <LiveChatWindow {...props} live={props.live} session={props.session} /> : <DemoChatWindow {...props} />;
+}
+
+function LiveChatWindow(props: Props & { live: LiveWorkspace; session: SessionInfo }) {
+  const driver = useLiveSession(props.live, props.session.id, props.chatInputRef);
+  return <ChatWindowView {...props} driver={driver} />;
+}
+
+function DemoChatWindow(props: Props) {
+  const { session, searchTarget, initialScrollPosition, onAgentEnd, soundEnabled = true, playDoneSound = () => {} } = props;
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -256,13 +270,26 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   playDoneSoundRef.current = playDoneSound;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
-  const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback(() => {
     if (completionNotificationsEnabled && soundEnabledRef.current) {
       playDoneSoundRef.current();
     }
     onAgentEnd?.();
   }, [completionNotificationsEnabled, onAgentEnd]);
+
+  const [deferInitialScroll] = useState(() => !searchTarget && initialScrollPosition?.atBottom === false);
+  const driver = useAgentSession({ ...props, onAgentEnd: wrappedOnAgentEnd, deferInitialScroll });
+  return <ChatWindowView {...props} driver={driver} />;
+}
+
+function ChatWindowView({ live, driver, session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, newSessionCwd, newSessionDraftKey, chatInputRef, onSessionStatsChange, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound, unlockAudio }: Props & { driver: ChatDriver }) {
+  const { t } = useI18n();
+  const isMobile = useIsMobile();
+  const readOnly = live && !live.canWrite;
+  const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
+  const soundedExtensionDialogIdRef = useRef<string | null>(null);
+  const playDoneSoundRef = useRef(playDoneSound);
+  playDoneSoundRef.current = playDoneSound;
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
   const handleEditContent = useCallback((message: UserMessage) => {
@@ -277,12 +304,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
-    retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
+    loading, error, messages, activeToolResults = emptyToolResults, entryIds, historyCursor = null, hasEarlierMessages, streamState,
+    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels = {}, modelThinkingLevelMaps = {}, toolPreset, thinkingLevel,
+    retryInfo, contextUsage = null, forkingEntryId,
+    isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats = null,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
+    notices = [], extensionDialog, extensionCustomUi, extensionStatuses = [], extensionWidgets = [], respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
     isAutoModelSelection,
     isAutoThinkingSelection,
     agentPhase,
@@ -296,12 +323,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
-  } = useAgentSession({
-    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
-    deferInitialScroll: Boolean(pendingScrollRestore),
-  });
-  const sessionBusy = agentRunning || bashRunning;
+  } = driver;
+  const sessionBusy = agentRunning || Boolean(bashRunning);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
     top: number;
@@ -453,13 +476,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       || soundedExtensionDialogIdRef.current === extensionDialog.id
     ) return;
     soundedExtensionDialogIdRef.current = extensionDialog.id;
-    playDoneSoundRef.current();
+    playDoneSoundRef.current?.();
   }, [completionNotificationsEnabled, extensionDialog]);
 
   // Register the abort handler for the global Esc shortcut
   useEffect(() => {
-    registerAbortHandler(sessionBusy ? handleAbort : null);
-  }, [sessionBusy, handleAbort]);
+    registerAbortHandler(!readOnly && sessionBusy ? handleAbort : null);
+    return () => registerAbortHandler(null);
+  }, [sessionBusy, handleAbort, readOnly]);
 
   // --- Lazy-load historical messages ---
   // Only render the last N messages initially. When the user scrolls to the
@@ -487,7 +511,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const requestedCursorRef = useRef<string | null>(null);
   const loadOlderPage = useCallback(async (sid: string, before: string, options?: { tail?: number; signal?: AbortSignal }) => {
     requestedCursorRef.current = before;
-    const context = await loadContext(sid, activeLeafId, before, options);
+    const context = await loadContext?.(sid, activeLeafId ?? null, before, options);
     // Nothing landed, so the same page may be asked for again.
     if (!context && requestedCursorRef.current === before) requestedCursorRef.current = null;
     return context;
@@ -874,9 +898,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
 
-  const chatInputElement = (
+  const chatInputElement = !readOnly && (
     <ChatInput
       ref={chatInputRef}
+      textOnly={Boolean(live)}
       onSend={handleSend}
       onAbort={handleAbort}
       onSteer={agentRunning ? handleSteer : undefined}
@@ -915,7 +940,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
-      cwd={session?.cwd ?? newSessionCwd}
+      cwd={live ? null : session?.cwd ?? newSessionCwd}
     />
   );
 
@@ -994,10 +1019,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {extensionDialog && (
+        {extensionDialog && respondToExtensionUi && (
           <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} />
         )}
-        {extensionCustomUi && (
+        {extensionCustomUi && sendExtensionCustomInput && (
           <ExtensionCustomPanel key={extensionCustomUi.id} request={extensionCustomUi} onInput={sendExtensionCustomInput} />
         )}
         {!isEmptyNew && <>
@@ -1072,7 +1097,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onFork={sessionBusy || isNew ? undefined : handleFork}
                     forking={forkingEntryId === entryIds[idx]}
                     onNavigate={sessionBusy ? undefined : handleNavigate}
-                    onEditContent={handleEditContent}
+                    onEditContent={readOnly ? undefined : handleEditContent}
                     showTimestamp={showTimestamp}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
@@ -1374,7 +1399,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
                 <Image src={demoAssetPath("/icons/apple-touch-icon.png")} width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
-                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
+                {!live && <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />}
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
