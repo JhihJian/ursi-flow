@@ -129,14 +129,21 @@ export type DesktopCanvasGraphViewModel = {
 };
 export type DesktopTodoGroupName = BlockStatus | "implemented";
 
-export type DesktopTodoItem = {
-  canvasId?: string;
-  canvasName?: string;
+export const todoStatuses = ["ready", "in_progress", "needs_changes", "blocked", "diverged", "completed"] as const;
+export type TodoStatus = (typeof todoStatuses)[number];
+
+export type TodoFields = {
+  title: string;
+  status: TodoStatus;
+  assignee: string;
+  description: string;
+};
+
+export type DesktopTodoItem = TodoFields & {
+  canvasId: string;
   ref: string;
   taskId: string;
   blockId: string;
-  title: string;
-  status: BlockStatus;
   dependencyBlockers: string[];
   reviewGate: ReviewGateHint | null;
 };

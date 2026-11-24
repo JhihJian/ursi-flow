@@ -1,4 +1,5 @@
 import type { DesktopTodoGroups, TodoPhase } from "@/model";
+import { PlusIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +14,7 @@ type TodoViewProps = {
   handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   t: ReturnType<typeof createTranslator>;
   todoGroups: DesktopTodoGroups | null;
+  onCreate: () => void;
 };
 
 const visibleTodoStatuses = [
@@ -58,6 +60,7 @@ export function TodoView({
   assigneeIndex = null,
   phases,
   handleBlockSelect,
+  onCreate,
   t,
   todoGroups
 }: TodoViewProps) {
@@ -78,6 +81,10 @@ export function TodoView({
   return (
     <ScrollArea aria-label={t("todo")} className="h-full" data-testid="todo-view" role="region">
       <div className="flex min-h-full flex-col gap-3 pr-3 pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-base font-semibold">{t("todo")}</h1>
+          <Button size="sm" onClick={onCreate}><PlusIcon data-icon="inline-start" />{t("newTodo")}</Button>
+        </div>
         <section className="animate-in fade-in slide-in-from-bottom-2 overflow-hidden rounded-md border border-border/80 bg-surface-raised text-text shadow-sm duration-500">
           <div className="grid lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)]">
             <div className="flex flex-col justify-center border-b border-border/80 bg-surface-muted/70 p-6 lg:border-r lg:border-b-0">
@@ -154,13 +161,14 @@ export function TodoView({
                       {ready > 0 ? (
                         phase.readyItems.map((item) => (
                           <Button
-                            className="h-7 font-mono"
+                            className="h-7 max-w-full font-mono"
+                            title={item.title}
                             key={`${item.canvasId}:${item.ref}`}
                             onClick={() => void handleBlockSelect(item.ref, item.canvasId)}
                             size="sm"
                             variant="outline"
                           >
-                            {item.ref}
+                            <span className="truncate">{item.ref}</span>
                           </Button>
                         ))
                       ) : (
@@ -185,6 +193,8 @@ export function TodoView({
                     assignee: t("assignee"),
                     dependencyBlockers: t("dependencyBlockers"),
                     noBlockers: t("noBlockers"),
+                    showAll: t("showAllTodos"),
+                    showFewer: t("showFewerTodos"),
                     reviewExecutor: t("reviewExecutor"),
                     reviewGate: t("reviewGate"),
                     reviewNeedsChangesReturnsTo: t("reviewNeedsChangesReturnsTo"),

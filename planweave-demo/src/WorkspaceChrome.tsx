@@ -6,9 +6,9 @@ import {
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { ScrollArea } from "./components/ui/scroll-area";
-import { project, taskTitles } from "./demo-data";
+import { demoTasks, project, taskTitles } from "./demo-data";
 import type { createTranslator } from "./i18n";
-import type { DesktopCanvasNodeViewModel, DesktopTodoItem } from "./model";
+import type { DesktopCanvasNodeViewModel } from "./model";
 
 type View = "map" | "todo" | "graph";
 type Translator = ReturnType<typeof createTranslator>;
@@ -40,7 +40,6 @@ function TreeToggle({ expanded, name, onClick }: { expanded: boolean; name: stri
 type WorkspaceChromeProps = {
   view: View;
   canvases: DesktopCanvasNodeViewModel[];
-  items: DesktopTodoItem[];
   activeCanvasId: string;
   selectedTaskId: string | null;
   titlebarActions: ReactNode;
@@ -50,7 +49,7 @@ type WorkspaceChromeProps = {
   children: ReactNode;
 };
 
-export function WorkspaceChrome({ view, canvases, items, activeCanvasId, selectedTaskId, titlebarActions, onCanvasOpen, onTaskOpen, t, children }: WorkspaceChromeProps) {
+export function WorkspaceChrome({ view, canvases, activeCanvasId, selectedTaskId, titlebarActions, onCanvasOpen, onTaskOpen, t, children }: WorkspaceChromeProps) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"projects" | "components" | null>(null);
@@ -93,7 +92,7 @@ export function WorkspaceChrome({ view, canvases, items, activeCanvasId, selecte
             </div>
             {projectExpanded && <ul className="ml-3 flex min-w-0 flex-col gap-1 border-l border-border/60 pt-1 pl-4">
               {canvases.map(({ canvasId, title }) => {
-                const tasks = [...new Set(items.filter((item) => item.canvasId === canvasId).map((item) => item.taskId))];
+                const tasks = demoTasks.filter((item) => item.canvasId === canvasId).map((item) => item.taskId);
                 const expanded = expandedCanvases.has(canvasId);
                 return <li key={canvasId} className="min-w-0">
                   <div className="grid grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-1">

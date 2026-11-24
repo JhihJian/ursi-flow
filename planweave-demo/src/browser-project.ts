@@ -1,5 +1,6 @@
 import { canvases, createGraph, project } from "./demo-data";
 import type { DesktopCanvasExecutionPolicy, DesktopCanvasMapLayout } from "./model";
+import { readTodoItems } from "./todo-store";
 
 const prefix = `planweave-demo/v1/${project.projectId}`;
 const layoutKey = `${prefix}/layout`;
@@ -31,12 +32,12 @@ function assertCanvas(canvasId: string) {
   if (!canvases.some((canvas) => canvas.canvasId === canvasId)) throw new Error("Canvas not found.");
 }
 
-export function readGraph() {
+export function readGraph(items = readTodoItems()) {
   return createGraph(canvases.map((canvas) => {
     const name = readStored(`${prefix}/name/${canvas.canvasId}`);
     const policy = readStored(`${prefix}/policy/${canvas.canvasId}`);
     return { ...canvas, title: isTitle(name) ? name : canvas.title, executionPolicy: isPolicy(policy) ? policy : canvas.executionPolicy };
-  }));
+  }), items);
 }
 
 function readLayout(): DesktopCanvasMapLayout {
@@ -57,7 +58,6 @@ function readLayout(): DesktopCanvasMapLayout {
 
 // Same async boundary as the desktop view. All operations stay in this browser.
 export const browserProject = {
-  async getCanvasGraphViewModel() { return readGraph(); },
   async getCanvasMapLayout() { return readLayout(); },
   async saveCanvasMapLayout(layout: DesktopCanvasMapLayout) {
     localStorage.setItem(layoutKey, JSON.stringify(layout.nodes));

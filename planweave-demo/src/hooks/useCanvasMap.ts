@@ -9,6 +9,7 @@ import type { CanvasFlowNode } from "@/model";
 
 type UseCanvasMapArgs = {
   activeCanvasId: string | null;
+  graph: DesktopCanvasGraphViewModel;
   selectedProject: DesktopProjectSummary | null;
   setError: (message: string | null) => void;
 };
@@ -19,8 +20,8 @@ function errorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
 }
 
-export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseCanvasMapArgs) {
-  const [canvasGraph, setCanvasGraph] = useState<DesktopCanvasGraphViewModel | null>(null);
+export function useCanvasMap({ activeCanvasId, graph, selectedProject, setError }: UseCanvasMapArgs) {
+  const canvasGraph = graph;
   /** Working layout shown on the map (may be dirty after a failed save). */
   const [canvasMapLayout, setCanvasMapLayout] = useState<DesktopCanvasMapLayout | null>(null);
   /** Last layout confirmed persisted by the runtime. */
@@ -28,7 +29,7 @@ export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseC
     useState<DesktopCanvasMapLayout | null>(null);
   const [layoutDirty, setLayoutDirty] = useState(false);
   const [layoutPending, setLayoutPending] = useState<LayoutPendingOperation>(null);
-  const [selectedMapCanvasId, setSelectedMapCanvasId] = useState<string | null>(null);
+  const [selectedMapCanvasId, setSelectedMapCanvasId] = useState(activeCanvasId);
 
   /** Single epoch across load/save/reset so a late response cannot cross a newer mutation. */
   const layoutEpochRef = useRef(0);
@@ -48,21 +49,19 @@ export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseC
     const nextRoot = selectedProject?.rootPath ?? null;
     if (projectRootRef.current !== nextRoot) {
       projectRootRef.current = nextRoot;
-      setCanvasGraph(null);
       setCanvasMapLayout(null);
       setPersistedCanvasMapLayout(null);
       setLayoutDirty(false);
       setLayoutPending(null);
-      setSelectedMapCanvasId(null);
+      setSelectedMapCanvasId(activeCanvasId);
       layoutEpochRef.current += 1;
     }
-  }, [selectedProject?.rootPath]);
+  }, [activeCanvasId, selectedProject?.rootPath]);
 
   const loadCanvasMap = useCallback(
     async (isOwnerCurrent: () => boolean = () => true) => {
       if (!isOwnerCurrent()) return;
       if (!selectedProject) {
-        setCanvasGraph(null);
         setCanvasMapLayout(null);
         setPersistedCanvasMapLayout(null);
         setLayoutDirty(false);
@@ -77,10 +76,7 @@ export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseC
       setError(null);
 
       const projectRoot = selectedProject.rootPath;
-      const [graphResult, layoutResult] = await Promise.allSettled([
-        browserProject.getCanvasGraphViewModel(),
-        browserProject.getCanvasMapLayout()
-      ]);
+      const [layoutResult] = await Promise.allSettled([browserProject.getCanvasMapLayout()]);
 
       if (layoutEpochRef.current !== epoch || projectRootRef.current !== projectRoot) return;
       if (!isOwnerCurrent()) {
@@ -89,16 +85,6 @@ export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseC
       }
 
       const errors: string[] = [];
-      if (graphResult.status === "fulfilled") {
-        setCanvasGraph(graphResult.value);
-        setSelectedMapCanvasId(
-          (current) => current ?? activeCanvasId ?? graphResult.value.canvases[0]?.canvasId ?? null
-        );
-      } else {
-        setCanvasGraph(null);
-        errors.push(errorMessage(graphResult.reason));
-      }
-
       if (layoutResult.status === "fulfilled") {
         // Disk is always the persisted baseline, but an unsaved working layout must
         // survive graph/name/policy reloads until explicit reset or successful save.
@@ -120,7 +106,7 @@ export function useCanvasMap({ activeCanvasId, selectedProject, setError }: UseC
       }
       setLayoutPending((current) => (current === "load" ? null : current));
     },
-    [activeCanvasId, selectedProject, setError]
+    [selectedProject, setError]
   );
 
   useEffect(() => {

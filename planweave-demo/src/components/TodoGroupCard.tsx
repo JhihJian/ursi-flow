@@ -1,4 +1,5 @@
 import type { DesktopTodoItem } from "@/model";
+import { useState } from "react";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -17,6 +18,8 @@ type TodoGroupCardLabels = {
   assignee: string;
   dependencyBlockers: string;
   noBlockers: string;
+  showAll: string;
+  showFewer: string;
   reviewExecutor: string;
   reviewGate: string;
   reviewNeedsChangesReturnsTo: string;
@@ -77,6 +80,7 @@ export function TodoGroupCard({
   onSelect: (item: DesktopTodoItem) => void;
   assigneeIndex?: AssigneeSurfaceIndex | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const visual = statusVisuals[status] ?? statusVisuals.ready;
   const StatusIcon = visual.icon;
 
@@ -100,7 +104,7 @@ export function TodoGroupCard({
           {items.length}
         </Badge>
       </div>
-      {items.slice(0, 6).map((item) => {
+      {(expanded ? items : items.slice(0, 6)).map((item) => {
         const chip =
           assigneeIndex != null
             ? lookupBlockAssigneeChip(assigneeIndex, item.canvasId ?? "default", item.ref)
@@ -159,7 +163,10 @@ export function TodoGroupCard({
         );
       })}
       {items.length > 6 ? (
-        <div className="pl-2 text-xs text-muted-foreground">+{items.length - 6}</div>
+        <button type="button" className="w-fit rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-surface-muted"
+          aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+          {expanded ? labels.showFewer : `${labels.showAll} (${items.length})`}
+        </button>
       ) : null}
     </div>
   );

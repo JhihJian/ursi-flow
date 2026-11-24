@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import type {
   DesktopCanvasExecutionPolicy,
+  DesktopCanvasGraphViewModel,
   DesktopCanvasNodeViewModel,
   DesktopProjectSummary
 } from "@/model";
@@ -36,6 +37,7 @@ import { CanvasMapRenameEditor } from "./CanvasMapRenameEditor";
 
 type CanvasMapViewProps = {
   dark: boolean;
+  graph: DesktopCanvasGraphViewModel;
   executorOptions: readonly string[];
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleRevealTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
@@ -122,6 +124,7 @@ function ScopeField({ label, value }: { label: string; value: string }) {
 
 export function CanvasMapView({
   dark,
+  graph,
   executorOptions,
   handleOpenBlockInspector,
   handleRevealTaskCanvas,
@@ -140,14 +143,13 @@ export function CanvasMapView({
     canvasMapLayout,
     layoutDirty,
     layoutPending,
-    loadCanvasMap,
     resetCanvasMapLayout,
     retrySaveCanvasMapLayout,
     saveCanvasMapLayoutFromNodes,
     selectedCanvas,
     selectedMapCanvasId,
     setSelectedMapCanvasId
-  } = useCanvasMap({ activeCanvasId: selectedProject.activeCanvasId, selectedProject, setError });
+  } = useCanvasMap({ activeCanvasId: selectedProject.activeCanvasId, graph, selectedProject, setError });
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -238,23 +240,17 @@ export function CanvasMapView({
     async (canvasId: string, input: DesktopCanvasExecutionPolicy) => {
       try {
         await browserProject.updateCanvasExecutionPolicy(canvasId, input);
-        await loadCanvasMap();
         refreshProjectDerivedState();
       } catch (caught: unknown) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [loadCanvasMap, refreshProjectDerivedState, setError]
+    [refreshProjectDerivedState, setError]
   );
 
   useEffect(() => {
-    if (!canvasGraph) {
-      setNodes([]);
-      setEdges([]);
-      return;
-    }
-    setNodes(
-      canvasMapNodes(
+    if (!canvasMapLayout) return;
+    const nextNodes = canvasMapNodes(
         canvasGraph,
         canvasMapLayout,
         canvasNodeLabels,
@@ -264,8 +260,11 @@ export function CanvasMapView({
         handleCanvasReveal,
         handleCanvasRename,
         setSelectedMapCanvasId
-      )
     );
+    setNodes((previous) => {
+      const measured = new Map(previous.map((node) => [node.id, node.measured]));
+      return nextNodes.map((node) => ({ ...node, measured: measured.get(node.id) }));
+    });
     setEdges(canvasMapEdges(canvasGraph));
   }, [
     canvasGraph,
@@ -317,7 +316,7 @@ export function CanvasMapView({
     }
   }, [nodes, onNodesChange, saveCanvasMapLayoutFromNodes]);
 
-  if (!canvasGraph) return <div role="status" className="grid h-full place-items-center text-sm text-text-muted">{t("canvasMapLayoutLoading")}</div>;
+  if (!canvasMapLayout) return <div role="status" className="grid h-full place-items-center text-sm text-text-muted">{t("canvasMapLayoutLoading")}</div>;
 
   const layoutStatusLabel =
     layoutPending === "save"
@@ -452,11 +451,7 @@ export function CanvasMapView({
                 project={selectedProject}
                 scopeKey={renamingCanvas.canvasId}
                 onClose={() => setRenamingCanvas(null)}
-                onSave={async (...args) => {
-                  const result = await handleRenameTaskCanvas(...args);
-                  if (result.status === "saved") await loadCanvasMap();
-                  return result;
-                }}
+                onSave={handleRenameTaskCanvas}
                 t={t}
               />
             ) : null}

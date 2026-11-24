@@ -48,6 +48,119 @@ test("TODO limits phase summaries and block details to task tracking", async ({ 
   await expect(detail).not.toContainText(removedLabels);
 });
 
+test("creates, reads, updates and deletes a todo across views and reloads", async ({ page }) => {
+  await page.goto("/#/todo");
+  await page.getByRole("button", { name: "New todo", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await title.fill("Check browser handoff");
+  await dialog.getByLabel("Parent task").selectOption("delivery:navigation");
+  await dialog.getByRole("textbox", { name: "Assignee" }).fill("Sam Lee");
+  await dialog.getByRole("textbox", { name: "Description" }).fill("Verify the checklist.");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("Check browser handoff");
+  await expect(dialog).toContainText("Sam Lee");
+  await expect(dialog).toContainText("Verify the checklist.");
+  const itemLink = page.url();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Ready items: 4", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Check browser handoff/ }).click();
+  await dialog.getByRole("button", { name: "Edit todo" }).click();
+  await title.fill("Confirm browser handoff");
+  await dialog.getByLabel("Status", { exact: true }).selectOption("completed");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("Confirm browser handoff");
+  expect(page.url()).toBe(itemLink);
+  await page.reload();
+  await expect(dialog).toHaveAccessibleName("Confirm browser handoff");
+  await expect(dialog.getByText("completed", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Open canvas" }).click();
+  await expect(page.getByTestId("task-graph").getByRole("button", { name: /^Confirm browser handoff/ })).toBeVisible();
+  await page.getByTestId("project-sidebar").getByRole("link", { name: "Todo" }).click();
+  await expect(page.getByText("Ready items: 3", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Confirm browser handoff/ }).click();
+  await dialog.getByRole("button", { name: "Delete todo" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("Confirm browser handoff");
+  await dialog.getByRole("button", { name: "Delete todo" }).click();
+  await dialog.getByRole("button", { name: "Confirm deletion" }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^Confirm browser handoff/ })).toHaveCount(0);
+  await page.goto(itemLink);
+  await expect(dialog).toHaveAccessibleName("This sample item was not found.");
+});
+
+test("rejects deletion of a referenced todo and keeps task nodes and edges after deleting the last block", async ({ page }) => {
+  await page.goto("/#/todo");
+  await page.getByRole("button", { name: "workspace/review", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Delete todo" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Run the release smoke suite");
+  await expect(dialog.getByRole("button", { name: "Confirm deletion" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /^Refine canvas navigation/ }).click();
+  await dialog.getByRole("button", { name: "Delete todo" }).click();
+  await dialog.getByRole("button", { name: "Confirm deletion" }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.goto("/#/graph?canvas=delivery&task=navigation");
+  const graph = page.getByTestId("task-graph");
+  await expect(graph.locator('.react-flow__node[data-id="delivery:navigation"]')).toHaveClass(/\bselected\b/);
+  await expect(graph.locator(".react-flow__node")).toHaveCount(5);
+  await expect(graph.locator(".react-flow__edge")).toHaveCount(3);
+  await expect(graph.getByRole("button", { name: /^Refine canvas navigation/ })).toHaveCount(0);
+});
+
+test("updates the map blocker from the same saved todo", async ({ page }) => {
+  await page.goto("/#/todo");
+  await page.getByRole("button", { name: /^Run the release smoke suite/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Edit todo" }).click();
+  await dialog.getByRole("textbox", { name: "Title", exact: true }).fill("Run the browser smoke suite");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("Run the browser smoke suite");
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: "Canvas Map" }).click();
+  const inspector = page.getByTestId("map-inspector");
+  await node(page, "verification").click({ position: { x: 35, y: 25 } });
+  await expect(inspector.getByText("Run the browser smoke suite", { exact: true })).toBeVisible();
+  await inspector.getByRole("button", { name: "Open block", exact: true }).click();
+  await dialog.getByRole("button", { name: "Edit todo" }).click();
+  await dialog.getByLabel("Status", { exact: true }).selectOption("completed");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toContainText("completed");
+  await page.keyboard.press("Escape");
+  await expect(inspector.getByText("Run the browser smoke suite", { exact: true })).toHaveCount(0);
+});
+
+test("retains the draft when a todo write fails and allows retry", async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    let failed = false;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.endsWith("/todos") && !failed) {
+        failed = true;
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      }
+      original.call(this, key, value);
+    };
+  });
+  await page.goto("/#/todo");
+  await page.getByRole("button", { name: "New todo", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
+  await title.fill("Keep this draft");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Could not save changes");
+  await expect(title).toHaveValue("Keep this draft");
+  await expect(page.getByText("Ready items: 3", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("Keep this draft");
+  await expect(page.getByText("Ready items: 4", { exact: true })).toBeVisible();
+});
+
 test("map inspects dependencies and follows the blocked block link", async ({ page }) => {
   await page.goto("/#/map");
   await expect(page.locator(".react-flow__minimap")).toBeVisible();

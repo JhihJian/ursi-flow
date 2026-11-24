@@ -1,7 +1,7 @@
 import type {
   DesktopCanvasExecutionPolicy, DesktopCanvasGraphViewModel, DesktopCanvasHealthBlockedBlock,
   DesktopCanvasNodeViewModel, DesktopProjectSummary,
-  DesktopTodoGroupName, DesktopTodoGroups, DesktopTodoItem, TodoPhase
+  DesktopTodoGroups, DesktopTodoItem, TodoPhase, TodoStatus
 } from "./model";
 import type { AssigneeSurfaceIndex } from "./assignees";
 
@@ -22,7 +22,7 @@ export const canvases = [
   canvas("release", "Release", "planned")
 ];
 
-const rows: [DesktopTodoGroupName, string, string, string, string, string[]?][] = [
+const rows: [TodoStatus | "implemented", string, string, string, string, string[]?][] = [
   ["ready", "delivery", "workspace", "editor", "Implement the workspace editor"],
   ["ready", "delivery", "workspace", "review", "Review workspace integration"],
   ["ready", "verification", "quality", "fixtures", "Prepare browser fixtures"],
@@ -39,50 +39,77 @@ export const taskTitles: Record<string, string> = {
   quality: "Release verification", publish: "Publish release"
 };
 
-export function readDemoProjection(graph: DesktopCanvasGraphViewModel) {
-  const names = new Map(graph.canvases.map((entry) => [entry.canvasId, entry.title]));
+export const seedTodoItems: DesktopTodoItem[] = rows.map(([group, canvasId, taskId, blockId, title, dependencyBlockers = []]) => ({
+  canvasId, ref: `${taskId}/${blockId}`, taskId, blockId, title,
+  status: group === "implemented" ? "completed" : group, dependencyBlockers,
+  assignee: blockId === "editor" ? "Mia Chen" : blockId === "review" ? "Alex Lin" : "",
+  description: blockId === "smoke" ? "The workspace review must complete before smoke testing." : "",
+  reviewGate: blockId === "review" ? {
+    isGate: true, required: true, requiredReason: "Required before release verification.", executorRole: "reviewer",
+    downstreamTasks: ["quality"], unlocksTasks: ["quality"], needsChangesReturnsTo: ["workspace/editor"]
+  } : null
+}));
+
+export const demoTasks = canvases.flatMap(({ canvasId }) => [...new Set(seedTodoItems.filter((item) => item.canvasId === canvasId)
+  .map(({ taskId }) => taskId))].map((taskId) => ({ canvasId, taskId, title: taskTitles[taskId] })));
+
+const keyForBlock = (canvasId: string, ref: string) => `${canvasId}:${ref}`;
+const seedByRef = new Map(seedTodoItems.map((item) => [keyForBlock(item.canvasId, item.ref), item]));
+export const taskDependencies = seedTodoItems.flatMap((item) => item.dependencyBlockers.flatMap((ref) => {
+  const blocker = seedByRef.get(ref);
+  if (!blocker || (blocker.canvasId === item.canvasId && blocker.taskId === item.taskId)) return [];
+  return [{ from: { canvasId: item.canvasId, taskId: item.taskId }, to: { canvasId: blocker.canvasId, taskId: blocker.taskId }, type: "depends_on" as const }];
+}));
+
+export function readDemoProjection(graph: DesktopCanvasGraphViewModel, items: DesktopTodoItem[]) {
   const todoGroups: DesktopTodoGroups = { planned: [], ready: [], in_progress: [], completed: [], needs_changes: [], blocked: [], diverged: [], implemented: [] };
-  const items = rows.map(([group, canvasId, taskId, blockId, title, dependencyBlockers = []]) => {
-    const item: DesktopTodoItem = {
-      canvasId, canvasName: names.get(canvasId), ref: `${taskId}/${blockId}`, taskId, blockId, title,
-      status: group === "implemented" ? "completed" : group, dependencyBlockers,
-      reviewGate: blockId === "review" ? {
-        isGate: true, required: true, requiredReason: "Required before release verification.", executorRole: "reviewer",
-        downstreamTasks: ["quality"], unlocksTasks: ["quality"], needsChangesReturnsTo: ["workspace/editor"]
-      } : null
-    };
-    todoGroups[group].push(item);
-    return item;
-  });
+  for (const item of items) todoGroups[item.status === "completed" ? "implemented" : item.status].push(item);
   const phases: TodoPhase[] = graph.canvases.map(({ canvasId, title }) => ({
     canvasId,
     canvasName: title,
     readyItems: todoGroups.ready.filter((item) => item.canvasId === canvasId),
     blockedCount: todoGroups.blocked.filter((item) => item.canvasId === canvasId).length
   }));
-  return { items, todoGroups, phases };
+  const assignees: AssigneeSurfaceIndex = Object.fromEntries(items.filter(({ assignee }) => assignee).map((item) => {
+    const key = keyForBlock(item.canvasId, item.ref);
+    const initials = item.assignee.split(/\s+/).slice(0, 2).map((part) => Array.from(part)[0]).join("").toUpperCase();
+    return [key, { workItemKey: key, label: item.assignee, initials, visible: true, tone: "assigned" }];
+  }));
+  return { todoGroups, phases, assignees };
 }
 
-export function createGraph(currentCanvases: DesktopCanvasNodeViewModel[]): DesktopCanvasGraphViewModel {
+export function summarizeTasks(items: DesktopTodoItem[]): DesktopCanvasNodeViewModel["status"] {
+  if (!items.length) return "planned";
+  if (items.every(({ status }) => status === "completed")) return "implemented";
+  if (items.some(({ status }) => status === "in_progress")) return "in_progress";
+  return items.some(({ status }) => status === "ready") ? "ready" : "planned";
+}
+
+export function createGraph(currentCanvases: DesktopCanvasNodeViewModel[], items: DesktopTodoItem[]): DesktopCanvasGraphViewModel {
   const title = (id: string) => currentCanvases.find((entry) => entry.canvasId === id)?.title ?? id;
-  const blockedBlocks: DesktopCanvasHealthBlockedBlock[] = [{
-    blocked: { canvasId: "verification", canvasTitle: title("verification"), taskId: "quality", taskTitle: taskTitles.quality,
-      blockId: "smoke", blockRef: "quality/smoke", blockTitle: "Run the release smoke suite", status: "blocked" },
-    blockers: [{ kind: "task", canvasId: "delivery", canvasTitle: title("delivery"), taskId: "workspace", taskTitle: taskTitles.workspace, status: "in_progress" }],
-    reason: "The workspace review must complete before smoke testing."
-  }];
+  const itemByRef = new Map(items.map((item) => [keyForBlock(item.canvasId, item.ref), item]));
+  const blockedBlocks: DesktopCanvasHealthBlockedBlock[] = items.filter(({ status }) => status === "blocked").map((item) => {
+    const { canvasId, taskId, blockId, ref, title: blockTitle, status } = item;
+    const blockers = item.dependencyBlockers.flatMap((key) => {
+      const source = itemByRef.get(key);
+      if (!source || source.status === "completed") return [];
+      return [{ kind: "task" as const, canvasId: source.canvasId, canvasTitle: title(source.canvasId), taskId: source.taskId,
+        taskTitle: taskTitles[source.taskId], status: summarizeTasks(items.filter((entry) =>
+          entry.canvasId === source.canvasId && entry.taskId === source.taskId)) ?? "planned" }];
+    });
+    return { blocked: { canvasId, canvasTitle: title(canvasId), taskId, taskTitle: taskTitles[taskId], blockId,
+      blockRef: ref, blockTitle, status }, blockers, reason: item.description };
+  });
   const edges = [["delivery", "foundation"], ["verification", "delivery"], ["release", "verification"]].map(([from, to]) => ({ from, to, type: "depends_on" as const }));
-  return { projectId: project.projectId, projectTitle: project.name, canvases: currentCanvases, edges,
-    crossTaskEdges: [{ from: { canvasId: "verification", taskId: "quality" }, to: { canvasId: "delivery", taskId: "workspace" }, type: "depends_on" }],
+  return { projectId: project.projectId, projectTitle: project.name, edges,
+    canvases: currentCanvases.map((canvas) => ({ ...canvas, status: summarizeTasks(items.filter(({ canvasId }) => canvasId === canvas.canvasId)) })),
+    crossTaskEdges: taskDependencies.filter(({ from, to }) => from.canvasId !== to.canvasId),
     diagnostics: [diagnostic], health: { severity: "warning", blockedBlocks, diagnostics: [diagnostic],
       canvases: currentCanvases.map(({ canvasId, diagnostics }) => ({ canvasId, severity: diagnostics.length ? "warning" : "ok",
-        diagnosticCount: diagnostics.length, blockerCount: canvasId === "verification" ? 1 : 0 })),
-      edges: edges.map((edge) => ({ ...edge, severity: edge.from === "verification" ? "warning" : "ok",
-        diagnosticCount: 0, blockerCount: edge.from === "verification" ? 1 : 0 })) } };
+        diagnosticCount: diagnostics.length, blockerCount: blockedBlocks.filter(({ blocked }) => blocked.canvasId === canvasId).length })),
+      edges: edges.map((edge) => {
+        const blockerCount = blockedBlocks.filter(({ blocked, blockers }) =>
+          blocked.canvasId === edge.from && blockers.some(({ canvasId }) => canvasId === edge.to)).length;
+        return { ...edge, severity: blockerCount ? "warning" : "ok", diagnosticCount: 0, blockerCount };
+      }) } };
 }
-
-const assignee = (workItemKey: string, label: string, initials: string) => ({ workItemKey, label, initials, visible: true, tone: "assigned" as const });
-export const assignees: AssigneeSurfaceIndex = {
-  "delivery:workspace/editor": assignee("delivery:workspace/editor", "Mia Chen", "MC"),
-  "delivery:workspace/review": assignee("delivery:workspace/review", "Alex Lin", "AL")
-};

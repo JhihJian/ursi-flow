@@ -7,7 +7,7 @@ import { ClipboardCheckIcon, SquareCodeIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { taskTitles } from "../demo-data";
+import { demoTasks, taskDependencies } from "../demo-data";
 import { dependencyEdgeColorForSource } from "../graph/dependencyEdgeVisual";
 import { TaskNodeStatusMarker, taskNodeStatusVisual } from "../graph/taskNodeStatus";
 import type { createTranslator } from "../i18n";
@@ -30,7 +30,7 @@ type TaskNode = Node<{
 }, "task">;
 
 function taskStatus(blocks: DesktopTodoItem[]) {
-  if (blocks.every(({ status }) => status === "completed")) return "implemented";
+  if (blocks.length && blocks.every(({ status }) => status === "completed")) return "implemented";
   return (["in_progress", "diverged", "needs_changes", "blocked", "ready"] as const)
     .find((status) => blocks.some((block) => block.status === status)) ?? "planned";
 }
@@ -116,27 +116,15 @@ export function TaskGraphView({ graph, items, focusCanvasId, selectedTaskId, foc
 }) {
   const surface = useRef<HTMLDivElement>(null);
   const { baseNodes, edges } = useMemo(() => {
-    const baseNodes: TaskNode[] = [];
-    const taskByRef = new Map<string, string>();
-    for (const canvas of graph.canvases) {
-      const blocksByTask = new Map<string, DesktopTodoItem[]>();
-      for (const block of items) {
-        if (block.canvasId !== canvas.canvasId) continue;
-        const blocks = blocksByTask.get(block.taskId) ?? [];
-        blocks.push(block);
-        blocksByTask.set(block.taskId, blocks);
-        taskByRef.set(`${canvas.canvasId}:${block.ref}`, taskNodeId(canvas.canvasId, block.taskId));
-      }
-      for (const [taskId, blocks] of blocksByTask) {
-        const title = taskTitles[taskId] ?? taskId;
-        const index = baseNodes.length;
-        baseNodes.push({ id: taskNodeId(canvas.canvasId, taskId), type: "task", ariaLabel: title,
-          position: { x: (index % 3) * 420, y: Math.floor(index / 3) * 320 },
-          ...taskDimensions, measured: taskDimensions,
-          data: { canvasId: canvas.canvasId, canvasName: canvas.title, taskId, title, blocks, t,
-            onBlockOpen: (ref) => void onBlockOpen(ref, canvas.canvasId) } });
-      }
-    }
+    const canvasNames = new Map(graph.canvases.map(({ canvasId, title }) => [canvasId, title]));
+    const baseNodes = demoTasks.map(({ canvasId, taskId, title }, index): TaskNode => ({
+      id: taskNodeId(canvasId, taskId), type: "task", ariaLabel: title,
+      position: { x: (index % 3) * 420, y: Math.floor(index / 3) * 320 },
+      ...taskDimensions, measured: taskDimensions,
+      data: { canvasId, canvasName: canvasNames.get(canvasId) ?? canvasId, taskId, title, t,
+        blocks: items.filter((item) => item.canvasId === canvasId && item.taskId === taskId),
+        onBlockOpen: (ref) => void onBlockOpen(ref, canvasId) }
+    }));
     const nodeIds = new Set(baseNodes.map(({ id }) => id));
     const edgesById = new Map<string, Edge>();
     const addDependency = (source: string, target: string) => {
@@ -146,15 +134,7 @@ export function TaskGraphView({ graph, items, focusCanvasId, selectedTaskId, foc
       edgesById.set(id, { id, source, target, type: "smoothstep", selectable: false,
         style: { stroke: color, strokeWidth: 2.2 }, markerEnd: { type: MarkerType.ArrowClosed, color } });
     };
-    for (const { id, data } of baseNodes) {
-      for (const block of data.blocks) {
-        for (const blocker of block.dependencyBlockers) {
-          const source = taskByRef.get(blocker);
-          if (source) addDependency(source, id);
-        }
-      }
-    }
-    for (const { from, to } of graph.crossTaskEdges) {
+    for (const { from, to } of taskDependencies) {
       addDependency(taskNodeId(to.canvasId, to.taskId), taskNodeId(from.canvasId, from.taskId));
     }
     return { baseNodes, edges: [...edgesById.values()] };
