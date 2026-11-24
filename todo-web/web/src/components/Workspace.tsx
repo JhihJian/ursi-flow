@@ -7,7 +7,7 @@ import { ProjectSidebar } from './ProjectSidebar'
 import { TaskDetailPanel } from './TaskDetailPanel'
 import { TaskSection } from './TaskSection'
 
-const SIDEBAR_COLLAPSED_SIZE = 44
+const SIDEBAR_COLLAPSED_SIZE = 32
 
 export function Workspace() {
   const layout = useDefaultLayout({ id: 'todo-web.columns' })

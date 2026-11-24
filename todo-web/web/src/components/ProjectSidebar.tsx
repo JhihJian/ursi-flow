@@ -84,6 +84,7 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
           <span className="collapsed-project-name">{selectedProject?.name ?? 'No project'}</span>
           {selectedProject ? (
             <span className="collapsed-project-meta">
+              {' · '}
               {active} tasks · {formatTime(selectedProject.total_time_minutes)}
             </span>
           ) : null}

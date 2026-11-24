@@ -260,44 +260,38 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   height: 100%;
   padding: var(--space-sm) 0;
+  overflow: hidden;
 }
 
+/* 折叠态只有一列：字母直立、自上而下排列。 */
 .collapsed-project {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  width: 100%;
+  flex: 0 0 auto;
+  /* 竖排时 margin-block 指向左右，这里要用物理方向让短名称垂直居中。 */
+  margin-top: auto;
+  margin-bottom: auto;
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
-  overflow: hidden;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  text-align: start;
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.5px;
 }
 
 .collapsed-project-name {
-  writing-mode: vertical-rl;
-  max-height: 100%;
-  overflow: hidden;
   font-family: var(--font-serif);
-  font-size: 13px;
   color: var(--gray-900);
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .collapsed-project-meta {
-  writing-mode: vertical-rl;
-  max-height: 100%;
-  overflow: hidden;
-  font-size: 10px;
+  /* 与名称同字号，保证折叠后是一条笔直的单列。 */
   color: var(--gray-400);
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .collapsed-project:hover .collapsed-project-name {
