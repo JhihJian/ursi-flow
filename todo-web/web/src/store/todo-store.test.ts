@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectStats, Stats, Task } from '@/api/types'
+import type { ProjectStats, Task } from '@/api/types'
 
 vi.mock('@/api/client', () => ({
   listProjects: vi.fn(),
@@ -10,7 +10,6 @@ vi.mock('@/api/client', () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
-  getStats: vi.fn(),
   listDailyCounts: vi.fn(),
 }))
 
@@ -55,29 +54,14 @@ const task: Task = {
   result: null,
 }
 
-function stats(period: string): Stats {
-  return {
-    period,
-    start: '2026-03-01',
-    end: '2026-03-01',
-    total_tasks: 0,
-    total_time_minutes: 0,
-    by_status: { pending: 0, in_progress: 0, blocked: 0, done: 0, cancelled: 0 },
-  }
-}
-
 function resetStore() {
   useTodoStore.setState({
     projects: [],
     tasks: [],
-    activeTasks: [],
-    stats: { daily: null, weekly: null, monthly: null },
     selectedProjectId: null,
-    period: 'daily',
     projectsLoading: true,
     projectsError: false,
     tasksLoading: false,
-    activeLoading: true,
     detail: null,
     projectEditing: null,
     statusFilter: null,
@@ -91,23 +75,19 @@ beforeEach(() => {
   mocked.listDailyCounts.mockResolvedValue({ days: [] })
   mocked.listProjects.mockResolvedValue({ projects: [projectA, projectB] })
   mocked.listTasks.mockResolvedValue({ tasks: [task] })
-  mocked.getStats.mockImplementation(async (period) => ({ stats: stats(period) }))
   resetStore()
 })
 
 describe('bootstrap', () => {
-  it('selects the first project and loads stats and active tasks', async () => {
+  it('selects the first project and loads its tasks', async () => {
     await useTodoStore.getState().bootstrap()
 
     const state = useTodoStore.getState()
     expect(state.projects).toHaveLength(2)
     expect(state.selectedProjectId).toBe('p1')
     expect(state.tasks).toEqual([task])
-    expect(state.stats.daily?.period).toBe('daily')
     expect(state.projectsLoading).toBe(false)
-    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', period: 'daily', date: null })
-    expect(mocked.listTasks).toHaveBeenCalledWith({ status: 'in_progress' })
-    expect(mocked.listTasks).toHaveBeenCalledWith({ status: 'blocked' })
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', date: null })
   })
 
   it('reports a project loading error', async () => {
@@ -119,13 +99,6 @@ describe('bootstrap', () => {
 })
 
 describe('task actions', () => {
-  it('reloads tasks when the period changes and drops the all-time suffix', async () => {
-    useTodoStore.setState({ selectedProjectId: 'p1' })
-    await useTodoStore.getState().selectPeriod('weekly')
-    expect(mocked.listTasks).toHaveBeenLastCalledWith({ project: 'p1', period: 'weekly', date: null })
-    expect(useTodoStore.getState().period).toBe('weekly')
-  })
-
   it('sends status updates only when the status really changes', async () => {
     mocked.updateTask.mockResolvedValue({ success: true })
     await useTodoStore.getState().moveTask(task, { status: 'in_progress' })
@@ -194,7 +167,6 @@ describe('status filter', () => {
     expect(useTodoStore.getState().dayFilter).toBe('2026-11-24')
     expect(mocked.listTasks).toHaveBeenLastCalledWith({
       project: 'p1',
-      period: 'daily',
       date: '2026-11-24',
     })
 
@@ -202,7 +174,6 @@ describe('status filter', () => {
     expect(useTodoStore.getState().dayFilter).toBeNull()
     expect(mocked.listTasks).toHaveBeenLastCalledWith({
       project: 'p1',
-      period: 'daily',
       date: null,
     })
   })

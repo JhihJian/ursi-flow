@@ -1,7 +1,6 @@
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/ui'
-import { ActiveTasksPanel } from './ActiveTasksPanel'
 import { ContentRail } from './ContentRail'
 import { WorkspacePanel } from './WorkspacePanel'
 import { ProjectEditorSheet } from './ProjectEditorSheet'
@@ -90,17 +89,6 @@ export function Workspace() {
             <TaskDetailSheet />
           </>
         )}
-      </Panel>
-      <Separator className="separator" title="Drag to resize, double-click to reset" />
-      <Panel
-        id="detail"
-        className="panel panel-right"
-        defaultSize={300}
-        minSize={240}
-        maxSize={480}
-        groupResizeBehavior="preserve-pixel-size"
-      >
-        <ActiveTasksPanel />
       </Panel>
     </Group>
   )

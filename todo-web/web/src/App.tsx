@@ -12,7 +12,6 @@ import {
 import { useEffect, useState } from 'react'
 import type { Task } from '@/api/types'
 import { MuteButton } from '@/components/MuteButton'
-import { StatsHeader } from '@/components/StatsHeader'
 import { TaskDragPreview } from '@/components/TaskSection'
 import { Workspace } from '@/components/Workspace'
 import { useNotificationPolling } from '@/hooks/useNotificationPolling'
@@ -88,7 +87,6 @@ export default function App() {
       onDragCancel={() => setDraggingTask(null)}
       onDragEnd={handleDragEnd}
     >
-      <StatsHeader />
       <Workspace />
       <DragOverlay dropAnimation={null}>
         {draggingTask ? <TaskDragPreview task={draggingTask} /> : null}

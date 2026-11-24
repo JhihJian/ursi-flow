@@ -1,6 +1,5 @@
 import type {
   DayCount,
-  Period,
   ProjectInput,
   ProjectStats,
   Stats,
@@ -54,8 +53,7 @@ export function deleteProject(id: string): Promise<{ success: boolean }> {
 export interface TaskQuery {
   project?: string | null
   status?: TaskStatus
-  period?: Period
-  /** `YYYY-MM-DD`，按创建日期筛选；设置后替代周期条件。 */
+  /** `YYYY-MM-DD`，按创建日期筛选。 */
   date?: string | null
 }
 
@@ -64,7 +62,6 @@ export function listTasks(query: TaskQuery = {}): Promise<{ tasks: Task[] }> {
   if (query.project) params.set('project', query.project)
   if (query.status) params.set('status', query.status)
   if (query.date) params.set('date', query.date)
-  else if (query.period && query.period !== 'all') params.set('period', query.period)
   const suffix = params.size > 0 ? `?${params.toString()}` : ''
   return request<{ tasks: Task[] }>(`/tasks${suffix}`).then((data) => ({
     tasks: data.tasks.map(normalizeTask),

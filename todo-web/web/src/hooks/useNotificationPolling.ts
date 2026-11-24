@@ -10,8 +10,6 @@ import { useTodoStore } from '@/store/todo-store'
 export function useNotificationPolling() {
   const lastDone = useRef<number | null>(null)
   const refreshTasks = useTodoStore((state) => state.refreshTasks)
-  const refreshStats = useTodoStore((state) => state.refreshStats)
-  const refreshActive = useTodoStore((state) => state.refreshActive)
 
   useEffect(() => {
     void requestNotificationPermission()
@@ -31,7 +29,7 @@ export function useNotificationPolling() {
 
         void playNotificationSound()
         showDesktopNotification(done - previous)
-        await Promise.all([refreshStats(), refreshTasks(), refreshActive()])
+        await refreshTasks()
       } catch (error) {
         console.info('Error checking for completed tasks:', error)
       }
@@ -44,14 +42,5 @@ export function useNotificationPolling() {
       window.clearTimeout(initial)
       window.clearInterval(timer)
     }
-  }, [refreshActive, refreshStats, refreshTasks])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void refreshActive().catch((error) =>
-        console.info('Failed to refresh active tasks:', error),
-      )
-    }, 60_000)
-    return () => window.clearInterval(timer)
-  }, [refreshActive])
+  }, [refreshTasks])
 }
