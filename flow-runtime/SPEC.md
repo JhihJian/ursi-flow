@@ -1,6 +1,7 @@
 ---
 parent: ../SPEC.md
 depends-on:
+  - ../flow-core/SPEC.md
   - ../executor-sdk/SPEC.md
   - ../executor-platform/server/SPEC.md
 references:
@@ -19,7 +20,7 @@ references:
 
 ### 流程定义与本地运行
 
-加载 Flow 包及其引用闭包，校验图、动作和变量，根据结果边推进；节点需要的能力由宿主预检。
+加载 Flow 包及其引用闭包，使用 Flow Core 的共享规则校验图、动作和变量，根据结果边推进。Runtime 持有执行与恢复记录，节点需要的能力由宿主预检。
 
 #### 验收
 

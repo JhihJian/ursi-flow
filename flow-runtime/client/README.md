@@ -5,6 +5,7 @@
 独立使用 CLI 时，从 `flow-runtime/` 安装并启动 daemon：
 
 ```sh
+(cd ../flow-core && npm ci && npm run build)
 npm ci && npm run build && npm install -g .
 cargo install --locked --path client
 ursi-flowd

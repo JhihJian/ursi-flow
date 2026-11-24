@@ -88,7 +88,10 @@ describe("Flow variables", () => {
 		const coordinator = createTestCoordinator(flow, new InMemoryRunStore(), createTestAgentModel(new TestHarness()));
 		await expect(
 			coordinator.run({ variables: { 未声明: "x" } }),
-		).rejects.toThrow("未声明全局变量");
+		).rejects.toMatchObject({
+			category: "variable_reference",
+			message: expect.stringContaining("未声明全局变量"),
+		});
 		await expect(
 			coordinator.run({ variables: { 任务: Number.NaN } }),
 		).rejects.toThrow("JSON 值");
@@ -96,9 +99,10 @@ describe("Flow variables", () => {
 
 	it("缺少必填变量时拒绝启动，默认值可以启动", async () => {
 		const coordinator = createTestCoordinator(flow, new InMemoryRunStore(), createTestAgentModel(new TestHarness()));
-		await expect(coordinator.run({ variables: {} })).rejects.toThrow(
-			"缺少必填全局变量",
-		);
+		await expect(coordinator.run({ variables: {} })).rejects.toMatchObject({
+			category: "variable_reference",
+			message: expect.stringContaining("缺少必填全局变量"),
+		});
 		const original = flow.variables;
 		flow.variables = { 任务: { description: "工作目标", default: "检查" } };
 		try {

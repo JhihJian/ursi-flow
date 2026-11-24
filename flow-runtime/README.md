@@ -2,15 +2,16 @@
 
 独立 Node 包，直接运行带固定 `FLOW.md` 入口的目录。需要 Node.js 22.19+；本地 Pi 节点还需要可用的模型 provider 配置（`baseUrl`、`apiKey`、`model`）。本地模式会在当前用户权限下运行包中的命令，只运行信任的包。
 
-从 `flow-runtime/` 安装可执行文件，然后可运行独立示例：
+从源码构建时，先在同级 `flow-core/` 安装依赖并构建，再安装 `flow-runtime/`。在 `flow-runtime/` 运行：
 
 ```sh
+(cd ../flow-core && npm ci && npm run build)
 npm ci && npm run build && npm install -g .
 ursi-flow-local check examples/ordinary
 ursi-flow-local run examples/ordinary --variables '{"任务":"评审改动"}'
 ```
 
-`--base-url`、`--api-key`、`--model` 指定 provider（也可用 `URSI_FLOW_BASE_URL`、`URSI_FLOW_API_KEY`）。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。加 `--trajectories <目录>` 时，每次 Agent 节点执行会在该目录留下 `<节点执行 ID>.jsonl` 的 Pi 会话切片，可直接用轨迹查看器打开。测试用本地 OpenAI 兼容服务模拟模型响应，不消费模型额度。`npm pack` 生成可独立安装的压缩包，安装后用 `ursi-flow-local check|run` 做单次执行。常驻管理服务 `ursi-flowd` 管理流程包、后台运行、配置和历史。[独立控制台](web/README.md) 是同一 daemon 的浏览器入口，构建产物可单独发布或嵌入工作台。[Rust Server](../workbench/server/README.md) 自动启动和关闭自己的 daemon，通过 `FlowClient` 与它通信。仅使用 [独立 CLI](client/README.md) 时可自行启动 daemon。
+`--base-url`、`--api-key`、`--model` 指定 provider（也可用 `URSI_FLOW_BASE_URL`、`URSI_FLOW_API_KEY`）。`--cwd` 指定业务项目，`scripts/` 仍相对包根解析。默认历史文件是业务目录的 `.ursi-flow/history.json`，用 `--history` 可修改。加 `--trajectories <目录>` 时，每次 Agent 节点执行会在该目录留下 `<节点执行 ID>.jsonl` 的 Pi 会话切片，可直接用轨迹查看器打开。测试用本地 OpenAI 兼容服务模拟模型响应，不消费模型额度。完成上述源码构建后，`npm pack` 生成带共享规则的独立安装包，安装后用 `ursi-flow-local check|run` 做单次执行。常驻管理服务 `ursi-flowd` 管理流程包、后台运行、配置和历史。[独立控制台](web/README.md) 是同一 daemon 的浏览器入口，构建产物可单独发布或嵌入工作台。[Rust Server](../workbench/server/README.md) 自动启动和关闭自己的 daemon，通过 `FlowClient` 与它通信。仅使用 [独立 CLI](client/README.md) 时可自行启动 daemon。
 
 ## 以服务方式运行
 
@@ -49,7 +50,7 @@ daemon 默认用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi
 
 ## 项目边界
 
-- `src/core/definition`、`execution`、`state`、`contracts`：包发现与解析、结果边路由、运行记录、调用契约。SDK 使用 `ursi-flow-runtime/core`。
+- `src/core/definition`、`execution`、`state`、`contracts`：包发现、运行协调、记录与调用契约。`ursi-flow-runtime/core` 提供这些运行接口。图解析、模板渲染、变量校验和结果路由复用 [Flow Core](../flow-core/README.md) 的规则。仅需无状态推进时可单独安装 `ursi-flow-core`。
 - `src/ability`：Agent 的创建与复用、每次节点执行独立的结果提交工具和能力协议。解析器、Core、Ability 与 [Flow 规范](docs/flow-spec.md) 引自 MIT 授权的 Agent-Flow-Runtime `e4ea1ee52c91a039676f8673baf939f83dad9146`。定义以源码和参考 fixtures 验收。
 - `src/executor-adapters/local-pi`：用 Pi SDK 在进程内创建 Agent 会话，provider 由运行配置注入。新 Agent 使用独立会话，复用节点在同一会话上继续。会话可用内置工具读写工作区，但只有显式的 `submit_flow_outcome` 工具回执参与路由；模型连续三次提交非法结果时本轮直接结束，避免无限重试。命令、文件历史、并行及子 Run 装配也由本地主机提供。本版适配器不启用 Pi 扩展、Skill 与 Profile，声明业务工具或要求接管既有会话会被拒绝。
 - `src/integrations/mcp`：[集成边界说明](../docs/design/flow-runtime/MCP-ADAPTER.md)。提供 `ursi-flow-executor-mcp`，通过 MCP `2025-06-18` stdio JSONL 暴露 `executor_start`、`executor_inspect`、`executor_cancel`。

@@ -1,6 +1,6 @@
 # 固定执行器修订的跨进程验收
 
-从仓库根目录运行 `./executor-platform/acceptance/run.sh`。需要 Linux、Rust 1.88+、Python 3 和 Node.js 22.19+，以及已安装的 `flow-runtime/node_modules`。脚本从当前源码构建平台、Workbench 服务端与 Flow daemon。构建缓存位于 `.build/`，每次测试新建独立数据目录并在结束时清理。
+从仓库根目录运行 `./executor-platform/acceptance/run.sh`。需要 Linux、Rust 1.88+、Python 3 和 Node.js 22.19+，以及按 [Runtime 构建说明](../../flow-runtime/README.md)构建的 Flow Core 和安装完成的 `flow-runtime/node_modules`。脚本从当前源码构建平台、Workbench 服务端与 Flow daemon。构建缓存位于 `.build/`，每次测试新建独立数据目录并在结束时清理。
 
 验收用真实平台、Workbench 和 Flow daemon 覆盖固定修订与执行生命周期。平台分别连接可控的 stdio ACP v2 测试后端和真实 Pi ACP。两组用例均通过 HTTP API 发布 `reviewer@1` 与系统提示词不同的 `reviewer@2`，并固定使用旧修订执行。
 

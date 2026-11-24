@@ -1,0 +1,82 @@
+import type {
+	FlowValue,
+	FlowVariableDeclarations,
+	FlowVariables,
+} from "./types.ts";
+
+const VARIABLE_NAME = /^[\p{L}\p{N}_-]+$/u;
+const RESERVED_NAMES = new Set(["__proto__", "prototype", "constructor"]);
+
+export function validateVariableName(name: string): void {
+	if (!VARIABLE_NAME.test(name) || RESERVED_NAMES.has(name)) {
+		throw new Error(`非法 Flow 变量名: ${name}`);
+	}
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+/** 校验可持久化的 JSON 值，同时拒绝 YAML 循环别名和非有限数字。 */
+export function validateFlowValue(
+	value: unknown,
+	ancestors = new Set<object>(),
+): asserts value is FlowValue {
+	if (value === null || typeof value === "string" || typeof value === "boolean")
+		return;
+	if (typeof value === "number" && Number.isFinite(value)) return;
+	if (!Array.isArray(value) && !isRecord(value))
+		throw new Error("Flow 变量值必须是 JSON 值");
+	if (ancestors.has(value)) throw new Error("Flow 变量值不能包含循环引用");
+	ancestors.add(value);
+	const keys = Reflect.ownKeys(value);
+	if (Array.isArray(value) && keys.length !== value.length + 1)
+		throw new Error("Flow 变量值必须是稠密 JSON 数组");
+	for (const key of keys) {
+		if (Array.isArray(value) && key === "length") continue;
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (
+			typeof key !== "string" ||
+			!descriptor?.enumerable ||
+			!("value" in descriptor) ||
+			(Array.isArray(value) &&
+				(!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length))
+		)
+			throw new Error("Flow 变量值必须是 JSON 数据属性");
+		validateFlowValue(descriptor.value, ancestors);
+	}
+	ancestors.delete(value);
+}
+
+export function validateVariables(
+	value: unknown,
+): asserts value is FlowVariables {
+	if (!isRecord(value)) throw new Error("Flow variables 必须是 JSON 对象");
+	validateFlowValue(value);
+	for (const name of Object.keys(value)) validateVariableName(name);
+}
+
+/** 声明只包含用途描述和可选的 JSON 默认值。 */
+export function validateVariableDeclarations(
+	value: unknown,
+): asserts value is FlowVariableDeclarations {
+	if (!isRecord(value)) throw new Error("Flow variables 必须是变量声明对象");
+	for (const [name, declaration] of Object.entries(value)) {
+		validateVariableName(name);
+		if (
+			!isRecord(declaration) ||
+			typeof declaration.description !== "string" ||
+			!declaration.description.trim()
+		)
+			throw new Error(`变量 ${name} 必须声明非空 description`);
+		for (const key of Object.keys(declaration)) {
+			if (key !== "description" && key !== "default")
+				throw new Error(`变量 ${name} 不允许声明字段: ${key}`);
+		}
+		if (Object.hasOwn(declaration, "default"))
+			validateFlowValue(declaration.default);
+	}
+}

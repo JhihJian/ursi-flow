@@ -19,6 +19,7 @@ Workbench 是[执行器平台](../../executor-platform/server/README.md)的消�
 以下命令从 `workbench/` 执行，需要 Linux 和 Rust 工具链。默认启用 Flow，另需 npm、Node.js 22.19+ 和本机 `ursi-flowd`：
 
 ```sh
+(cd ../flow-core && npm ci && npm run build)
 (cd ../flow-runtime && npm ci && npm run build && npm install -g .)
 command -v ursi-flowd
 ```

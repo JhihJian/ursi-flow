@@ -1,0 +1,25 @@
+{
+  "name": "ursi-flow-core",
+  "version": "0.1.0",
+  "description": "无状态的 FLOW.md 推进 SDK",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./runtime": { "types": "./dist/runtime.d.ts", "default": "./dist/runtime.js" }
+  },
+  "files": ["dist", "examples", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test test/core.test.mjs",
+    "test:pack": "node test/pack.mjs"
+  },
+  "dependencies": { "yaml": "2.9.0" },
+  "bundleDependencies": ["yaml"],
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3"
+  }
+}

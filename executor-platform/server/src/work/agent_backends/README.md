@@ -10,7 +10,7 @@
 | `URSI_PI_EXECUTOR_BIN` | `ursi-pi-executor-acp` 的绝对可执行路径，或管理员维护的等效启动器。省略时目录仍显示 `pi`，`configured` 为 `false`。 |
 | `URSI_AGENT_BACKENDS` | 可选。额外受管后端的 UTF-8 JSON 清单，最多 2 MiB。 |
 
-使用 Node.js 22.19 或更高版本，在 `flow-runtime/` 运行 `npm ci` 和 `npm run build`，再部署构建产物及运行时依赖。后端与平台在同一 Linux 主机和文件系统上运行。平台清空继承环境，仅提供固定 `PATH`、`URSI_EXECUTOR_ROOT`、`URSI_PI_POLICY`，以及正式尝试的 `URSI_ACP_JOB`。若 Node 不在 `/usr/local/bin:/usr/bin:/bin`，用受管启动器按绝对路径启动 Node 和 `dist/pi-executor/acp.js`。标准输出留给 UTF-8 JSON-RPC 消息，每行一条；平台不转发子进程 stderr。生产中固定程序与依赖版本，并限制部署路径的写权限。迁移时将原 MCP 程序路径改为 ACP 程序路径，并重新发布执行器修订。
+使用 Node.js 22.19 或更高版本，按 [Flow Runtime 构建说明](../../../../../flow-runtime/README.md)先构建 Flow Core，再构建并打包 Runtime。后端与平台在同一 Linux 主机和文件系统上运行。平台清空继承环境，仅提供固定 `PATH`、`URSI_EXECUTOR_ROOT`、`URSI_PI_POLICY`，以及正式尝试的 `URSI_ACP_JOB`。若 Node 不在 `/usr/local/bin:/usr/bin:/bin`，用受管启动器按绝对路径启动 Node 和 `dist/pi-executor/acp.js`。标准输出留给 UTF-8 JSON-RPC 消息，每行一条；平台不转发子进程 stderr。生产中固定程序与依赖版本，并限制部署路径的写权限。迁移时将原 MCP 程序路径改为 ACP 程序路径，并重新发布执行器修订。
 
 `URSI_PI_POLICY` 和清单文件都须使用绝对路径，为服务账户或 root 持有的 `0600` 普通文件，文件本身不得是符号链接。`bin` 须是指向可执行普通文件的绝对路径。每个后端需声明 `capabilities`，可选能力为 `skills`、`tools`、`flowOutcome`，可用空数组表示仅支持基础执行。Pi 声明三项能力。额外清单示例：
 

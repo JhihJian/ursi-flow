@@ -1,4 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+	initializeVariables,
+	pickDeclaredVariables,
+	renderPrompt,
+	requireOutcomeRoute,
+	RouteNotFoundError,
+	validateOutcomeVariables,
+	VariableReferenceError,
+} from "ursi-flow-core/runtime";
 import { AttemptUnconfirmed, AwaitingInput } from "../contracts/extensions.ts";
 import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
@@ -30,10 +39,7 @@ import type {
 	RunRecoveryRecord,
 	RunStore,
 } from "../contracts/types.ts";
-import {
-	validateVariableName,
-	validateVariables,
-} from "../contracts/variables.ts";
+import { validateVariables } from "../contracts/variables.ts";
 import {
 	resolveCommandResources,
 	resolvePromptResources,
@@ -118,7 +124,14 @@ export class FlowCoordinator {
 			cwd: options.cwd,
 			sessionReference: options.existingAgentReference,
 		});
-		const variables = initializeVariables(this.flow, input);
+		let variables: FlowVariables;
+		try {
+			variables = initializeVariables(this.flow.variables ?? {}, input.variables ?? {});
+		} catch (error) {
+			if (error instanceof VariableReferenceError)
+				throw new FlowRuntimeError("variable_reference", error.message);
+			throw error;
+		}
 		const initialNode = this.flow.nodes.get(this.flow.startNodeRef);
 		if (
 			initialNode?.action.kind === "新建Agent" &&
@@ -1231,12 +1244,7 @@ export class FlowCoordinator {
 				"outcome_validation",
 				`节点不是确认节点: ${node.ref}`,
 			);
-		const message = String(
-			renderTemplate(action.prompt, {
-				input: isFlowValueRecord(input) ? input : {},
-				variables: run.variables ?? {},
-			}),
-		);
+		const message = renderPrompt(action.prompt, run.variables ?? {}, isFlowValueRecord(input) ? input : {});
 		record.pendingInput = { message, options: [...node.results.keys()] };
 		await this.commit(
 			run,
@@ -1325,11 +1333,9 @@ export class FlowCoordinator {
 			this.flow.nodes.get(record.nodeRef),
 			outcome.result,
 		);
-		validateOutcomeVariables(this.flow, declared, outcome.variables);
-		const globalVariables = pickDeclaredGlobalVariables(
-			this.flow,
-			outcome.variables ?? {},
-		);
+		const globalDeclarations = this.flow.variables ?? {};
+		validateOutcomeVariables(globalDeclarations, declared, outcome.variables);
+		const globalVariables = pickDeclaredVariables(globalDeclarations, outcome.variables);
 		const updatedVariables = {
 			...clone(run.variables ?? {}),
 			...globalVariables,
@@ -1704,13 +1710,7 @@ export class FlowCoordinator {
 
 	private destination(nodeRef: string, resultName: string): FlowDestination {
 		const node = this.flow.nodes.get(nodeRef);
-		const destination = node?.successors.get(resultName);
-		if (!destination)
-			throw new FlowRuntimeError(
-				"route_not_found",
-				`节点 ${nodeRef} 没有结果“${resultName}”的去向`,
-			);
-		return destination;
+		return requireOutcomeRoute(nodeRef, resultName, node?.successors.get(resultName));
 	}
 
 	private publishObservationChanges(
@@ -1872,34 +1872,6 @@ function now(): string {
 	return new Date().toISOString();
 }
 
-function initializeVariables(
-	flow: FlowDefinition,
-	input: FlowRunInput,
-): FlowVariables {
-	const declarations = flow.variables ?? {};
-	const supplied = input.variables ?? {};
-	validateVariables(supplied);
-	for (const name of Object.keys(supplied)) {
-		if (!Object.hasOwn(declarations, name))
-			throw new FlowRuntimeError(
-				"variable_reference",
-				`未声明全局变量: ${name}`,
-			);
-	}
-	const variables: FlowVariables = {};
-	for (const [name, declaration] of Object.entries(declarations)) {
-		if (declaration.default !== undefined)
-			variables[name] = clone(declaration.default);
-		else if (!Object.hasOwn(supplied, name))
-			throw new FlowRuntimeError(
-				"variable_reference",
-				`缺少必填全局变量: ${name}`,
-			);
-	}
-	Object.assign(variables, clone(supplied));
-	return variables;
-}
-
 function declaredResultVariables(
 	node: FlowNode | undefined,
 	result: string,
@@ -1907,59 +1879,20 @@ function declaredResultVariables(
 	return node?.resultVariables?.get(result) ?? {};
 }
 
-function validateOutcomeVariables(
-	flow: FlowDefinition,
-	declared: Record<string, { description: string }>,
-	variables?: FlowVariables,
-): void {
-	for (const name of Object.keys(variables ?? {})) {
-		validateVariableName(name);
-		if (
-			Object.hasOwn(flow.variables ?? {}, name) &&
-			Object.hasOwn(declared, name)
-		)
-			throw new FlowRuntimeError(
-				"variable_reference",
-				`变量同时声明为全局和下一跳变量: ${name}`,
-			);
-		if (
-			!Object.hasOwn(flow.variables ?? {}, name) &&
-			!Object.hasOwn(declared, name)
-		)
-			throw new FlowRuntimeError(
-				"variable_reference",
-				`结果未声明变量: ${name}。当前结果允许的变量: ${Object.keys(declared).join(", ") || "无"}。复杂结果应放在声明的结果变量对象中提交。`,
-			);
-	}
-	if (variables !== undefined) validateVariables(variables);
-}
-
-function pickDeclaredGlobalVariables(
-	flow: FlowDefinition,
-	variables: FlowVariables,
-): FlowVariables {
-	return Object.fromEntries(
-		Object.entries(variables)
-			.filter(([name]) => Object.hasOwn(flow.variables ?? {}, name))
-			.map(([name, value]) => [name, clone(value)]),
-	);
-}
-
 function extractNextInput(
 	node: FlowNode | undefined,
 	outcome: NodeOutcome,
 ): FlowVariables {
-	const declared = declaredResultVariables(node, outcome.result);
-	return Object.fromEntries(
-		Object.entries(outcome.variables ?? {})
-			.filter(([name]) => Object.hasOwn(declared, name))
-			.map(([name, value]) => [name, clone(value)]),
-	);
+	return pickDeclaredVariables(declaredResultVariables(node, outcome.result), outcome.variables ?? {});
 }
 
 function toFlowError(error: unknown, fallback: FlowErrorCategory): FlowError {
 	if (error instanceof FlowRuntimeError)
 		return { category: error.category, summary: error.message };
+	if (error instanceof RouteNotFoundError)
+		return { category: "route_not_found", summary: error.message };
+	if (error instanceof VariableReferenceError)
+		return { category: "variable_reference", summary: error.message };
 	const summary = error instanceof Error ? error.message : String(error);
 	if (
 		/Agent Profile|Profile 装配|声明的工具|声明的 Skill|无法隔离|能力不匹配/.test(
@@ -2056,20 +1989,7 @@ function renderAgentPrompt(
 		})
 		.join("\n");
 	const rendered = resolvePromptResources(prompt, resources);
-	return `${renderTemplateForAgent(rendered, input, variables)}\n\n本节点只允许提交以下一个结果：\n${outcomes}\n\n完成工作后必须调用 submit_flow_outcome，并提供 outcome，可选提供 variables。`;
-}
-
-function renderTemplateForAgent(
-	prompt: string,
-	input: FlowValue | undefined,
-	variables: FlowVariables,
-): string {
-	return String(
-		renderTemplate(prompt, {
-			input: isFlowValueRecord(input) ? input : {},
-			variables,
-		}),
-	);
+	return `${renderPrompt(rendered, variables, isFlowValueRecord(input) ? input : {})}\n\n本节点只允许提交以下一个结果：\n${outcomes}\n\n完成工作后必须调用 submit_flow_outcome，并提供 outcome，可选提供 variables。`;
 }
 
 function parseCommandVariables(

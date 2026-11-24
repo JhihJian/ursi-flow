@@ -15,12 +15,11 @@ import type {
 	FlowResourceContext,
 	LoadedFlow,
 } from "../contracts/types.ts";
-import { parseFlow } from "./parser.ts";
+import { PACKAGE_REFERENCE_LINK, parseFlow } from "ursi-flow-core/runtime";
 
 export { snapshotFlowDefinition } from "./snapshot.ts";
 
 const PACKAGE_ENTRY = "FLOW.md";
-const REFERENCE_LINK = /(\[[^\]]*\]\()(references\/[^)\s]+)(\))/g;
 
 /** Loads a Flow package directory or its fixed FLOW.md entry. */
 export async function loadFlow(path: string): Promise<LoadedFlow> {
@@ -115,7 +114,7 @@ export function resolvePromptResources(
 ): string {
 	if (!resources) return prompt;
 	return prompt.replace(
-		REFERENCE_LINK,
+		PACKAGE_REFERENCE_LINK,
 		(_match, prefix: string, path: string, suffix: string) =>
 			`${prefix}${resourcePath(resources, path, "references")}${suffix}`,
 	);
@@ -155,7 +154,7 @@ async function validatePackageResources(
 			continue;
 		}
 		if (node.action.kind === "执行Flow") continue;
-		for (const match of node.action.prompt.matchAll(REFERENCE_LINK)) {
+		for (const match of node.action.prompt.matchAll(PACKAGE_REFERENCE_LINK)) {
 			const path = match[2];
 			if (path) {
 				resourcePaths.set(
