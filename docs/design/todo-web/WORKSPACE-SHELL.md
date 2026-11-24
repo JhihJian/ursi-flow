@@ -84,6 +84,16 @@ interface WorkspaceViewContribution {
 
 已有的 `workspace-config.json` + iframe 是其中一种实现：`matches` 判断选中的是任务且填了 workdir/session，`Component` 渲染 iframe。别的方式（源码组件、自有页面）注册另一种视图即可，外壳不需要区分。
 
+## 已实现的第一版
+
+`packages/workspace-shell` 与 `apps/workspace` 已经落地，形态是一个独立入口把 todo 作为**一栏**接入：
+
+- 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
+- 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
+- todo 模块：`apps/workspace/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
+
+第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务 / 活动」三栏还压在 520px 里，下一步才是把它拆成独立面板。`apps/workspace` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
+
 ## 现在就在 todo-web 里做的三步
 
 1. 把 `Workspace.tsx` 里的三栏改成数据驱动：模块内维护一份 `panels[]` 常量喂给外壳组件，外壳组件仍放在 `todo-web/web/src`，不发布成包。
@@ -103,7 +113,12 @@ interface WorkspaceViewContribution {
 
 ## 与现有包的关系
 
-`packages/ui-slots` 提供的是「按位置注册贡献」的原语（`createSlotRegistry`），外壳的面板、操作、工作区视图都可以复用它，不必另写注册表；`packages/ui-layout` 负责页面骨架（header/main/aside），外壳是它内部的一块。三者职责不重叠：`ui-layout` 管页面，`workspace-shell` 管栏，`ui-slots` 管贡献注册。
+## 与 ui-slots、ui-layout 的关系
+
+两个包都继续用，但都不参与外壳的栏组合：
+
+- `ui-slots` 的抽象是「插槽 → 贡献」的运行时注册，用于门户插件按位置出现。外壳的模块是构建期传入的静态数组，顺序就是栏序，不需要运行时注册，因此不依赖 `ui-slots`。若将来模块需要运行时增删（例如按权限隐藏），再把 `createSlotRegistry` 接进来即可，契约不用改。
+- `ui-layout` 的 `PageFrame` 管页面骨架（header/main/aside/navigation），外壳是它 `main` 里的一块。宿主若需要页头与导航，用 `PageFrame` 包住 `<WorkspaceShell />`；todo、门户继续各用各的。三者职责不重叠：`ui-layout` 管页面，`workspace-shell` 管栏，`ui-slots` 管贡献注册。
 
 ## 不做的
 

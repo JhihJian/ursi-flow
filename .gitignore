@@ -23,3 +23,4 @@ node_modules
 /todo-web/web/dist/
 /session-viewer/web/dist/
 /session-viewer/web/node_modules/
+/apps/workspace/dist/

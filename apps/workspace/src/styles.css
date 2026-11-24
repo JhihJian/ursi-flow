@@ -1,0 +1,72 @@
+/* 宿主自己的最小样式；todo-web 的样式已在上方导入，这里只覆盖外壳需要的高度。 */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+#root {
+  display: block;
+  height: 100%;
+}
+
+.ws-root {
+  height: 100%;
+}
+
+/* todo 模块嵌在栏里时，用自己的纵向容器撑满 */
+.todo-embed {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.todo-embed > .stats-header {
+  padding: 8px 12px;
+}
+
+.todo-view {
+  height: 100%;
+  padding: 16px 20px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.todo-view-title {
+  margin: 0 0 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.todo-view-meta {
+  margin: 0 0 12px;
+}
+
+.todo-view-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.todo-view-row dt {
+  width: 72px;
+  flex: none;
+  color: #999999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+
+.todo-view-row dd {
+  margin: 0;
+  color: #1a1a1a;
+}
+
+.todo-view-hint {
+  color: #999999;
+  font-size: 11px;
+}

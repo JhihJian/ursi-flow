@@ -7,6 +7,7 @@
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [项目门户](apps/web/SPEC.md) | `/` 展示已发布的项目资料和应用入口。`/manage/` 编辑并导出草稿，部署流程发布共享配置。 |
+| [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `apps/workspace`，已完成 todo 模块接入。 |
 | [SUMM-Todo 看板](todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [页面布局](packages/ui-layout/SPEC.md) · [UI 插槽](packages/ui-slots/SPEC.md) | 布局包负责响应式排列，插槽包负责注册与渲染贡献。两者可由其他 React 页面单独使用。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
