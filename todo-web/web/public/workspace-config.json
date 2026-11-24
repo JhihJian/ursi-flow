@@ -1,5 +1,0 @@
-{
-  "_comment": "用外部页面替代工作台占位。urlTemplate 支持 http(s) 地址或站内路径，占位符：{id} {project} {workspace} {sessionId}",
-  "label": "Workspace",
-  "urlTemplate": "/workspace.html?task={id}&session={sessionId}"
-}

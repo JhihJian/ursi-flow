@@ -8,7 +8,7 @@
 - **不新建 `workspaces` 表。** 待办库由 SUMM-Todo CLI 建表和迁移，看板只读写现有列。工作目录沿用 `projects.path`，任务上的 `workspace` 字段是自由字符串标注，指向目录而不是目录实体。需要多目录或目录策略时，再讨论在看板自己的存储里建实体，仍然不碰待办库。
 - **执行器管理页不重复做。** 看板里只放「给这次执行选一个已发布修订」的选择器，数据由服务端代理平台的只读接口；登记后端、试跑、发布、停用仍在平台管理页。
 - **尝试关联存看板自己的存储**，不写待办库。任务与尝试是一对多，用 append-only 记录，唯一真相仍是平台的尝试状态。
-- **被嵌入的能力分两步走。** 近期维持「独立部署 + 链接/iframe」，等确实出现宿主需求再抽源码包 `todo-web-kit`。执行详情这类外部页面继续用已实现的 URL 模板 + iframe。
+- **被嵌入的能力分两步走。** 近期维持「独立部署 + 链接/iframe」，等确实出现宿主需求再抽源码包 `todo-web-kit`。看板不再自带工作台：执行详情这类外部页面由工作区外壳（`apps/workspace`）按需嵌入。
 
 ## 职责与数据归属
 
@@ -50,7 +50,7 @@ CREATE INDEX task_attempts_task ON task_attempts(task_id, submitted_at DESC);
 2. 看板服务端先用自己的存储生成小写 UUID 并落库，再以该 ID 提交平台。回执丢失时用同一 ID 查询，不重发新任务；同 ID 同请求查回原尝试，改动请求返回 409，由人决定，不自动换 ID。
 3. 平台按冻结配置启动 worker。看板只轮询 `GET /executor-attempts/{id}`：终态是在后续查询里才发布的，客户端计时器不能判失败。
 4. 取消只登记意图，结果仍以查询为准；没有终态证据的状态显示为 `unverified`。
-5. 拿到终态后，用平台的只读目录接口列制品、读正文，渲染在任务详情或工作台里。
+5. 拿到终态后，用平台的只读目录接口列制品、读正文，渲染在任务详情或工作区外壳里。
 
 ## 安全前提
 
@@ -71,14 +71,14 @@ CREATE INDEX task_attempts_task ON task_attempts(task_id, submitted_at DESC);
 当宿主需要把任务面板放进自己的布局、共享登录和主题时，再抽包：
 
 - 复用仓库存量约定：`file:` 依赖加 `ursi-source` 导出条件，宿主直接编译源码（先例 `@ursi/mcp-web` 被 Workbench 引用）。
-- 只导出无路由的 `TodoTaskPanel`、`TodoWorkspacePanel`，不导出带全局路由的应用；宿主给容器、给凭证、给初始任务。
+- 只导出无路由的 `TodoTaskPanel`，不导出带全局路由的应用；宿主给容器、给凭证、给初始任务。
 - props 收敛到 `apiBaseUrl`、`auth`（请求头或 `credentials`）、`taskId` 与 `onTaskSelect`、`storageKey`、`onNotify`。
-- 抽包前必须先清理阻碍嵌入的东西：`@/` 别名、全局 CSS 重置与 `html/body` 规则、单例 store、全局 `keydown`、`alert/prompt`、硬编码的 `/api` 与 `/workspace-config.json` 路径。样式用容器类加 `@layer`，必要时用 Shadow DOM。
+- 抽包前必须先清理阻碍嵌入的东西：`@/` 别名、全局 CSS 重置与 `html/body` 规则、单例 store、全局 `keydown`、`alert/prompt`、硬编码的 `/api` 路径。样式用容器类加 `@layer`，必要时用 Shadow DOM。
 - react / react-dom 转为 peerDependencies，宿主设置 `dedupe`，避免两份 React。
 
 ### 形态三：执行详情这类外部页面
 
-已经在用 URL 模板 + iframe：`public/workspace-config.json` 配 `urlTemplate`，占位符 `{id}`、`{project}`、`{workspace}`、`{sessionId}`。这条路径继续保留，它和执行集成是互补的：看板负责「提交与状态」，外部页面负责「看轨迹」。
+看板本身不再嵌入外部页面。工作区区域归 `apps/workspace` 的外壳，外部页面（例如会话查看器或平台的运行详情）由外壳按选中类型注册视图再决定用 iframe 还是源码组件。分工不变：看板负责「提交与状态」，外部页面负责「看轨迹」，只是宿主从看板换成了外壳。
 
 补充两点：`sandbox` 同时给 `allow-scripts` 与 `allow-same-origin` 时，同源页面等于没隔离，模板要限制 origin 白名单；跨源鉴权不要在 URL 里放令牌，用宿主反向代理转到同源。
 

@@ -8,7 +8,6 @@ const todoApi = process.env.TODO_WEB_API ?? 'http://127.0.0.1:8090'
 
 const proxy = {
   '/api': { target: todoApi, changeOrigin: false },
-  '/workspace-config.json': { target: todoApi, changeOrigin: false },
 }
 
 export default defineConfig({

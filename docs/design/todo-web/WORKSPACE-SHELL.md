@@ -82,7 +82,7 @@ interface WorkspaceViewContribution {
 }
 ```
 
-已有的 `workspace-config.json` + iframe 是其中一种实现：`matches` 判断选中的是任务且填了 workdir/session，`Component` 渲染 iframe。别的方式（源码组件、自有页面）注册另一种视图即可，外壳不需要区分。
+todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判断选中的是任务，`Component` 渲染该任务的项目、状态、优先级、标签、workdir 与会话。外部页面用 `iframe`、自有页面用源码组件都可以再注册一种视图，外壳不需要区分。
 
 ## 已实现的第一版
 
@@ -103,7 +103,7 @@ interface WorkspaceViewContribution {
 
 1. 把 `Workspace.tsx` 里的两栏改成数据驱动：模块内维护一份 `panels[]` 常量喂给外壳组件，外壳组件仍放在 `todo-web/web/src`，不发布成包。
 2. 把「当前选中任务」从 `detail` 里拆出来，进 `selection`（`{kind: 'todo.task', id}`），详情面板、工作区都从 `selection` 读，去掉重复的真值。
-3. 把复制 Markdown、折叠工作区、未来的「执行」写成 `actions[]`，右侧面板按 `appliesTo` 渲染。
+3. 把复制 Markdown、未来的「执行」写成 `actions[]`，右侧面板按 `appliesTo` 渲染。
 
 三条都做在同一份代码里，接口形状与将来抽包一致，届时是搬运而不是重写。
 

@@ -9,7 +9,7 @@ npm install
 npm run dev:workspace        # http://localhost:5191
 ```
 
-`vite.config.ts` 把 `/api` 与 `/workspace-config.json` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖）。先启动 todo-web 服务：
+`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖）。先启动 todo-web 服务：
 
 ```sh
 cd todo-web/server && cargo run          # 或已有实例

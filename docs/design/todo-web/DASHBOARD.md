@@ -116,25 +116,3 @@ Zustand store 保存项目、任务、当前选中项目和筛选条件。组件
 真实待办库由 SUMM-Todo CLI 建表，不含这两列，所以 `db::ensure_database` 在启动时用 `PRAGMA table_info` 检查，缺列就 `ALTER TABLE tasks ADD COLUMN ... TEXT`。迁移只做加列，不改类型、不写默认值，旧数据保持为空。空字符串按未设置处理：请求里传 `null` 或空串都会写成 `NULL`。
 
 界面把它们放在详情元信息行的 `workspace`、`session` 两个输入框里，随同标题一起保存。复制为 Markdown 时，只有填写的字段才会输出 `- Workspace:` 和 `- Session:` 两行。
-
-## 内容栏折叠与工作台
-
-任务列表右上角的 `«` 把中间区域向左折叠：任务表、详情面板都收起，内容栏改成一左一右两段，左边是 32px 窄条，右边是工作台。没有可嵌入的页面时（无配置、未选中任务或任务缺字段），内容栏直接收成 32px 窄条，右侧由一块空白面板接住剩余宽度，不再留一块空的 `is-workspace` 内容栏。窄条顶部一个 `»`，中间书脊式摘要（`vertical-lr` 加 `rotate(180deg)`，从下往上读），内容取当前打开的任务，依次是标题与 `状态 · 项目`；没有打开任务时显示 `Tasks` 和任务条数。点摘要或 `»` 回到任务列表。
-
-窄条与任务列表右上角的收放按钮共用 `.rail-toggle`：19×19、无边框、默认浅灰，悬停加深并加浅灰底，高度与状态标签对齐。左侧项目栏的 `«` / `»` 也用同一个类，避免三处各写一份样式。
-
-嵌入时给地址补 `embed=1`，被嵌页面据此收起自己的头部，只留内容区，宿主那条栏负责标题与「Open in new tab」，不会出现两条头。工作台始终是细实线边框。
-
-工作台不实现执行详情，只当嵌入宿主：读 `public/workspace-config.json` 里的 `{ label, urlTemplate }`，把任务字段填进模板后渲染 `iframe`。模板支持 `{id}`、`{project}`、`{workspace}`、`{sessionId}` 四个占位符，值统一 `encodeURIComponent`；地址只接受 `http(s)` 或 `/` 开头的站内路径。没有配置文件、没有选中任务、任务没填 workspace 与会话时整块工作台不渲染，只留白。`iframe` 带 `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"`、`referrerPolicy="no-referrer"` 与 `loading="lazy"`，顶栏给出标题和「Open in new tab」。
-
-### 为什么用 URL 契约而不是源码依赖
-
-执行详情属于另一个产品，页面、路由和鉴权由它自己维护。用「URL 模板 + iframe」解耦，两边只共享一段地址：
-
-- 对方换版本、换部署位置、改内部实现，todo-web 不用重新构建，改一份 JSON 即可。
-- 对方挂了只影响这一块区域，任务列表不受影响。
-- 对方不需要为了被嵌入而适配 React 版本或样式体系，`sandbox` 也挡住了大部分越权行为。
-
-代价是跨文档通信与样式不共享。如果之后需要在工作台里读写 todo-web 的状态（例如就地改状态），再补 `postMessage` 协议，或者改用源码包：仓库里 `@ursi/mcp-web` 就是先例，通过 `file:` 依赖加 `ursi-source` 导出条件被工作台直接编译，适合「同一个 monorepo、共享 React 与主题」的场景，但会把两边的构建绑在一起。
-
-折叠状态写在 `localStorage` 的 `todo-web.workspace-open`，刷新后沿用。折叠期间详情状态仍留在 store 里，回到任务列表时详情面板会按原样重新展开。

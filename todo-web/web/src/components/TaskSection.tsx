@@ -167,7 +167,7 @@ function TaskRow({
   )
 }
 
-export function TaskSection({ onCollapse }: { onCollapse: () => void }) {
+export function TaskSection() {
   const tasks = useTodoStore((state) => state.tasks)
   const tasksLoading = useTodoStore((state) => state.tasksLoading)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
@@ -229,15 +229,6 @@ export function TaskSection({ onCollapse }: { onCollapse: () => void }) {
                 />
               ))}
             </div>
-            <button
-              type="button"
-              className="rail-toggle content-collapse"
-              title="Collapse tasks and open workspace"
-              aria-label="Collapse tasks and open workspace"
-              onClick={onCollapse}
-            >
-              «
-            </button>
           </div>
         </div>
       ) : null}
