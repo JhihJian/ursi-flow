@@ -1077,18 +1077,20 @@ button {
   color: var(--gray-900);
 }
 
+/* 左写右看：编辑区与渲染区并排，滚动按比例联动。 */
 .detail-note {
   display: flex;
   flex: 1;
+  gap: 0;
   min-height: 0;
   padding-top: var(--space-sm);
 }
 
 .detail-note-input {
-  flex: 1;
+  flex: 1 1 50%;
+  min-width: 0;
   min-height: 0;
-  width: 100%;
-  padding: 0;
+  padding: 0 var(--space-md) 0 0;
   border: 0;
   background: none;
   resize: none;
@@ -1107,11 +1109,32 @@ button {
 }
 
 .detail-note-preview {
-  flex: 1;
+  flex: 1 1 50%;
+  min-width: 0;
   min-height: 0;
-  padding-bottom: var(--space-sm);
+  padding: 0 0 var(--space-sm) var(--space-md);
+  border-left: 1px solid var(--gray-200);
   overflow-y: auto;
   overscroll-behavior-y: contain;
+}
+
+@media (max-width: 900px) {
+  .detail-note {
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .detail-note-input {
+    flex: 0 0 45%;
+    padding: 0;
+  }
+
+  .detail-note-preview {
+    flex: 1 1 auto;
+    padding: var(--space-sm) 0 0;
+    border-top: 1px solid var(--gray-200);
+    border-left: 0;
+  }
 }
 
 .detail-note-empty {
@@ -1131,27 +1154,7 @@ button {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-}
-
-.detail-mode {
-  padding: 2px var(--space-xs);
-  border: 0;
-  background: none;
-  color: var(--gray-400);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-}
-
-.detail-mode:hover {
-  color: var(--gray-900);
-}
-
-.detail-mode.active {
-  color: var(--gray-900);
-  box-shadow: inset 0 -1px 0 var(--gray-900);
+  min-height: 16px;
 }
 
 .detail-hint {

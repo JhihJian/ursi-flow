@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
 import { cx, errorMessage } from '@/lib/ui'
@@ -37,13 +46,16 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
   const [note, setNote] = useState(task?.result ?? '')
-  const [mode, setMode] = useState<'write' | 'preview'>('write')
+  // 预览跟着输入走，deferred 让打字不被渲染阻塞。
+  const renderedNote = useDeferredValue(note)
   const [height, setHeight] = useState(readStoredHeight)
   const [maximized, setMaximized] = useState(false)
 
   const sheetRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const noteRef = useRef<HTMLTextAreaElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const scrollOwner = useRef<'editor' | 'preview' | null>(null)
   const heightRef = useRef(height)
 
   const confirmDelete = detail.confirmDelete
@@ -115,7 +127,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     // 完成任务必须写明结果，规则来自 todo-core 的状态机。
     if (missingResult) {
       alert('Completing a task requires a result')
-      setMode('write')
       noteRef.current?.focus()
       return
     }
@@ -131,6 +142,24 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       tags: parsedTags,
       result: note.trim() ? note : null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
+  }
+
+  // 两边按比例同步滚动，长文能对着看。程序化滚动不再反向触发。
+  const syncScroll = (from: 'editor' | 'preview') => {
+    if (scrollOwner.current && scrollOwner.current !== from) {
+      scrollOwner.current = null
+      return
+    }
+    const editor = noteRef.current
+    const preview = previewRef.current
+    if (!editor || !preview) return
+    const source = from === 'editor' ? editor : preview
+    const target = from === 'editor' ? preview : editor
+    const sourceRange = source.scrollHeight - source.clientHeight
+    const targetRange = target.scrollHeight - target.clientHeight
+    if (sourceRange <= 0 || targetRange <= 0) return
+    scrollOwner.current = from
+    target.scrollTop = (source.scrollTop / sourceRange) * targetRange
   }
 
   return (
@@ -227,47 +256,33 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         </div>
 
         <div className="detail-note">
-          {mode === 'write' ? (
-            <textarea
-              ref={noteRef}
-              className="detail-note-input"
-              placeholder="Write notes in Markdown: **bold**, `code`, - list"
-              value={note}
-              aria-label="Notes"
-              onChange={(event) => setNote(event.target.value)}
-            />
-          ) : (
-            <div className="detail-note-preview">
-              {note.trim() ? (
-                <Suspense fallback={<p className="detail-note-empty">Rendering…</p>}>
-                  <MarkdownPreview source={note} />
-                </Suspense>
-              ) : (
-                <p className="detail-note-empty">Nothing written yet</p>
-              )}
-            </div>
-          )}
+          <textarea
+            ref={noteRef}
+            className="detail-note-input"
+            placeholder="Write notes in Markdown: **bold**, `code`, - list"
+            value={note}
+            aria-label="Notes"
+            onChange={(event) => setNote(event.target.value)}
+            onScroll={() => syncScroll('editor')}
+          />
+          <div
+            ref={previewRef}
+            className="detail-note-preview"
+            onScroll={() => syncScroll('preview')}
+          >
+            {renderedNote.trim() ? (
+              <Suspense fallback={<p className="detail-note-empty">Rendering…</p>}>
+                <MarkdownPreview source={renderedNote} />
+              </Suspense>
+            ) : (
+              <p className="detail-note-empty">Nothing written yet</p>
+            )}
+          </div>
         </div>
       </div>
 
       <footer className="detail-footer">
-        <div className="detail-modes" role="group" aria-label="Editor mode">
-          <button
-            type="button"
-            className={cx('detail-mode', mode === 'write' && 'active')}
-            aria-pressed={mode === 'write'}
-            onClick={() => setMode('write')}
-          >
-            Write
-          </button>
-          <button
-            type="button"
-            className={cx('detail-mode', mode === 'preview' && 'active')}
-            aria-pressed={mode === 'preview'}
-            onClick={() => setMode('preview')}
-          >
-            Preview
-          </button>
+        <div className="detail-modes">
           {missingResult ? <span className="detail-hint">Result required to finish</span> : null}
         </div>
         {confirmDelete && task ? (

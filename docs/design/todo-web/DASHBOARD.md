@@ -63,7 +63,11 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（状态、优先级、标签、时间、工具按钮）、Markdown 正文、底部工具条。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。
 
-正文用 `textarea` 书写，`Preview` 切到渲染稿。渲染交给 `react-markdown` 配 `remark-gfm`，支持表格、任务列表、删除线、自动链接等 GFM 语法。这两组依赖单独放在 `MarkdownPreview` 模块里，用 `React.lazy` 在第一次切到预览时加载，主包因此维持在 350KB 左右，Markdown 相关代码另成 168KB 分块。渲染时只挂 `remarkPlugins`，不加 `rehype-raw`，所以备注里的原始 HTML 会作为文本显示，不会被执行。
+正文是左写右看的并排布局：左边 `textarea` 写 Markdown，右边实时渲染，不再有「写／预览」切换。输入值先用 `useDeferredValue` 降一档优先级再交给渲染，长文打字不会被 Markdown 解析卡住。
+
+两边滚动按比例联动：一侧滚动时按 `scrollTop / (scrollHeight - clientHeight)` 换算另一侧，并用 `scrollOwner` 标记忽略自己触发的回滚，避免来回抖动。内容栏窄于 900px 时改为上下排列，编辑区固定占 45%，渲染区占余下空间。
+
+渲染交给 `react-markdown` 配 `remark-gfm`，支持表格、任务列表、删除线、自动链接等 GFM 语法。这两组依赖放在 `MarkdownPreview` 模块里用 `React.lazy` 加载，主包维持在 350KB 左右，Markdown 相关代码另成 168KB 分块。渲染时只挂 `remarkPlugins`，不加 `rehype-raw`，所以备注里的原始 HTML 会作为文本显示，不会被执行。
 
 任务模型只有 `result` 一个自由文本字段，正文即写在这里；状态切到 `done` 且正文为空时，底部提示 `Result required to finish`，保存会被拦下，规则与 `todo_core` 状态机一致。
 
