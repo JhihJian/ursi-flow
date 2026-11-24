@@ -261,7 +261,8 @@ button {
   margin-left: auto;
 }
 
-.rail-toggle {
+.sidebar-collapse,
+.sidebar-expand {
   padding: 0 2px;
   border: 0;
   background: none;
@@ -271,7 +272,8 @@ button {
   cursor: pointer;
 }
 
-.rail-toggle:hover {
+.sidebar-collapse:hover,
+.sidebar-expand:hover {
   color: var(--black);
 }
 
@@ -777,58 +779,6 @@ button {
 .active-tasks-panel {
   padding: var(--space-md);
   flex-shrink: 0;
-}
-
-.active-collapse {
-  margin-left: auto;
-}
-
-.panel-right-collapsed {
-  padding: 0;
-}
-
-/* 右栏折叠成 32px 窄条，书脊式显示选中任务的关键状态 */
-.active-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-  padding: var(--space-sm) 0;
-  overflow: hidden;
-}
-
-.active-rail-summary {
-  display: flex;
-  flex: 0 0 auto;
-  margin-top: auto;
-  margin-bottom: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  writing-mode: vertical-lr;
-  text-align: start;
-  transform: rotate(180deg);
-  white-space: nowrap;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-}
-
-.active-rail-name {
-  font-family: var(--font-serif);
-  color: var(--gray-900);
-}
-
-.active-rail-meta {
-  color: var(--gray-400);
-}
-
-.active-rail-summary:hover .active-rail-name {
-  color: var(--black);
-}
-
-.active-rail-summary:hover .active-rail-meta {
-  color: var(--gray-600);
 }
 
 .active-tasks-header {
