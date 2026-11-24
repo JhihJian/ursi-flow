@@ -38,6 +38,7 @@
 | Workbench Server | [Flow 管理与进程边界](docs/design/workbench/SERVER-FLOW.md) · [工作清单、目录与定义](docs/design/workbench/SERVER-WORK-MANAGEMENT.md) |
 | Workbench Web | [应用壳、认证与 Flow 工具](docs/design/workbench/WEB-SHELL-AND-FLOW.md) · [工作管理界面](docs/design/workbench/WEB-WORK-MANAGEMENT.md) |
 | SUMM-Todo 看板 | [布局、拖拽与数据流](docs/design/todo-web/DASHBOARD.md) |
+| 会话查看工作台 | [模块结构、解析与嵌入](docs/design/session-viewer/SESSION-VIEWER.md) |
 | 工作项与文件包 | [工作清单与包来源](docs/design/workbench/WORK-LIST-DESIGN.md) · [版本化工作包生成器](docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md) · [工作包和配置包编辑台](docs/design/workbench/PATCH-STUDIO.md) |
 | 执行器 | [平台拆分与调用边界](docs/design/executor-platform/OVERVIEW.md) · [执行器协议统一为 ACP 的提案](docs/design/executor-platform/ACP-BACKEND.md) · [ACP 执行契约](docs/design/executor-platform/ACP-PROFILE.md) · [ACP 基线与首版范围](docs/design/executor-platform/ACP-SCOPE.md) · [平台部署](executor-platform/server/README.md) · [定义与尝试](docs/design/workbench/EXECUTOR-DESIGN.md) · [Flow 执行器](docs/design/workbench/FLOW-EXECUTOR-DESIGN.md) · [Agent 执行器](docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md) · [Runtime MCP 适配器](docs/design/flow-runtime/MCP-ADAPTER.md) |
 | Pi 会话 | [前端部署](pi-executor/README.md) · [会话 API 与服务部署](pi-executor/session-service/README.md) |
