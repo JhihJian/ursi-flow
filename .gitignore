@@ -2,14 +2,8 @@ target/
 /data/
 /workbench/data/
 node_modules
-/shell-web/dist/
-/fs-web/web/dist/
-/apps/web/.e2e-dist/
-/apps/web/public/portal-config.json
-/apps/web/test-results/
-/apps/web/playwright-report/
-/apps/web/.env.local
-/apps/web/.env.*.local
+/apps/shell-web/dist/
+/apps/fs-web/web/dist/
 /workbench/web/dist/
 /workbench/web/dist-lan/
 /workbench/web/coverage/
@@ -20,7 +14,7 @@ node_modules
 /workbench/web/.env
 /workbench/web/.env.*
 !/workbench/web/.env.example
-/todo-web/server/target/
-/todo-web/web/dist/
+/apps/todo-web/server/target/
+/apps/todo-web/web/dist/
 /session-viewer/web/dist/
 /session-viewer/web/node_modules/

@@ -1,7 +1,7 @@
 ---
-parent: ../SPEC.md
+parent: ../../SPEC.md
 references:
-  - ../packages/workspace-shell/MODULE-CONTRACT.md
+  - ../../packages/workspace-shell/MODULE-CONTRACT.md
   - README.md
 ---
 
@@ -9,7 +9,7 @@ references:
 
 ## 功能意图
 
-fs-web 为工作区提供类资源管理器的文件能力。每个 workspace 是一个目录，来源由 provider 抽象统一：第一版实现本机目录（local），SSH 远程目录与虚拟目录按设计预留接口后续接入。模块按[工作区外壳契约](../packages/workspace-shell/MODULE-CONTRACT.md)接入：目录树放在模块栏内浏览，文件编辑经全局选中交给外壳的工作区区域，由 Monaco Editor 渲染。
+fs-web 为工作区提供类资源管理器的文件能力。每个 workspace 是一个目录，来源由 provider 抽象统一：第一版实现本机目录（local），SSH 远程目录与虚拟目录按设计预留接口后续接入。模块按[工作区外壳契约](../../packages/workspace-shell/MODULE-CONTRACT.md)接入：目录树放在模块栏内浏览，文件编辑经全局选中交给外壳的工作区区域，由 Monaco Editor 渲染。
 
 设计决策与分阶段范围见 [README](README.md)。
 

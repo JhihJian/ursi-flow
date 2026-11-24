@@ -6,13 +6,13 @@
     "node": ">=24 <25"
   },
   "workspaces": [
-    "fs-web/web",
-    "todo-web/web",
-    "shell-web",
+    "apps/fs-web/web",
+    "apps/todo-web/web",
+    "apps/shell-web",
     "packages/workspace-shell"
   ],
   "scripts": {
-    "test": "node --test fs-web/server/test/*.test.ts",
+    "test": "node --test apps/fs-web/server/test/*.test.ts",
     "test:todo-web": "npm run test -w @ursi/todo-web",
     "dev:shell-web": "npm run dev -w @ursi/shell-web",
     "build:shell-web": "npm run build -w @ursi/shell-web"

@@ -47,7 +47,7 @@ Zustand store 保存项目、任务、当前选中项目和筛选条件。组件
 | 任务表上方的状态标签 | `{ type: 'status', status }` | `PUT /api/tasks/{id}` 改状态 |
 | 左侧项目项 | `{ type: 'project', projectId }` | `PUT /api/tasks/{id}` 改 `project_id` |
 
-拖到 `blocked` 时先弹窗询问阻塞原因，取消则放弃这次拖拽：`todo_core` 的状态机要求阻塞必须带原因，缺原因服务端会返回 400。拖拽不维护本地顺序，只表达状态和归属，和待办库现有字段一致。状态迁移与开始、完成时间由 `todo_core::Task::transition` 决定，服务端只负责把库里的行读成 `todo_core::Task`、迁移后再整体写回，见[服务端契约](../../../todo-web/server/HTTP.md)。因此拖到未填结果的完成任务会被拒绝，界面提示 `E_RESULT_REQUIRED`；详情面板在状态为 done 时把结果标为必填。
+拖到 `blocked` 时先弹窗询问阻塞原因，取消则放弃这次拖拽：`todo_core` 的状态机要求阻塞必须带原因，缺原因服务端会返回 400。拖拽不维护本地顺序，只表达状态和归属，和待办库现有字段一致。状态迁移与开始、完成时间由 `todo_core::Task::transition` 决定，服务端只负责把库里的行读成 `todo_core::Task`、迁移后再整体写回，见[服务端契约](../../../apps/todo-web/server/HTTP.md)。因此拖到未填结果的完成任务会被拒绝，界面提示 `E_RESULT_REQUIRED`；详情面板在状态为 done 时把结果标为必填。
 
 ## 项目操作
 

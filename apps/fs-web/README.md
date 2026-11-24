@@ -102,7 +102,7 @@ node fs-web/server/src/server.ts          # 默认 127.0.0.1:8199
 FS_WEB_CONFIG=xxx.json node fs-web/server/src/server.ts --host 0.0.0.0 --port 8199
 
 # 前端：嵌入工作区宿主
-npm run dev:workspace                            # http://localhost:5191
+npm run dev:shell-web                           # http://localhost:5191
 ```
 
 shell-web 的 Vite 已把 `/api/fs-web` 代理到 `127.0.0.1:8199`（`FS_WEB_API` 可覆盖）。

@@ -7,7 +7,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `shell-web`，todo 与 fs 两个模块以 npm workspace 包（`@ursi/todo-web`、`@ursi/fs-web`）接入，组合关系见 `shell-web/package.json` 与各模块的 `src/module.tsx`。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
-| [SUMM-Todo 看板](todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
+| [SUMM-Todo 看板](apps/todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web 前端](pi-executor/SPEC.md) | 独立静态前端。首页连接会话服务，按权限观察或继续 Pi 会话。 |

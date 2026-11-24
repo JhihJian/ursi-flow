@@ -6,7 +6,7 @@
 
 ## 前置重构：整理独立控制台
 
-参照 [Todo Web](../../../todo-web/web/src) 的薄入口、API 与视图分层。当前 Sandbox 的 `main.tsx` 同时负责挂载、配置加载、路由、列表和详情。先按下面的边界拆分，只改 `ursi-sandbox/web`。
+参照 [Todo Web](../../../apps/todo-web/web/src) 的薄入口、API 与视图分层。当前 Sandbox 的 `main.tsx` 同时负责挂载、配置加载、路由、列表和详情。先按下面的边界拆分，只改 `ursi-sandbox/web`。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -35,7 +35,7 @@
 | --- | --- |
 | `ursi-sandbox/web/src/features/instances/` | Workspace 复用前置重构产出的列表和详情视图。管理和观测开放时，再将对应页面的导航改为由入口提供的回调。 |
 | `ursi-sandbox/web/src/api/` | Workspace 注入 `/api/sandbox/`。探活、观测下载和工作台 WebSocket 随各自功能接入同一基址规则；独立入口继续使用相对于部署目录的基址。 |
-| [`shell-web`](../../../shell-web) | 新增 `src/modules/sandbox.tsx`，负责模块注册、视图映射和宿主导航。沿用 Todo 和文件模块的源码别名模式。构建前分别按仓库根目录和 `ursi-sandbox/web` 的锁文件安装依赖，Workspace 构建去重 `react` 和 `react-dom`。终端、远程画面与 PCAP Worker 随对应功能按需加载。 |
+| [`shell-web`](../../../apps/shell-web) | 新增 `src/modules/sandbox.tsx`，负责模块注册、视图映射和宿主导航。沿用 Todo 和文件模块的源码别名模式。构建前分别按仓库根目录和 `ursi-sandbox/web` 的锁文件安装依赖，Workspace 构建去重 `react` 和 `react-dom`。终端、远程画面与 PCAP Worker 随对应功能按需加载。 |
 
 嵌入样式使用 `.sbx-app` 局部规则和语义变量，跟随宿主的灰度与字体基线。Sandbox 自己编译一份带作用域的嵌入样式，保留组件所需的局部基础样式。Tailwind 全局 Preflight 和视口高度只用于独立入口。嵌入版按栏宽切换布局，滚动留在栏内。Radix 浮层挂到当前视图的容器，替换按全局查询取第一个 `.sbx-app` 的方式。
 
@@ -46,7 +46,7 @@
 Workspace 通过同源 `/api/sandbox/` 访问 [Sandbox Web 服务](../../../ursi-sandbox/web/server.mjs)，由该服务访问 Gateway。开发和 Vite preview 用 `SANDBOX_WEB_API` 配置 Sandbox Web 上游，生产由入口反向代理配置。三处都先匹配这个独立前缀，再匹配 Todo 的 `/api`。剥掉前缀后保留原路径、查询串及方法，例如 `/api/sandbox/console-config.json` 转发为 `/console-config.json`。API 响应保留状态码，错误不回落到 HTML。
 
 - **入口和权限。** 只读阶段在代理层仅开放配置、能力、实例列表、详情、端点和日志的读取，工作台 Upgrade 和其他能力按阶段启用。保留 Sandbox 的 `viewer` / `admin` 鉴权和写操作校验，宿主不注入共享管理员身份。首次展开 Sandbox 栏或直达沙箱深链时才访问 Sandbox 服务。透传 `401` 及认证挑战，使用真实浏览器验证登录和身份切换。外层如有鉴权，应与 Sandbox 的 Basic 凭据使用独立通道。Gateway 密钥及 SSH 私钥留在服务端，用户仍在同一个 Gateway 命名空间内操作。
-- **共享来源。** 路径只用于分流，同源的 Workspace 和 Sandbox 模块属于同一个信任边界。生产只向受信用户开放组合入口，单独保护默认无鉴权的 [本机文件服务](../../../fs-web/SPEC.md)。宿主页面负责整体 CSP，验证同源脚本、Worker 与 `wss` 连接可用。沙箱应用继续在沙箱内的 Chromium 运行，Workspace 只接收画面。
+- **共享来源。** 路径只用于分流，同源的 Workspace 和 Sandbox 模块属于同一个信任边界。生产只向受信用户开放组合入口，单独保护默认无鉴权的 [本机文件服务](../../../apps/fs-web/SPEC.md)。宿主页面负责整体 CSP，验证同源脚本、Worker 与 `wss` 连接可用。沙箱应用继续在沙箱内的 Chromium 运行，Workspace 只接收画面。
 - **长连接与下载。** 外层代理启用 WebSocket Upgrade，保留对外 `Host` 和浏览器 `Origin`，TLS 在外部终止时将 `URSI_WEB_ORIGIN` 配为实际 HTTPS origin。通过原代理流式转发 PCAP，保留下载头和取消传播。现有详情和观测使用按需轮询，无需新增 SSE。折叠且未选中时停止列表后台加载。实时工作台在切换实例、标签或离开详情时释放连接，同实例同代际的合规连接可跨详情内刷新保留。离开观测视图只取消读取，采集继续运行。
 
 ## 分批交付与验收
