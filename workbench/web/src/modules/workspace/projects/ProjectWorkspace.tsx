@@ -166,7 +166,7 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
           {missingCanvas ? <div className="space-y-2">
             <ResourceState empty title="画布不存在" />
             <Link className="text-accent-2" to={`${base}/map`} state={viewState}>返回地图</Link>
-          </div> : <ProjectTodo workspace={workspace} onItem={openItem}
+          </div> : <ProjectTodo workspace={workspace} itemId={itemId} onItem={openItem}
             onCreate={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
           {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
         </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} saving={mutation.busy} mutate={mutate}
