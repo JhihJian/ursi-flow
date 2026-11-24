@@ -228,6 +228,10 @@ button {
 }
 
 /* Sidebar */
+.sidebar {
+  min-height: 100%;
+}
+
 .sidebar-title {
   font-family: var(--font-serif);
   font-size: 14px;
@@ -238,21 +242,22 @@ button {
   margin-bottom: var(--space-md);
 }
 
-.action-bar {
+.sidebar-head {
   display: flex;
-  gap: var(--space-sm);
   align-items: center;
+  gap: var(--space-sm);
   margin-bottom: var(--space-md);
 }
 
-.action-bar .sidebar-title {
+.sidebar-head .sidebar {
+  min-height: 100%;
+}
+
+.sidebar-title {
   margin-bottom: 0;
 }
 
-.sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
+.sidebar-head .sidebar-collapse {
   margin-left: auto;
 }
 

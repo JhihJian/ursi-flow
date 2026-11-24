@@ -52,7 +52,7 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 ## 项目操作
 
-项目的新增、编辑、删除和在该项目下新建任务都从项目列表的右键菜单发起，内容栏不再有标题栏和按钮。右键项目项依次是 `New task`（先切到该项目再打开任务详情）、`Edit project` 和 `Delete project`；右键项目列表空白处是 `New project`。删除不会直接执行：菜单会换成确认态，标题行显示 `Delete "名称"?`，再点一次 `Delete project` 才真正删除。
+项目的新增、编辑、删除和在该项目下新建任务都从项目列表的右键菜单发起，侧栏和内容栏都不再放按钮。右键项目项依次是 `New task`（先切到该项目再打开任务详情）、`New project`、`Edit project` 和 `Delete project`；右键列表空白处只给 `New project`。项目多到撑满侧栏时空白处不可见，所以 `New project` 同时放进项目项菜单，保证随时可达。删除不会直接执行：菜单会换成确认态，标题行显示 `Delete "名称"?`，再点一次 `Delete project` 才真正删除。
 
 菜单是 `ContextMenu` 组件，用 `createPortal` 渲染到 `body`，按指针坐标定位并夹在视口内。点其它地方、按 `Esc`、滚动或改变窗口大小时关闭；关闭判定挂在 `pointerdown` 的捕获阶段，并且先判断事件目标是否在菜单内，否则菜单内的点击会在 `click` 之前就把菜单关掉。
 

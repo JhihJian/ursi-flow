@@ -24,6 +24,7 @@ function ProjectItem({
   const selectProject = useTodoStore((state) => state.selectProject)
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const startEditProject = useTodoStore((state) => state.startEditProject)
+  const startCreateProject = useTodoStore((state) => state.startCreateProject)
   const removeProject = useTodoStore((state) => state.removeProject)
   const { active: drag } = useDndContext()
   const dragging = readTaskDrag(drag?.data.current) !== null
@@ -42,6 +43,7 @@ function ProjectItem({
           .catch((error) => alert(errorMessage(error)))
       },
     },
+    { label: 'New project', onSelect: startCreateProject },
     { label: 'Edit project', onSelect: () => startEditProject(project.id) },
     {
       label: 'Delete project',
@@ -160,33 +162,29 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
   }
 
   return (
-    <aside className="sidebar">
-      <div className="action-bar">
+    <aside
+      className="sidebar"
+      onContextMenu={(event) => {
+        // 项目项自己处理右键；落在空白处时提示新建项目。
+        event.preventDefault()
+        showMenu(event.clientX, event.clientY, [
+          { label: 'New project', onSelect: startCreateProject },
+        ])
+      }}
+    >
+      <div className="sidebar-head">
         <h2 className="sidebar-title">Projects</h2>
-        <div className="sidebar-actions">
-          <button
-            type="button"
-            className="sidebar-collapse"
-            title="Collapse projects"
-            aria-label="Collapse projects"
-            onClick={onCollapse}
-          >
-            «
-          </button>
-          <button type="button" className="btn btn-sm" onClick={startCreateProject}>
-            + Project
-          </button>
-        </div>
+        <button
+          type="button"
+          className="sidebar-collapse"
+          title="Collapse projects"
+          aria-label="Collapse projects"
+          onClick={onCollapse}
+        >
+          «
+        </button>
       </div>
-      <ul
-        className="project-list"
-        onContextMenu={(event) => {
-          event.preventDefault()
-          showMenu(event.clientX, event.clientY, [
-            { label: 'New project', onSelect: startCreateProject },
-          ])
-        }}
-      >
+      <ul className="project-list">
         {projectsLoading ? <li className="project-item loading">Loading...</li> : null}
         {!projectsLoading && projectsError ? (
           <li className="project-item loading">Error loading projects</li>
