@@ -90,15 +90,16 @@ interface WorkspaceViewContribution {
 
 - 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
 - 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
-- 纵向分两层：外层 `Group` 竖排「顶部横栏 / 主区 / 底部横栏」，内层横排模块栏、工作区区域与操作栏。顶栏与底栏由宿主传入 `top`、`bottom`，各自可拖高、可折叠成 28px 摘要条，行高与列宽分开存两个 `useDefaultLayout`。
+- 纵向分三层：40px 标题栏（左侧 `title`、右侧设置入口）、主区、24px 状态栏（左侧选中摘要、右侧宿主 `status`）。标题栏与状态栏固定高度、不可拖拽，中间仍是横向的模块栏 / 工作区区域 / 操作栏。
+- 设置这类不占栏的页面用 `views` 注册成 `{ kind, summary, Component }`，选中后占用工作区区域，模块栏不受影响。
 - todo 模块：`apps/workspace/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
 
-第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务 / 活动」三栏还压在 520px 里，下一步才是把它拆成独立面板。`apps/workspace` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
+第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。`apps/workspace` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
 
 ## 现在就在 todo-web 里做的三步
 
-1. 把 `Workspace.tsx` 里的三栏改成数据驱动：模块内维护一份 `panels[]` 常量喂给外壳组件，外壳组件仍放在 `todo-web/web/src`，不发布成包。
-2. 把「当前选中任务」从 `detail` 里拆出来，进 `selection`（`{kind: 'todo.task', id}`），详情面板、活动栏、工作区都从 `selection` 读，去掉重复的真值。
+1. 把 `Workspace.tsx` 里的两栏改成数据驱动：模块内维护一份 `panels[]` 常量喂给外壳组件，外壳组件仍放在 `todo-web/web/src`，不发布成包。
+2. 把「当前选中任务」从 `detail` 里拆出来，进 `selection`（`{kind: 'todo.task', id}`），详情面板、工作区都从 `selection` 读，去掉重复的真值。
 3. 把复制 Markdown、折叠工作区、未来的「执行」写成 `actions[]`，右侧面板按 `appliesTo` 渲染。
 
 三条都做在同一份代码里，接口形状与将来抽包一致，届时是搬运而不是重写。

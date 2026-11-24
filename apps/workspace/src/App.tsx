@@ -1,35 +1,45 @@
-import { WorkspaceShell, type WorkspaceRegionProps } from '@ursi/workspace-shell'
+import { WorkspaceShell, useWorkspace, type WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from './modules/todo'
 
 const modules = [createTodoModule()]
 
-/** 顶部与底部的横栏先放占位，后续接全局工具条与执行输出。 */
-const top: WorkspaceRegionProps = {
-  title: 'Toolbar',
-  defaultSize: 96,
-  content: (
-    <p className="ws-hint">
-      全局工具条占位：后续放项目切换、批量操作、筛选等跨模块控件。
-    </p>
-  ),
+/** 设置页不占栏，注册成不占栏的视图，由标题栏按钮选中它。 */
+const SETTINGS = { kind: 'app.settings', id: 'settings' } as const
+
+function SettingsView() {
+  return (
+    <div className="app-settings">
+      <h2 className="app-settings-title">Settings</h2>
+      <p>全局设置占位：后续放服务地址、执行器修订、主题与快捷键。</p>
+    </div>
+  )
 }
 
-const bottom: WorkspaceRegionProps = {
-  title: 'Output',
-  defaultSize: 140,
-  content: (
-    <p className="ws-hint">
-      执行输出占位：后续放当前任务的运行日志、制品与事件流。
-    </p>
-  ),
+const views: WorkspaceView[] = [
+  {
+    kind: SETTINGS.kind,
+    summary: () => 'Settings',
+    Component: SettingsView,
+  },
+]
+
+function SettingsButton() {
+  const { select } = useWorkspace()
+  return (
+    <button type="button" className="ws-settings" onClick={() => select(SETTINGS)}>
+      Settings
+    </button>
+  )
 }
 
 export default function App() {
   return (
     <WorkspaceShell
       modules={modules}
-      top={top}
-      bottom={bottom}
+      views={views}
+      title="ursi workspace"
+      settings={<SettingsButton />}
+      status="todo · 8090"
       storageKey="ursi.workspace"
     />
   )

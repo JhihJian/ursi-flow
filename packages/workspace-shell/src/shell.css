@@ -7,105 +7,79 @@
   --ws-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
 }
 
-.ws-outer {
-  height: 100%;
-  min-height: 0;
-}
-
-.ws-main {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ws-region {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ws-region-body {
+.ws-shell {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.ws-region-head {
+.ws-titlebar {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
+  gap: 12px;
+  height: 40px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--ws-line);
 }
 
-.ws-region-title {
+.ws-title {
   font-family: var(--ws-serif);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--ws-muted);
-}
-
-.ws-region-head .ws-rail-toggle {
-  margin-left: auto;
-}
-
-.ws-region-content {
-  flex: 1;
-  min-height: 0;
-  padding: 8px 12px;
-  overflow: auto;
-  font-size: 12px;
-  color: var(--ws-dim);
-}
-
-.ws-region-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 8px;
-}
-
-.ws-region-bar-title {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ws-muted);
-  font-family: var(--ws-serif);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.ws-region-bar-title:hover {
   color: var(--ws-ink);
 }
 
-.ws-rule {
-  height: 6px;
-  flex: 0 0 6px;
-  position: relative;
-  background: transparent;
+.ws-titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
-.ws-rule::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
+.ws-settings {
+  padding: 3px 10px;
+  border: 1px solid var(--ws-ink);
+  background: #fff;
+  font-family: var(--ws-mono);
+  font-size: 11px;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+
+.ws-settings:hover {
   background: var(--ws-line);
 }
 
-.ws-rule:hover::before,
-.ws-rule[data-separator="hover"]::before,
-.ws-rule[data-separator="active"]::before {
-  background: var(--ws-ink);
+.ws-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-statusbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 12px;
+  border-top: 1px solid var(--ws-line);
+  font-size: 11px;
+  color: var(--ws-muted);
+}
+
+.ws-status-selection {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ws-status-extra {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .ws-root {

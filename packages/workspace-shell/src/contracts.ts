@@ -41,22 +41,24 @@ export interface WorkspaceAction {
   confirm?: string
 }
 
-/** 顶部或底部横栏。外壳只管摆位、拖高与折叠，内容由宿主给。 */
-export interface WorkspaceRegionProps {
-  title: string
-  content: ReactNode
-  defaultSize?: number
-  minSize?: number
-  /** 折叠后是否保留一条 28px 摘要条，默认保留。 */
-  collapsible?: boolean
+/** 不占栏的视图，例如全局设置页；按选中类型匹配。 */
+export interface WorkspaceView {
+  kind: string
+  summary: (selection: Selection) => string
+  Component: ComponentType<{ selection: Selection }>
 }
 
 export interface WorkspaceShellProps {
   modules: WorkspaceModule[]
-  /** 顶部横栏。 */
-  top?: WorkspaceRegionProps
-  /** 底部横栏。 */
-  bottom?: WorkspaceRegionProps
+  /** 标题栏文字。 */
+  title?: string
+  /** 标题栏右侧内容，通常放设置按钮；省略且提供 onSettings 时用默认按钮。 */
+  settings?: ReactNode
+  onSettings?: () => void
+  /** 状态栏右侧内容。 */
+  status?: ReactNode
+  /** 不占栏的视图，例如全局设置。 */
+  views?: WorkspaceView[]
   /** 布局与折叠状态的存储键。 */
   storageKey?: string
   /** 操作失败时的提示，缺省 console.error。 */
