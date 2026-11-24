@@ -22,6 +22,28 @@ export interface WorkspaceInfo {
   error?: string
 }
 
+/** 单条变更；index/worktree 为 porcelain v1 原始码，未涉及一侧为 ' '。 */
+export interface GitChangeDto {
+  /** 相对 workspace root 的 segments；rename 取新路径。 */
+  path: string[]
+  index: string
+  worktree: string
+  /** untracked 归并目录条目为 'dir'，其余为 'file'。 */
+  kind: 'dir' | 'file'
+}
+
+export interface GitStatusDto {
+  isRepo: boolean
+  /** 仓库根（toplevel）；非仓库为 null。 */
+  root: string | null
+  /** 当前分支；detached HEAD 为 null；无提交仓库给出分支名。 */
+  branch: string | null
+  upstream?: string
+  changes: GitChangeDto[]
+  additions: number
+  deletions: number
+}
+
 export interface EntryDto {
   name: string
   type: 'dir' | 'file'
@@ -44,6 +66,7 @@ export interface ApiError {
     | 'conflict'
     | 'too_large'
     | 'binary'
+    | 'git_unavailable'
     | 'io'
   message: string
 }

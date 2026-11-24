@@ -1,10 +1,14 @@
 import http from 'node:http'
 import { promises as fs } from 'node:fs'
 import { createLocalProvider, loadWorkspaceConfig, ProviderError } from './local-provider.ts'
-import type { ApiError, WorkspaceConfig, WorkspaceInfo } from './types.ts'
+import { gitStatusOf } from './git-provider.ts'
+import type { ApiError, GitStatusDto, WorkspaceConfig, WorkspaceInfo } from './types.ts'
 
 const provider = createLocalProvider()
 const workspaces = new Map<string, WorkspaceConfig & { ready?: boolean; error?: string }>()
+
+// git-status 是 provider 的可选能力：当前 local 实现了它，SSH 不承诺。未实现时路由返回 501。
+const gitStatusProvider = provider as { gitStatus?: (workspace: WorkspaceConfig) => Promise<GitStatusDto> }
 
 /** 启动时对每个 root 做 realpath 探活；不阻塞启动，未就绪的 workspace 保留错误信息。 */
 async function loadWorkspacesFrom(configs: WorkspaceConfig[]): Promise<void> {
@@ -139,6 +143,13 @@ async function handle(
     }
     case 'stat': {
       send(res, 200, await provider.stat(workspace, segments))
+      return
+    }
+    case 'git-status': {
+      if (typeof provider.gitStatus !== 'function') {
+        throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 状态')
+      }
+      send(res, 200, await gitStatusProvider.gitStatus!(workspace))
       return
     }
     case 'mkdir': {

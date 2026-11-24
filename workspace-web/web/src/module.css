@@ -113,6 +113,57 @@
   padding: 1px 4px;
 }
 
+/* ---- git 摘要条与状态徽标 ---- */
+
+.wsx-git-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--ws-line, #e5e5e5);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wsx-git-bar:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.wsx-git-bar--error {
+  color: #a00;
+}
+
+.wsx-git-branch {
+  font-weight: 600;
+}
+
+.wsx-git-upstream {
+  color: var(--ws-muted, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wsx-git-count {
+  margin-left: auto;
+  color: var(--ws-muted, #999);
+}
+
+.wsx-git-badge {
+  flex: none;
+  min-width: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  color: var(--ws-muted, #999);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
 /* ---- 文件视图（外壳工作区区域） ---- */
 
 .wsx-view {

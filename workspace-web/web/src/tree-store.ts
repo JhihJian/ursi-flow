@@ -109,6 +109,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     const rootKey = makeKey(id, [])
     set({ activeWorkspaceId: id, dirs: {}, openDirs: [{ key: rootKey, depth: 0 }], selectedDirKey: null })
     void get().reloadDir(rootKey)
+    void useGitRefreshOf().refresh(get().api, id)
   },
 
   reloadDir: async (key) => {
@@ -150,6 +151,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   refreshAll: async () => {
     for (const dir of get().openDirs) await get().reloadDir(dir.key)
+    const id = get().activeWorkspaceId
+    if (id) void useGitRefreshOf().refresh(get().api, id)
   },
 
   selectDir: (key) => set({ selectedDirKey: key }),
@@ -159,6 +162,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const { workspaceId, path } = keySegments(parentKey)
       await get().api.mkdir(workspaceId, [...path, name])
       await get().reloadDir(parentKey)
+      void useGitRefreshOf().refresh(get().api, workspaceId)
     } catch (error) {
       set({ lastError: messageOf(error) })
     }
@@ -188,6 +192,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         selectedDirKey: current.selectedDirKey ? remap(current.selectedDirKey) : null,
       }))
       await get().reloadDir(parent.parentKey)
+      void useGitRefreshOf().refresh(get().api, workspaceId)
     } catch (error) {
       set({ lastError: messageOf(error) })
     }
@@ -200,6 +205,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const { workspaceId, path } = keySegments(key)
       await get().api.delete(workspaceId, path)
       await get().reloadDir(parent.parentKey)
+      void useGitRefreshOf().refresh(get().api, workspaceId)
     } catch (error) {
       set({ lastError: messageOf(error) })
     }
@@ -224,6 +230,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 }))
 
+export { useGitRefreshOf }
+
 // 避免 tree-store 直接依赖 editor-store 造成环：用注入回调。
 let editorApiInjector: ((api: WorkspaceApi) => void) | null = null
 export function registerEditorApiInjector(fn: (api: WorkspaceApi) => void): void {
@@ -231,4 +239,18 @@ export function registerEditorApiInjector(fn: (api: WorkspaceApi) => void): void
 }
 function injectEditorApiOf(api: WorkspaceApi): void {
   editorApiInjector?.(api)
+}
+
+// 同理，git-store 的 refresh 由模块层注入，避免模块依赖环。
+interface GitRefreshLike {
+  refresh: (api: WorkspaceApi, workspaceId: string) => Promise<void>
+  reset: () => void
+}
+let gitRefresh: GitRefreshLike | null = null
+export function registerGitRefresh(fn: GitRefreshLike): void {
+  gitRefresh = fn
+}
+function useGitRefreshOf(): GitRefreshLike {
+  if (!gitRefresh) throw new Error('git refresh 未注入')
+  return gitRefresh
 }

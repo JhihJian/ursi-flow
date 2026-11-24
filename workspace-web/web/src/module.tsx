@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { WorkspaceApi, keyName, keyToParent } from './api.ts'
 import { injectEditorApi, useEditorStore } from './editor-store.ts'
-import { registerEditorApiInjector, useTreeStore } from './tree-store.ts'
+import { registerEditorApiInjector, useTreeStore, registerGitRefresh, useGitRefreshOf } from './tree-store.ts'
+import { useGitStore } from './git-store.ts'
+import { GitBar } from './git-bar.tsx'
+import { registerGitSaveListener } from './editor-store.ts'
 import { FileTree } from './tree.tsx'
 import { DirActions } from './dir-actions.tsx'
 import { FileView } from './file-view.tsx'
@@ -9,6 +12,10 @@ import { useWorkspace } from '@ursi/workspace-shell'
 import type { Selection, WorkspaceModule } from '@ursi/workspace-shell'
 
 registerEditorApiInjector(injectEditorApi)
+registerGitRefresh(useGitStore.getState())
+registerGitSaveListener((workspaceId) => {
+  void useGitStore.getState().refresh(useTreeStore.getState().api, workspaceId)
+})
 
 interface ConfirmState {
   message: string
@@ -64,6 +71,11 @@ export function createWorkspaceModule(options: WorkspaceWebModuleOptions = {}): 
       void loadWorkspaces()
     }, [setApi, loadWorkspaces])
 
+    // 切换 workspace 时清空 git 快照；selectWorkspace 内部会立即发起 refresh。
+    useEffect(() => {
+      if (activeWorkspaceId) useGitStore.getState().reset()
+    }, [activeWorkspaceId])
+
     const openFile = (key: string): void => {
       void useEditorStore.getState().openFile(api, key)
       select({ kind: 'workspace.file', id: key, label: keyName(key) })
@@ -91,6 +103,7 @@ export function createWorkspaceModule(options: WorkspaceWebModuleOptions = {}): 
             {lastError}（点击关闭）
           </button>
         ) : null}
+        <GitBar />
         <FileTree
           onOpenFile={openFile}
           confirm={confirm}

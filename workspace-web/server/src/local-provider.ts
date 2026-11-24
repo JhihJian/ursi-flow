@@ -1,10 +1,12 @@
 import { promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { EntryDto, WorkspaceConfig } from './types.ts'
+import { gitStatusOf } from './git-provider.ts'
 
 /**
  * 统一目录抽象。第一版只实现 local；SSH（无 watch 能力）与虚拟目录后续接入。
  * 所有路径参数都是相对 root 的 segments，安全检查在这里统一做。
+ * 可选能力用可选方法声明（如 gitStatus?），调用前按 typeof === 'function' 判断。
  */
 export interface WorkspaceProvider {
   list(workspace: WorkspaceConfig, segments: string[]): Promise<EntryDto[]>
@@ -22,6 +24,8 @@ export interface WorkspaceProvider {
   mkdir(workspace: WorkspaceConfig, segments: string[]): Promise<EntryDto>
   rename(workspace: WorkspaceConfig, segments: string[], newName: string): Promise<EntryDto>
   delete(workspace: WorkspaceConfig, segments: string[]): Promise<void>
+  /** 只读 git 状态快照；仅 local 实现。 */
+  gitStatus?(workspace: WorkspaceConfig): Promise<import('./types.ts').GitStatusDto>
 }
 
 /** provider 层错误：code 进 ApiError，层上不碰 HTTP。 */
@@ -130,7 +134,7 @@ function entryFromStats(name: string, stats: { isDirectory(): boolean; size: num
 }
 
 export function createLocalProvider(): WorkspaceProvider {
-  return {
+  const provider = {
     async list(workspace, segments) {
       assertValidSegments(segments)
       const absolute = await resolveInsideRoot(workspace.root, segments)
@@ -244,7 +248,13 @@ export function createLocalProvider(): WorkspaceProvider {
         await fs.unlink(absolute).catch((error) => mapFsError(error, segments))
       }
     },
+
+    // 可选能力：git 只读状态快照（阶段 1.5）。SSH provider 不承诺此能力。
+    async gitStatus(workspace) {
+      return gitStatusOf(workspace)
+    },
   }
+  return provider
 }
 
 /** 配置加载：内置默认清单 + WORKSPACE_WEB_CONFIG JSON 覆盖。 */

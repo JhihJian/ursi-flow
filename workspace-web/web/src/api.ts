@@ -1,6 +1,7 @@
-import type { ApiError, EntryDto, WorkspaceInfo } from '../../server/src/types.ts'
+import type { ApiError, EntryDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
 
-export type { ApiError, EntryDto, WorkspaceInfo }
+export type { ApiError, EntryDto, GitStatusDto, WorkspaceInfo }
+export type { GitChangeDto } from '../../server/src/types.ts'
 
 /** 统一错误：code 与服务端 ApiError 对齐，组件按 code 分支。 */
 export class ApiClientError extends Error {
@@ -77,6 +78,10 @@ export class WorkspaceApi {
 
   delete(workspaceId: string, path: string[]): Promise<{ ok: true }> {
     return this.post('delete', { workspaceId, path })
+  }
+
+  gitStatus(workspaceId: string): Promise<GitStatusDto> {
+    return this.post('git-status', { workspaceId })
   }
 }
 

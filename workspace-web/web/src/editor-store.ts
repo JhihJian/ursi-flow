@@ -90,6 +90,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           [key]: { ...current.editors[key]!, draft: entry.draft, mtime: result.mtime, dirty: false, conflict: undefined },
         },
       }))
+      saveListener?.(workspaceId)
     } catch (error) {
       if (error instanceof ApiClientError && error.code === 'conflict') {
         set((current) => ({
@@ -135,4 +136,10 @@ export function injectEditorApi(api: WorkspaceApi): void {
 function getApiOf(): WorkspaceApi {
   if (!injectedApi) throw new Error('editor api 未注入')
   return injectedApi
+}
+
+// 保存成功后通知 git-store 刷新快照；由模块层注入避免依赖环。
+let saveListener: ((workspaceId: string) => void) | null = null
+export function registerGitSaveListener(fn: (workspaceId: string) => void): void {
+  saveListener = fn
 }

@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { keyName } from './api.ts'
+import { keyName, keySegments } from './api.ts'
 import { flattenOpen, useTreeStore } from './tree-store.ts'
+import { badgeMapOf, useGitStore } from './git-store.ts'
 import type { TreeRowData } from './tree-store.ts'
 
 interface TreeProps {
@@ -21,9 +22,15 @@ export function FileTree({ onOpenFile, confirm, onFileDeleted }: TreeProps) {
   const selectDir = useTreeStore((state) => state.selectDir)
   const renameEntry = useTreeStore((state) => state.renameEntry)
   const removeEntry = useTreeStore((state) => state.removeEntry)
+  const workspaceId = useTreeStore((state) => state.activeWorkspaceId)
   const [editingKey, setEditingKey] = useState<string | null>(null)
 
   const rows = useMemo(() => flattenOpen(openDirs, dirs), [openDirs, dirs])
+  const snapshot = useGitStore((state) => state.snapshot)
+  const badges = useMemo(
+    () => (snapshot && workspaceId ? badgeMapOf(snapshot.changes) : null),
+    [snapshot, workspaceId],
+  )
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -84,6 +91,7 @@ export function FileTree({ onOpenFile, confirm, onFileDeleted }: TreeProps) {
                   <span className={'wsx-tree-name' + (row.kind === 'dir' ? '' : ' wsx-tree-name--file')}>
                     {keyName(row.key)}
                   </span>
+                  {badges ? <GitBadge badge={badges.get(rowRelPathOf(workspaceId!, row.key)) ?? null} /> : null}
                   {row.kind === 'dir' && dirs[row.key]?.status === 'loading' ? (
                     <span className="wsx-tree-loading">…</span>
                   ) : null}
@@ -120,5 +128,20 @@ function RowRenameInput({ initial, onDone }: { initial: string; onDone: (name: s
         if (event.key === 'Escape') onDone(initial)
       }}
     />
+  )
+}
+
+/** FileKey → 相对 workspace 的正斜杠路径，与 git 变更列表对齐。 */
+function rowRelPathOf(workspaceId: string, key: string): string {
+  return keySegments(key).path.join('/')
+}
+
+/** 状态徽标：目录显示聚合数，文件显示状态字母。 */
+function GitBadge({ badge }: { badge: { code: string; count?: number } | null }) {
+  if (!badge) return null
+  return (
+    <span className="wsx-git-badge" title={`git: ${badge.code}`}>
+      {badge.count !== undefined ? badge.count : badge.code}
+    </span>
   )
 }
