@@ -153,6 +153,97 @@ button {
   overflow: hidden;
 }
 
+/* 折叠任务列表后，内容栏变成「窄条 + 工作台」左右两段 */
+.panel-content.is-workspace {
+  flex-direction: row;
+  padding: var(--space-sm) var(--space-lg) var(--space-lg) 0;
+  gap: var(--space-lg);
+}
+
+.content-rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 32px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tasks-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.content-collapse {
+  flex: none;
+}
+
+.content-rail-summary {
+  display: flex;
+  flex: 0 0 auto;
+  margin-top: auto;
+  margin-bottom: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  writing-mode: vertical-lr;
+  text-align: start;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.content-rail-name {
+  font-family: var(--font-serif);
+  color: var(--gray-900);
+}
+
+.content-rail-meta {
+  color: var(--gray-400);
+}
+
+.content-rail-summary:hover .content-rail-name {
+  color: var(--black);
+}
+
+.content-rail-summary:hover .content-rail-meta {
+  color: var(--gray-600);
+}
+
+.workspace-panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px dashed var(--gray-400);
+  overflow: hidden;
+}
+
+.workspace-placeholder {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  color: var(--gray-400);
+}
+
+.workspace-placeholder-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.workspace-placeholder-text {
+  font-size: 12px;
+}
+
 .panel-content .tasks-section {
   flex: 1;
   min-height: 0;
