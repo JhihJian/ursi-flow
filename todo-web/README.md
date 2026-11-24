@@ -16,7 +16,7 @@ cd server
 cargo run
 ```
 
-另开终端启动 Web（`/api` 代理到 `http://127.0.0.1:8090`）：
+另开终端启动 Web（`/api` 代理到 `http://127.0.0.1:8090`；需要其他后端时设 `TODO_WEB_API`）：
 
 ```sh
 cd web
@@ -24,7 +24,7 @@ npm ci
 npm run dev
 ```
 
-打开 http://localhost:5181 。
+打开 http://localhost:5182 。
 
 ## 构建与运行
 

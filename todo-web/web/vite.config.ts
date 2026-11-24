@@ -11,13 +11,13 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5181,
+    port: 5182,
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
   },
   preview: {
     host: '0.0.0.0',
-    port: 4181,
+    port: 4183,
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
   },
