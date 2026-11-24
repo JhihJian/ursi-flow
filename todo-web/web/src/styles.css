@@ -490,9 +490,27 @@ button {
   padding: 2px var(--space-sm);
   border: 1px solid var(--gray-200);
   background: var(--white);
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--gray-600);
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.status-target:hover {
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.status-target.is-active {
+  border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.status-target.is-active .status-symbol,
+.status-target.is-active .status-count {
+  color: var(--white);
 }
 
 .status-target .status-symbol,

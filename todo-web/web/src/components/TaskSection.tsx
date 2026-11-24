@@ -10,22 +10,40 @@ type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => v
 
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
 
-function StatusTarget({ status, count }: { status: TaskStatus; count: number }) {
+function StatusTarget({
+  status,
+  count,
+  filtered,
+}: {
+  status: TaskStatus
+  count: number
+  filtered: boolean
+}) {
   const { active } = useDndContext()
+  const toggleStatusFilter = useTodoStore((state) => state.toggleStatusFilter)
   const dragging = readTaskDrag(active?.data.current) !== null
   const { setNodeRef, isOver } = useDroppable({
     id: `status-${status}`,
     data: { type: 'status', status },
   })
   return (
-    <div
+    <button
       ref={setNodeRef}
-      className={cx('status-target', dragging && 'drop-ready', isOver && 'is-over')}
+      type="button"
+      className={cx(
+        'status-target',
+        filtered && 'is-active',
+        dragging && 'drop-ready',
+        isOver && 'is-over',
+      )}
+      aria-pressed={filtered}
+      title={filtered ? `Show all tasks` : `Show only ${status} tasks`}
+      onClick={() => toggleStatusFilter(status)}
     >
       <span className="status-symbol">{statusSymbol(status)}</span>
       <span className="status-name">{STATUS_LABELS[status]}</span>
       <span className="status-count">{count}</span>
-    </div>
+    </button>
   )
 }
 
@@ -147,6 +165,7 @@ export function TaskSection() {
   const tasks = useTodoStore((state) => state.tasks)
   const tasksLoading = useTodoStore((state) => state.tasksLoading)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
+  const statusFilter = useTodoStore((state) => state.statusFilter)
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -156,6 +175,7 @@ export function TaskSection() {
     result[status] = tasks.filter((task) => task.status === status).length
     return result
   }, {} as Record<TaskStatus, number>)
+  const visibleTasks = statusFilter ? tasks.filter((task) => task.status === statusFilter) : tasks
 
   return (
     <section
@@ -173,7 +193,12 @@ export function TaskSection() {
         <div className="tasks-header">
           <div className="status-targets">
             {statuses.map((status) => (
-              <StatusTarget key={status} status={status} count={counts[status] ?? 0} />
+              <StatusTarget
+                key={status}
+                status={status}
+                count={counts[status] ?? 0}
+                filtered={statusFilter === status}
+              />
             ))}
           </div>
         </div>
@@ -197,15 +222,19 @@ export function TaskSection() {
               </td>
             </tr>
           ) : null}
-          {!tasksLoading && tasks.length === 0 ? (
+          {!tasksLoading && visibleTasks.length === 0 ? (
             <tr>
               <td colSpan={6} className="empty-state">
-                {selectedProjectId ? 'No tasks' : 'Select a project'}
+                {!selectedProjectId
+                  ? 'Select a project'
+                  : statusFilter
+                    ? `No ${statusFilter} tasks`
+                    : 'No tasks'}
               </td>
             </tr>
           ) : null}
           {!tasksLoading
-            ? tasks.map((task) => <TaskRow key={task.id} task={task} openMenu={openMenu} />)
+            ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} openMenu={openMenu} />)
             : null}
         </tbody>
       </table>

@@ -29,6 +29,7 @@ export interface TodoState {
   stats: Record<StatsPeriod, Stats | null>
   selectedProjectId: string | null
   period: Period
+  statusFilter: TaskStatus | null
   projectsLoading: boolean
   projectsError: boolean
   tasksLoading: boolean
@@ -39,6 +40,7 @@ export interface TodoState {
   bootstrap: () => Promise<void>
   selectProject: (id: string) => Promise<void>
   selectPeriod: (period: Period) => Promise<void>
+  toggleStatusFilter: (status: TaskStatus) => void
   refreshProjects: () => Promise<void>
   refreshTasks: (clear?: boolean) => Promise<void>
   refreshStats: () => Promise<void>
@@ -49,7 +51,7 @@ export interface TodoState {
   closeDetail: () => void
   saveTask: (draft: TaskDraft) => Promise<void>
   removeTask: (id: string) => Promise<void>
-  moveTask: (task: Task, target: MoveTarget) => Promise<void>
+  moveTask: (task: Task, target: MoveTarget, blockedReason?: string) => Promise<void>
   startCreateProject: () => void
   startEditProject: (id: string) => void
   cancelProjectForm: () => void
@@ -66,6 +68,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   stats: { daily: null, weekly: null, monthly: null },
   selectedProjectId: null,
   period: 'daily',
+  statusFilter: null,
   projectsLoading: true,
   projectsError: false,
   tasksLoading: false,
@@ -97,6 +100,10 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     if (get().period === period) return
     set({ period })
     await get().refreshTasks()
+  },
+
+  toggleStatusFilter: (status) => {
+    set({ statusFilter: get().statusFilter === status ? null : status })
   },
 
   refreshProjects: async () => {
@@ -202,10 +209,14 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     await get().refreshAll()
   },
 
-  moveTask: async (task, target) => {
+  moveTask: async (task, target, blockedReason) => {
     if ('status' in target) {
       if (task.status === target.status) return
-      await api.updateTask(task.id, { status: target.status })
+      // 阻塞必须带原因，规则来自 todo-core 状态机。
+      await api.updateTask(task.id, {
+        status: target.status,
+        ...(target.status === 'blocked' ? { blocked_reason: blockedReason ?? '' } : {}),
+      })
     } else {
       if (task.project_id === target.projectId) return
       await api.updateTask(task.id, { project_id: target.projectId })

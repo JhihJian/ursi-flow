@@ -79,6 +79,7 @@ function resetStore() {
     activeLoading: true,
     detail: null,
     projectEditing: null,
+    statusFilter: null,
   })
 }
 
@@ -131,6 +132,15 @@ describe('task actions', () => {
     expect(mocked.updateTask).not.toHaveBeenCalled()
   })
 
+  it('sends a blocked reason when moving to blocked', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    await useTodoStore.getState().moveTask(task, { status: 'blocked' }, 'waiting on API')
+    expect(mocked.updateTask).toHaveBeenCalledWith('t1', {
+      status: 'blocked',
+      blocked_reason: 'waiting on API',
+    })
+  })
+
   it('moves a task to another project', async () => {
     mocked.updateTask.mockResolvedValue({ success: true })
     await useTodoStore.getState().moveTask(task, { projectId: 'p2' })
@@ -166,6 +176,18 @@ describe('task actions', () => {
     await useTodoStore.getState().removeTask('t1')
 
     expect(useTodoStore.getState().detail).toBeNull()
+  })
+})
+
+describe('status filter', () => {
+  it('toggles the filter and clears it when the same status is picked twice', () => {
+    expect(useTodoStore.getState().statusFilter).toBeNull()
+    useTodoStore.getState().toggleStatusFilter('blocked')
+    expect(useTodoStore.getState().statusFilter).toBe('blocked')
+    useTodoStore.getState().toggleStatusFilter('done')
+    expect(useTodoStore.getState().statusFilter).toBe('done')
+    useTodoStore.getState().toggleStatusFilter('done')
+    expect(useTodoStore.getState().statusFilter).toBeNull()
   })
 })
 

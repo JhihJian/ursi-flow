@@ -62,9 +62,20 @@ export default function App() {
     const drop = readDropData(event.over?.data.current)
     if (!source || !drop) return
 
+    let blockedReason: string | undefined
+    if (drop.type === 'status' && drop.status === 'blocked') {
+      const reason = window.prompt(`Why is "${source.task.title}" blocked?`)
+      if (reason === null) return
+      if (!reason.trim()) {
+        alert('A blocked task needs a reason')
+        return
+      }
+      blockedReason = reason.trim()
+    }
+
     const action =
       drop.type === 'status'
-        ? moveTask(source.task, { status: drop.status })
+        ? moveTask(source.task, { status: drop.status }, blockedReason)
         : moveTask(source.task, { projectId: drop.projectId })
     void action.catch((error) => alert(`Failed to update task: ${errorMessage(error)}`))
   }
