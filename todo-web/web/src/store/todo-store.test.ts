@@ -160,7 +160,7 @@ describe('task actions', () => {
   })
 
   it('closes the detail panel when the selected task is deleted', async () => {
-    useTodoStore.setState({ detail: { mode: 'view', task, confirmDelete: false } })
+    useTodoStore.setState({ detail: { mode: 'view', task } })
     mocked.deleteTask.mockResolvedValue({ success: true })
 
     await useTodoStore.getState().removeTask('t1')

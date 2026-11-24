@@ -39,7 +39,6 @@ function TaskRow({
   const openTask = useTodoStore((state) => state.openTask)
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const removeTask = useTodoStore((state) => state.removeTask)
-  const setDetailConfirmDelete = useTodoStore((state) => state.setDetailConfirmDelete)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { type: 'task', task },
@@ -140,21 +139,6 @@ function TaskRow({
       </td>
       <td className="col-status">{task.status}</td>
       <td className="col-time">{formatTaskTime(task)}</td>
-      <td className="col-actions">
-        <div className="task-actions">
-          <button
-            type="button"
-            className="icon-btn delete-btn"
-            onClick={(event) => {
-              event.stopPropagation()
-              openTask(task)
-              setDetailConfirmDelete(true)
-            }}
-          >
-            del
-          </button>
-        </div>
-      </td>
     </tr>
   )
 }
@@ -203,20 +187,19 @@ export function TaskSection() {
             <th className="col-tags">Tags</th>
             <th className="col-status">Status</th>
             <th className="col-time">Time</th>
-            <th className="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
           {tasksLoading ? (
             <tr>
-              <td colSpan={7} className="empty-state">
+              <td colSpan={6} className="empty-state">
                 Loading...
               </td>
             </tr>
           ) : null}
           {!tasksLoading && tasks.length === 0 ? (
             <tr>
-              <td colSpan={7} className="empty-state">
+              <td colSpan={6} className="empty-state">
                 {selectedProjectId ? 'No tasks' : 'Select a project'}
               </td>
             </tr>

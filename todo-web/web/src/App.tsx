@@ -39,9 +39,7 @@ export default function App() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       const state = useTodoStore.getState()
-      if (state.detail?.mode === 'view' && state.detail.confirmDelete) {
-        state.setDetailConfirmDelete(false)
-      } else if (state.projectEditing) {
+      if (state.projectEditing) {
         state.cancelProjectForm()
       } else if (state.detail) {
         state.closeDetail()

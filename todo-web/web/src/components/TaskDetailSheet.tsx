@@ -28,9 +28,7 @@ function clampHeight(value: number, panelHeight: number): number {
 function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const task = detail.mode === 'view' ? detail.task : null
   const saveTask = useTodoStore((state) => state.saveTask)
-  const removeTask = useTodoStore((state) => state.removeTask)
   const closeDetail = useTodoStore((state) => state.closeDetail)
-  const setDetailConfirmDelete = useTodoStore((state) => state.setDetailConfirmDelete)
 
   const [title, setTitle] = useState(task?.title ?? '')
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'medium')
@@ -43,7 +41,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const heightRef = useRef(height)
 
-  const confirmDelete = detail.confirmDelete
   const missingResult = status === 'done' && !note.trim()
 
   const applyHeight = useCallback((next: number) => {
@@ -156,17 +153,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
             onChange={(event) => setTitle(event.target.value)}
             autoFocus={detail.mode === 'new'}
           />
-          <div className="detail-tools">
-            <button
-              type="button"
-              className="detail-tool"
-              title="Close"
-              aria-label="Close task details"
-              onClick={closeDetail}
-            >
-              ×
-            </button>
-          </div>
         </div>
 
         <div className="detail-meta">
@@ -221,44 +207,14 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         <div className="detail-modes">
           {missingResult ? <span className="detail-hint">Result required to finish</span> : null}
         </div>
-        {confirmDelete && task ? (
-          <div className="detail-delete-confirm">
-            <span className="confirm-text">Delete task?</span>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => setDetailConfirmDelete(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-danger"
-              onClick={() => {
-                void removeTask(task.id).catch((error) =>
-                  alert(`Failed to delete task: ${errorMessage(error)}`),
-                )
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        ) : (
-          <div className="detail-actions">
-            {task ? (
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => setDetailConfirmDelete(true)}
-              >
-                Delete
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-primary" onClick={save}>
-              Save
-            </button>
-          </div>
-        )}
+        <div className="detail-actions">
+          <button type="button" className="btn" onClick={closeDetail}>
+            Close
+          </button>
+          <button type="button" className="btn btn-primary" onClick={save}>
+            Save
+          </button>
+        </div>
       </footer>
     </section>
   )

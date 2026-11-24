@@ -12,8 +12,8 @@ import type {
 } from '@/api/types'
 
 export type DetailState =
-  | { mode: 'view'; task: Task; confirmDelete: boolean }
-  | { mode: 'new'; confirmDelete: false }
+  | { mode: 'view'; task: Task }
+  | { mode: 'new' }
 
 export interface ProjectEditing {
   /** null 表示新建项目。 */
@@ -47,7 +47,6 @@ export interface TodoState {
   openTask: (task: Task) => void
   openNewTask: () => void
   closeDetail: () => void
-  setDetailConfirmDelete: (confirm: boolean) => void
   saveTask: (draft: TaskDraft) => Promise<void>
   removeTask: (id: string) => Promise<void>
   moveTask: (task: Task, target: MoveTarget) => Promise<void>
@@ -165,21 +164,15 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     ])
   },
 
-  openTask: (task) => set({ detail: { mode: 'view', task, confirmDelete: false } }),
+  openTask: (task) => set({ detail: { mode: 'view', task } }),
 
   openNewTask: () =>
     set({
-      detail: { mode: 'new', confirmDelete: false },
+      detail: { mode: 'new' },
       projectEditing: null,
     }),
 
   closeDetail: () => set({ detail: null }),
-
-  setDetailConfirmDelete: (confirm) => {
-    const detail = get().detail
-    if (!detail || detail.mode !== 'view') return
-    set({ detail: { ...detail, confirmDelete: confirm } })
-  },
 
   saveTask: async (draft) => {
     if (draft.id) {
