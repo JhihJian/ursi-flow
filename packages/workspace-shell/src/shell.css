@@ -176,7 +176,6 @@
   flex: none;
   min-width: 19px;
   height: 19px;
-  margin-left: auto;
   padding: 0 4px;
   border: 0;
   background: none;
@@ -191,11 +190,15 @@
   color: var(--ws-ink);
 }
 
-.ws-rail .ws-rail-toggle {
-  margin-left: 0;
+.ws-panel-head .ws-rail-toggle,
+.ws-region-head .ws-rail-toggle {
+  margin-left: auto;
 }
 
 .ws-rail-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin: auto 0;
   padding: 0;
   border: 0;
@@ -207,11 +210,36 @@
   white-space: nowrap;
   font-size: 12px;
   letter-spacing: 0.5px;
+}
+
+.ws-rail-title {
+  font-family: var(--ws-serif);
   color: var(--ws-ink);
 }
 
-.ws-rail-summary:hover {
+.ws-rail-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.ws-rail-label {
+  font-size: 10px;
+  color: var(--ws-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ws-rail-value {
+  color: var(--ws-dim);
+}
+
+.ws-rail-summary:hover .ws-rail-title {
   color: #000;
+}
+
+.ws-rail-summary:hover .ws-rail-value {
+  color: var(--ws-ink);
 }
 
 .ws-separator {

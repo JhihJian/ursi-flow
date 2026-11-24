@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import type {
-  RailProps,
+  CollapsedSummary,
   Selection,
   WorkspaceAction,
   WorkspaceModule,
@@ -14,20 +14,45 @@ import './shell.css'
 const DEFAULT_COLLAPSED_SIZE = 32
 const ACTIONS_SIZE = 260
 
-function DefaultRail({ onExpand, title }: RailProps) {
+/** 折叠态窄条：外壳按模块公布的关键信息排版，模块不参与渲染。 */
+function ModuleRail({
+  module,
+  onExpand,
+}: {
+  module: WorkspaceModule
+  onExpand: () => void
+}) {
+  const useSummary = module.useCollapsedSummary
+  const summary: CollapsedSummary = useSummary
+    ? useSummary()
+    : { title: module.title, items: [] }
+  const text = [summary.title, ...summary.items.map((item) => `${item.label}: ${item.value}`)].join(' · ')
+
   return (
     <div className="ws-rail">
       <button
         type="button"
         className="ws-rail-toggle"
-        title={`展开 ${title}`}
-        aria-label={`展开 ${title}`}
+        title={`展开 ${module.title}`}
+        aria-label={`展开 ${module.title}`}
         onClick={onExpand}
       >
         »
       </button>
-      <button type="button" className="ws-rail-summary" onClick={onExpand} title={title}>
-        <span className="ws-rail-name">{title}</span>
+      <button
+        type="button"
+        className="ws-rail-summary"
+        onClick={onExpand}
+        title={text}
+        aria-label={`${text}。展开 ${module.title}`}
+      >
+        <span className="ws-rail-title">{summary.title}</span>
+        {summary.items.map((item) => (
+          <span key={item.label} className="ws-rail-item">
+            <span className="ws-rail-label">{item.label}</span>
+            <span className="ws-rail-value">{item.value}</span>
+          </span>
+        ))}
       </button>
     </div>
   )
@@ -38,7 +63,6 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(module.defaultSize ?? 360)
   const [lastWidth, setLastWidth] = useState(module.defaultSize ?? 360)
-  const Rail = module.Rail ?? DefaultRail
   const Body = module.Panel
   const collapsedSize = module.collapsedSize ?? DEFAULT_COLLAPSED_SIZE
 
@@ -71,7 +95,7 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
     >
       <ModuleColumnProvider value={{ width, collapsed, resize, collapse, expand }}>
         {collapsed ? (
-          <Rail onExpand={expand} title={module.title} />
+          <ModuleRail module={module} onExpand={expand} />
         ) : module.hideHeader ? (
           <div className="ws-panel-body">
             <div className="ws-panel-content">

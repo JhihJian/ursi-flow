@@ -7,9 +7,10 @@ export interface Selection {
   label?: string
 }
 
-export interface RailProps {
-  onExpand: () => void
+/** 折叠态由模块公布的关键信息，外壳负责排版，模块不写折叠 UI。 */
+export interface CollapsedSummary {
   title: string
+  items: Array<{ label: string; value: string }>
 }
 
 /** 一栏模块。外壳只负责布局、折叠与选中，内容与数据归模块自己。 */
@@ -18,8 +19,8 @@ export interface WorkspaceModule {
   title: string
   /** 展开态内容，自带数据获取。 */
   Panel: ComponentType
-  /** 折叠态窄条，缺省用竖排标题。 */
-  Rail?: ComponentType<RailProps>
+  /** 折叠态要展示的关键信息；缺省只显示模块标题。 */
+  useCollapsedSummary?: () => CollapsedSummary
   defaultSize?: number
   minSize?: number
   /** 折叠后的宽度，缺省 32px；模块用自己的内部最小宽度时按需覆盖。 */

@@ -29,7 +29,7 @@ cd todo-web/server && cargo run          # 或已有实例
 
 外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。模块自带标题或工具条时可声明 `hideHeader: true`，外壳不再画标题行，折叠按钮移到分隔线中点。
 
-折叠成什么样子由模块决定：声明 `collapsedSize` 与 `Rail`，外壳在折叠时只渲染这个 `Rail`（todo 用的是书脊式任务摘要）。模块内部需要更多宽度时用 `useModuleColumn().resize(px)` 自行请求，外壳不感知模块内部层级。
+折叠由外壳负责，模块只公布折叠时要展示的关键信息：实现 `useCollapsedSummary()` 返回 `{ title, items: [{ label, value }] }`，外壳负责排版（todo 公布当前任务标题、`status`、`project`，未选中时公布任务数）。模块内部需要更多宽度时用 `useModuleColumn().resize(px)` 自行请求，外壳不感知模块内部层级。
 
 ## 标题栏与状态栏
 

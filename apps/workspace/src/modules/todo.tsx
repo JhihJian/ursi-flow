@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import type { RailProps, WorkspaceModule, Selection } from '@ursi/workspace-shell'
-import { useModuleColumn, useWorkspace } from '@ursi/workspace-shell'
+import type { CollapsedSummary, Selection, WorkspaceModule } from '@ursi/workspace-shell'
+import { useWorkspace } from '@ursi/workspace-shell'
 import TodoApp from '@todo/App'
 import { useTodoStore } from '@todo/store/todo-store'
 import { buildTaskMarkdown } from '@todo/lib/task-markdown'
@@ -32,11 +32,10 @@ function TodoPanel() {
 }
 
 /**
- * 折叠态用 todo 自己的最小形态：书脊式显示当前任务与状态，
- * 点它即展开整栏，而不是笼统的「Todo」标签。
+ * 折叠后由外壳排版，这里只公布关键信息：当前任务与状态、所属项目，未选中时给任务数。
+ * 折叠 UI 不归 todo 维护。
  */
-function TodoRail({ onExpand, title }: RailProps) {
-  const { width, resize } = useModuleColumn()
+function useCollapsedSummary(): CollapsedSummary {
   const task = useSelectedTask()
   const tasks = useTodoStore((state) => state.tasks)
   const projects = useTodoStore((state) => state.projects)
@@ -44,38 +43,19 @@ function TodoRail({ onExpand, title }: RailProps) {
     ? projects.find((candidate) => candidate.id === task.project_id)
     : undefined
 
-  const name = task ? task.title : title
-  const meta = task
-    ? `${task.status}${project ? ` · ${project.name}` : ''}`
-    : `${tasks.length} tasks`
-
-  return (
-    <div className="todo-rail">
-      <button
-        type="button"
-        className="ws-rail-toggle"
-        title="展开任务栏"
-        aria-label="展开任务栏"
-        onClick={() => {
-          // 记住展开宽度，避免每次折叠后回到默认值。
-          if (width > 32) resize(width)
-          onExpand()
-        }}
-      >
-        »
-      </button>
-      <button
-        type="button"
-        className="todo-rail-summary"
-        title={`${name} · ${meta}`}
-        aria-label={`${name} · ${meta}。展开任务栏`}
-        onClick={onExpand}
-      >
-        <span className="todo-rail-name">{name}</span>
-        <span className="todo-rail-meta">{meta}</span>
-      </button>
-    </div>
-  )
+  if (!task) {
+    return {
+      title: 'Tasks',
+      items: [{ label: 'count', value: String(tasks.length) }],
+    }
+  }
+  return {
+    title: task.title,
+    items: [
+      { label: 'status', value: task.status },
+      ...(project ? [{ label: 'project', value: project.name }] : []),
+    ],
+  }
 }
 
 function TodoWorkspaceView({ selection }: { selection: Selection }) {
@@ -131,7 +111,7 @@ export function createTodoModule(): WorkspaceModule {
     title: 'Todo',
     // todo 自带统计栏与工具区，外壳不再重复一条标题行。
     hideHeader: true,
-    Rail: TodoRail,
+    useCollapsedSummary,
     defaultSize: 520,
     minSize: 320,
     collapsedSize: 32,
