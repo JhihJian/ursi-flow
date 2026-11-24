@@ -85,6 +85,18 @@ pub struct StatsResponse {
     pub stats: Stats,
 }
 
+/// 某一天创建的任务数，用于近七天的分布条。
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DayCount {
+    pub date: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DailyStatsResponse {
+    pub days: Vec<DayCount>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CreateResponse {
     pub id: String,

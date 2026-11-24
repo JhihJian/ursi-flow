@@ -62,6 +62,11 @@ export interface Stats {
   by_status: TaskCount
 }
 
+export interface DayCount {
+  date: string
+  count: number
+}
+
 export interface ProjectInput {
   name: string
   description: string | null

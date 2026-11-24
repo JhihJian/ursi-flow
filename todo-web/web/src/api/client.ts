@@ -1,4 +1,5 @@
 import type {
+  DayCount,
   Period,
   ProjectInput,
   ProjectStats,
@@ -54,13 +55,16 @@ export interface TaskQuery {
   project?: string | null
   status?: TaskStatus
   period?: Period
+  /** `YYYY-MM-DD`，按创建日期筛选；设置后替代周期条件。 */
+  date?: string | null
 }
 
 export function listTasks(query: TaskQuery = {}): Promise<{ tasks: Task[] }> {
   const params = new URLSearchParams()
   if (query.project) params.set('project', query.project)
   if (query.status) params.set('status', query.status)
-  if (query.period && query.period !== 'all') params.set('period', query.period)
+  if (query.date) params.set('date', query.date)
+  else if (query.period && query.period !== 'all') params.set('period', query.period)
   const suffix = params.size > 0 ? `?${params.toString()}` : ''
   return request<{ tasks: Task[] }>(`/tasks${suffix}`).then((data) => ({
     tasks: data.tasks.map(normalizeTask),
@@ -108,4 +112,13 @@ export function deleteTask(id: string): Promise<{ success: boolean }> {
 
 export function getStats(period: StatsPeriod): Promise<{ stats: Stats }> {
   return request(`/stats?period=${period}`)
+}
+
+export function listDailyCounts(
+  project: string | null,
+  days = 7,
+): Promise<{ days: DayCount[] }> {
+  const params = new URLSearchParams({ days: String(days) })
+  if (project) params.set('project', project)
+  return request(`/stats/daily?${params.toString()}`)
 }

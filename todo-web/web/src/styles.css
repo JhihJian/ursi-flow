@@ -477,6 +477,36 @@ button {
   gap: var(--space-md);
 }
 
+.day-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+
+.day-bar {
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: var(--gray-200);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.day-bar:hover {
+  background: var(--gray-400);
+}
+
+.day-bar.is-active {
+  background: var(--gray-900);
+}
+
+.day-filter-label {
+  font-size: 11px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
 .status-targets {
   display: flex;
   flex-wrap: wrap;

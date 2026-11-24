@@ -11,6 +11,7 @@ vi.mock('@/api/client', () => ({
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
   getStats: vi.fn(),
+  listDailyCounts: vi.fn(),
 }))
 
 import * as api from '@/api/client'
@@ -80,11 +81,14 @@ function resetStore() {
     detail: null,
     projectEditing: null,
     statusFilter: null,
+    dayCounts: [],
+    dayFilter: null,
   })
 }
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocked.listDailyCounts.mockResolvedValue({ days: [] })
   mocked.listProjects.mockResolvedValue({ projects: [projectA, projectB] })
   mocked.listTasks.mockResolvedValue({ tasks: [task] })
   mocked.getStats.mockImplementation(async (period) => ({ stats: stats(period) }))
@@ -101,7 +105,7 @@ describe('bootstrap', () => {
     expect(state.tasks).toEqual([task])
     expect(state.stats.daily?.period).toBe('daily')
     expect(state.projectsLoading).toBe(false)
-    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', period: 'daily' })
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', period: 'daily', date: null })
     expect(mocked.listTasks).toHaveBeenCalledWith({ status: 'in_progress' })
     expect(mocked.listTasks).toHaveBeenCalledWith({ status: 'blocked' })
   })
@@ -118,7 +122,7 @@ describe('task actions', () => {
   it('reloads tasks when the period changes and drops the all-time suffix', async () => {
     useTodoStore.setState({ selectedProjectId: 'p1' })
     await useTodoStore.getState().selectPeriod('weekly')
-    expect(mocked.listTasks).toHaveBeenLastCalledWith({ project: 'p1', period: 'weekly' })
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({ project: 'p1', period: 'weekly', date: null })
     expect(useTodoStore.getState().period).toBe('weekly')
   })
 
@@ -180,6 +184,25 @@ describe('task actions', () => {
 })
 
 describe('status filter', () => {
+  it('toggles a day filter and reloads tasks with the date', async () => {
+    useTodoStore.setState({ selectedProjectId: 'p1' })
+    await useTodoStore.getState().toggleDayFilter('2026-11-24')
+    expect(useTodoStore.getState().dayFilter).toBe('2026-11-24')
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({
+      project: 'p1',
+      period: 'daily',
+      date: '2026-11-24',
+    })
+
+    await useTodoStore.getState().toggleDayFilter('2026-11-24')
+    expect(useTodoStore.getState().dayFilter).toBeNull()
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({
+      project: 'p1',
+      period: 'daily',
+      date: null,
+    })
+  })
+
   it('toggles the filter and clears it when the same status is picked twice', () => {
     expect(useTodoStore.getState().statusFilter).toBeNull()
     useTodoStore.getState().toggleStatusFilter('blocked')

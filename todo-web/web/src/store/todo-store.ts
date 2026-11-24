@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as api from '@/api/client'
 import type {
+  DayCount,
   Period,
   ProjectInput,
   ProjectStats,
@@ -30,6 +31,8 @@ export interface TodoState {
   selectedProjectId: string | null
   period: Period
   statusFilter: TaskStatus | null
+  dayCounts: DayCount[]
+  dayFilter: string | null
   projectsLoading: boolean
   projectsError: boolean
   tasksLoading: boolean
@@ -41,6 +44,8 @@ export interface TodoState {
   selectProject: (id: string) => Promise<void>
   selectPeriod: (period: Period) => Promise<void>
   toggleStatusFilter: (status: TaskStatus) => void
+  toggleDayFilter: (date: string) => Promise<void>
+  refreshDayCounts: () => Promise<void>
   refreshProjects: () => Promise<void>
   refreshTasks: (clear?: boolean) => Promise<void>
   refreshStats: () => Promise<void>
@@ -69,6 +74,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   selectedProjectId: null,
   period: 'daily',
   statusFilter: null,
+  dayCounts: [],
+  dayFilter: null,
   projectsLoading: true,
   projectsError: false,
   tasksLoading: false,
@@ -84,7 +91,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     } else {
       set({ selectedProjectId: null, tasks: [] })
     }
-    await Promise.all([get().refreshStats(), get().refreshActive()])
+    await Promise.all([get().refreshStats(), get().refreshActive(), get().refreshDayCounts()])
   },
 
   selectProject: async (id) => {
@@ -93,7 +100,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       detail: null,
       projectEditing: null,
     })
-    await get().refreshTasks(true)
+    await Promise.all([get().refreshTasks(true), get().refreshDayCounts()])
   },
 
   selectPeriod: async (period) => {
@@ -104,6 +111,21 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   toggleStatusFilter: (status) => {
     set({ statusFilter: get().statusFilter === status ? null : status })
+  },
+
+  toggleDayFilter: async (date) => {
+    set({ dayFilter: get().dayFilter === date ? null : date, detail: null })
+    await get().refreshTasks()
+  },
+
+  refreshDayCounts: async () => {
+    const { selectedProjectId } = get()
+    if (!selectedProjectId) {
+      set({ dayCounts: [] })
+      return
+    }
+    const { days } = await api.listDailyCounts(selectedProjectId, 7)
+    set({ dayCounts: days })
   },
 
   refreshProjects: async () => {
@@ -119,7 +141,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   refreshTasks: async (clear = false) => {
-    const { selectedProjectId, period } = get()
+    const { selectedProjectId, period, dayFilter } = get()
     const requestId = ++tasksRequestId
     if (!selectedProjectId) {
       set({ tasks: [], tasksLoading: false })
@@ -127,7 +149,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
     if (clear) set({ tasks: [], tasksLoading: true })
     try {
-      const { tasks } = await api.listTasks({ project: selectedProjectId, period })
+      const { tasks } = await api.listTasks({
+        project: selectedProjectId,
+        period,
+        date: dayFilter,
+      })
       if (requestId !== tasksRequestId) return
       set({ tasks, tasksLoading: false })
     } catch (error) {
@@ -168,6 +194,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       get().refreshTasks(),
       get().refreshStats(),
       get().refreshActive(),
+      get().refreshDayCounts(),
     ])
   },
 

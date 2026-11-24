@@ -1,8 +1,8 @@
 use crate::db::{self, Columns};
 use crate::models::{
-    CreateProjectRequest, CreateResponse, CreateTaskRequest, Priority, Project, ProjectStats,
-    ProjectsResponse, Stats, StatsResponse, Status, SuccessResponse, Task, TaskCount, TasksResponse,
-    UpdateProjectRequest, UpdateTaskRequest,
+    CreateProjectRequest, CreateResponse, CreateTaskRequest, DailyStatsResponse, DayCount, Priority,
+    Project, ProjectStats, ProjectsResponse, Stats, StatsResponse, Status, SuccessResponse, Task,
+    TaskCount, TasksResponse, UpdateProjectRequest, UpdateTaskRequest,
 };
 use axum::{
     extract::{Path, Query},
@@ -103,6 +103,14 @@ pub struct TasksQuery {
     pub project: Option<String>,
     pub status: Option<String>,
     pub period: Option<String>,
+    /// `YYYY-MM-DD`，按创建日期过滤。与 `period` 互斥，由调用方决定用哪个。
+    pub date: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DailyStatsQuery {
+    pub project: Option<String>,
+    pub days: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,8 +131,17 @@ pub async fn get_tasks(Query(query): Query<TasksQuery>) -> ApiResult<Json<TasksR
         query.project.as_deref(),
         query.status.as_deref(),
         query.period.as_deref(),
+        query.date.as_deref(),
     )?;
     Ok(Json(TasksResponse { tasks }))
+}
+
+pub async fn get_daily_stats(
+    Query(query): Query<DailyStatsQuery>,
+) -> ApiResult<Json<DailyStatsResponse>> {
+    let conn = db::connect()?;
+    let days = daily_task_counts(&conn, query.project.as_deref(), query.days.unwrap_or(7))?;
+    Ok(Json(DailyStatsResponse { days }))
 }
 
 pub async fn get_stats(Query(query): Query<StatsQuery>) -> ApiResult<Json<StatsResponse>> {
@@ -220,6 +237,7 @@ pub fn fetch_tasks(
     project: Option<&str>,
     status: Option<&str>,
     period: Option<&str>,
+    date: Option<&str>,
 ) -> ApiResult<Vec<Task>> {
     let status = match status {
         Some(value) => Some(Status::from_str(value)?),
@@ -241,6 +259,12 @@ pub fn fetch_tasks(
     if let Some(status) = &status {
         sql.push_str(" AND status = ?");
         params.push(Box::new(status.to_string()));
+    }
+
+    if let Some(date) = date {
+        let date = parse_date(date)?;
+        sql.push_str(" AND date(datetime(replace(created_at, 'T', ' '))) = date(?)");
+        params.push(Box::new(date.to_string()));
     }
 
     if let Some(range) = period.and_then(period_range) {
@@ -271,6 +295,54 @@ pub fn fetch_tasks(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(tasks)
+}
+
+/// 最近 `days` 天每天创建的任务数，缺失的日期补 0。
+pub fn daily_task_counts(
+    conn: &Connection,
+    project: Option<&str>,
+    days: i64,
+) -> ApiResult<Vec<DayCount>> {
+    let days = days.clamp(1, 31);
+    let today = Utc::now().date_naive();
+    let start = today - Duration::days(days - 1);
+
+    let mut sql = String::from(
+        "SELECT date(datetime(replace(created_at, 'T', ' '))) AS day, COUNT(*)
+         FROM tasks
+         WHERE date(datetime(replace(created_at, 'T', ' '))) BETWEEN date(?) AND date(?)",
+    );
+    let mut params: Vec<Box<dyn ToSql>> = vec![
+        Box::new(start.to_string()),
+        Box::new(today.to_string()),
+    ];
+    if let Some(project) = project {
+        sql.push_str(" AND project_id = ?");
+        params.push(Box::new(project.to_string()));
+    }
+    sql.push_str(" GROUP BY day");
+
+    let params: Vec<&dyn ToSql> = params.iter().map(|param| param.as_ref()).collect();
+    let mut statement = conn.prepare(&sql)?;
+    let counted: HashMap<String, i64> = statement
+        .query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<Result<_, _>>()?;
+
+    let days = (0..days)
+        .map(|offset| {
+            let date = (start + Duration::days(offset)).to_string();
+            let count = counted.get(&date).copied().unwrap_or(0);
+            DayCount { date, count }
+        })
+        .collect();
+    Ok(days)
+}
+
+fn parse_date(value: &str) -> ApiResult<NaiveDate> {
+    NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d")
+        .map_err(|_| AppError::invalid_input(format!("Invalid date: {value}")))
 }
 
 pub fn calculate_stats(conn: &Connection, period: &str) -> ApiResult<Stats> {

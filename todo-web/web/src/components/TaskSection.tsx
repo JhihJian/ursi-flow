@@ -9,6 +9,11 @@ import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
 type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
 
+/** 条形宽度按当天数量与最大值比例换算，最少 4px 保证空白日也看得见。 */
+function dayBarWidth(count: number, max: number): number {
+  return Math.round(4 + 32 * (count / max))
+}
+
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
 
 function StatusTarget({
@@ -167,6 +172,9 @@ export function TaskSection() {
   const tasksLoading = useTodoStore((state) => state.tasksLoading)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
   const statusFilter = useTodoStore((state) => state.statusFilter)
+  const dayCounts = useTodoStore((state) => state.dayCounts)
+  const dayFilter = useTodoStore((state) => state.dayFilter)
+  const toggleDayFilter = useTodoStore((state) => state.toggleDayFilter)
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -177,6 +185,7 @@ export function TaskSection() {
     return result
   }, {} as Record<TaskStatus, number>)
   const visibleTasks = statusFilter ? tasks.filter((task) => task.status === statusFilter) : tasks
+  const maxDayCount = Math.max(1, ...dayCounts.map((day) => day.count))
 
   return (
     <section
@@ -192,6 +201,23 @@ export function TaskSection() {
     >
       {selectedProjectId ? (
         <div className="tasks-header">
+          {dayFilter ? <span className="day-filter-label">{dayFilter.slice(5)}</span> : null}
+          <div className="day-bars" role="group" aria-label="Tasks created in the last 7 days">
+            {dayCounts.map(({ date, count }) => (
+              <button
+                key={date}
+                type="button"
+                className={cx('day-bar', dayFilter === date && 'is-active')}
+                style={{ width: `${dayBarWidth(count, maxDayCount)}px` }}
+                title={`${date} · ${count} ${count === 1 ? 'task' : 'tasks'}`}
+                aria-label={`${date}, ${count} tasks`}
+                aria-pressed={dayFilter === date}
+                onClick={() => {
+                  void toggleDayFilter(date).catch((error) => alert(errorMessage(error)))
+                }}
+              />
+            ))}
+          </div>
           <div className="status-targets">
             {statuses.map((status) => (
               <StatusTarget
@@ -230,7 +256,9 @@ export function TaskSection() {
                   ? 'Select a project'
                   : statusFilter
                     ? `No ${statusFilter} tasks`
-                    : 'No tasks'}
+                    : dayFilter
+                      ? `No tasks created on ${dayFilter}`
+                      : 'No tasks'}
               </td>
             </tr>
           ) : null}

@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
 use rusqlite::Connection;
 use todo_web_server::handlers::{
-    calculate_stats, create_project, create_task, delete_project, delete_task, fetch_projects,
-    fetch_tasks, update_project, update_task, AppError,
+    calculate_stats, create_project, create_task, daily_task_counts, delete_project, delete_task,
+    fetch_projects, fetch_tasks, update_project, update_task, AppError,
 };
 use todo_web_server::models::{
     CreateProjectRequest, CreateTaskRequest, Priority, Status, UpdateProjectRequest,
@@ -117,7 +117,7 @@ fn update(_id: &str) -> UpdateTaskRequest {
 fn empty_database_returns_empty_lists_and_zero_stats() {
     let conn = setup();
     assert!(fetch_projects(&conn, false).unwrap().is_empty());
-    assert!(fetch_tasks(&conn, None, None, None).unwrap().is_empty());
+    assert!(fetch_tasks(&conn, None, None, None, None).unwrap().is_empty());
     let stats = calculate_stats(&conn, "daily").unwrap();
     assert_eq!(stats.total_tasks, 0);
     assert_eq!(stats.total_time_minutes, 0);
@@ -189,22 +189,22 @@ fn tasks_filter_by_project_status_and_period() {
     )
     .unwrap();
 
-    let project_tasks = fetch_tasks(&conn, Some("proj-a"), None, None).unwrap();
+    let project_tasks = fetch_tasks(&conn, Some("proj-a"), None, None, None).unwrap();
     assert_eq!(project_tasks.len(), 2);
 
-    let done_tasks = fetch_tasks(&conn, None, Some("done"), None).unwrap();
+    let done_tasks = fetch_tasks(&conn, None, Some("done"), None, None).unwrap();
     assert_eq!(done_tasks.len(), 2);
 
-    let daily = fetch_tasks(&conn, Some("proj-a"), None, Some("daily")).unwrap();
+    let daily = fetch_tasks(&conn, Some("proj-a"), None, Some("daily"), None).unwrap();
     assert_eq!(daily.len(), 2);
     let ids: Vec<_> = daily.iter().map(|task| task.id.as_str()).collect();
     assert!(ids.contains(&"pending-a"));
     assert!(ids.contains(&"done-a"));
 
-    let daily_b = fetch_tasks(&conn, Some("proj-b"), None, Some("daily")).unwrap();
+    let daily_b = fetch_tasks(&conn, Some("proj-b"), None, Some("daily"), None).unwrap();
     assert!(daily_b.is_empty());
 
-    let unknown = fetch_tasks(&conn, None, Some("archived"), None).unwrap_err();
+    let unknown = fetch_tasks(&conn, None, Some("archived"), None, None).unwrap_err();
     assert!(matches!(unknown, AppError::BadRequest { .. }));
 }
 
@@ -290,7 +290,7 @@ fn project_crud_keeps_tasks_when_deleting() {
     insert_task(&conn, "t1", &id, "pending", "high");
     delete_project(&conn, &id).unwrap();
     assert!(fetch_projects(&conn, false).unwrap().is_empty());
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert!(task.project_id.is_none());
 }
 
@@ -310,7 +310,7 @@ fn task_create_update_and_delete() {
     )
     .unwrap();
 
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert_eq!(task.status, Status::Pending);
     assert_eq!(task.priority, Priority::High);
     assert_eq!(task.tags, vec!["docs".to_string()]);
@@ -324,7 +324,7 @@ fn task_create_update_and_delete() {
         },
     )
     .unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert!(task.started_at.is_some());
     assert!(task.finished_at.is_none());
 
@@ -340,7 +340,7 @@ fn task_create_update_and_delete() {
         },
     )
     .unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert_eq!(task.title, "Write docs");
     assert_eq!(task.status, Status::Done);
     assert!(task.finished_at.is_some());
@@ -357,13 +357,13 @@ fn task_create_update_and_delete() {
         },
     )
     .unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert!(task.finished_at.is_none());
     assert!(task.result.is_none());
     assert!(task.project_id.is_none());
 
     delete_task(&conn, &id).unwrap();
-    assert!(fetch_tasks(&conn, None, None, None).unwrap().is_empty());
+    assert!(fetch_tasks(&conn, None, None, None, None).unwrap().is_empty());
 }
 
 #[test]
@@ -486,21 +486,21 @@ fn null_clears_optional_fields_and_omitted_fields_keep_values() {
         serde_json::from_str(r#"{"result": "first", "blocked_reason": "waiting"}"#).unwrap();
     assert!(request.result.as_ref().unwrap().is_some());
     update_task(&conn, &id, &request).unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert_eq!(task.result.as_deref(), Some("first"));
     assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
 
     let request: UpdateTaskRequest = serde_json::from_str(r#"{"result": null}"#).unwrap();
     assert_eq!(request.result, Some(None));
     update_task(&conn, &id, &request).unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert!(task.result.is_none());
     assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
 
     let request: UpdateTaskRequest = serde_json::from_str("{}").unwrap();
     assert!(request.result.is_none());
     update_task(&conn, &id, &request).unwrap();
-    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
     assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
 }
 
@@ -510,7 +510,7 @@ fn legacy_database_without_new_columns_still_works() {
     insert_project(&conn, "proj-a", "Alpha");
     insert_task(&conn, "t1", "proj-a", "in_progress", "high");
 
-    let tasks = fetch_tasks(&conn, None, None, None).unwrap();
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].status, Status::InProgress);
     assert!(tasks[0].artifacts.is_empty());
@@ -525,13 +525,62 @@ fn legacy_database_without_new_columns_still_works() {
         },
     )
     .unwrap();
-    let tasks = fetch_tasks(&conn, None, None, None).unwrap();
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
     assert_eq!(tasks[0].title, "Renamed");
     assert_eq!(tasks[0].status, Status::InProgress);
 
     let projects = fetch_projects(&conn, false).unwrap();
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].task_count.in_progress, 1);
+}
+
+#[test]
+fn daily_counts_fill_missing_days_and_respect_project() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_project(&conn, "proj-b", "Beta");
+    insert_task(&conn, "t1", "proj-a", "pending", "high");
+    insert_task(&conn, "t2", "proj-a", "pending", "low");
+    insert_task(&conn, "t3", "proj-b", "pending", "low");
+
+    let days = daily_task_counts(&conn, None, 7).unwrap();
+    assert_eq!(days.len(), 7);
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    assert_eq!(days.last().unwrap().date, today);
+    assert_eq!(days.last().unwrap().count, 3);
+    assert!(days[..6].iter().all(|day| day.count == 0));
+
+    let project_days = daily_task_counts(&conn, Some("proj-a"), 3).unwrap();
+    assert_eq!(project_days.len(), 3);
+    assert_eq!(project_days.last().unwrap().count, 2);
+
+    // 超出上限按 31 天处理
+    assert_eq!(daily_task_counts(&conn, None, 90).unwrap().len(), 31);
+}
+
+#[test]
+fn tasks_filter_by_creation_date() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "today", "proj-a", "pending", "medium");
+    insert_task(&conn, "older", "proj-a", "pending", "medium");
+    conn.execute(
+        "UPDATE tasks SET created_at = ?1 WHERE id = 'older'",
+        [(Utc::now() - Duration::days(3)).to_rfc3339()],
+    )
+    .unwrap();
+
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let filtered = fetch_tasks(&conn, None, None, None, Some(&today)).unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, "today");
+
+    let older = (Utc::now() - Duration::days(3)).format("%Y-%m-%d").to_string();
+    let filtered = fetch_tasks(&conn, None, None, None, Some(&older)).unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, "older");
+
+    assert!(fetch_tasks(&conn, None, None, None, Some("nope")).is_err());
 }
 
 #[test]

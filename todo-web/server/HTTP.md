@@ -50,11 +50,12 @@
 | `POST /api/projects` | 新建项目，返回 `{ "id": "..." }` |
 | `PUT /api/projects/{id}` | 更新项目 |
 | `DELETE /api/projects/{id}` | 删除项目，任务 `project_id` 置空 |
-| `GET /api/tasks?project=&status=&period=` | 任务列表 |
+| `GET /api/tasks?project=&status=&period=&date=` | 任务列表，`date` 为 `YYYY-MM-DD` |
 | `POST /api/tasks` | 新建任务，初始状态 `pending`，返回 `{ "id": "..." }` |
 | `PUT /api/tasks/{id}` | 更新任务或切换状态 |
 | `DELETE /api/tasks/{id}` | 删除任务 |
 | `GET /api/stats?period=daily\|weekly\|monthly\|all` | 周期统计 |
+| `GET /api/stats/daily?days=7&project=` | 最近 `days` 天每天创建的任务数，缺失日期补 0 |
 
 项目计数以 `{ "task_count": { "pending", "in_progress", "blocked", "done", "cancelled" }, "total_time_minutes" }` 与项目字段平铺返回。
 
@@ -105,6 +106,8 @@
 ## 查询与统计
 
 - `GET /api/tasks` 的 `period` 只过滤已完成与已取消任务：`finished_at` 落在当天、本周一至今天或本月 1 日至今天；未完成任务不受周期限制；`all` 表示不限时间。
+- `GET /api/tasks` 的 `date` 按任务创建日期过滤，日期格式错误返回 400。调用方在按天筛选时只传 `date`，不传 `period`。
+- `GET /api/stats/daily` 的 `days` 取 1 到 31，默认 7，按创建日期统计；`project` 缺省时统计全部项目。
 - 排序：未完成在前，按优先级和创建时间升序；已完成与已取消按 `finished_at` 降序。
 - 统计的任务数与投入时间只计 `status = done` 且 `finished_at` 落在周期内的记录，投入时间按 `finished_at - started_at` 累计。
 - `by_status` 覆盖全部五种状态：`done` 与 `cancelled` 按完成时间落周期，其余按创建时间。
