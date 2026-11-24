@@ -1,4 +1,4 @@
-import { isRecord, validateVariableName } from "ursi-flow-core/engine";
+import { isRecord, validateVariableName } from '../core/contracts/variables.ts';
 
 export interface NodeContract { outcomes: string[]; variables: string[] }
 

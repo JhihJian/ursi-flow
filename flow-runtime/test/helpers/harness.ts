@@ -2,7 +2,7 @@ import { AgentRunModel } from "../../src/ability/agent-harness/executor.ts";
 import type {
 	AgentHarnessExtensions,
 	AgentOpenRequest,
-} from "ursi-flow-core/engine";
+} from "../../src/core/contracts/extensions.ts";
 import type {
 	AgentAssemblyRequest,
 	AgentHandle,
@@ -10,8 +10,8 @@ import type {
 	FlowAgentHarness,
 	NodeOutcome,
 	RuntimeToolBridge,
-} from "ursi-flow-core/engine";
-import type { FlowCoordinator } from "ursi-flow-core/engine";
+} from "../../src/core/contracts/types.ts";
+import type { FlowCoordinator } from "../../src/core/execution/runtime.ts";
 import {
 	createFlowCoordinator,
 	type FlowHostOptions,

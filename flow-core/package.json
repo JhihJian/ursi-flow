@@ -7,20 +7,19 @@
   "engines": { "node": ">=22.19.0" },
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./engine": { "types": "./dist/engine/index.d.ts", "default": "./dist/engine/index.js" }
+    "./runtime": { "types": "./dist/runtime.d.ts", "default": "./dist/runtime.js" }
   },
   "files": ["dist", "docs", "examples", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
-    "test": "npm run build && node --test test/core.test.mjs && vitest run",
+    "test": "npm run build && node --test test/core.test.mjs",
     "test:pack": "node test/pack.mjs"
   },
   "dependencies": { "yaml": "2.9.0" },
   "bundleDependencies": ["yaml"],
   "devDependencies": {
     "@types/node": "22.19.19",
-    "typescript": "5.9.3",
-    "vitest": "4.1.9"
+    "typescript": "5.9.3"
   }
 }

@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { AgentRunModel } from "../src/ability/agent-harness/executor.ts";
-import { RuntimeOutcomeBridge } from "ursi-flow-core/engine";
-import { validateAgentIdentity } from "ursi-flow-core/engine";
+import { RuntimeOutcomeBridge } from "../src/ability/runtime-tools/bridge.ts";
+import { validateAgentIdentity } from "../src/core/contracts/agent-identity.ts";
 import type {
 	AgentHarnessExtensions,
 	FlowExecutionExtensions,
-} from "ursi-flow-core/engine";
+} from "../src/core/contracts/extensions.ts";
 import type {
 	AgentAssemblyIdentity,
 	FlowAgentHarness,
 	FlowDefinition,
 	FlowPackage,
-} from "ursi-flow-core/engine";
-import { validateFlowValue } from "ursi-flow-core/engine";
-import { preflightFlow } from "ursi-flow-core/engine";
+} from "../src/core/contracts/types.ts";
+import { validateFlowValue } from "../src/core/contracts/variables.ts";
+import { preflightFlow } from "../src/core/execution/preflight.ts";
 
 const outcomes = [{ name: "完成", description: "已完成" }];
 const call = (variables?: unknown) => ({

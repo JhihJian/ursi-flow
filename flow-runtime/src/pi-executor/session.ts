@@ -3,7 +3,7 @@ import type { PiProviderConfig } from '../executor-adapters/local-pi/sdk.ts';
 import { parseConfig } from './files.ts';
 import { loadPolicy, type Policy, type ToolRef } from './policy.ts';
 import { resources } from './resources.ts';
-import { RuntimeOutcomeBridge } from "ursi-flow-core/engine";
+import { RuntimeOutcomeBridge } from '../ability/runtime-tools/bridge.ts';
 import type { NodeContract } from './node-contract.ts';
 import { openWorkspace, publishAnswer, publishArtifact } from './session-files.ts';
 import { sessionTools } from './tools.ts';

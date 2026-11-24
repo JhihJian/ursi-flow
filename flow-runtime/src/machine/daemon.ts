@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { Catalog, optional, readJson, save } from "./catalog.ts";
 import { Runs, publicConfig, type Config } from "./runs.ts";
 import { PROVIDER_APIS, THINKING_LEVELS } from "../executor-adapters/local-pi/sdk.ts";
-import { isRecord } from "ursi-flow-core/engine";
+import { isRecord } from "../core/contracts/variables.ts";
 import { BusinessError, invalid } from "./errors.ts";
 
 process.umask(0o077);

@@ -11,9 +11,9 @@ import type {
 	NodeOutcome,
 	NodeSession,
 	UnifiedMessage,
-} from "ursi-flow-core/engine";
-import { parseFlow } from "ursi-flow-core/engine";
-import { InMemoryRunStore } from "ursi-flow-core/engine";
+} from "../src/core/contracts/types.ts";
+import { parseFlow } from "../src/core/definition/parser.ts";
+import { InMemoryRunStore } from "../src/core/state/memory-store.ts";
 import {
 	createTestAgentModel,
 	createTestCoordinator,

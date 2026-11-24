@@ -50,8 +50,8 @@ daemon 默认用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi
 
 ## 项目边界
 
-- `src/ability`：Agent 的创建与复用、每次节点执行独立的结果提交工具和能力协议。[Flow 规范](../flow-core/docs/flow-spec.md) 与解析规则引自 MIT 授权的 Agent-Flow-Runtime `e4ea1ee52c91a039676f8673baf939f83dad9146`。定义以源码和参考 fixtures 验收。
-- [Flow Core](../flow-core/README.md) 的 `ursi-flow-core/engine`：运行协调、记录与调用契约、包加载和预检。flow-runtime 只提供 Pi 会话、进程命令、daemon、MCP 与 ACP 协议等宿主实现。
+- `src/core/definition`、`execution`、`state`、`contracts`：包发现、运行协调、记录与调用契约。`ursi-flow-runtime/core` 提供这些运行接口。图解析、模板渲染、变量校验和结果路由复用 [Flow Core](../flow-core/README.md) 的规则。仅需无状态推进时可单独安装 `ursi-flow-core`。
+- `src/ability`：Agent 的创建与复用、每次节点执行独立的结果提交工具和能力协议。解析器、Core、Ability 与 [Flow 规范](../flow-core/docs/flow-spec.md) 引自 MIT 授权的 Agent-Flow-Runtime `e4ea1ee52c91a039676f8673baf939f83dad9146`。定义以源码和参考 fixtures 验收。
 - `src/executor-adapters/local-pi`：用 Pi SDK 在进程内创建 Agent 会话，provider 由运行配置注入。新 Agent 使用独立会话，复用节点在同一会话上继续。会话可用内置工具读写工作区，但只有显式的 `submit_flow_outcome` 工具回执参与路由；模型连续三次提交非法结果时本轮直接结束，避免无限重试。命令、文件历史、并行及子 Run 装配也由本地主机提供。本版适配器不启用 Pi 扩展、Skill 与 Profile，声明业务工具或要求接管既有会话会被拒绝。
 - `src/integrations/mcp`：[集成边界说明](../docs/design/flow-runtime/MCP-ADAPTER.md)。提供 `ursi-flow-executor-mcp`，通过 MCP `2025-06-18` stdio JSONL 暴露 `executor_start`、`executor_inspect`、`executor_cancel`。
 

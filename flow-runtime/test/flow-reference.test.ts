@@ -18,15 +18,15 @@ import type {
 	NodeOutcome,
 	NodeRunRecord,
 	UnifiedMessage,
-} from "ursi-flow-core/engine";
-import { loadFlow } from "ursi-flow-core/engine";
+} from "../src/core/contracts/types.ts";
+import { loadFlow } from "../src/core/definition/flow-loader.ts";
 import {
 	FlowSyntaxError,
 	parseFlow,
 	renderFlowReferenceTask,
-} from "ursi-flow-core/engine";
-import type { FlowCoordinator } from "ursi-flow-core/engine";
-import { InMemoryRunStore } from "ursi-flow-core/engine";
+} from "../src/core/definition/parser.ts";
+import type { FlowCoordinator } from "../src/core/execution/runtime.ts";
+import { InMemoryRunStore } from "../src/core/state/memory-store.ts";
 import {
 	createTestAgentModel,
 	createTestCoordinator,

@@ -17,11 +17,11 @@ import type {
 	RouteDecisionRecord,
 	RunFactCommit,
 	RunRecoveryRecord,
-} from "ursi-flow-core/engine";
+} from "../../core/contracts/types.ts";
 import {
 	InMemoryRunStore,
 	normalizeParallelRound,
-} from "ursi-flow-core/engine";
+} from "../../core/state/memory-store.ts";
 
 interface PersistedRuns {
 	runs: FlowRunRecord[];

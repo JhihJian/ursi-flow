@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type {
 	CommandRequest,
 	CommandResult,
-} from "ursi-flow-core/engine";
+} from "../src/core/contracts/types.ts";
 import {
 	parseFlow,
 	renderCommandRequest,
 	renderTemplate,
-} from "ursi-flow-core/engine";
-import { InMemoryRunStore } from "ursi-flow-core/engine";
+} from "../src/core/definition/parser.ts";
+import { InMemoryRunStore } from "../src/core/state/memory-store.ts";
 import { ProcessCommandExecutor } from "../src/executor-adapters/local-pi/runtime.ts";
 import { createTestAgentModel, createTestCoordinator, TestHarness } from "./helpers/harness.ts";
 

@@ -5,13 +5,13 @@ import type {
 	RuntimeToolCall,
 	RuntimeToolDefinition,
 	RuntimeToolResult,
-} from "./contracts/types.ts";
+} from "../../core/contracts/types.ts";
 import {
 	isRecord,
 	validateFlowValue,
 	validateVariableName,
 	validateVariables,
-} from "../variables.ts";
+} from "../../core/contracts/variables.ts";
 
 /** Validate untrusted tool arguments before accepting or copying any outcome. */
 export function parseRuntimeOutcome(

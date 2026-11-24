@@ -13,8 +13,8 @@ import {
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { loadFlow } from "ursi-flow-core/engine";
-import { FlowSyntaxError, parseFlow } from "ursi-flow-core/engine";
+import { loadFlow } from "../core/definition/flow-loader.ts";
+import { FlowSyntaxError, parseFlow } from "../core/definition/parser.ts";
 import { BusinessError, invalid } from "./errors.ts";
 
 function validId(value: unknown): value is string {

@@ -15,7 +15,7 @@ import type {
 	FlowResourceContext,
 	LoadedFlow,
 } from "../contracts/types.ts";
-import { PACKAGE_REFERENCE_LINK, parseFlow } from "../../parser.ts";
+import { PACKAGE_REFERENCE_LINK, parseFlow } from "ursi-flow-core/runtime";
 
 export { snapshotFlowDefinition } from "./snapshot.ts";
 

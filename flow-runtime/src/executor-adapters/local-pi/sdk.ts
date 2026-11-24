@@ -15,13 +15,13 @@ import { NodeTrajectoryRecorder } from "./trajectory.ts";
 import type {
 	AgentOpenRequest,
 	AgentHarnessExtensions,
-} from "ursi-flow-core/engine";
+} from "../../core/contracts/extensions.ts";
 import type {
 	AgentHandle,
 	FlowAgentHarness,
 	RuntimeToolBridge,
-} from "ursi-flow-core/engine";
-import { isRecord } from "ursi-flow-core/engine";
+} from "../../core/contracts/types.ts";
+import { isRecord } from "../../core/contracts/variables.ts";
 
 /** Pi 支持的请求协议；默认用 OpenAI 兼容的 chat completions。 */
 export const PROVIDER_APIS = [

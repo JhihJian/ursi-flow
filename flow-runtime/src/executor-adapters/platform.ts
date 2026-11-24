@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseRuntimeOutcome } from "ursi-flow-core/engine";
-import { AttemptUnconfirmed, type AgentNodeExecutionRequest, type AgentRunExecutor } from "ursi-flow-core/engine";
-import { isRecord } from "ursi-flow-core/engine";
-import { preflightFlow } from "ursi-flow-core/engine";
+import { parseRuntimeOutcome } from "../ability/runtime-tools/bridge.ts";
+import { AttemptUnconfirmed, type AgentNodeExecutionRequest, type AgentRunExecutor } from "../core/contracts/extensions.ts";
+import { isRecord } from "../core/contracts/variables.ts";
+import { preflightFlow } from "../core/execution/preflight.ts";
 
 export interface ExecutorRef { id: string; revision: number }
 export function parseExecutorRef(value: unknown): ExecutorRef {
