@@ -1,11 +1,13 @@
-import { useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDroppable } from '@dnd-kit/core'
 import type { ProjectStats } from '@/api/types'
 import { formatTime } from '@/lib/format'
-import { cx, errorMessage } from '@/lib/ui'
+import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 
 function ProjectItem({ project, active }: { project: ProjectStats; active: boolean }) {
   const selectProject = useTodoStore((state) => state.selectProject)
+  const { active: drag } = useDndContext()
+  const dragging = readTaskDrag(drag?.data.current) !== null
   const { setNodeRef, isOver } = useDroppable({
     id: `project-${project.id}`,
     data: { type: 'project', projectId: project.id },
@@ -15,7 +17,12 @@ function ProjectItem({ project, active }: { project: ProjectStats; active: boole
   return (
     <li
       ref={setNodeRef}
-      className={cx('project-item', active && 'active', isOver && 'drop-over')}
+      className={cx(
+        'project-item',
+        active && 'active',
+        dragging && 'drop-ready',
+        isOver && 'drop-over',
+      )}
       onClick={() => {
         void selectProject(project.id).catch((error) => alert(errorMessage(error)))
       }}

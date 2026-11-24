@@ -146,15 +146,55 @@ button {
   overflow-y: auto;
 }
 
+/* 6px 让分隔线更容易命中，视觉上仍是一条 1px 细线。 */
 .separator {
-  width: 1px;
-  background: var(--gray-200);
+  position: relative;
+  width: 6px;
+  flex: 0 0 6px;
+  background: var(--white);
 }
 
-[data-separator]:hover,
-[data-separator="hover"],
-[data-separator="focus"] {
+.separator::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--gray-200);
+  transition: background 0.15s;
+}
+
+.separator::after {
+  content: "⋮";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 2px 0;
+  background: var(--white);
+  color: var(--gray-400);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.separator:hover::before,
+.separator[data-separator="hover"]::before,
+.separator[data-separator="focus"]::before,
+.separator[data-separator="active"]::before {
   background: var(--gray-900);
+}
+
+.separator:hover::after,
+.separator[data-separator="hover"]::after,
+.separator[data-separator="focus"]::after,
+.separator[data-separator="active"]::after {
+  opacity: 1;
+  color: var(--gray-900);
 }
 
 /* Sidebar */
@@ -200,6 +240,11 @@ button {
 .project-item.active {
   border-left-color: var(--black);
   background: var(--gray-200);
+}
+
+.project-item.drop-ready {
+  outline: 1px dashed var(--gray-400);
+  outline-offset: -1px;
 }
 
 .project-item.drop-over {
@@ -384,6 +429,18 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.status-targets-label {
+  font-size: 11px;
+  color: var(--gray-400);
+  letter-spacing: 0.3px;
+}
+
+.status-target.drop-ready {
+  border-style: dashed;
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
 .status-target.is-over {
   border-color: var(--gray-900);
   background: var(--gray-900);
@@ -434,7 +491,7 @@ button {
 }
 
 .col-priority {
-  width: 32px;
+  width: 46px;
   text-align: center;
 }
 
@@ -461,14 +518,27 @@ button {
 }
 
 .drag-handle {
-  display: inline-block;
-  cursor: grab;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
   padding: 0 2px;
+  cursor: grab;
   touch-action: none;
 }
 
 .drag-handle:active {
   cursor: grabbing;
+}
+
+.drag-grip {
+  color: var(--gray-400);
+  font-size: 12px;
+  transition: color 0.15s;
+}
+
+.drag-handle:hover .drag-grip,
+.drag-handle:focus-visible .drag-grip {
+  color: var(--black);
 }
 
 .priority-high {

@@ -25,12 +25,12 @@ export function Workspace() {
       >
         <ProjectSidebar />
       </Panel>
-      <Separator className="separator" />
+      <Separator className="separator" title="Drag to resize, double-click to reset" />
       <Panel id="content" className="panel panel-content" minSize={380}>
         <ProjectHeader />
         <TaskSection />
       </Panel>
-      <Separator className="separator" />
+      <Separator className="separator" title="Drag to resize, double-click to reset" />
       <Panel
         id="detail"
         className="panel panel-right"

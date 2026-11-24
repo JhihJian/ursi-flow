@@ -1,19 +1,24 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
-import { cx } from '@/lib/ui'
+import { cx, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { useState } from 'react'
 
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
 
 function StatusTarget({ status, count }: { status: TaskStatus; count: number }) {
+  const { active } = useDndContext()
+  const dragging = readTaskDrag(active?.data.current) !== null
   const { setNodeRef, isOver } = useDroppable({
     id: `status-${status}`,
     data: { type: 'status', status },
   })
   return (
-    <div ref={setNodeRef} className={cx('status-target', isOver && 'is-over')}>
+    <div
+      ref={setNodeRef}
+      className={cx('status-target', dragging && 'drop-ready', isOver && 'is-over')}
+    >
       <span className="status-symbol">{statusSymbol(status)}</span>
       <span className="status-name">{STATUS_LABELS[status]}</span>
       <span className="status-count">{count}</span>
@@ -46,14 +51,20 @@ function TaskRow({ task }: { task: Task }) {
       className={cx(`status-${task.status}`, isDragging && 'is-dragging')}
       onClick={() => openTask(task)}
     >
-      <td className={cx('col-priority', `priority-${task.priority}`)}>
+      <td className="col-priority">
         <span
           className="drag-handle"
           title="Drag to change status or project"
+          aria-label={`Drag ${task.title}`}
           {...listeners}
           {...attributes}
         >
-          {prioritySymbol(task.priority)}
+          <span className="drag-grip" aria-hidden="true">
+            ⠿
+          </span>
+          <span className={cx('drag-priority', `priority-${task.priority}`)}>
+            {prioritySymbol(task.priority)}
+          </span>
         </span>
       </td>
       <td className="col-id">
@@ -114,6 +125,7 @@ export function TaskSection() {
         <h3 className="section-title">Tasks</h3>
         {selectedProjectId ? (
           <div className="status-targets">
+            <span className="status-targets-label">drag to</span>
             {statuses.map((status) => (
               <StatusTarget key={status} status={status} count={counts[status] ?? 0} />
             ))}
