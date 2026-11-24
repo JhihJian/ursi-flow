@@ -145,16 +145,29 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       </div>
 
       <div className="detail-doc">
-        <textarea
-          ref={titleRef}
-          className="detail-title-input"
-          rows={1}
-          placeholder="Task title"
-          value={title}
-          aria-label="Title"
-          onChange={(event) => setTitle(event.target.value)}
-          autoFocus={detail.mode === 'new'}
-        />
+        <div className="detail-heading">
+          <textarea
+            ref={titleRef}
+            className="detail-title-input"
+            rows={1}
+            placeholder="Task title"
+            value={title}
+            aria-label="Title"
+            onChange={(event) => setTitle(event.target.value)}
+            autoFocus={detail.mode === 'new'}
+          />
+          <div className="detail-tools">
+            <button
+              type="button"
+              className="detail-tool"
+              title="Close"
+              aria-label="Close task details"
+              onClick={closeDetail}
+            >
+              ×
+            </button>
+          </div>
+        </div>
 
         <div className="detail-meta">
           <select
@@ -191,17 +204,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
             onChange={(event) => setTags(event.target.value)}
           />
           <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
-          <div className="detail-tools">
-            <button
-              type="button"
-              className="detail-tool"
-              title="Close"
-              aria-label="Close task details"
-              onClick={closeDetail}
-            >
-              ×
-            </button>
-          </div>
         </div>
 
         <div className="detail-note">

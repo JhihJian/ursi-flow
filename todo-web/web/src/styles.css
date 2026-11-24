@@ -935,8 +935,16 @@ button {
   padding: var(--space-xs) var(--space-lg) 0;
 }
 
-.detail-title-input {
+.detail-heading {
+  display: flex;
   flex: none;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.detail-title-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 0;
   border: 0;
@@ -1005,8 +1013,8 @@ button {
 
 .detail-tools {
   display: flex;
+  flex: none;
   gap: var(--space-xs);
-  margin-left: auto;
 }
 
 .detail-tool {
