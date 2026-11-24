@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import type { WorkspaceModule, Selection } from '@ursi/workspace-shell'
-import { useWorkspace } from '@ursi/workspace-shell'
+import type { RailProps, WorkspaceModule, Selection } from '@ursi/workspace-shell'
+import { useModuleColumn, useWorkspace } from '@ursi/workspace-shell'
 import TodoApp from '@todo/App'
 import { useTodoStore } from '@todo/store/todo-store'
 import { buildTaskMarkdown } from '@todo/lib/task-markdown'
@@ -27,6 +27,53 @@ function TodoPanel() {
   return (
     <div className="todo-embed">
       <TodoApp />
+    </div>
+  )
+}
+
+/**
+ * 折叠态用 todo 自己的最小形态：书脊式显示当前任务与状态，
+ * 点它即展开整栏，而不是笼统的「Todo」标签。
+ */
+function TodoRail({ onExpand, title }: RailProps) {
+  const { width, resize } = useModuleColumn()
+  const task = useSelectedTask()
+  const tasks = useTodoStore((state) => state.tasks)
+  const projects = useTodoStore((state) => state.projects)
+  const project = task?.project_id
+    ? projects.find((candidate) => candidate.id === task.project_id)
+    : undefined
+
+  const name = task ? task.title : title
+  const meta = task
+    ? `${task.status}${project ? ` · ${project.name}` : ''}`
+    : `${tasks.length} tasks`
+
+  return (
+    <div className="todo-rail">
+      <button
+        type="button"
+        className="ws-rail-toggle"
+        title="展开任务栏"
+        aria-label="展开任务栏"
+        onClick={() => {
+          // 记住展开宽度，避免每次折叠后回到默认值。
+          if (width > 32) resize(width)
+          onExpand()
+        }}
+      >
+        »
+      </button>
+      <button
+        type="button"
+        className="todo-rail-summary"
+        title={`${name} · ${meta}`}
+        aria-label={`${name} · ${meta}。展开任务栏`}
+        onClick={onExpand}
+      >
+        <span className="todo-rail-name">{name}</span>
+        <span className="todo-rail-meta">{meta}</span>
+      </button>
     </div>
   )
 }
@@ -84,8 +131,10 @@ export function createTodoModule(): WorkspaceModule {
     title: 'Todo',
     // todo 自带统计栏与工具区，外壳不再重复一条标题行。
     hideHeader: true,
+    Rail: TodoRail,
     defaultSize: 520,
     minSize: 320,
+    collapsedSize: 32,
     Panel: TodoPanel,
     selection: {
       kind: KIND,

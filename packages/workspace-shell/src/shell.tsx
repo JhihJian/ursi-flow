@@ -8,10 +8,10 @@ import type {
   WorkspaceShellProps,
   WorkspaceView,
 } from './contracts'
-import { useWorkspace, WorkspaceProvider } from './context'
+import { ModuleColumnProvider, useWorkspace, WorkspaceProvider } from './context'
 import './shell.css'
 
-const COLLAPSED_SIZE = 32
+const DEFAULT_COLLAPSED_SIZE = 32
 const ACTIONS_SIZE = 260
 
 function DefaultRail({ onExpand, title }: RailProps) {
@@ -36,10 +36,17 @@ function DefaultRail({ onExpand, title }: RailProps) {
 function ModuleColumn({ module }: { module: WorkspaceModule }) {
   const panelRef = usePanelRef()
   const [collapsed, setCollapsed] = useState(false)
+  const [width, setWidth] = useState(module.defaultSize ?? 360)
   const [lastWidth, setLastWidth] = useState(module.defaultSize ?? 360)
   const Rail = module.Rail ?? DefaultRail
   const Body = module.Panel
+  const collapsedSize = module.collapsedSize ?? DEFAULT_COLLAPSED_SIZE
+
   const collapse = () => panelRef.current?.collapse()
+  const expand = () => panelRef.current?.resize(lastWidth)
+  const resize = (next: number) => {
+    panelRef.current?.resize(next)
+  }
 
   return (
     <>
@@ -51,41 +58,46 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
       minSize={module.minSize ?? 240}
       maxSize={760}
       collapsible
-      collapsedSize={COLLAPSED_SIZE}
+      collapsedSize={collapsedSize}
       groupResizeBehavior="preserve-pixel-size"
       onResize={(size) => {
-        const next = size.inPixels <= COLLAPSED_SIZE + 1
-        if (!next) setLastWidth(size.inPixels)
+        const next = size.inPixels <= collapsedSize + 1
+        if (!next) {
+          setLastWidth(size.inPixels)
+          setWidth(size.inPixels)
+        }
         setCollapsed(next)
       }}
     >
-      {collapsed ? (
-        <Rail onExpand={() => panelRef.current?.resize(lastWidth)} title={module.title} />
-      ) : module.hideHeader ? (
-        <div className="ws-panel-body">
-          <div className="ws-panel-content">
-            <Body />
+      <ModuleColumnProvider value={{ width, collapsed, resize, collapse, expand }}>
+        {collapsed ? (
+          <Rail onExpand={expand} title={module.title} />
+        ) : module.hideHeader ? (
+          <div className="ws-panel-body">
+            <div className="ws-panel-content">
+              <Body />
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="ws-panel-body">
-          <header className="ws-panel-head">
-            <span className="ws-panel-title">{module.title}</span>
-            <button
-              type="button"
-              className="ws-rail-toggle"
-              title={`折叠 ${module.title}`}
-              aria-label={`折叠 ${module.title}`}
-              onClick={() => panelRef.current?.collapse()}
-            >
-              «
-            </button>
-          </header>
-          <div className="ws-panel-content">
-            <Body />
+        ) : (
+          <div className="ws-panel-body">
+            <header className="ws-panel-head">
+              <span className="ws-panel-title">{module.title}</span>
+              <button
+                type="button"
+                className="ws-rail-toggle"
+                title={`折叠 ${module.title}`}
+                aria-label={`折叠 ${module.title}`}
+                onClick={collapse}
+              >
+                «
+              </button>
+            </header>
+            <div className="ws-panel-content">
+              <Body />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ModuleColumnProvider>
     </Panel>
       <Separator className="ws-separator" title={`拖动调整 ${module.title} 宽度`}>
         {module.hideHeader && !collapsed ? (

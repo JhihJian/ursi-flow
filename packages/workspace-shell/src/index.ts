@@ -1,5 +1,6 @@
 export { WorkspaceShell } from './shell'
-export { WorkspaceProvider, useWorkspace } from './context'
+export { ModuleColumnProvider, WorkspaceProvider, useModuleColumn, useWorkspace } from './context'
+export type { ModuleColumnValue } from './context'
 export type {
   RailProps,
   Selection,
