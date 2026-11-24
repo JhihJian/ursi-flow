@@ -1,15 +1,13 @@
 # ursi-flow 架构与设计索引
 
-项目门户提供独立首页和可选应用入口。Workbench 管理工作项和工作包，执行器平台（`executor-platform`）管理配置包、执行器修订和执行尝试，Flow Runtime 负责流程编排和运行历史。MCP 服务管理模块（`ursi-mcp`）提供外部资源和工具，沙箱平台独立提供容器环境和服务端点。
+Workbench 管理工作项和工作包，执行器平台（`executor-platform`）管理配置包、执行器修订和执行尝试，Flow Runtime 负责流程编排和运行历史。MCP 服务管理模块（`ursi-mcp`）提供外部资源和工具，沙箱平台独立提供容器环境和服务端点。
 
 ## 模块职责
 
 | 模块 | 职责与数据归属 |
 | --- | --- |
-| [项目门户](apps/web/SPEC.md) | `/` 展示已发布的项目资料和应用入口。`/manage/` 编辑并导出草稿，部署流程发布共享配置。 |
 | [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `shell-web`，已完成 todo 与 fs-web 模块接入。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
 | [SUMM-Todo 看板](todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
-| [页面布局](packages/ui-layout/SPEC.md) · [UI 插槽](packages/ui-slots/SPEC.md) | 布局包负责响应式排列，插槽包负责注册与渲染贡献。两者可由其他 React 页面单独使用。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web 前端](pi-executor/SPEC.md) | 独立静态前端。首页连接会话服务，按权限观察或继续 Pi 会话。 |
@@ -22,8 +20,7 @@
 
 ## 模块关系
 
-- **从门户进入应用。** 门户声明插槽及位置，构建时登记的源码插件提供内容。Workbench 插件通过发布配置中的 `workbenchUrl` 链接到独立部署，其 `/` 仍是 Workbench 内部路由，认证与 API 由 Workbench 处理。
-- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的门户、Workbench 或 Flow。
+- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的 Workbench 或 Flow。
 - **管理 Flow。** Workbench 的可选 `/api/v1` 通过 Rust `FlowClient` 连接 daemon 的 Unix socket。[CLI](flow-runtime/client/SPEC.md) 直连 daemon，[独立控制台](flow-runtime/web/SPEC.md) 通过自己的同源桥接入。连接同一 daemon 的三个入口共享运行历史。
 - **执行一次工作。** Workbench 和 Flow Runtime 各自用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。Flow Runtime 校验节点提交的结果后选择后续路径。
 - **共享 Pi 会话。** 外部调用方和 Pi Web 实时页以同一 `sessionId` 访问会话服务。只读接口提供历史和实时快照，只有显式提交才会打开 Agent。该入口独立于执行器平台和 Flow 的 ACP 链路。
