@@ -19,3 +19,6 @@ node_modules
 /apps/chat-web/web/dist/
 /session-viewer/web/dist/
 /session-viewer/web/node_modules/
+
+/apps/ssh-web/web/dist/
+/apps/ssh-web/target/
