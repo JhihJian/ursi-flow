@@ -13,13 +13,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
-    "test": "npm run build && node --test test/core.test.mjs",
+    "test": "npm run build && node --test test/core.test.mjs && vitest run",
     "test:pack": "node test/pack.mjs"
   },
   "dependencies": { "yaml": "2.9.0" },
   "bundleDependencies": ["yaml"],
   "devDependencies": {
     "@types/node": "22.19.19",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
   }
 }
