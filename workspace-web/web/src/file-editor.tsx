@@ -9,13 +9,13 @@ loader.config({ monaco })
 self.MonacoEnvironment = {
   getWorker(_workerId, label) {
     const languageMap: Record<string, Promise<unknown>> = {
-      css: import('monaco-editor/esm/vs/language/css/css.worker?worker'),
-      html: import('monaco-editor/esm/vs/language/html/html.worker?worker'),
-      typescript: import('monaco-editor/esm/vs/language/typescript/ts.worker?worker'),
-      javascript: import('monaco-editor/esm/vs/language/typescript/ts.worker?worker'),
-      json: import('monaco-editor/esm/vs/language/json/json.worker?worker'),
+      css: import('monaco-editor/language/css/css.worker.js?worker'),
+      html: import('monaco-editor/language/html/html.worker.js?worker'),
+      typescript: import('monaco-editor/language/typescript/ts.worker.js?worker'),
+      javascript: import('monaco-editor/language/typescript/ts.worker.js?worker'),
+      json: import('monaco-editor/language/json/json.worker.js?worker'),
     }
-    return (languageMap[label] ?? import('monaco-editor/esm/vs/editor/editor.worker?worker')) as never
+    return (languageMap[label] ?? import('monaco-editor/editor/editor.worker.js?worker')) as never
   },
 }
 
