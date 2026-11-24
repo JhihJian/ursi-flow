@@ -98,23 +98,19 @@ session-viewer/
     └── *.test.mjs           # node --test：定位、转换、接口与上限
 ```
 
-## 依赖组件库的方式
+## 依赖组件库的方式（已采用方案 A）
 
-组件库当前是 `private` 应用工程，没有 `exports` 与库构建，直接引用需要先解决分发：
+组件库已补上库构建：`vite.lib.config.js` 以 `src/components/index.js` 为入口产出 `dist-lib/index.js` 与 `dist-lib/index.css`，`package.json` 声明了 `main`/`module`/`exports`/`files`，`prepare` 在打包安装时自动构建。React 保持外部化，其余依赖打进产物。
 
-- **方案 A（推荐）**：在组件库仓库补一个库构建（`vite.lib.config.js` 产出 ESM + 聚合 CSS，补 `exports`/`files`），本模块用 `file:` 或 `git+<仓库>#<commit>` 依赖。一次改动，长期干净。
-- **方案 B**：把固定 commit 的 `src/components/`、`src/lib/` 复制到 `session-viewer/web/vendor/pi-trajectory/`，配 `scripts/sync-vendor.mjs` 记录来源与 commit。零跨仓构建，但要人工同步。
-- 不建议把组件库源码内嵌进 `session-viewer` 主干，那样两边会悄悄分叉。
+本模块用 `file:../../../pi-agent-trajectory-viewer` 引用该产物（两个仓库同级放置），Vite 里 `dedupe: ['react','react-dom']` 保证单实例。部署到别处时把这条依赖换成 `git+<仓库>#<commit>` 或发布后的版本号即可，代码不用动。
 
 React 版本也要注意：组件库基于 React 18，todo-web 是 React 19。页面外壳用 18、以 iframe 嵌入，两边各带自己的 React，不共享运行时；这也是继续用「URL + iframe」而不是源码包的原因。
 
 ## 实施顺序
 
-1. `server/`：定位、元信息、文本接口 + 两份 fixture 测试。
-2. `canonicalize.mjs`：补头与行改写，用 CC 风格 fixture 验证 `parsePiJsonl` 能通过。
-3. `web/`：外壳 + 状态机，接通组件库。
-4. 体积上限、gzip、token、`frame-ancestors` 的验收。
-5. 接入 todo-web 工作台配置，验证 iframe 尺寸与滚动。
+已完成：定位与索引、元信息与文本接口、格式转换（含坏行丢弃）、页面外壳、体积与 gzip、静态托管与 `frame-ancestors`，并接入看板工作台验证了内嵌效果。`server/test` 7 项用例，`web` 通过类型检查与构建。
+
+后续可选：会话列表首页、分支切换、流式 tail、31MB 会话的 Worker 解析。
 
 ## 待定
 

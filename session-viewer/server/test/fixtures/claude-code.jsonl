@@ -1,0 +1,4 @@
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-11-01T11:00:00.000Z","sessionId":"22222222-2222-4222-8222-222222222222","content":"hi"}
+{"parentUuid":null,"isSidechain":false,"type":"user","uuid":"c1","timestamp":"2026-11-01T11:00:01.000Z","cwd":"/tmp/legacy","sessionId":"22222222-2222-4222-8222-222222222222","message":{"role":"user","content":"第一条消息"}}
+{"parentUuid":"c1","isSidechain":false,"type":"assistant","uuid":"c2","timestamp":"2026-11-01T11:00:03.000Z","cwd":"/tmp/legacy","sessionId":"22222222-2222-4222-8222-222222222222","message":{"role":"assistant","content":[{"type":"text","text":"收到"}]}}
+{"type":"last-prompt","lastPrompt":"第一条消息","sessionId":"22222222-2222-4222-8222-222222222222"}

@@ -1,0 +1,94 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #ffffff;
+}
+
+.viewer-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.viewer-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.viewer-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666666;
+}
+
+.viewer-id {
+  font-size: 11px;
+  color: #1a1a1a;
+}
+
+.viewer-meta {
+  font-size: 11px;
+  color: #666666;
+}
+
+.viewer-source {
+  margin-left: auto;
+  font-size: 11px;
+  color: #666666;
+  text-decoration: none;
+}
+
+.viewer-source:hover {
+  color: #1a1a1a;
+  text-decoration: underline;
+}
+
+.viewer-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewer-center {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+}
+
+.viewer-hint {
+  font-size: 12px;
+  color: #999999;
+}
+
+.viewer-error {
+  font-size: 13px;
+  color: #b43c3c;
+}

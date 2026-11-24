@@ -1,0 +1,28 @@
+{
+  "name": "@ursi-flow/session-viewer-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pi-agent-trajectory-viewer": "file:../../../pi-agent-trajectory-viewer",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "~5.7.3",
+    "vite": "~6.4.5",
+    "@types/node": "^24.0.0"
+  }
+}
