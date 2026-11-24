@@ -90,9 +90,9 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 
 - 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
 - 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`hideHeader?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
-- 折叠由外壳负责，模块不写折叠 UI：模块实现 `useCollapsedSummary()` 公布 `{ title, items }`，外壳按书脊式排版渲染。todo 公布当前任务标题、`status` 与 `project`，未选中时公布 `Tasks` 与任务数；信息变化时窄条自动更新。
+- 折叠由外壳负责，模块不写折叠 UI：模块实现 `useCollapsedSummary()` 公布 `{ title, items }`，外壳按书脊式排版渲染。todo 公布当前任务标题、`status` 与 `project`，未选中时公布 `Tasks` 与任务数；信息变化时窄条自动更新。窄条按 18px 间距分行，标题用衬线体、标签用小号大写、值用等宽体，避免堆在一起。
 - 模块内部还能驱动栏宽：`useModuleColumn()` 提供 `width`、`resize`、`collapse`、`expand`。子面板需要更多空间时（例如以后的运行详情），模块自己调 `resize`，外壳不需要知道模块内部有几层。把外壳做成「逐层管理子面板」会让它认识每个模块的内部结构，那样的耦合不划算。
-- 模块自带标题或工具条时声明 `hideHeader: true`：外壳不画标题行，内容贴住栏顶；折叠按钮挪到分隔线中点，只在悬停分隔线时出现，避免压住模块自己的控件。todo 用这条路径，否则会出现「外壳标题 + todo 统计栏」两层抬头。
+- 模块自带标题或工具条时声明 `hideHeader: true`：外壳不画标题行，内容贴住栏顶；折叠按钮挪到分隔线中点并常驻显示（14×18 的 `‹`），避免压住模块自己的控件。todo 用这条路径，否则会出现「外壳标题 + todo 统计栏」两层抬头。
 - 纵向分三层：40px 标题栏（左侧 `title`、右侧设置入口）、主区、24px 状态栏（左侧选中摘要、右侧宿主 `status`）。标题栏与状态栏固定高度、不可拖拽，中间仍是横向的模块栏 / 工作区区域 / 操作栏。
 - 设置这类不占栏的页面用 `views` 注册成 `{ kind, summary, Component }`，选中后占用工作区区域，模块栏不受影响。
 - todo 模块：`apps/workspace/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。

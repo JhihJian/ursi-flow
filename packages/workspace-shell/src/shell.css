@@ -132,31 +132,27 @@
 }
 
 /* 模块自带标题时隐藏外壳标题行，折叠入口放在分隔线上 */
+/* 折叠按钮常驻在分隔线中点，比 6px 的分隔线宽，方便点击 */
 .ws-separator .ws-separator-pin {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 2;
-  opacity: 0;
-  padding: 0 1px;
+  min-width: 14px;
+  padding: 2px 0;
   border: 1px solid var(--ws-line);
   border-radius: 2px;
   background: #fff;
   color: var(--ws-muted);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 10px;
+  line-height: 12px;
   cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.ws-separator:hover .ws-separator-pin,
-.ws-separator .ws-separator-pin:focus-visible {
-  opacity: 1;
 }
 
 .ws-separator .ws-separator-pin:hover {
   border-color: var(--ws-ink);
+  background: var(--ws-line);
   color: var(--ws-ink);
 }
 
@@ -198,7 +194,7 @@
 .ws-rail-summary {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 18px;
   margin: auto 0;
   padding: 0;
   border: 0;
@@ -220,7 +216,7 @@
 .ws-rail-item {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 6px;
 }
 
 .ws-rail-label {
