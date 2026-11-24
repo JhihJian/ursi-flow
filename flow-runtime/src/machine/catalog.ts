@@ -1,6 +1,7 @@
 import {
 	cp,
 	lstat,
+	chmod,
 	mkdir,
 	readFile,
 	readdir,
@@ -202,6 +203,8 @@ export class Catalog {
 			if (op === "create" && exists) throw new BusinessError("conflict", "Flow 已存在");
 			if ((op === "update" || op === "delete") && !exists)
 				throw new BusinessError("not_found", "Flow 不存在");
+			// flow-manifest 安装的包是只读的（目录 555、文件 444），重写前先整树恢复可写。
+			await chmodTreeWritable(dir);
 			await rm(dir, { recursive: true, force: true });
 			if (op !== "delete") {
 				checkFiles(files);
@@ -224,11 +227,11 @@ export class Catalog {
 					// Only package validation in the staged generation is caller input.
 					if (!(e instanceof Error) || "errno" in e ||
 						(e.constructor !== Error && !(e instanceof FlowSyntaxError))) throw e;
-					// A pre-existing broken dependency is storage corruption. Check the
-					// published closure before attributing a failure to the proposed edit.
-					if (prev) {
-						const published = this.root(prev);
-						for (const pkg of await readdir(published)) await loadFlow(join(published, pkg));
+					if (entry !== name) {
+						// 预存在的坏包（例如其他宿主以版本化布局安装的包）不阻塞本次修改，
+						// 只在日志里说明；运行到它时自然报错。
+						console.error(`忽略无法解析的既有包 ${entry}: ${e.message}`);
+						continue;
 					}
 					throw invalid(e.message);
 				}
@@ -240,8 +243,26 @@ export class Catalog {
 			await this.publish(next);
 			return { id: name, revision: next };
 		} catch (e) {
+			// 失败清理同样要恢复可写，否则只读包会让暂存目录删不掉。
+			await chmodTreeWritable(root).catch(() => {});
 			await rm(root, { recursive: true, force: true });
 			throw e;
 		}
+	}
+}
+
+/** 把目录树整体恢复为属主可写：只读安装包（555/444）也要能被后续修订覆盖。 */
+async function chmodTreeWritable(dir: string): Promise<void> {
+	const entries = await readdir(dir).catch(() => []);
+	for (const entry of entries) {
+		const target = join(dir, entry);
+		const st = await lstat(target);
+		if (st.isDirectory()) await chmodTreeWritable(target);
+	}
+	await chmod(dir, 0o700).catch(() => {});
+	for (const entry of entries) {
+		const target = join(dir, entry);
+		const st = await lstat(target).catch(() => null);
+		if (st?.isFile()) await chmod(target, 0o600).catch(() => {});
 	}
 }
