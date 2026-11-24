@@ -22,6 +22,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
+  BellRing,
   Boxes,
   CirclePlay,
   Command,
@@ -77,6 +78,7 @@ const kindIcon: Record<ActionKind, typeof Sparkles> = {
   复用Agent: Copy,
   执行自定义命令: Command,
   执行Flow: Layers,
+  confirm: BellRing,
 }
 /** 结果名的语气：失败类偏红，完成类偏绿，其余中性。 */
 const toneOf = (result: string) => {
