@@ -591,6 +591,13 @@ button {
 
 .col-priority {
   width: 46px;
+}
+
+/* 表头默认左对齐，这里让单元格与表头保持同一对齐。 */
+.task-table th.col-priority,
+.task-table td.col-priority,
+.task-table th.col-time,
+.task-table td.col-time {
   text-align: center;
 }
 
@@ -608,7 +615,6 @@ button {
 
 .col-time {
   width: 180px;
-  text-align: right;
 }
 
 .drag-handle {
