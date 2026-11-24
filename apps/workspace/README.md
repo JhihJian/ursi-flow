@@ -29,6 +29,14 @@ cd todo-web/server && cargo run          # 或已有实例
 
 外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。契约见 `packages/workspace-shell/src/contracts.ts`。
 
+## 顶部与底部横栏
+
+`WorkspaceShell` 的 `top` 与 `bottom` 各接一个 `{ title, content, defaultSize }`，现在放的是占位文案：顶部留给全局工具条，底部留给执行输出。横栏可拖动分隔线改高，也能折叠成 28px 摘要条。
+
+```tsx
+<WorkspaceShell modules={modules} top={toolbar} bottom={output} storageKey="ursi.workspace" />
+```
+
 ## 当前限制
 
 - todo 仍整栏挂载（`apps/workspace/src/modules/todo.tsx`），内部三栏还没拆成独立面板。

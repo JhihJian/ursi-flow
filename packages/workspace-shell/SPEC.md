@@ -20,6 +20,17 @@ parent: ../../SPEC.md
 - 拖拽分隔线可调整栏宽，宽度与折叠状态写入浏览器本地，刷新后恢复。
 - 模块不传 `Rail` 时使用外壳的默认窄条。
 
+### 顶部与底部横栏
+
+宿主可选传入 `top` 与 `bottom`，每项含 `title`、`content`、`defaultSize`、`minSize`、`collapsible`。外壳把它们放在主区上方与下方，用垂直分隔线调整高度。
+
+#### 验收
+
+- 传入 `top` 或 `bottom` 时，横栏在主区上下占位，初始高度取 `defaultSize`（缺省 140px），拖拽分隔线可改高度。
+- 横栏可折叠为 28px 摘要条，摘要条显示标题与展开按钮，点击任意一处恢复折叠前高度；`collapsible: false` 时不显示折叠按钮。
+- 横栏高度与折叠状态写入浏览器本地，与主区列宽分开保存，互不覆盖。
+- 未传入时上下不留空白。
+
 ### 全局选中与工作区区域
 
 外壳维护唯一选中 `Selection = { kind, id, label? }`，模块用 `useWorkspace().select` 写入。工作区区域按 `selection.kind` 找模块声明的 `WorkspaceView` 渲染。

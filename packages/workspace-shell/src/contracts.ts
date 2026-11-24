@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 
 /** 全局选中：只保存类型与 ID，实体由模块按 ID 自取。 */
 export interface Selection {
@@ -41,8 +41,22 @@ export interface WorkspaceAction {
   confirm?: string
 }
 
+/** 顶部或底部横栏。外壳只管摆位、拖高与折叠，内容由宿主给。 */
+export interface WorkspaceRegionProps {
+  title: string
+  content: ReactNode
+  defaultSize?: number
+  minSize?: number
+  /** 折叠后是否保留一条 28px 摘要条，默认保留。 */
+  collapsible?: boolean
+}
+
 export interface WorkspaceShellProps {
   modules: WorkspaceModule[]
+  /** 顶部横栏。 */
+  top?: WorkspaceRegionProps
+  /** 底部横栏。 */
+  bottom?: WorkspaceRegionProps
   /** 布局与折叠状态的存储键。 */
   storageKey?: string
   /** 操作失败时的提示，缺省 console.error。 */

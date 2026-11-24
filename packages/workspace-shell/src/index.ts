@@ -5,5 +5,6 @@ export type {
   Selection,
   WorkspaceAction,
   WorkspaceModule,
+  WorkspaceRegionProps,
   WorkspaceShellProps,
 } from './contracts'

@@ -5,13 +5,87 @@ import type {
   Selection,
   WorkspaceAction,
   WorkspaceModule,
+  WorkspaceRegionProps,
   WorkspaceShellProps,
 } from './contracts'
 import { useWorkspace, WorkspaceProvider } from './context'
 import './shell.css'
 
 const COLLAPSED_SIZE = 32
+const REGION_COLLAPSED_SIZE = 28
 const ACTIONS_SIZE = 260
+
+function RegionColumn({
+  id,
+  region,
+  edge,
+}: {
+  id: 'top' | 'bottom'
+  region: WorkspaceRegionProps
+  edge: 'top' | 'bottom'
+}) {
+  const panelRef = usePanelRef()
+  const [collapsed, setCollapsed] = useState(false)
+  const [lastSize, setLastSize] = useState(region.defaultSize ?? 140)
+  const collapsible = region.collapsible ?? true
+  const collapseGlyph = edge === 'top' ? '⌃' : '⌄'
+  const expandGlyph = edge === 'top' ? '⌄' : '⌃'
+
+  const expand = () => panelRef.current?.resize(lastSize)
+
+  return (
+    <Panel
+      id={`region-${id}`}
+      className={collapsed ? 'ws-region ws-region-collapsed' : 'ws-region'}
+      panelRef={panelRef}
+      defaultSize={region.defaultSize ?? 140}
+      minSize={region.minSize ?? 56}
+      collapsible={collapsible}
+      collapsedSize={REGION_COLLAPSED_SIZE}
+      groupResizeBehavior="preserve-pixel-size"
+      onResize={(size) => {
+        const next = size.inPixels <= REGION_COLLAPSED_SIZE + 1
+        if (!next) setLastSize(size.inPixels)
+        setCollapsed(next)
+      }}
+    >
+      {collapsed ? (
+        <div className="ws-region-bar">
+          <button
+            type="button"
+            className="ws-rail-toggle"
+            title={`展开${region.title}`}
+            aria-label={`展开${region.title}`}
+            onClick={expand}
+          >
+            {expandGlyph}
+          </button>
+          <button type="button" className="ws-region-bar-title" onClick={expand}>
+            {region.title}
+          </button>
+        </div>
+      ) : (
+        <div className="ws-region-body">
+          <header className="ws-region-head">
+            <span className="ws-region-title">{region.title}</span>
+            {collapsible ? (
+              <button
+                type="button"
+                className="ws-rail-toggle"
+                title={`收起${region.title}`}
+                aria-label={`收起${region.title}`}
+                onClick={() => panelRef.current?.collapse()}
+              >
+                {collapseGlyph}
+              </button>
+            ) : null}
+          </header>
+          <div className="ws-region-content">{region.content}</div>
+        </div>
+      )}
+    </Panel>
+  )
+}
 
 function DefaultRail({ onExpand, title }: RailProps) {
   return (
@@ -185,23 +259,45 @@ function summaryFor(modules: WorkspaceModule[], selection: Selection): string | 
   return module?.selection?.summary(selection) ?? null
 }
 
-function Shell({ modules, storageKey = 'ursi.workspace-shell' }: WorkspaceShellProps) {
-  const layout = useDefaultLayout({ id: storageKey })
+function Shell({ modules, top, bottom, storageKey = 'ursi.workspace-shell' }: WorkspaceShellProps) {
+  const columns = useDefaultLayout({ id: storageKey })
+  const rows = useDefaultLayout({ id: `${storageKey}.rows` })
 
   return (
     <Group
-      orientation="horizontal"
-      className="ws-root"
-      defaultLayout={layout.defaultLayout}
-      onLayoutChanged={layout.onLayoutChanged}
+      orientation="vertical"
+      className="ws-outer"
+      defaultLayout={rows.defaultLayout}
+      onLayoutChanged={rows.onLayoutChanged}
     >
-      {modules.map((module) => (
-        <ModuleColumn key={module.id} module={module} />
-      ))}
-      <Separator className="ws-separator" />
-      <WorkspaceRegion modules={modules} />
-      <Separator className="ws-separator" />
-      <ActionsPanel modules={modules} />
+      {top ? (
+        <>
+          <RegionColumn id="top" region={top} edge="top" />
+          <Separator className="ws-rule" />
+        </>
+      ) : null}
+      <Panel id="main" className="ws-main" minSize={240}>
+        <Group
+          orientation="horizontal"
+          className="ws-root"
+          defaultLayout={columns.defaultLayout}
+          onLayoutChanged={columns.onLayoutChanged}
+        >
+          {modules.map((module) => (
+            <ModuleColumn key={module.id} module={module} />
+          ))}
+          <Separator className="ws-separator" />
+          <WorkspaceRegion modules={modules} />
+          <Separator className="ws-separator" />
+          <ActionsPanel modules={modules} />
+        </Group>
+      </Panel>
+      {bottom ? (
+        <>
+          <Separator className="ws-rule" />
+          <RegionColumn id="bottom" region={bottom} edge="bottom" />
+        </>
+      ) : null}
     </Group>
   )
 }
