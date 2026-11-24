@@ -37,7 +37,7 @@ h2 { font-size: 1rem; margin: 0 0 12px; }
 .brand { overflow-wrap: anywhere; display: inline-flex; align-items: center; gap: 10px; min-height: 36px; min-width: 0; font-weight: 670; }
 .mark { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border-radius: 7px; background: var(--accent-bg); color: var(--accent); }
 .tools { display: flex; gap: 6px; flex-wrap: wrap; }
-.tool { min-height: 36px; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 10px; font-size: .875rem; }
+.tool { min-height: 36px; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 10px; font-size: .875rem; text-decoration: none; }
 .tool:hover, a.entry:hover, .side-link:hover { background: var(--hover); }
 .project-intro { max-inline-size: 66ch; }
 .project-kicker { font-size: .875rem; color: var(--muted); font-weight: 600; }
@@ -52,30 +52,17 @@ h1 { font-size: 1.75rem; line-height: 1.2; margin: 8px 0 10px; overflow-wrap: an
 .entry-list { padding-top: 20px; display: grid; gap: 4px; }
 .entry-list h2 { margin: 0; padding-inline: 8px; font-size: .75rem; color: var(--muted); }
 .entry > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.entry small, .plugin-list small { display: block; color: var(--muted); margin-top: 3px; }
+.entry small { display: block; color: var(--muted); margin-top: 3px; }
 .entry-list .muted { padding: 8px; }
 .muted { color: var(--muted); margin: 0; font-size: .875rem; }
 .sidebar { border-block-start: 1px solid var(--line); padding: 12px 0; display: grid; gap: 4px; }
 .sidebar h2 { margin-bottom: 2px; font-size: .875rem; }
 .side-link { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 5px 8px; text-decoration: none; border-radius: 6px; font-size: .875rem; }
 .side-link svg:first-child { color: var(--accent); }
-dialog { color: var(--text); width: min(440px, calc(100% - 32px)); padding: 18px; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 44px #17242b26; background: var(--surface); }
-dialog::backdrop { background: #18222859; }
-.dialog-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); margin-bottom: 16px; padding-bottom: 8px; }
-.dialog-title h2 { margin: 0; }
-.icon-tool { width: 36px; padding: 0; }
-fieldset { margin: 0 0 16px; min-width: 0; padding: 0; border: 0; }
-legend { font-size: .875rem; color: var(--muted); padding: 0; margin-bottom: 8px; }
-.placement { display: inline-flex; gap: 4px; border: 1px solid var(--line); border-radius: 7px; padding: 3px; }
-.placement label { cursor: pointer; display: flex; align-items: center; gap: 6px; border-radius: 5px; padding: 6px 9px; }
-.placement label:has(:checked) { background: var(--accent-bg); }
 .secondary { border-color: var(--line); }
-.plugin-list { list-style: none; margin: 0; padding: 0; }
-.plugin-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; }
-.plugin-list li + li { border-top: 1px solid var(--line); }
-.plugin-list li > div { flex: 1; min-width: 8rem; }
-.plugin-list label { font-size: .9rem; font-weight: 650; cursor: pointer; }
-.plugin-status { color: var(--muted); font-size: .8rem; }
+.loading-page { margin: 24px; color: var(--muted); }
+.config-warning, .project-intro .config-warning { color: #842e19; background: #fff3e9; border-inline-start: 3px solid #bd5437; padding: 8px 12px; margin-block: 12px; font-size: .875rem; }
+.project-intro p { white-space: pre-wrap; }
 input { accent-color: var(--accent); }
 input[role="switch"] { appearance: none; cursor: pointer; width: 36px; height: 21px; flex: none; margin: 0; border: 1px solid #6c797c; border-radius: 12px; background-color: #6c797c; display: grid; align-items: center; padding: 2px; }
 input[role="switch"]::before { content: ""; display: block; border-radius: 50%; background-color: white; width: 15px; height: 15px; }

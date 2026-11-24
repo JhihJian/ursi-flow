@@ -12,11 +12,15 @@ export function useSlotEntries<Slots extends object, K extends keyof Slots & str
   return useSyncExternalStore(registry.subscribe, getSnapshot, getSnapshot);
 }
 
-class ContributionBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class ContributionBoundary extends Component<{ children: ReactNode; onError?: () => void }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError?.();
   }
 
   render() {
@@ -24,12 +28,13 @@ class ContributionBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export function SlotContent<Props extends object>({ entries, context }: {
+export function SlotContent<Props extends object>({ entries, context, onError }: {
   entries: readonly SlotEntry<Props>[];
   context: NoInfer<Props>;
+  onError?: (entryId: string) => void;
 }) {
-  return entries.map(({ key, Component: Contribution }) => (
-    <ContributionBoundary key={key}>
+  return entries.map(({ id, key, Component: Contribution }) => (
+    <ContributionBoundary key={key} onError={onError && (() => onError(id))}>
       <Contribution {...context} />
     </ContributionBoundary>
   ));

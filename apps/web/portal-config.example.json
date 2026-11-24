@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": "example-v1",
+  "page": {
+    "brand": "ursi-flow",
+    "name": "ursi-flow",
+    "description": "流程、工作项与执行记录",
+    "repository": "https://github.com/JhihJian/ursi-flow",
+    "placement": "right"
+  },
+  "plugins": {
+    "workbench": false,
+    "project-links": true
+  },
+  "workbenchUrl": ""
+}

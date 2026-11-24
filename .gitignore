@@ -3,6 +3,8 @@ target/
 /workbench/data/
 node_modules
 /apps/web/dist/
+/apps/web/.e2e-dist/
+/apps/web/public/portal-config.json
 /apps/web/test-results/
 /apps/web/playwright-report/
 /apps/web/.env.local

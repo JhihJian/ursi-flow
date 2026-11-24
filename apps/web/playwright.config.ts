@@ -7,8 +7,7 @@ export default defineConfig({
   testDir: 'e2e',
   use: { baseURL },
   webServer: {
-    command: `vite --host 0.0.0.0 --port ${port} --strictPort`,
+    command: `vite build --outDir .e2e-dist && vite preview --outDir .e2e-dist --host 0.0.0.0 --port ${port} --strictPort`,
     url: baseURL,
-    env: { VITE_WORKBENCH_URL: 'http://127.0.0.1:5173/work-items' },
   },
 })

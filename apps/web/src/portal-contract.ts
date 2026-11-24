@@ -13,6 +13,7 @@ export type PluginDefinition = Readonly<{
   name: string
   description: string
   enabledByDefault: boolean
+  placements: readonly (keyof PortalSlots)[]
   load: () => Promise<PortalPlugin>
 }>
 
