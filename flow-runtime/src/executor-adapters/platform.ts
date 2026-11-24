@@ -108,9 +108,12 @@ export class PlatformAgent implements AgentRunExecutor {
 	async preflight(...[flow, options]: Parameters<AgentRunExecutor["preflight"]>) {
 		await preflightFlow(flow, options);
 		for (const definition of [flow, ...Array.from(options?.references?.values() ?? [], p => p.flow)])
-			for (const node of definition.nodes.values())
+			for (const node of definition.nodes.values()) {
+				if (node.action.kind === "confirm")
+					throw Error("平台执行器暂不支持人工确认节点");
 				if (node.action.kind === "新建Agent" && /\]\(references\//.test(node.action.prompt))
 					throw Error("平台 Agent 不支持读取本地包的 references 文件");
+			}
 	}
 	async start() {}
 	async end() {}

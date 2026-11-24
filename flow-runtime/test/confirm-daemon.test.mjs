@@ -217,12 +217,12 @@ test('resume 挂起中的 Run 重新提问并再次挂起', async () => {
   const oldPending = before.nodeRuns.at(-1);
   await rpc('run.resume', { id: 'gate-2' });
   await until(async () => {
+    const job = await rpc('run.get', { id: 'gate-2' });
+    if (job.status !== 'waiting_input') return false;
     const history = await rpc('run.history', { id: 'gate-2' });
     const latest = history.nodeRuns.at(-1);
     return latest.id !== oldPending.id && latest.pendingInput && latest;
   });
-  const job = await rpc('run.get', { id: 'gate-2' });
-  assert.equal(job.status, 'waiting_input');
   // 重新提问后仍可正常应答完成
   const history = await rpc('run.history', { id: 'gate-2' });
   const pending = history.nodeRuns.at(-1);

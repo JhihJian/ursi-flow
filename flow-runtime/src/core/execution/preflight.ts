@@ -31,11 +31,11 @@ export async function preflightFlow(
 		if (!available) throw new Error(`Flow 缺少扩展能力: ${name}`);
 	};
 	if (options.execution?.confirm === false)
-		throw new Error("本地执行器暂不支持人工确认节点: confirm");
+		throw new Error("宿主不支持人工确认节点: confirm");
 	if (options.sessionReference)
 		requireCapability(options.agent?.continuity, "Agent Continuity");
 
-	const visit = (definition: FlowDefinition) => {
+	const visit = (definition: FlowDefinition, root = false) => {
 		if (visited.has(definition)) return;
 		visited.add(definition);
 		const capabilities = normalizeAgentCapabilities(definition.capabilities);
@@ -53,6 +53,10 @@ export async function preflightFlow(
 		for (const node of definition.nodes.values()) {
 			const action = node.action;
 			switch (action.kind) {
+				case "confirm":
+					// confirm 需要人工应答，只在顶层 Run 生效：引用闭包与并行分支都不支持。
+					if (!root) throw new Error(`引用闭包内不支持人工确认节点: ${node.ref}`);
+					break;
 				case "执行自定义命令":
 					requireCapability(options.execution?.command, "Command Executor");
 					break;
@@ -64,7 +68,7 @@ export async function preflightFlow(
 					const child = options.references?.get(action.flow);
 					if (!child)
 						throw new Error(`被引用的 Flow 未在闭包中加载: ${action.flow}`);
-					visit(child.flow);
+					visit(child.flow, true);
 					break;
 				}
 				case "复用Agent":
@@ -90,7 +94,7 @@ export async function preflightFlow(
 			}
 		}
 	};
-	visit(flow);
+	visit(flow, true);
 	// Finish structural checks first; then ask the host to validate actual profiles.
 	for (const request of assemblies) {
 		const assembly = options.agent?.assembly;
