@@ -124,7 +124,7 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
       <aside className="sidebar sidebar-collapsed">
         <button
           type="button"
-          className="sidebar-expand"
+          className="rail-toggle"
           title="Expand projects"
           aria-label="Expand projects"
           onClick={onExpand}
@@ -167,7 +167,7 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
         <h2 className="sidebar-title">Projects</h2>
         <button
           type="button"
-          className="sidebar-collapse"
+          className="rail-toggle"
           title="Collapse projects"
           aria-label="Collapse projects"
           onClick={onCollapse}

@@ -348,24 +348,29 @@ button {
   margin-bottom: 0;
 }
 
-.sidebar-head .sidebar-collapse {
+.sidebar-head .rail-toggle {
   margin-left: auto;
 }
 
-.sidebar-collapse,
-.sidebar-expand {
-  padding: 0 2px;
+.rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 var(--space-xs);
   border: 0;
   background: none;
   color: var(--gray-400);
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
 
-.sidebar-collapse:hover,
-.sidebar-expand:hover {
-  color: var(--black);
+.rail-toggle:hover {
+  color: var(--gray-900);
+  background: var(--gray-200);
 }
 
 .panel-sidebar-collapsed {
