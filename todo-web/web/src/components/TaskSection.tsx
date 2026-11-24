@@ -1,13 +1,7 @@
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
-import {
-  formatTaskTime,
-  prioritySymbol,
-  statusSymbol,
-  STATUS_CLASS,
-  STATUS_LABELS,
-} from '@/lib/format'
+import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
 import { copyText } from '@/lib/clipboard'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
@@ -47,7 +41,7 @@ function StatusTarget({
       title={filtered ? `Show all tasks` : `Show only ${status} tasks`}
       onClick={() => toggleStatusFilter(status)}
     >
-      <span className={cx('status-symbol', STATUS_CLASS[status])}>{statusSymbol(status)}</span>
+      <span className="status-symbol">{statusSymbol(status)}</span>
       <span className="status-name">{STATUS_LABELS[status]}</span>
       <span className="status-count">{count}</span>
     </button>
@@ -162,13 +156,8 @@ function TaskRow({
           </span>
         ))}
       </td>
-      <td className="col-status">
-        <span
-          className={cx('task-status', STATUS_CLASS[task.status])}
-          title={STATUS_LABELS[task.status]}
-        >
-          {statusSymbol(task.status)}
-        </span>
+      <td className="col-status" title={STATUS_LABELS[task.status]}>
+        {statusSymbol(task.status)}
       </td>
       <td className="col-time">{formatTaskTime(task)}</td>
     </tr>

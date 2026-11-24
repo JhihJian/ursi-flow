@@ -14,13 +14,6 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
-
-  /* Task 状态色：低饱和，不破坏纸面灰阶风格 */
-  --status-pending: var(--gray-400);
-  --status-in_progress: #3a6ea5;
-  --status-blocked: #b43c3c;
-  --status-done: #3e7d51;
-  --status-cancelled: var(--gray-400);
 }
 
 *,
@@ -510,34 +503,6 @@ button {
   color: var(--gray-400);
 }
 
-/* 状态符号着色：符号即状态，颜色加深语义。
-   .status-target 组合选择器用于压过 .status-target .status-symbol 的灰色默认值，
-   同时仍被 .is-active / .is-over 的白色覆盖。 */
-.task-status-pending,
-.status-target .task-status-pending {
-  color: var(--status-pending);
-}
-
-.task-status-in_progress,
-.status-target .task-status-in_progress {
-  color: var(--status-in_progress);
-}
-
-.task-status-blocked,
-.status-target .task-status-blocked {
-  color: var(--status-blocked);
-}
-
-.task-status-done,
-.status-target .task-status-done {
-  color: var(--status-done);
-}
-
-.task-status-cancelled,
-.status-target .task-status-cancelled {
-  color: var(--status-cancelled);
-}
-
 .status-target .status-count {
   font-variant-numeric: tabular-nums;
 }
@@ -616,6 +581,8 @@ button {
 /* 表头默认左对齐，这里让单元格与表头保持同一对齐。 */
 .task-table th.col-priority,
 .task-table td.col-priority,
+.task-table th.col-status,
+.task-table td.col-status,
 .task-table th.col-time,
 .task-table td.col-time {
   text-align: center;
@@ -630,7 +597,7 @@ button {
 }
 
 .col-status {
-  width: 100px;
+  width: 46px;
 }
 
 .col-time {

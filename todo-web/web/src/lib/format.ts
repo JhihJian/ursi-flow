@@ -14,15 +14,6 @@ const statusSymbols: Record<TaskStatus, string> = {
   cancelled: '✕',
 }
 
-// 状态色与 styles.css 中的 --status-* 变量一一对应，class 由组件拼接使用。
-export const STATUS_CLASS: Record<TaskStatus, string> = {
-  done: 'task-status-done',
-  in_progress: 'task-status-in_progress',
-  blocked: 'task-status-blocked',
-  pending: 'task-status-pending',
-  cancelled: 'task-status-cancelled',
-}
-
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   pending: 'pending',
   in_progress: 'in_progress',
