@@ -296,7 +296,7 @@ export function EndpointWorkbench({
                     <div className="stage-idle">
                       <Icon
                         aria-hidden="true"
-                        className="size-7 text-neutral-500"
+                        className="size-7 text-txt3"
                       />
                       <span>
                         {unavailable ||

@@ -221,7 +221,7 @@ export function CreateSandbox({ source }: { source: Source }) {
           创建沙箱
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto">
         <DialogHeader className="pr-8">
           <DialogTitle>创建沙箱</DialogTitle>
           <DialogDescription>

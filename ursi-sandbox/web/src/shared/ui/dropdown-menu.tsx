@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import * as Primitive from '@radix-ui/react-dropdown-menu'
-import { cn } from '../lib/utils'
+import { cn, appOverlayContainer } from '../lib/utils'
 
 export const DropdownMenu = Primitive.Root
 export const DropdownMenuTrigger = Primitive.Trigger
@@ -11,11 +11,11 @@ export function DropdownMenuContent({
   ...props
 }: ComponentProps<typeof Primitive.Content>) {
   return (
-    <Primitive.Portal>
+    <Primitive.Portal container={appOverlayContainer()}>
       <Primitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'z-50 min-w-44 rounded-lg border border-line bg-surface p-1 text-txt shadow-lg',
+          'z-50 min-w-44 border border-line bg-surface p-1 text-txt',
           className,
         )}
         {...props}
@@ -31,7 +31,7 @@ export function DropdownMenuItem({
   return (
     <Primitive.Item
       className={cn(
-        'flex cursor-default select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none focus:bg-elevated data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4',
+        'flex cursor-default select-none items-center gap-2 px-2 py-2 text-sm outline-none focus:bg-elevated data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4',
         className,
       )}
       {...props}

@@ -51,7 +51,6 @@ import {
 } from './shared/ui/table'
 import { cn } from './shared/lib/utils'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
-import { initAppearance } from './theme'
 import './tokens.css'
 import './style.css'
 
@@ -620,9 +619,10 @@ function App() {
     </>
   )
 }
-initAppearance()
 createRoot(document.getElementById('root')!).render(
   <HashRouter>
-    <App />
+    <div className="sbx-app">
+      <App />
+    </div>
   </HashRouter>,
 )

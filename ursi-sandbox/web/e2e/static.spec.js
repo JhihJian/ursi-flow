@@ -7,14 +7,10 @@ test('静态产物缺少 Gateway 配置时显示错误，不渲染实例和终�
     sockets = []
   page.on('request', (r) => requests.push(new URL(r.url()).pathname))
   page.on('websocket', (ws) => sockets.push(ws.url()))
-  await page.addInitScript(() => {
-    localStorage.setItem('ursi-flow:theme', 'dark')
-    localStorage.setItem('ursi-flow:palette', 'mono')
-  })
   await page.goto('./#/sandboxes/' + 'a'.repeat(32))
-  await expect(page.locator('html')).toHaveCSS(
+  await expect(page.locator('.sbx-app')).toHaveCSS(
     'background-color',
-    'rgb(9, 9, 9)',
+    'rgb(255, 255, 255)',
   )
   await expect(page.getByRole('status')).toHaveText('未配置 Gateway 控制台重试')
   await expect(page.getByRole('region', { name: '端点工作台' })).toHaveCount(0)

@@ -42,7 +42,7 @@ npm start
 
 页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS 和脚本输出到 `dist/`。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
 
-`src/tokens.css` 保存 Workbench 主题变量的独立副本；同源时读取其 `ursi-flow:theme` 和 `ursi-flow:palette` 偏好。构建不依赖 Workbench 源码。将静态资源部署到子目录（例如 `/apps/sandbox/`）时，由同源鉴权代理在该目录提供 `console-config.json`（`{"mode":"gateway"}`）及 Gateway API。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
+`src/tokens.css` 在 `.sbx-app` 容器作用域内定义工作台外壳的灰度变量（衬线标题 + 等宽正文，固定浅色，不做暗色切换）。样式不写全局规则，浮层通过 Radix Portal 挂到 `.sbx-app` 容器并以 absolute 定位呈现。构建不依赖 Workbench 源码。将静态资源部署到子目录（例如 `/apps/sandbox/`）时，由同源鉴权代理在该目录提供 `console-config.json`（`{"mode":"gateway"}`）及 Gateway API。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
 
 ## 配置 Gateway 与 Web 身份
 

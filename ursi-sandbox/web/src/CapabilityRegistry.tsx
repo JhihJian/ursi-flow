@@ -130,7 +130,7 @@ function RegistryEditor({
           编辑 Gateway 注册表
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>编辑 Gateway 注册表</DialogTitle>
           <DialogDescription>变更适用于之后创建的实例。</DialogDescription>

@@ -2,20 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html {
-    @apply bg-base font-sans text-txt antialiased;
+/*
+ * 全部样式进 .sbx-app 容器作用域（工作台模块契约）：
+ * 不写 html/body/:root 全局规则；滚动放在栏内的 .sbx-main 上，
+ * 不做整页滚动。@tailwind base 的 preflight 仍是全局注入，
+ * 嵌入外壳时由宿主与模块协调，见 SPEC「嵌入工作台外壳」一节。
+ */
+@layer components {
+  .sbx-app {
+    @apply relative flex h-dvh min-w-0 flex-col overflow-hidden bg-base font-mono text-sm text-txt antialiased;
   }
-  body {
-    @apply min-w-0 text-sm;
-  }
-  :focus-visible {
+  .sbx-app :focus-visible {
     outline: 2px solid rgb(var(--c-accent));
     outline-offset: 2px;
   }
-}
-
-@layer components {
+  .sbx-app h1,
+  .sbx-app h2 {
+    @apply font-serif font-semibold;
+  }
+  .sbx-main {
+    @apply flex min-h-0 w-full flex-1 flex-col items-stretch self-center;
+  }
   .page-shell {
     @apply mx-auto w-full min-w-0 max-w-[1680px] px-3 sm:px-6 lg:px-8;
   }
@@ -26,11 +33,11 @@
     @apply flex min-w-0 flex-wrap items-center justify-between gap-3;
   }
   .page-heading h1 {
-    @apply text-2xl font-semibold;
+    @apply font-serif text-2xl font-semibold;
   }
   .input,
   .textarea {
-    @apply block w-full min-w-0 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-txt transition-colors disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3;
+    @apply block w-full min-w-0 border border-line-strong bg-surface px-3 py-2 text-sm text-txt transition-colors disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3;
   }
   .textarea {
     @apply min-h-24 resize-y;
@@ -42,13 +49,13 @@
     @apply border-accent text-txt;
   }
   .icon-tile {
-    @apply inline-grid place-items-center rounded-md bg-accent-dim text-accent-2;
+    @apply inline-grid place-items-center border border-line bg-elevated text-txt;
   }
   .empty-state {
-    @apply flex min-h-24 flex-wrap items-center justify-center gap-2 break-words rounded-lg border border-dashed border-line bg-surface p-3 text-center text-txt3;
+    @apply flex min-h-24 flex-wrap items-center justify-center gap-2 break-words border border-dashed border-line bg-surface p-3 text-center text-txt3;
   }
   .stage-idle {
-    @apply flex size-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-neutral-300;
+    @apply flex size-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-txt3;
   }
   .workbench-screen {
     @apply min-w-0 overflow-hidden bg-black;
@@ -58,7 +65,7 @@
     background: #0a0a0b;
   }
   .workbench-frame:fullscreen {
-    @apply size-full rounded-none border-0;
+    @apply size-full border-0;
   }
   .workbench-frame:fullscreen .workbench-tabs {
     @apply flex h-full min-h-0 flex-col;
