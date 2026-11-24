@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'pi-agent-trajectory-viewer/style.css'
+import './tokens.css'
+import './theme.css'
 import { SessionShell } from './SessionShell'
 import './shell.css'
 

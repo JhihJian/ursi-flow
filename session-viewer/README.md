@@ -32,6 +32,10 @@ cd ../server && npm start
 
 开发时开两个终端：`cd server && npm start`，另开 `cd web && npm run dev`（`/api` 代理到 `127.0.0.1:30150`，页面端口 5185）。
 
+## 样式
+
+页面配色与看板一致：`web/src/tokens.css` 放看板的灰阶与字体变量，`web/src/theme.css` 把组件库的 `--dsw-*` 主题变量映射过去（圆角归零、品牌色改深灰、状态色降饱和），再用少量 `[data-timeline-span]` 覆盖把时间线色块压成灰阶。加载顺序是组件库 CSS → tokens → theme → shell。
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
