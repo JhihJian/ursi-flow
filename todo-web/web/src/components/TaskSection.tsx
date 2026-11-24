@@ -185,17 +185,15 @@ export function TaskSection() {
         ])
       }}
     >
-      <div className="tasks-header">
-        <h3 className="section-title">Tasks</h3>
-        {selectedProjectId ? (
+      {selectedProjectId ? (
+        <div className="tasks-header">
           <div className="status-targets">
-            <span className="status-targets-label">drag to</span>
             {statuses.map((status) => (
               <StatusTarget key={status} status={status} count={counts[status] ?? 0} />
             ))}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <table className="task-table">
         <thead>
           <tr>

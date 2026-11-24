@@ -149,7 +149,7 @@ button {
 .panel-content {
   display: flex;
   flex-direction: column;
-  padding: var(--space-lg) 0 0;
+  padding: var(--space-sm) 0 0;
   overflow: hidden;
 }
 
@@ -166,7 +166,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding-top: var(--space-xs);
+  margin-bottom: var(--space-xs);
   background: var(--white);
 }
 
@@ -472,17 +472,8 @@ button {
 
 .tasks-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-md);
-  margin-bottom: var(--space-md);
-}
-
-.section-title {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-900);
 }
 
 .status-targets {
@@ -510,12 +501,6 @@ button {
 
 .status-target .status-count {
   font-variant-numeric: tabular-nums;
-}
-
-.status-targets-label {
-  font-size: 11px;
-  color: var(--gray-400);
-  letter-spacing: 0.3px;
 }
 
 .status-target.drop-ready {
