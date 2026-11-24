@@ -1,0 +1,81 @@
+.root {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.root button:not(.composer button), .login input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px 10px;
+}
+
+.root button:not(.composer button):enabled:hover { background: var(--bg-hover); }
+.root button:disabled { opacity: .55; }
+
+.login {
+  display: grid;
+  gap: 12px;
+  width: min(360px, calc(100% - 32px));
+  margin: auto;
+}
+
+.login h1 { font-size: 18px; font-weight: 600; }
+.login input { width: 100%; }
+
+.bar, .sessionBar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bar h1, .sessionBar h2 { font-weight: 600; }
+.bar h1 { margin-right: auto; }
+.bar h1 span, .mode { color: var(--text-muted); }
+.mode { flex: none; }
+
+.workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px;
+  gap: 8px;
+}
+
+.actions { display: flex; gap: 6px; }
+.sessions { min-height: 0; overflow: auto; display: grid; gap: 4px; }
+.sessions button { width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessions button[aria-current="true"]:not(.composer button) { background: var(--bg-selected); border-color: var(--accent); }
+.conversation { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.sessionIdentity { margin-right: auto; min-width: 0; }
+.sessionIdentity h2, .sessionIdentity code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessionIdentity code { color: var(--text-muted); font-size: 11px; }
+.transcript { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.messages { max-width: var(--chat-content-max-width); margin: auto; padding: 12px 16px; }
+.empty, .activity { color: var(--text-muted); padding: 12px 16px; }
+.error { color: var(--text); margin: 8px 12px; padding-left: 8px; border-left: 2px solid var(--accent); overflow-wrap: anywhere; }
+.composer { max-height: 42%; overflow: auto; border-top: 1px solid var(--border); padding: 8px 16px max(8px, env(safe-area-inset-bottom)); }
+
+@media (max-width: 600px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); padding: 8px 12px; }
+  .sessions { display: flex; overflow: auto hidden; }
+  .sessions li { flex: none; max-width: 175px; }
+  .bar, .sessionBar, .messages { padding-left: 12px; padding-right: 12px; }
+}
