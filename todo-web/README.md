@@ -11,7 +11,7 @@
 
 ## 本地开发
 
-默认数据目录是 `~/.ursi/todo`，库文件为其中的 `todo.db`，可用 `TODO_DB_PATH` 指向其它位置；看板只读写现有库，不建表、不迁移。整个 Rust 侧只有 workspace 内的两个 crate，不依赖外部 git 仓库。
+数据根目录默认是 `~/.ursi`，可用 `URSI_DATA_DIR` 指向其它位置，待办库文件为 `<数据根目录>/todo/todo.db`，也可用 `TODO_DB_PATH` 直接指定；看板只读写现有库，不建表、不迁移。整个 Rust 侧只有 workspace 内的两个 crate，不依赖外部 git 仓库。
 
 先启动 Server（默认监听 `0.0.0.0:8090`，读取 `~/.ursi/todo/todo.db`）：
 
@@ -43,7 +43,8 @@ cd .. && cargo build --release
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `TODO_DB_PATH` | `~/.ursi/todo/todo.db` | 待办库文件 |
+| `URSI_DATA_DIR` | `~/.ursi` | 数据根目录 |
+| `TODO_DB_PATH` | `$URSI_DATA_DIR/todo/todo.db` | 待办库文件 |
 | `PORT` | `8090` | HTTP 监听端口，绑定 `0.0.0.0` |
 | `TODO_WEB_STATIC_DIR` | `web/dist` | 静态文件目录 |
 

@@ -39,15 +39,23 @@ pub const PROJECT_FIELDS: [&str; 6] = [
     "updated_at",
 ];
 
-/// 默认数据目录：`~/.ursi/todo`。
-pub fn default_data_dir() -> PathBuf {
+/// 数据根目录，默认 `~/.ursi`，可用 `URSI_DATA_DIR` 指向其它位置。
+pub fn data_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("URSI_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".ursi").join("todo")
+    PathBuf::from(home).join(".ursi")
 }
 
-/// Reads `TODO_DB_PATH`; otherwise uses `<默认数据目录>/todo.db`.
+/// 待办数据目录：数据根目录下的 `todo`。
+pub fn default_data_dir() -> PathBuf {
+    data_root().join("todo")
+}
+
+/// Reads `TODO_DB_PATH`; otherwise uses `<待办数据目录>/todo.db`.
 pub fn get_db_path() -> PathBuf {
     if let Ok(path) = std::env::var("TODO_DB_PATH") {
         return PathBuf::from(path);
