@@ -1,13 +1,30 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
+import { renderMarkdown } from '@/lib/markdown'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
 const priorities: Priority[] = ['high', 'medium', 'low']
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done', 'cancelled']
 
-function TaskDetailForm({ detail }: { detail: DetailState }) {
+const HEIGHT_KEY = 'todo-web.detail-height'
+const DEFAULT_HEIGHT = 360
+const MIN_HEIGHT = 200
+/** 面板上方至少留给任务列表的高度。 */
+const LIST_RESERVE = 120
+
+function readStoredHeight(): number {
+  const stored = Number(localStorage.getItem(HEIGHT_KEY))
+  return Number.isFinite(stored) && stored >= MIN_HEIGHT ? stored : DEFAULT_HEIGHT
+}
+
+function clampHeight(value: number, panelHeight: number): number {
+  const max = Math.max(MIN_HEIGHT, panelHeight - LIST_RESERVE)
+  return Math.min(Math.max(value, MIN_HEIGHT), max)
+}
+
+function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const task = detail.mode === 'view' ? detail.task : null
   const saveTask = useTodoStore((state) => state.saveTask)
   const removeTask = useTodoStore((state) => state.removeTask)
@@ -18,19 +35,87 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'medium')
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
-  const [result, setResult] = useState(task?.result ?? '')
+  const [note, setNote] = useState(task?.result ?? '')
+  const [mode, setMode] = useState<'write' | 'preview'>('write')
+  const [height, setHeight] = useState(readStoredHeight)
+  const [maximized, setMaximized] = useState(false)
+
+  const sheetRef = useRef<HTMLElement>(null)
+  const titleRef = useRef<HTMLTextAreaElement>(null)
+  const noteRef = useRef<HTMLTextAreaElement>(null)
+  const heightRef = useRef(height)
 
   const confirmDelete = detail.confirmDelete
+  const missingResult = status === 'done' && !note.trim()
+
+  const applyHeight = useCallback((next: number) => {
+    heightRef.current = next
+    setHeight(next)
+  }, [])
+
+  // 标题框跟随内容长高，保持一行行文连续。
+  useLayoutEffect(() => {
+    const element = titleRef.current
+    if (!element) return
+    element.style.height = 'auto'
+    element.style.height = `${element.scrollHeight}px`
+  }, [title, maximized, height])
+
+  useEffect(() => {
+    const element = noteRef.current
+    if (!element) return
+    element.scrollTop = 0
+  }, [task?.id])
+
+  // 用 window 监听拖动：指针移出面板甚至移出窗口时也能继续调整。
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const sheet = sheetRef.current
+    const panel = sheet?.parentElement
+    if (!sheet || !panel) return
+    event.preventDefault()
+    setMaximized(false)
+
+    const drag = {
+      startY: event.clientY,
+      startHeight: sheet.getBoundingClientRect().height,
+      panelHeight: panel.clientHeight,
+    }
+
+    const onMove = (moveEvent: PointerEvent) => {
+      applyHeight(
+        clampHeight(drag.startHeight + (drag.startY - moveEvent.clientY), drag.panelHeight),
+      )
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      localStorage.setItem(HEIGHT_KEY, String(Math.round(heightRef.current)))
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  const resetHeight = () => {
+    setMaximized(false)
+    applyHeight(DEFAULT_HEIGHT)
+    localStorage.setItem(HEIGHT_KEY, String(DEFAULT_HEIGHT))
+  }
 
   const save = () => {
     const trimmed = title.trim()
     if (!trimmed) {
       alert('Task title is required')
+      titleRef.current?.focus()
       return
     }
     // 完成任务必须写明结果，规则来自 todo-core 的状态机。
-    if (status === 'done' && !result.trim()) {
+    if (missingResult) {
       alert('Completing a task requires a result')
+      setMode('write')
+      noteRef.current?.focus()
       return
     }
     const parsedTags = tags
@@ -43,112 +128,145 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
       priority,
       status,
       tags: parsedTags,
-      result: result.trim() ? result.trim() : null,
+      result: note.trim() ? note : null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
   }
 
   return (
     <section
-      className={cx('detail-sheet', detail.mode === 'new' && 'detail-sheet-new')}
+      ref={sheetRef}
+      className={cx('detail-sheet', maximized && 'is-maximized')}
+      style={maximized ? undefined : { height }}
       role="dialog"
       aria-modal="false"
-      aria-labelledby="detail-sheet-title"
+      aria-label={detail.mode === 'new' ? 'New task' : 'Task details'}
     >
-      <header className="detail-sheet-header">
-        <h3 className="detail-sheet-title" id="detail-sheet-title">
-          {detail.mode === 'new' ? 'New Task' : 'Task Details'}
-        </h3>
-        <span className="detail-sheet-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
-        <button
-          type="button"
-          className="detail-sheet-close"
-          title="Close"
-          aria-label="Close task details"
-          onClick={closeDetail}
-        >
-          ×
-        </button>
-      </header>
+      <div
+        className="detail-grip"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize task details"
+        title="Drag to resize, double-click to reset"
+        onPointerDown={startResize}
+        onDoubleClick={resetHeight}
+      >
+        <span className="detail-grip-dots" aria-hidden="true">
+          ⋯
+        </span>
+      </div>
 
-      <div className="detail-sheet-body">
-        <div className="detail-grid">
-          <div className="form-group detail-field detail-field-wide">
-            <label className="form-label" htmlFor="detail-task-title">
-              Title
-            </label>
-            <input
-              id="detail-task-title"
-              type="text"
-              className="form-input"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              autoFocus={detail.mode === 'new'}
-            />
-          </div>
-          <div className="form-group detail-field">
-            <label className="form-label" htmlFor="detail-task-priority">
-              Priority
-            </label>
-            <select
-              id="detail-task-priority"
-              className="form-select"
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as Priority)}
+      <div className="detail-doc">
+        <textarea
+          ref={titleRef}
+          className="detail-title-input"
+          rows={1}
+          placeholder="Task title"
+          value={title}
+          aria-label="Title"
+          onChange={(event) => setTitle(event.target.value)}
+          autoFocus={detail.mode === 'new'}
+        />
+
+        <div className="detail-meta">
+          <select
+            className="detail-inline-select"
+            value={status}
+            aria-label="Status"
+            disabled={detail.mode === 'new'}
+            onChange={(event) => setStatus(event.target.value as TaskStatus)}
+          >
+            {statuses.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+          <select
+            className="detail-inline-select"
+            value={priority}
+            aria-label="Priority"
+            onChange={(event) => setPriority(event.target.value as Priority)}
+          >
+            {priorities.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+          <input
+            className="detail-inline-input"
+            type="text"
+            placeholder="tags, comma separated"
+            value={tags}
+            aria-label="Tags"
+            onChange={(event) => setTags(event.target.value)}
+          />
+          <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
+          <div className="detail-tools">
+            <button
+              type="button"
+              className="detail-tool"
+              title={maximized ? 'Restore height' : 'Expand'}
+              aria-label={maximized ? 'Restore height' : 'Expand task details'}
+              aria-pressed={maximized}
+              onClick={() => setMaximized((value) => !value)}
             >
-              {priorities.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group detail-field">
-            <label className="form-label" htmlFor="detail-task-status">
-              Status
-            </label>
-            <select
-              id="detail-task-status"
-              className="form-select"
-              value={status}
-              disabled={detail.mode === 'new'}
-              onChange={(event) => setStatus(event.target.value as TaskStatus)}
+              {maximized ? '⤡' : '⤢'}
+            </button>
+            <button
+              type="button"
+              className="detail-tool"
+              title="Close"
+              aria-label="Close task details"
+              onClick={closeDetail}
             >
-              {statuses.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
+              ×
+            </button>
           </div>
-          <div className="form-group detail-field">
-            <label className="form-label" htmlFor="detail-task-tags">
-              Tags
-            </label>
-            <input
-              id="detail-task-tags"
-              type="text"
-              className="form-input"
-              placeholder="tag1, tag2"
-              value={tags}
-              onChange={(event) => setTags(event.target.value)}
-            />
-          </div>
-          <div className="form-group detail-field detail-field-wide">
-            <label className="form-label" htmlFor="detail-task-result">
-              {status === 'done' ? 'Result (required)' : 'Result'}
-            </label>
+        </div>
+
+        <div className="detail-note">
+          {mode === 'write' ? (
             <textarea
-              id="detail-task-result"
-              className="form-textarea"
-              placeholder="Task completion notes"
-              value={result}
-              onChange={(event) => setResult(event.target.value)}
+              ref={noteRef}
+              className="detail-note-input"
+              placeholder="Write notes in Markdown: **bold**, `code`, - list"
+              value={note}
+              aria-label="Notes"
+              onChange={(event) => setNote(event.target.value)}
             />
-          </div>
+          ) : (
+            <div
+              className="detail-note-preview markdown-body"
+              // renderMarkdown 先转义 HTML，只生成受控标签。
+              dangerouslySetInnerHTML={{
+                __html: note.trim() ? renderMarkdown(note) : '<p class="detail-note-empty">Nothing written yet</p>',
+              }}
+            />
+          )}
         </div>
       </div>
 
-      <footer className="detail-sheet-footer">
+      <footer className="detail-footer">
+        <div className="detail-modes" role="group" aria-label="Editor mode">
+          <button
+            type="button"
+            className={cx('detail-mode', mode === 'write' && 'active')}
+            aria-pressed={mode === 'write'}
+            onClick={() => setMode('write')}
+          >
+            Write
+          </button>
+          <button
+            type="button"
+            className={cx('detail-mode', mode === 'preview' && 'active')}
+            aria-pressed={mode === 'preview'}
+            onClick={() => setMode('preview')}
+          >
+            Preview
+          </button>
+          {missingResult ? <span className="detail-hint">Result required to finish</span> : null}
+        </div>
         {confirmDelete && task ? (
           <div className="detail-delete-confirm">
             <span className="confirm-text">Delete task?</span>
@@ -181,9 +299,7 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
               >
                 Delete
               </button>
-            ) : (
-              <span />
-            )}
+            ) : null}
             <button type="button" className="btn btn-primary" onClick={save}>
               Save
             </button>
@@ -198,5 +314,5 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
 export function TaskDetailSheet() {
   const detail = useTodoStore((state) => state.detail)
   if (!detail) return null
-  return <TaskDetailForm key={detail.mode === 'view' ? detail.task.id : 'new'} detail={detail} />
+  return <TaskDetailEditor key={detail.mode === 'view' ? detail.task.id : 'new'} detail={detail} />
 }
