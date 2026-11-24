@@ -37,11 +37,11 @@ function StatusTarget({
         isOver && 'is-over',
       )}
       aria-pressed={filtered}
+      aria-label={`${STATUS_LABELS[status]}: ${count} tasks`}
       title={filtered ? `Show all tasks` : `Show only ${status} tasks`}
       onClick={() => toggleStatusFilter(status)}
     >
       <span className="status-symbol">{statusSymbol(status)}</span>
-      <span className="status-name">{STATUS_LABELS[status]}</span>
       <span className="status-count">{count}</span>
     </button>
   )

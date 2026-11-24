@@ -471,8 +471,10 @@ button {
 .status-target {
   display: inline-flex;
   align-items: baseline;
+  justify-content: center;
   gap: var(--space-xs);
-  padding: 2px var(--space-sm);
+  min-width: 44px;
+  padding: 2px var(--space-xs);
   border: 1px solid var(--gray-200);
   background: var(--white);
   font-family: var(--font-mono);
