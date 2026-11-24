@@ -12,14 +12,14 @@ import { TaskGraphView } from "./views/TaskGraphView";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 
 type Preview = { canvasId: string; kind: "block" | "package"; id?: string };
-type LocationView = { view: "map" | "todo" } | { view: "graph"; canvasId: string; taskId: string | null };
+type LocationView = { view: "map" | "todo" } | { view: "graph"; canvasId: string | null; taskId: string | null };
 
 function readRoute() {
   const [path, query] = location.hash.slice(1).split("?", 2);
   const params = new URLSearchParams(query);
   const canvasId = params.get("canvas");
   const kind = params.get("kind");
-  const view: LocationView = path === "/graph" && canvasId
+  const view: LocationView = path === "/graph"
     ? { view: "graph", canvasId, taskId: params.get("task") }
     : { view: path === "/todo" ? "todo" : "map" };
   const detailCanvasId = params.get("detailCanvas") ?? canvasId;
@@ -31,7 +31,7 @@ function readRoute() {
 function viewPath(view: LocationView, preview?: Preview) {
   const params = new URLSearchParams();
   if (view.view === "graph") {
-    params.set("canvas", view.canvasId);
+    if (view.canvasId) params.set("canvas", view.canvasId);
     if (view.taskId) params.set("task", view.taskId);
   }
   if (preview) {
@@ -97,7 +97,7 @@ export function App() {
   const taskId = route.view.view === "graph" ? route.view.taskId : null;
   const activeCanvas = graph.canvases.find((canvas) => canvas.canvasId === canvasId);
   const selectedTaskId = data.items.some((item) => item.canvasId === canvasId && item.taskId === taskId) ? taskId : null;
-  const view = route.view.view === "graph" && !activeCanvas ? "map" : route.view.view;
+  const view = route.view.view;
 
   useEffect(() => {
     const sync = () => setRoute(readRoute());
@@ -120,14 +120,12 @@ export function App() {
     history.replaceState(null, "", viewPath(readRoute().view));
     setRoute(readRoute());
   }, []);
-  const openCanvas = useCallback((canvasId: string) => {
-    location.hash = viewPath({ view: "graph", canvasId, taskId: null });
-  }, []);
-  const openTask = useCallback((canvasId: string, taskId: string) => {
+  const focusGraph = useCallback((canvasId: string, taskId: string | null) => {
     const hash = viewPath({ view: "graph", canvasId, taskId });
     if (location.hash === hash) refocus((value) => value + 1);
     else location.hash = hash;
   }, []);
+  const openCanvas = useCallback((canvasId: string) => focusGraph(canvasId, null), [focusGraph]);
   const openBlock = useCallback(async (id: string, canvasId?: string | null) => {
     if (canvasId) openPreview({ canvasId, kind: "block", id });
   }, [openPreview]);
@@ -150,18 +148,18 @@ export function App() {
   return <div className="glass-surface flex h-dvh min-h-0 flex-col overflow-hidden text-text">
     <WorkspaceChrome view={view} canvases={graph.canvases} items={data.items}
       activeCanvasId={activeCanvas?.canvasId ?? project.activeCanvasId} selectedTaskId={selectedTaskId}
-      onCanvasOpen={openCanvas} onTaskOpen={openTask} t={t}
+      onCanvasOpen={openCanvas} onTaskOpen={focusGraph} t={t}
       titlebarActions={<>
         <Button size="sm" variant="ghost" aria-label={language === "en" ? "切换至简体中文" : "Switch to English"} onClick={() => setLanguage(language === "en" ? "zh-CN" : "en")}>{language === "en" ? "中文" : "EN"}</Button>
         <Button size="icon-sm" variant="ghost" title={dark ? t("lightTheme") : t("darkTheme")} aria-label={dark ? t("lightTheme") : t("darkTheme")}
           onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</Button>
       </>}>
-      {view === "graph" && activeCanvas ? <TaskGraphView key={activeCanvas.canvasId} canvas={activeCanvas} items={data.items}
-          selectedTaskId={selectedTaskId} focusRevision={focusRevision} dark={dark} onTaskSelect={openTask} onBlockOpen={openBlock} t={t} />
+      {view === "graph" ? <TaskGraphView graph={graph} items={data.items} focusCanvasId={activeCanvas?.canvasId ?? null}
+          selectedTaskId={selectedTaskId} focusRevision={focusRevision} dark={dark} onTaskSelect={focusGraph} onBlockOpen={openBlock} t={t} />
         : view === "todo" ? <TodoView t={t} assigneeIndex={assignees} todoGroups={data.todoGroups} executionPlan={data.executionPlan} handleBlockSelect={openBlock} />
         : <CanvasMapView dark={dark} executorOptions={executorOptions} packageExecutorNames={["reviewer"]} selectedProject={project} t={t}
             handleOpenBlockInspector={openBlock} handleRevealTaskCanvas={openPackage} handleRenameTaskCanvas={rename}
-            onCanvasOpen={openCanvas} onTaskPanelSelect={openTask} onAgentPromptCopied={promptCopied} refreshProjectDerivedState={refreshGraph} setError={setError} />}
+            onCanvasOpen={openCanvas} onTaskPanelSelect={focusGraph} onAgentPromptCopied={promptCopied} refreshProjectDerivedState={refreshGraph} setError={setError} />}
     </WorkspaceChrome>
     {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-t border-destructive/30 bg-destructive/10 px-4 py-1 text-sm"><span>{error}</span><Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={() => setError(null)}><X /></Button></div>}
     {feedback && <div role="status" className="pointer-events-none fixed bottom-4 left-4 z-30 rounded-md border bg-app-panel px-3 py-2 text-sm shadow-md">{feedback}</div>}

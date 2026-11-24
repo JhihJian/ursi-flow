@@ -203,18 +203,28 @@ test("desktop panes keep the upstream dimensions and fill the remaining space", 
   await expect(projects).toBeVisible();
 });
 
-test("project tree opens the canvas graph and centers the selected task", async ({ page }, testInfo) => {
+test("project tree locates canvases and tasks without cutting the full graph",  async ({ page }, testInfo) => {
   await page.goto("/#/todo");
   const sidebar = page.getByTestId("project-sidebar");
   await sidebar.getByRole("button", { name: /^Delivery / }).click();
   await expect(page).toHaveURL(/#\/graph\?canvas=delivery$/);
   const graph = page.getByTestId("task-graph");
   const task = (id: string) => graph.locator(`.react-flow__node[data-id="${id}"]`);
-  await expect(task("workspace")).toBeVisible();
-  await expect(graph.locator(".react-flow__edge")).toHaveCount(1);
+  const allNodes = graph.locator(".react-flow__node");
+  await expect(allNodes).toHaveCount(5);
+  await expect(graph.locator(".react-flow__edge")).toHaveCount(3);
+  await expect(graph.locator(".react-flow__node.selected")).toHaveCount(2);
+  const graphState = () => graph.evaluate((root) => ({
+    nodes: Array.from(root.querySelectorAll<HTMLElement>(".react-flow__node"), (node) => [node.dataset.id, node.style.transform]).sort(),
+    edges: Array.from(root.querySelectorAll(".react-flow__edge"), (edge) => edge.getAttribute("data-id")).sort()
+  }));
+  const initialGraph = await graphState();
+  expect(initialGraph.edges).toContain("delivery:workspace->verification:quality");
+  expect(initialGraph.edges).toContain("verification:quality->release:publish");
+  const graphSurface = await graph.elementHandle();
 
   const row = sidebar.getByRole("button", { name: /^Canvas navigation/ });
-  const target = task("navigation");
+  const target = task("delivery:navigation");
   const offsetFromCenter = async () => {
     const [surface, bounds] = await Promise.all([graph.boundingBox(), target.boundingBox()]);
     if (!surface || !bounds) return Infinity;
@@ -226,6 +236,7 @@ test("project tree opens the canvas graph and centers the selected task", async 
   await expect(row).toHaveAttribute("aria-current", "location");
   await expect.poll(offsetFromCenter).toBeLessThan(3);
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await graphState()).toEqual(initialGraph);
   const surface = (await graph.boundingBox())!;
   await page.mouse.move(surface.x + surface.width / 2, surface.y + 70);
   await page.mouse.down();
@@ -244,7 +255,14 @@ test("project tree opens the canvas graph and centers the selected task", async 
 
   await sidebar.getByRole("button", { name: /^Project foundation/ }).click();
   await expect(page).toHaveURL(/canvas=foundation&task=setup$/);
-  await expect(task("setup")).toHaveClass(/\bselected\b/);
+  await expect(task("foundation:setup")).toHaveClass(/\bselected\b/);
+  expect(await graphState()).toEqual(initialGraph);
+  expect(await graph.evaluate((element, original) => element.isSameNode(original), graphSurface)).toBe(true);
+  await expect.poll(() => graph.evaluate((root) => {
+    const pane = root.getBoundingClientRect();
+    return Array.from(root.querySelectorAll(".react-flow__node"), (node) => node.getBoundingClientRect())
+      .every((rect) => rect.left >= pane.left && rect.right <= pane.right && rect.top >= pane.top && rect.bottom <= pane.bottom);
+  })).toBe(true);
   await page.goBack();
   await expect(target).toHaveClass(/\bselected\b/);
   await expect.poll(offsetFromCenter).toBeLessThan(3);

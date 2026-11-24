@@ -11,13 +11,18 @@ import { taskTitles } from "../demo-data";
 import { dependencyEdgeColorForSource } from "../graph/dependencyEdgeVisual";
 import { TaskNodeStatusMarker, taskNodeStatusVisual } from "../graph/taskNodeStatus";
 import type { createTranslator } from "../i18n";
-import type { DesktopCanvasNodeViewModel, DesktopTodoItem } from "../model";
+import type { DesktopCanvasGraphViewModel, DesktopTodoItem } from "../model";
 
 const taskWidth = 320;
 const taskHeight = 220;
+// Keep React Flow's handle positions when focus changes the controlled nodes.
+const taskDimensions = { width: taskWidth, height: taskHeight };
 
 type Translator = ReturnType<typeof createTranslator>;
 type TaskNode = Node<{
+  canvasId: string;
+  canvasName: string;
+  taskId: string;
   title: string;
   blocks: DesktopTodoItem[];
   onBlockOpen: (ref: string) => void;
@@ -40,6 +45,7 @@ function TaskNodeCard({ data, selected }: NodeProps<TaskNode>) {
         <span className="min-w-0 break-words">{data.title}</span>
         <TaskNodeStatusMarker label={status} status={status} hasException={false} />
       </CardTitle>
+      <div className="truncate text-xs text-text-muted" title={data.canvasName}>{data.canvasName}</div>
     </CardHeader>
     <CardContent className="nowheel min-h-0 min-w-0 overflow-y-auto">
       <h2 className="mb-2 text-xs font-medium text-text-muted">{data.t("blockComponents")}</h2>
@@ -63,29 +69,43 @@ function TaskNodeCard({ data, selected }: NodeProps<TaskNode>) {
 
 const nodeTypes = { task: TaskNodeCard };
 
-function FocusTask({ taskId, revision, surface }: {
+function FocusGraph({ canvasId, taskId, revision, surface }: {
+  canvasId: string | null;
   taskId: string | null;
   revision: number;
   surface: RefObject<HTMLDivElement | null>;
 }) {
-  const { getNode, setCenter, viewportInitialized } = useReactFlow<TaskNode>();
+  const { getNodes, getNodesBounds, setCenter, viewportInitialized } = useReactFlow<TaskNode>();
   useEffect(() => {
-    if (!viewportInitialized || !taskId) return;
+    if (!viewportInitialized) return;
     const frame = requestAnimationFrame(() => {
-      const node = getNode(taskId);
-      if (!node || !surface.current) return;
+      const nodes = getNodes();
+      if (!nodes.length || !surface.current) return;
+      const targets = nodes.filter(({ data }) => data.canvasId === canvasId && (!taskId || data.taskId === taskId));
+      const bounds = getNodesBounds(nodes);
+      const targetBounds = targets.length ? getNodesBounds(targets) : bounds;
+      const x = targetBounds.x + targetBounds.width / 2;
+      const y = targetBounds.y + targetBounds.height / 2;
       const { clientWidth, clientHeight } = surface.current;
-      const zoom = Math.max(0.1, Math.min(1, (clientWidth - 32) / taskWidth, (clientHeight - 32) / taskHeight));
+      // Leave room for the entire graph even when the centered target is near an edge.
+      const width = 2 * Math.max(x - bounds.x, bounds.x + bounds.width - x);
+      const height = 2 * Math.max(y - bounds.y, bounds.y + bounds.height - y);
+      const zoom = Math.max(0.1, Math.min(1, (clientWidth - 40) / width, (clientHeight - 120) / height));
       const duration = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
-      void setCenter(node.position.x + taskWidth / 2, node.position.y + taskHeight / 2, { zoom, duration });
+      void setCenter(x, y, { zoom, duration });
     });
     return () => cancelAnimationFrame(frame);
-  }, [getNode, revision, setCenter, surface, taskId, viewportInitialized]);
+  }, [canvasId, getNodes, getNodesBounds, revision, setCenter, surface, taskId, viewportInitialized]);
   return null;
 }
 
-export function TaskGraphView({ canvas, items, selectedTaskId, focusRevision, dark, onTaskSelect, onBlockOpen, t }: {
-  canvas: DesktopCanvasNodeViewModel;
+function taskNodeId(canvasId: string, taskId: string) {
+  return `${canvasId}:${taskId}`;
+}
+
+export function TaskGraphView({ graph, items, focusCanvasId, selectedTaskId, focusRevision, dark, onTaskSelect, onBlockOpen, t }: {
+  graph: DesktopCanvasGraphViewModel;
+  focusCanvasId: string | null;
   items: DesktopTodoItem[];
   selectedTaskId: string | null;
   focusRevision: number;
@@ -95,51 +115,69 @@ export function TaskGraphView({ canvas, items, selectedTaskId, focusRevision, da
   t: Translator;
 }) {
   const surface = useRef<HTMLDivElement>(null);
-  const { nodes, edges } = useMemo(() => {
-    const blocksByTask = new Map<string, DesktopTodoItem[]>();
+  const { baseNodes, edges } = useMemo(() => {
+    const baseNodes: TaskNode[] = [];
     const taskByRef = new Map<string, string>();
-    for (const block of items) {
-      if (block.canvasId !== canvas.canvasId) continue;
-      const blocks = blocksByTask.get(block.taskId) ?? [];
-      blocks.push(block);
-      blocksByTask.set(block.taskId, blocks);
-      taskByRef.set(`${canvas.canvasId}:${block.ref}`, block.taskId);
+    for (const canvas of graph.canvases) {
+      const blocksByTask = new Map<string, DesktopTodoItem[]>();
+      for (const block of items) {
+        if (block.canvasId !== canvas.canvasId) continue;
+        const blocks = blocksByTask.get(block.taskId) ?? [];
+        blocks.push(block);
+        blocksByTask.set(block.taskId, blocks);
+        taskByRef.set(`${canvas.canvasId}:${block.ref}`, taskNodeId(canvas.canvasId, block.taskId));
+      }
+      for (const [taskId, blocks] of blocksByTask) {
+        const title = taskTitles[taskId] ?? taskId;
+        const index = baseNodes.length;
+        baseNodes.push({ id: taskNodeId(canvas.canvasId, taskId), type: "task", ariaLabel: title,
+          position: { x: (index % 3) * 420, y: Math.floor(index / 3) * 320 },
+          ...taskDimensions, measured: taskDimensions,
+          data: { canvasId: canvas.canvasId, canvasName: canvas.title, taskId, title, blocks, t,
+            onBlockOpen: (ref) => void onBlockOpen(ref, canvas.canvasId) } });
+      }
     }
+    const nodeIds = new Set(baseNodes.map(({ id }) => id));
     const edgesById = new Map<string, Edge>();
-    const nodes = [...blocksByTask].map(([taskId, blocks], index): TaskNode => {
-      for (const block of blocks) {
+    const addDependency = (source: string, target: string) => {
+      if (source === target || !nodeIds.has(source) || !nodeIds.has(target)) return;
+      const id = `${source}->${target}`;
+      const color = dependencyEdgeColorForSource(source);
+      edgesById.set(id, { id, source, target, type: "smoothstep", selectable: false,
+        style: { stroke: color, strokeWidth: 2.2 }, markerEnd: { type: MarkerType.ArrowClosed, color } });
+    };
+    for (const { id, data } of baseNodes) {
+      for (const block of data.blocks) {
         for (const blocker of block.dependencyBlockers) {
           const source = taskByRef.get(blocker);
-          if (!source || source === taskId) continue;
-          const id = `${source}:${taskId}`;
-          const color = dependencyEdgeColorForSource(source);
-          edgesById.set(id, { id, source, target: taskId, type: "smoothstep", selectable: false,
-            style: { stroke: color, strokeWidth: 2.2 }, markerEnd: { type: MarkerType.ArrowClosed, color } });
+          if (source) addDependency(source, id);
         }
       }
-      const title = taskTitles[taskId] ?? taskId;
-      return { id: taskId, type: "task", position: { x: 80 + index * 400, y: 80 }, ariaLabel: title,
-        width: taskWidth, height: taskHeight,
-        selected: taskId === selectedTaskId,
-        data: { title, blocks, t, onBlockOpen: (ref) => void onBlockOpen(ref, canvas.canvasId) } };
-    });
-    return { nodes, edges: [...edgesById.values()] };
-  }, [canvas.canvasId, items, onBlockOpen, selectedTaskId, t]);
+    }
+    for (const { from, to } of graph.crossTaskEdges) {
+      addDependency(taskNodeId(to.canvasId, to.taskId), taskNodeId(from.canvasId, from.taskId));
+    }
+    return { baseNodes, edges: [...edgesById.values()] };
+  }, [graph, items, onBlockOpen, t]);
+  const nodes = useMemo(() => baseNodes.map((node) => ({ ...node,
+    selected: node.data.canvasId === focusCanvasId && (!selectedTaskId || node.data.taskId === selectedTaskId)
+  })), [baseNodes, focusCanvasId, selectedTaskId]);
+  const tasksById = useMemo(() => new Map(baseNodes.map(({ id, data }) => [id, data])), [baseNodes]);
 
   return <div className="relative h-full" ref={surface} data-testid="task-graph">
-    <h1 title={canvas.title} className="pointer-events-none absolute top-3 left-3 z-10 max-w-[calc(100%-1.5rem)] truncate rounded-md border bg-app-panel px-2 py-1 text-sm font-semibold">{canvas.title}</h1>
+    <h1 title={graph.projectTitle} className="pointer-events-none absolute top-3 left-3 z-10 max-w-[calc(100%-1.5rem)] truncate rounded-md border bg-app-panel px-2 py-1 text-sm font-semibold">{graph.projectTitle}</h1>
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={dark ? "dark" : "light"}
       nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} deleteKeyCode={null}
-      fitView={!selectedTaskId} fitViewOptions={{ maxZoom: 1 }} minZoom={0.1} proOptions={{ hideAttribution: true }}
-      aria-label={t("canvas")} onNodeClick={(_event, node) => onTaskSelect(canvas.canvasId, node.id)}
+      minZoom={0.1} proOptions={{ hideAttribution: true }}
+      aria-label={t("canvas")} onNodeClick={(_event, node) => onTaskSelect(node.data.canvasId, node.data.taskId)}
       onKeyDownCapture={(event) => {
         if (!(event.target instanceof Element) || !event.target.matches(".react-flow__node")) return;
-        const taskId = event.target.getAttribute("data-id");
-        if (!taskId || (event.key !== "Enter" && event.key !== " ")) return;
+        const task = tasksById.get(event.target.getAttribute("data-id") ?? "");
+        if (!task || (event.key !== "Enter" && event.key !== " ")) return;
         event.preventDefault();
-        onTaskSelect(canvas.canvasId, taskId);
+        onTaskSelect(task.canvasId, task.taskId);
       }}>
-      <FocusTask taskId={selectedTaskId} revision={focusRevision} surface={surface} />
+      <FocusGraph canvasId={focusCanvasId} taskId={selectedTaskId} revision={focusRevision} surface={surface} />
       <Background color="var(--border)" gap={24} />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable />
