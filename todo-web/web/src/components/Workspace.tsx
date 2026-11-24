@@ -4,7 +4,7 @@ import { cx } from '@/lib/ui'
 import { ActiveTasksPanel } from './ActiveTasksPanel'
 import { ProjectHeader } from './ProjectHeader'
 import { ProjectSidebar } from './ProjectSidebar'
-import { TaskDetailPanel } from './TaskDetailPanel'
+import { TaskDetailSheet } from './TaskDetailSheet'
 import { TaskSection } from './TaskSection'
 
 const SIDEBAR_COLLAPSED_SIZE = 32
@@ -65,6 +65,7 @@ export function Workspace() {
       <Panel id="content" className="panel panel-content" minSize={380}>
         <ProjectHeader />
         <TaskSection />
+        <TaskDetailSheet />
       </Panel>
       <Separator className="separator" title="Drag to resize, double-click to reset" />
       <Panel
@@ -76,7 +77,6 @@ export function Workspace() {
         groupResizeBehavior="preserve-pixel-size"
       >
         <ActiveTasksPanel />
-        <TaskDetailPanel />
       </Panel>
     </Group>
   )

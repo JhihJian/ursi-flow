@@ -45,6 +45,8 @@ export default function App() {
         state.cancelProjectForm()
       } else if (state.projectDeleteConfirm) {
         state.cancelDeleteProject()
+      } else if (state.detail) {
+        state.closeDetail()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
