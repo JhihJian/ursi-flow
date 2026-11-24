@@ -1,6 +1,6 @@
 // FLOW.md 的图形模型：Mermaid 图语句 ⇄ 节点与结果边。只解析 Flow 规范定义的子集。
-export type ActionKind = '新建Agent' | '复用Agent' | '执行自定义命令' | '执行Flow'
-export const ACTION_KINDS: ActionKind[] = ['新建Agent', '复用Agent', '执行自定义命令', '执行Flow']
+export type ActionKind = '新建Agent' | '复用Agent' | '执行自定义命令' | '执行Flow' | 'confirm'
+export const ACTION_KINDS: ActionKind[] = ['新建Agent', '复用Agent', '执行自定义命令', '执行Flow', 'confirm']
 export type NodeKind = 'start' | 'finish' | 'work' | 'parallel'
 
 export interface GraphNode {

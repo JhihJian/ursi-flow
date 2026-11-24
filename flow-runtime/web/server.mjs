@@ -189,13 +189,27 @@ function route(method, path, body, context) {
         node: requireId(safeDecode(match[2])),
       },
     }
-  if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)(\/history|\/stop|\/resume)?$/))) {
+  if ((match = path.match(/^\/api\/v1\/runs\/([^/]+)(\/history|\/stop|\/resume|\/respond)?$/))) {
     const id = requireId(safeDecode(match[1]))
     if (!match[2] && method === 'GET') return { op: 'run.get', args: { id } }
     if (match[2] === '/history' && method === 'GET')
       return { op: 'run.history', args: { id } }
     if (match[2] === '/resume' && method === 'POST')
       return { op: 'run.resume', args: { id } }
+    if (match[2] === '/respond' && method === 'POST') {
+      if (typeof body.nodeRunId !== 'string' || !body.nodeRunId.trim())
+        invalid('应答需要 nodeRunId')
+      if (typeof body.result !== 'string' || !body.result.trim())
+        invalid('应答需要 result')
+      return {
+        op: 'run.respond',
+        args: {
+          id,
+          nodeRunId: requireId(safeDecode(body.nodeRunId)),
+          result: body.result,
+        },
+      }
+    }
     if (match[2] === '/stop' && method === 'POST')
       return { op: 'run.stop', args: { id } }
   }

@@ -98,6 +98,7 @@ export function Refresh({ state }: { state: Loaded<unknown> }) {
 export const statusLabel = (status: string) => statusLabels[status] || status
 const statusLabels: Record<string, string> = {
   running: '运行中',
+  waiting_input: '等待确认',
   completed: '已完成',
   failed: '失败',
   interrupted: '已中断',
@@ -106,6 +107,7 @@ const statusLabels: Record<string, string> = {
 }
 const statusVariants: Record<string, 'info' | 'ok' | 'err' | 'warn' | 'default'> = {
   running: 'info',
+  waiting_input: 'warn',
   completed: 'ok',
   failed: 'err',
   interrupted: 'warn',

@@ -113,6 +113,7 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   await call('GET', '/api/v1/runs/run-1/history')
   await call('GET', '/api/v1/runs/run-1/flow')
   await call('GET', '/api/v1/runs/run-1/nodes/node-1/trajectory')
+  await call('POST', '/api/v1/runs/run-1/respond', { nodeRunId: 'node-run-1', result: '通过' })
   await call('POST', '/api/v1/runs/run-1/stop')
   await call('GET', '/api/v1/flow-config')
   await call('PATCH', '/api/v1/flow-config', { maxConcurrent: 2 })
@@ -135,6 +136,7 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
       'run.history',
       'run.flow',
       'run.trajectory',
+      'run.respond',
       'run.stop',
       'config.get',
       'config.update',
@@ -148,15 +150,16 @@ test('每个同源路由都翻译成对应的 daemon 操作', async (t) => {
   assert.deepEqual(daemon.calls[4].args, { id: 'validate' })
   assert.deepEqual(daemon.calls[5].args, { id: 'ordinary', files, expectedRevision: 'rev-1' })
   assert.deepEqual(daemon.calls[6].args, { id: 'ordinary', files }, '未提供修订时不能补默认值')
-  assert.deepEqual(daemon.calls[13].args, { id: 'run-1' })
+  assert.deepEqual(daemon.calls[11].args, { id: 'run-1' })
   assert.deepEqual(daemon.calls[14].args, { id: 'run-1', node: 'node-1' })
+  assert.deepEqual(daemon.calls[15].args, { id: 'run-1', nodeRunId: 'node-run-1', result: '通过' })
   // 请求没带工作目录时不补默认值，交给 daemon 按工作区根目录新建。
   assert.deepEqual(daemon.calls[8].args, {
     id: 'run-1',
     flow: 'ordinary',
     variables: { 任务: '检查' },
   })
-  assert.deepEqual(daemon.calls[17].args, { maxConcurrent: 2 })
+  assert.deepEqual(daemon.calls[18].args, { maxConcurrent: 2 })
 
   const executorRef = { id: 'reviewer', revision: 7 }
   await call('POST', '/api/v1/flows/ordinary/runs', { runId: 'remote', executorRef })

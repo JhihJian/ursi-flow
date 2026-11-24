@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import {
   ArrowLeft,
+  BellRing,
   ChevronRight,
   CircleStop,
   History,
@@ -25,7 +26,7 @@ import { Alert, AlertDescription } from './components/ui/alert'
 import { Badge } from './components/ui/badge'
 import { DataTable, dataTableFeatures, type DataTableColumn } from './components/ui/data-table'
 import { Button, buttonVariants } from './components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -95,7 +96,7 @@ const isAgent = (node: NodeRun) => node.actionKind === '新建Agent' || node.act
 export function Runs({ source }: { source: Source }) {
   const state = useLoad((signal) => source.runs(signal), [source])
   const rows = state.value || []
-  const running = rows.filter((row) => row.status === 'running').length
+  const running = rows.filter((row) => row.status === 'running' || row.status === 'waiting_input').length
   const columns = useMemo<DataTableColumn<Run>[]>(() => {
     const helper = createColumnHelper<typeof dataTableFeatures, Run>()
     return helper.columns([
@@ -269,7 +270,7 @@ export function RunDetail({ source }: { source: Source }) {
     reloadFlow()
   }
   useEffect(() => {
-    if (job.value?.status !== 'running' || busy) return
+    if ((job.value?.status !== 'running' && job.value?.status !== 'waiting_input') || busy) return
     const timer = setTimeout(() => {
       reloadJob()
       reloadHistory()
@@ -437,6 +438,7 @@ export function RunDetail({ source }: { source: Source }) {
               <AlertDescription>{jobRow.status === 'unknown' ? '状态待核实' : '运行失败'}：{jobRow.error}</AlertDescription>
             </Alert>
           )}
+          {jobRow.status === 'waiting_input' && facts && <ConfirmGate source={source} runId={id} facts={facts} onDone={() => refreshAll()} />}
           <Dialog open={confirm} onOpenChange={setConfirm}>
             <DialogContent>
               <DialogHeader>
@@ -579,7 +581,7 @@ export function RunDetail({ source }: { source: Source }) {
                 runId={id}
                 facts={facts}
                 selected={selected}
-                live={jobRow.status === 'running'}
+                live={jobRow.status === 'running' || jobRow.status === 'waiting_input'}
                 onSelect={(node) => update({ tab: 'nodes', node: node.id })}
                 onShowFlow={() => update({ tab: 'flow' })}
               />
@@ -1193,6 +1195,71 @@ function NodeDetail({
               </p>
             )}
           </details>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** confirm 门禁卡片：渲染提示文本与选项按钮，点击即应答并续跑。 */
+function ConfirmGate({
+  source,
+  runId,
+  facts,
+  onDone,
+}: {
+  source: Source
+  runId: string
+  facts: RunHistory
+  onDone: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const pending = useMemo(() => {
+    // 当前等待的节点以运行事实为准：daemon 侧 job.json 不含 currentNodeRunId。
+    const current = facts.runs.at(-1)?.currentNodeRunId as string | undefined
+    return (
+      (current && facts.nodeRuns.find((node) => node.id === current && node.pendingInput)) ||
+      facts.nodeRuns.find((node) => node.pendingInput && node.status === 'running')
+    )
+  }, [facts])
+  if (!pending) return null
+  const respond = async (result: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await source.respond(runId, pending.id, result)
+      onDone()
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BellRing className="size-4 text-warn" />
+          等待人工确认 · {nodeLabel(pending)}
+        </CardTitle>
+        <CardDescription>选择一个结果继续运行；停止运行可放弃本次确认。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm whitespace-pre-wrap">
+          {pending.pendingInput!.message}
+        </p>
+        {error && (
+          <Alert variant="error">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {pending.pendingInput!.options.map((option) => (
+            <Button key={option} disabled={busy} onClick={() => void respond(option)}>
+              {option}
+            </Button>
+          ))}
         </div>
       </CardContent>
     </Card>

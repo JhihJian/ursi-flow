@@ -77,6 +77,19 @@ export function setActionKind(graph: FlowGraph, ref: string, kind: ActionKind): 
       { id: edgeId(ref, undefined, outs[0].to), from: ref, to: outs[0].to },
     ])
   }
+  if (kind === 'confirm') {
+    // confirm 的选项从出边逆推：每条出边都要有结果名，缺失时补一个默认名字。
+    const filled: GraphEdge[] = []
+    for (const edge of outs) {
+      if (edge.result) {
+        filled.push(edge)
+        continue
+      }
+      const result = uniqueResult({ ...next, edges: [...others, ...filled] }, ref, '通过')
+      filled.push({ ...edge, result, id: edgeId(ref, result, edge.to) })
+    }
+    return replaceEdges(next, [...others, ...filled])
+  }
   // Agent 节点的每条出边都必须有结果名，缺失时补一个默认名字。
   const filled: GraphEdge[] = []
   for (const edge of outs) {

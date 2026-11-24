@@ -113,6 +113,8 @@ export interface NodeRun {
   outcome?: { result: string; variables?: Record<string, unknown> }
   error?: FlowError
   commandResult?: CommandResult
+  /** confirm 节点等待人工应答时的事实：渲染后的提示文本与可选结果名。 */
+  pendingInput?: { message: string; options: string[] }
   childRunId?: string
   retryOf?: string
   enteredFrom: { kind: string; [key: string]: unknown }
@@ -205,6 +207,7 @@ export interface Source {
   runFlow(id: string, signal?: AbortSignal): Promise<FlowPackage>
   trajectory(id: string, node: string, signal?: AbortSignal): Promise<NodeTrajectory>
   resume(id: string): Promise<Run>
+  respond(id: string, nodeRunId: string, result: string): Promise<Run>
   stop(id: string): Promise<Run>
   config(signal?: AbortSignal): Promise<FlowConfig>
   configure(patch: ConfigPatch): Promise<FlowConfig>
@@ -292,6 +295,7 @@ function createClient(apiBase: string): Source {
     trajectory: (id, node, signal) =>
       request(`${runPath(id)}/nodes/${encodeURIComponent(node)}/trajectory`, { signal }),
     resume: (id) => send('POST', `${runPath(id)}/resume`),
+    respond: (id, nodeRunId, result) => send('POST', `${runPath(id)}/respond`, { nodeRunId, result }),
     stop: (id) => send('POST', `${runPath(id)}/stop`),
     config: (signal) => request('/flow-config', { signal }),
     configure: (patch) => send('PATCH', '/flow-config', patch),

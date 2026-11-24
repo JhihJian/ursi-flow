@@ -43,7 +43,7 @@ export function frontmatterMeta(frontmatter: string): FlowMeta {
 
 const fence = '```'
 const mermaidFence = /```mermaid[^\n]*\n([\s\S]*?)```/
-export const ACTION_FENCE = /```(新建Agent|复用Agent|执行自定义命令|执行Flow)[ \t]*\n([\s\S]*?)```/
+export const ACTION_FENCE = /```(新建Agent|复用Agent|执行自定义命令|执行Flow|confirm)[ \t]*\n([\s\S]*?)```/
 
 /** 取出开头元信息原文；没有元信息时返回空串。 */
 export function frontmatterOf(text: string): string {
@@ -157,6 +157,7 @@ const defaultBody: Record<ActionKind, string> = {
   执行Flow: `{
   "flow": "另一个兄弟 Flow 的标识"
 }`,
+  confirm: '在这里写给用户看的确认提示，例如：以上结果是否可以发布？',
 }
 
 /** 动作类型分三族，族内切换可以沿用正文，跨族切换要换成对应的默认内容。 */

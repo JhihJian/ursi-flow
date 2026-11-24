@@ -17,7 +17,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { CirclePlay, Command, Copy, Flag, GitBranch, Layers, Sparkles } from 'lucide-react'
+import { BellRing, CirclePlay, Command, Copy, Flag, GitBranch, Layers, Sparkles } from 'lucide-react'
 import type { ActionKind, FlowGraph, GraphNode } from './flow/graph'
 import type { RunFlowState, RunNodeStatus } from './flow/run-state'
 import { layoutGraph, nodeSize, type Point } from './flow/layout'
@@ -28,6 +28,7 @@ const kindIcon: Record<ActionKind, typeof Sparkles> = {
   复用Agent: Copy,
   执行自定义命令: Command,
   执行Flow: Layers,
+  confirm: BellRing,
 }
 const statusLabels: Record<RunNodeStatus, string> = {
   pending: '未到达',
