@@ -38,6 +38,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
   const [note, setNote] = useState(task?.result ?? '')
   const [copied, setCopied] = useState(false)
+  const [idCopied, setIdCopied] = useState(false)
   const [height, setHeight] = useState(readStoredHeight)
 
   const sheetRef = useRef<HTMLElement>(null)
@@ -92,6 +93,17 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const resetHeight = () => {
     applyHeight(DEFAULT_HEIGHT)
     localStorage.setItem(HEIGHT_KEY, String(DEFAULT_HEIGHT))
+  }
+
+  const copyId = async () => {
+    if (!task) return
+    try {
+      await copyText(task.id)
+      setIdCopied(true)
+      window.setTimeout(() => setIdCopied(false), 1000)
+    } catch (error) {
+      alert(`Failed to copy task id: ${errorMessage(error)}`)
+    }
   }
 
   const copyAsMarkdown = async () => {
@@ -191,6 +203,18 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         </div>
 
         <div className="detail-meta">
+          {task ? (
+            <button
+              type="button"
+              className={cx('detail-inline-field', 'detail-id', idCopied && 'is-copied')}
+              title="Click to copy task id"
+              aria-label="Copy task id"
+              onClick={() => void copyId()}
+            >
+              <span className="detail-inline-label">id</span>
+              <span className="detail-inline-value">{idCopied ? 'copied!' : task.id}</span>
+            </button>
+          ) : null}
           <label className="detail-inline-field">
             <span className="detail-inline-label">status</span>
             <select

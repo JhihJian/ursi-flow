@@ -2,7 +2,6 @@ import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
-import { copyText } from '@/lib/clipboard'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
@@ -65,17 +64,6 @@ function TaskRow({
   const selected = useTodoStore(
     (state) => state.detail?.mode === 'view' && state.detail.task.id === task.id,
   )
-  const [copied, setCopied] = useState(false)
-
-  const copyId = async () => {
-    try {
-      await copyText(task.id)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1000)
-    } catch (error) {
-      console.error('Failed to copy:', error)
-    }
-  }
 
   const menuItems: MenuItem[] = [
     { label: 'New task', onSelect: openNewTask },
@@ -134,19 +122,6 @@ function TaskRow({
             {prioritySymbol(task.priority)}
           </span>
         </span>
-      </td>
-      <td className="col-id">
-        <button
-          type="button"
-          className={cx('task-id', copied && 'copied')}
-          title="Click to copy"
-          onClick={(event) => {
-            event.stopPropagation()
-            void copyId()
-          }}
-        >
-          {copied ? 'copied!' : task.id}
-        </button>
       </td>
       <td className={cx('col-title', `task-title-${task.status}`)}>{task.title}</td>
       <td className="col-status" title={STATUS_LABELS[task.status]}>
@@ -227,7 +202,6 @@ export function TaskSection() {
         <thead>
           <tr>
             <th className="col-priority">Pri</th>
-            <th className="col-id">ID</th>
             <th className="col-title">Task</th>
             <th className="col-status">Status</th>
             <th className="col-time">Time</th>
@@ -236,14 +210,14 @@ export function TaskSection() {
         <tbody>
           {tasksLoading ? (
             <tr>
-              <td colSpan={5} className="empty-state">
+              <td colSpan={4} className="empty-state">
                 Loading...
               </td>
             </tr>
           ) : null}
           {!tasksLoading && visibleTasks.length === 0 ? (
             <tr>
-              <td colSpan={5} className="empty-state">
+              <td colSpan={4} className="empty-state">
                 {!selectedProjectId
                   ? 'Select a project'
                   : statusFilter

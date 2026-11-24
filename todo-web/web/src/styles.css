@@ -598,10 +598,6 @@ button {
   text-align: center;
 }
 
-.col-id {
-  width: 100px;
-}
-
 .col-status {
   /* 状态列只放一个符号，保持最窄宽度，剩余空间留给任务标题。 */
   width: 1%;
@@ -680,28 +676,6 @@ button {
 
 .task-title-in_progress {
   font-weight: 600;
-}
-
-.task-id {
-  padding: 2px 4px;
-  border: 0;
-  border-radius: 2px;
-  background: none;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--gray-600);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.task-id:hover {
-  background: var(--gray-200);
-  color: var(--black);
-}
-
-.task-id.copied {
-  color: var(--black);
-  font-weight: 500;
 }
 
 .empty-state {
@@ -869,6 +843,24 @@ button {
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-xs);
+}
+
+.detail-id {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.detail-inline-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-600);
+}
+
+.detail-id:hover .detail-inline-value,
+.detail-id.is-copied .detail-inline-value {
+  color: var(--gray-900);
 }
 
 .detail-inline-label {
