@@ -30,6 +30,7 @@ export function createFlowExecutionExtensions(
 	options: FlowHostOptions,
 ): FlowExecutionExtensions {
 	const extensions: FlowExecutionExtensions = {
+		confirm: true,
 		command: options.command ?? new ProcessCommandExecutor(),
 		parallel: {
 			async execute(branches) {

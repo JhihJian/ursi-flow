@@ -145,6 +145,8 @@ export interface FlowExecutionExtensions {
 	command?: CommandExecutor;
 	childFlow?: ChildFlowExecutor;
 	parallel?: ParallelExecutor;
+	/** 宿主是否支持人工确认门禁；显式 false 时预检拒绝 confirm 节点。 */
+	confirm?: boolean;
 }
 
 /** Host composition: observation readers are injected separately into inspectors. */

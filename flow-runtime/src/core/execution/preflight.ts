@@ -30,11 +30,10 @@ export async function preflightFlow(
 	const requireCapability = (available: unknown, name: string) => {
 		if (!available) throw new Error(`Flow 缺少扩展能力: ${name}`);
 	};
+	if (options.execution?.confirm === false)
+		throw new Error("本地执行器暂不支持人工确认节点: confirm");
 	if (options.sessionReference)
 		requireCapability(options.agent?.continuity, "Agent Continuity");
-
-	if ([...flow.nodes.values()].some((node) => node.action.kind === "confirm"))
-		throw new Error("本地执行器暂不支持人工确认节点: confirm");
 
 	const visit = (definition: FlowDefinition) => {
 		if (visited.has(definition)) return;
@@ -42,12 +41,6 @@ export async function preflightFlow(
 		const capabilities = normalizeAgentCapabilities(definition.capabilities);
 		if (options.agent?.continuity?.toolSchemaMode === "fixed")
 			assertFixedToolSchemas(definition);
-		if (
-			[...definition.nodes.values()].some(
-				(node) => node.action.kind === "confirm",
-			)
-		)
-			throw new Error("引用闭包内不支持人工确认节点: confirm");
 		if (definition.parallels.size) {
 			requireCapability(options.execution?.parallel, "Parallel Executor");
 			for (const parallel of definition.parallels.values()) {

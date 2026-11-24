@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { AttemptUnconfirmed } from "../contracts/extensions.ts";
+import { AttemptUnconfirmed, AwaitingInput } from "../contracts/extensions.ts";
 import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
 	AgentRunExecutor,
@@ -608,6 +608,7 @@ export class FlowCoordinator {
 			}
 		} catch (error) {
 			if (error instanceof AttemptUnconfirmed) throw error;
+			if (error instanceof AwaitingInput) return clone(run);
 			if (run.status !== "failed") {
 				await this.failRun(run, toFlowError(error, "unknown"));
 			}
@@ -930,7 +931,9 @@ export class FlowCoordinator {
 					variables: structured?.variables,
 				};
 				record.commandResult = commandResult;
-			} else if (node.action.kind !== "confirm") {
+			} else if (node.action.kind === "confirm") {
+				outcome = await this.suspendForConfirm(run, record, node, nodeInput);
+			} else {
 				const profile = renderAgentProfile(
 					node.action.profile,
 					nodeInput,
@@ -995,6 +998,7 @@ export class FlowCoordinator {
 			return { record, outcome };
 		} catch (error) {
 			if (error instanceof AttemptUnconfirmed) throw error;
+			if (error instanceof AwaitingInput) throw error;
 			if (record.status !== "failed") {
 				await this.failNode(
 					run,
@@ -1209,6 +1213,105 @@ export class FlowCoordinator {
 				await this.failNode(run, current, toFlowError(error, "flow_reference"));
 			throw error;
 		}
+	}
+
+	/**
+	 * 渲染确认提示、提交挂起事实并抛出 AwaitingInput 哨兵。
+	 * 节点保持 running，Run 转为 awaiting_input 阶段；由宿主捕获哨兵后干净退出。
+	 */
+	private async suspendForConfirm(
+		run: FlowRunRecord,
+		record: NodeRunRecord,
+		node: FlowNode,
+		input: FlowValue | undefined,
+	): Promise<never> {
+		const action = node.action;
+		if (action.kind !== "confirm")
+			throw new FlowRuntimeError(
+				"outcome_validation",
+				`节点不是确认节点: ${node.ref}`,
+			);
+		const message = String(
+			renderTemplate(action.prompt, {
+				input: isFlowValueRecord(input) ? input : {},
+				variables: run.variables ?? {},
+			}),
+		);
+		record.pendingInput = { message, options: [...node.results.keys()] };
+		await this.commit(
+			run,
+			(next) => {
+				next.status = "running";
+				next.phase = "awaiting_input";
+				next.currentNodeRef = record.nodeRef;
+				next.currentInput = record.input;
+				next.currentNodeRunId = record.id;
+				return { nodeRuns: [record] };
+			},
+			[
+				{
+					type: "run.awaiting_input",
+					nodeRunId: record.id,
+					nodeName: record.nodeName,
+					nodeRef: record.nodeRef,
+					summary: `节点“${displayNodeName(record)}”等待人工确认`,
+				},
+			],
+		);
+		throw new AwaitingInput(
+			`节点“${displayNodeName(record)}”等待人工确认`,
+		);
+	}
+
+	/** 人工应答入口：校验挂起事实与结果边，然后从已应答节点续接路由。 */
+	async respond(
+		runId: string,
+		nodeRunId: string,
+		result: string,
+		options: { existingAgentReference?: string; cwd?: string } = {},
+	): Promise<FlowRunRecord> {
+		const run = await this.store.getRun(runId);
+		if (!run) throw new Error(`Flow 运行不存在: ${runId}`);
+		if (run.parentRunId)
+			throw new Error(`子 Flow 运行不支持直接应答: ${runId}`);
+		if (run.status !== "running" || run.phase !== "awaiting_input")
+			throw new Error(`Flow 运行不在等待人工确认状态: ${runId}`);
+		const nodeRuns = await this.store.listNodeRuns(runId);
+		const pending = nodeRuns.find(
+			(record) =>
+				record.id === nodeRunId &&
+				record.status === "running" &&
+				record.pendingInput,
+			);
+		if (!pending || run.currentNodeRunId !== pending.id)
+			throw new Error(`节点不在等待人工确认: ${nodeRunId}`);
+		const node = this.flow.nodes.get(pending.nodeRef);
+		if (!node || node.action.kind !== "confirm")
+			throw new Error(`节点不是确认节点: ${pending.nodeRef}`);
+		if (!node.results.has(result))
+			throw new Error(
+				`无效的确认结果 “${result}”，可选：${[...node.results.keys()].join("、")}`,
+			);
+		await this.completeNode(run, pending, { result });
+		await this.recordRecovery(run, undefined, "continue_routing", "人工确认已应答，继续路由");
+		await this.agentModel.start(
+			run.id,
+			normalizeAgentCapabilities(this.flow.capabilities),
+			options.existingAgentReference,
+			options.cwd,
+			run.agentAssembly,
+			run.agentProfile,
+			false,
+		);
+		return this.continueRun(
+			run,
+			pending.nodeRef,
+			pending.input,
+			options,
+			pending.enteredFrom,
+			true,
+			{ record: pending, outcome: { result } },
+		);
 	}
 
 	private async completeNode(

@@ -242,3 +242,96 @@ describe("FlowCoordinator", () => {
 		);
 	});
 });
+
+describe("确认门禁", () => {
+	it("挂起于 confirm 节点：pendingInput 记录渲染文本与选项，事件发出 awaiting_input", async () => {
+		const adapter = new FakeAdapter([{ result: "已准备" }]);
+		const store = new InMemoryRunStore();
+		const flow = parseFlow(await fixture("confirm-gate"), "confirm-gate");
+		const events: string[] = [];
+		const coordinator = createTestCoordinator(flow, store, createTestAgentModel(adapter), undefined, {
+			publish: (event) => {
+				events.push(event.type);
+				return 0;
+			},
+			subscribe: () => ({ unsubscribe: () => {} }),
+		});
+		const result = await coordinator.run({ variables: { 任务: "发布" } });
+		expect(result.status).toBe("running");
+		expect(result.phase).toBe("awaiting_input");
+		expect(events).toContain("run.awaiting_input");
+		const records = await store.listNodeRuns(result.id);
+		const pending = records.at(-1)!;
+		expect(pending.status).toBe("running");
+		expect(pending.pendingInput).toEqual({
+			message: "请确认 发布 的准备结果。",
+			options: ["通过", "退回"],
+		});
+		expect(adapter.released).toHaveLength(1);
+	});
+
+	it("respond 合法结果名：节点按该结果完成并路由到终态", async () => {
+		const adapter = new FakeAdapter([
+			{ result: "已准备" },
+			{ result: "已准备" },
+		]);
+		const store = new InMemoryRunStore();
+		const flow = parseFlow(await fixture("confirm-gate"), "confirm-gate");
+		const coordinator = createTestCoordinator(flow, store, createTestAgentModel(adapter));
+		const suspended = await coordinator.run({ variables: { 任务: "发布" } });
+		const records = await store.listNodeRuns(suspended.id);
+		const pending = records.at(-1)!;
+		const completed = await coordinator.respond(suspended.id, pending.id, "退回");
+		expect(completed.status).toBe("running");
+		expect(completed.phase).toBe("awaiting_input");
+		const after = await store.listNodeRuns(suspended.id);
+		expect(after.find((record) => record.id === pending.id)?.status).toBe("completed");
+		expect(after.find((record) => record.id === pending.id)?.outcome?.result).toBe("退回");
+		const gate = after.find((record) => record.nodeRef === "gate" && record.id !== pending.id);
+		expect(gate?.pendingInput?.message).toBe("请确认 发布 的准备结果。");
+	});
+
+	it("respond 走通过边：直接完成", async () => {
+		const adapter = new FakeAdapter([{ result: "已准备" }]);
+		const store = new InMemoryRunStore();
+		const flow = parseFlow(await fixture("confirm-gate"), "confirm-gate");
+		const coordinator = createTestCoordinator(flow, store, createTestAgentModel(adapter));
+		const suspended = await coordinator.run({ variables: { 任务: "发布" } });
+		const pending = (await store.listNodeRuns(suspended.id)).at(-1)!;
+		const completed = await coordinator.respond(suspended.id, pending.id, "通过");
+		expect(completed.status).toBe("completed");
+		const decisions = await store.listRouteDecisions(suspended.id);
+		expect(decisions.some((decision) => decision.result === "通过")).toBe(true);
+	});
+
+	it("respond 拒绝：非法结果名、错误 nodeRunId、重复作答，均保持等待", async () => {
+		const adapter = new FakeAdapter([{ result: "已准备" }]);
+		const store = new InMemoryRunStore();
+		const flow = parseFlow(await fixture("confirm-gate"), "confirm-gate");
+		const coordinator = createTestCoordinator(flow, store, createTestAgentModel(adapter));
+		const suspended = await coordinator.run({ variables: { 任务: "发布" } });
+		const pending = (await store.listNodeRuns(suspended.id)).at(-1)!;
+		await expect(coordinator.respond(suspended.id, pending.id, "不存在")).rejects.toThrow();
+		await expect(coordinator.respond(suspended.id, "no-such-node", "通过")).rejects.toThrow();
+		const completed = await coordinator.respond(suspended.id, pending.id, "通过");
+		await expect(coordinator.respond(suspended.id, pending.id, "通过")).rejects.toThrow();
+		expect(completed.status).toBe("completed");
+	});
+
+	it("resume 未决确认：重新提问并再次挂起，旧 NodeRun 作废", async () => {
+		const adapter = new FakeAdapter([{ result: "已准备" }]);
+		const store = new InMemoryRunStore();
+		const flow = parseFlow(await fixture("confirm-gate"), "confirm-gate");
+		const coordinator = createTestCoordinator(flow, store, createTestAgentModel(adapter));
+		const suspended = await coordinator.run({ variables: { 任务: "发布" } });
+		const before = (await store.listNodeRuns(suspended.id)).at(-1)!;
+		const resumed = await coordinator.resume(suspended.id);
+		expect(resumed.status).toBe("running");
+		expect(resumed.phase).toBe("awaiting_input");
+		const after = await store.listNodeRuns(suspended.id);
+		const again = after.at(-1)!;
+		expect(again.id).not.toBe(before.id);
+		expect(again.pendingInput).toEqual(before.pendingInput);
+	});
+});
+
