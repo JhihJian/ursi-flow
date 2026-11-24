@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/agegr/pi-web",
+  "commit": "432366bd510c72ce7b678a6cb1220f9cac1ed56c",
+  "path": "demo",
+  "piWebVersion": "0.18.0",
+  "piSdkVersion": "1.6.0"
+}

@@ -8,6 +8,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | --- | --- |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
+| [Pi 执行器界面演示](pi-executor/SPEC.md) | 独立静态页面，复用 Pi Web 界面，使用浏览器内样例展示会话、工具过程和文件。 |
 | [Flow Runtime](flow-runtime/SPEC.md) | 校验并执行 `FLOW.md` 包，以节点结果决定下一步。`ursi-flowd` 持有流程修订、运行配置、Run 和节点历史，可由独立控制台或 CLI 操作。 |
 | [执行器 MCP SDK](executor-sdk/SPEC.md) | Node.js MCP 服务端库，供独立的整条 Flow MCP 适配器等服务使用。SDK 负责协议发现和校验，运行状态由使用它的服务持有。 |
 | [MCP 服务管理](ursi-mcp/SPEC.md) | 管理已登记的 Streamable HTTP MCP 服务，提供资源浏览和授权工具调用。后端库与 Web 页面可嵌入 Workbench，也可由独立管理台托管。 |
