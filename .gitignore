@@ -2,6 +2,11 @@ target/
 /data/
 /workbench/data/
 node_modules
+/apps/web/dist/
+/apps/web/test-results/
+/apps/web/playwright-report/
+/apps/web/.env.local
+/apps/web/.env.*.local
 /workbench/web/dist/
 /workbench/web/dist-lan/
 /workbench/web/coverage/

@@ -1,0 +1,69 @@
+.ursi-page-frame {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--ursi-page-frame-gap, 24px);
+  min-inline-size: 0;
+}
+
+.ursi-page-frame__skip {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 1;
+  padding: 0.5rem 0.75rem;
+  background: Canvas;
+  color: CanvasText;
+  outline: 2px solid currentColor;
+}
+
+.ursi-page-frame__skip:not(:focus) {
+  clip-path: inset(50%);
+}
+
+.ursi-page-frame__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ursi-page-frame-gap, 24px);
+}
+
+.ursi-page-frame__main,
+.ursi-page-frame__aside {
+  min-inline-size: 0;
+}
+
+/* Two-column adaptation of DeepSeek Harness columns.ts (4b399c39a6).
+ * Copyright (c) 2026 DeepSeek. MIT, see ../LICENSE.
+ */
+@media (min-width: 768px) {
+  .ursi-page-frame__body[data-aside-placement="right"] {
+    --_ursi-frame-gap: var(--ursi-page-frame-gap, 24px);
+    --_ursi-main-min: var(--ursi-page-frame-main-min, 400px);
+    --_ursi-aside-min: var(--ursi-page-frame-aside-min, 300px);
+    --_ursi-aside-width: max(
+      min(100%, var(--_ursi-aside-min)),
+      min(
+        calc(100% - var(--_ursi-main-min) - var(--_ursi-frame-gap)),
+        clamp(
+          var(--_ursi-aside-min),
+          var(--ursi-page-frame-aside-preferred, 45%),
+          var(--ursi-page-frame-aside-max, 70%)
+        )
+      )
+    );
+    flex-flow: row wrap;
+  }
+
+  /* If both minima cannot fit, the aside wraps and grows to fill its own row. */
+  .ursi-page-frame__body[data-aside-placement="right"] > .ursi-page-frame__main {
+    flex: 1 1 max(
+      min(100%, var(--_ursi-main-min)),
+      calc(100% - var(--_ursi-frame-gap) - var(--_ursi-aside-width))
+    );
+  }
+
+  .ursi-page-frame__body[data-aside-placement="right"] > .ursi-page-frame__aside {
+    flex: 1 1 var(--_ursi-aside-width);
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "ursi-flow-ui",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "workspaces": ["apps/web", "packages/ui-layout", "packages/ui-slots"],
+  "scripts": {
+    "dev": "npm run dev -w @ursi/portal-web",
+    "build": "npm run build -w @ursi/portal-web",
+    "test": "node --test packages/ui-slots/test/*.test.ts apps/web/test/*.test.ts",
+    "test:e2e": "npm run test:e2e -w @ursi/portal-web"
+  }
+}
