@@ -4,18 +4,19 @@
 
 ## 目录
 
-- `server/`：Rust + axum + rusqlite，读写 `~/.todo/todo.db`，托管 `web/dist`。任务与项目实体、状态机直接引用 SUMM-Todo 的 `todo-core`，依赖形式为 `todo-core = { git = "https://github.com/JhihJian/SUMM-Todo", tag = "v0.5.0" }`，首次构建需要能访问 GitHub。
+- `core/`：`todo-core` crate，任务与项目的实体、状态机与错误码，最早来自 SUMM-Todo，现在由本目录维护。
+- `server/`：Rust + axum + rusqlite，读写 `~/.todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
+- `Cargo.toml`：workspace，成员为 `core` 与 `server`，构建产物在 `target/`。
 - `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`。
 
 ## 本地开发
 
-待办库由 SUMM-Todo CLI 创建（`~/.todo/todo.db`），看板只读写现有库，不建表、不迁移。`todo-core` 走 git tag 依赖，首次 `cargo build` 会从 GitHub 拉取并记录到 `Cargo.lock`；离线环境请先在执行过构建的机器上准备好 Cargo 缓存。
+待办库由 SUMM-Todo CLI 创建（`~/.todo/todo.db`），看板只读写现有库，不建表、不迁移。整个 Rust 侧只有 workspace 内的两个 crate，不依赖外部 git 仓库。
 
 先启动 Server（默认监听 `0.0.0.0:8090`，读取 `~/.todo/todo.db`）：
 
 ```sh
-cd server
-cargo run
+cargo run -p todo-web-server
 ```
 
 另开终端启动 Web（`/api` 代理到 `http://127.0.0.1:8090`；需要其他后端时设 `TODO_WEB_API`）：
@@ -32,7 +33,7 @@ npm run dev
 
 ```sh
 cd web && npm ci && npm run build
-cd server && cargo build --release
+cd .. && cargo build --release
 ./target/release/todo-web-server
 ```
 
@@ -63,6 +64,6 @@ cd server && cargo build --release
 ## 检查
 
 ```sh
-cd server && cargo test && cargo clippy
+cargo test && cargo clippy
 cd web && npm test && npm run build
 ```

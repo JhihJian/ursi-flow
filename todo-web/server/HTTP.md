@@ -1,6 +1,6 @@
 # 看板服务端契约
 
-服务端读写 SUMM-Todo 的本机 SQLite 库，并向看板页面提供同源 HTTP API。任务与项目的实体定义直接引用 SUMM-Todo 的 [`todo-core`](https://github.com/JhihJian/SUMM-Todo/blob/v0.5.0/crates/core/src/task.rs)（git tag `v0.5.0`），看板不再维护自己的字段表、枚举和状态机。所有日期字段使用 RFC 3339 字符串，统计周期按 UTC 计算。
+服务端读写 SUMM-Todo 的本机 SQLite 库，并向看板页面提供同源 HTTP API。任务与项目的实体定义来自本目录 [`core`](../core/src/task.rs) crate（`todo-core`，最早来自 SUMM-Todo），看板不再维护自己的字段表、枚举和状态机。所有日期字段使用 RFC 3339 字符串，统计周期按 UTC 计算。
 
 ## 配置
 

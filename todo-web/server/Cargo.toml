@@ -12,7 +12,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-todo-core = { git = "https://github.com/JhihJian/SUMM-Todo", tag = "v0.5.0" }
+todo-core = { path = "../core" }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs"] }
 
