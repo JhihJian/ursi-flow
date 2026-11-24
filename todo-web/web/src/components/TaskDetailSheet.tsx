@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
-import { cx, errorMessage } from '@/lib/ui'
+import { errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
 const MarkdownEditor = lazy(() => import('./MarkdownEditor'))
@@ -38,7 +38,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
   const [note, setNote] = useState(task?.result ?? '')
   const [height, setHeight] = useState(readStoredHeight)
-  const [maximized, setMaximized] = useState(false)
 
   const sheetRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -58,7 +57,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     if (!element) return
     element.style.height = 'auto'
     element.style.height = `${element.scrollHeight}px`
-  }, [title, maximized, height])
+  }, [title, height])
 
   // 用 window 监听拖动：指针移出面板甚至移出窗口时也能继续调整。
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -66,7 +65,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     const panel = sheet?.parentElement
     if (!sheet || !panel) return
     event.preventDefault()
-    setMaximized(false)
 
     const drag = {
       startY: event.clientY,
@@ -92,7 +90,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   }
 
   const resetHeight = () => {
-    setMaximized(false)
     applyHeight(DEFAULT_HEIGHT)
     localStorage.setItem(HEIGHT_KEY, String(DEFAULT_HEIGHT))
   }
@@ -127,8 +124,8 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   return (
     <section
       ref={sheetRef}
-      className={cx('detail-sheet', maximized && 'is-maximized')}
-      style={maximized ? undefined : { height }}
+      className="detail-sheet"
+      style={{ height }}
       role="dialog"
       aria-modal="false"
       aria-label={detail.mode === 'new' ? 'New task' : 'Task details'}
@@ -195,16 +192,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
           />
           <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
           <div className="detail-tools">
-            <button
-              type="button"
-              className="detail-tool"
-              title={maximized ? 'Restore height' : 'Expand'}
-              aria-label={maximized ? 'Restore height' : 'Expand task details'}
-              aria-pressed={maximized}
-              onClick={() => setMaximized((value) => !value)}
-            >
-              {maximized ? '⤡' : '⤢'}
-            </button>
             <button
               type="button"
               className="detail-tool"

@@ -887,10 +887,6 @@ button {
   animation: detail-sheet-rise 200ms ease-out;
 }
 
-.detail-sheet.is-maximized {
-  height: calc(100% - 120px);
-}
-
 @keyframes detail-sheet-rise {
   from {
     transform: translateY(100%);

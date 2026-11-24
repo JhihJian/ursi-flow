@@ -94,7 +94,7 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 顶部 10px 的横条是拖拽手柄，悬停时细线加粗并露出 `⋯`。拖动时把 `pointermove`、`pointerup` 挂在 `window` 上，指针移出面板甚至移出窗口仍能继续调整；不用 `setPointerCapture` 是因为面板高度随手势变化会重排，坐标容易跳。
 
-高度写进内联 `height`，限制在 200px 与「面板高度 − 120px」之间，后者保证任务列表至少留一行。松手时把最终高度存进 `localStorage` 的 `todo-web.detail-height`，刷新后沿用；双击横条恢复 360px 默认值。右上角 `⤢` 是展开开关，展开时改用 `height: calc(100% - 120px)`，再点回到记住的高度。
+高度写进内联 `height`，限制在 200px 与「面板高度 − 120px」之间，后者保证任务列表至少留一行。松手时把最终高度存进 `localStorage` 的 `todo-web.detail-height`，刷新后沿用；双击横条恢复 360px 默认值。改高只保留这一条路径，`max-height` 兜住上限，不再另设展开按钮。
 
 ## 边界
 
