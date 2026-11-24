@@ -4,7 +4,7 @@
  */
 
 export interface WorkspaceConfig {
-  /** 小写字母、数字、短横线；用作树缓存与选中的稳定标识。 */
+  /** 清单内唯一；静态配置用 slug，运行时添加用 root realpath 的 sha256 前 16 hex。 */
   id: string
   /** 展示名，缺省同 id。 */
   label?: string
@@ -17,6 +17,8 @@ export interface WorkspaceInfo {
   id: string
   label: string
   provider: 'local'
+  /** 目录绝对路径（运行时添加的条目为 realpath）。 */
+  root: string
   /** root 不存在或不可读时为 false，该 workspace 只读出错信息。 */
   ready: boolean
   error?: string
@@ -62,6 +64,7 @@ export interface ApiError {
     | 'not_found'
     | 'not_dir'
     | 'path_outside_root'
+    | 'forbidden_origin'
     | 'exists'
     | 'conflict'
     | 'too_large'

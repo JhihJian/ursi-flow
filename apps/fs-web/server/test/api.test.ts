@@ -63,7 +63,7 @@ test('workspaces 列表返回就绪状态', wrap(async (ctx) => {
   const res = await fetch(`${ctx.baseUrl}/workspaces`)
   const list = (await res.json()) as Array<{ id: string; ready: boolean }>
   assert.equal(res.status, 200)
-  assert.deepEqual(list, [{ id: 't', label: 'test', provider: 'local', ready: true }])
+  assert.deepEqual(list, [{ id: 't', label: 'test', provider: 'local', root: ctx.root, ready: true }])
 }))
 
 test('list 返回目录优先、按名排序的条目', wrap(async () => {
@@ -375,4 +375,222 @@ test('git-status 检出 upstream 时返回上游分支', wrap(async (ctx) => {
   } finally {
     await fs.rm(bare, { recursive: true, force: true })
   }
+}))
+
+// ---- workspace 清单管理（运行时添加 / 重命名 / 移除 + 状态文件） ----
+
+/** 带状态文件的临时目录服务；返回 baseUrl、临时根目录与 stateFile 路径。 */
+async function withStateServer(
+  fn: (ctx: { baseUrl: string; root: string; stateFile: string; server: import('node:http').Server }) => Promise<void>,
+  seed?: Array<{ id: string; label: string; provider: 'local'; root: string }>,
+  fixedStateFile?: string,
+): Promise<void> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-state-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-root-'))
+  const stateFile = fixedStateFile ?? path.join(dir, 'nested', 'workspaces.json')
+  const server = await createServer(
+    seed ?? [{ id: 'seed', label: 'seed', provider: 'local', root }],
+    { stateFile },
+  )
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (typeof address !== 'object' || !address) throw new Error('no address')
+  const baseUrl = `http://127.0.0.1:${address.port}/api/fs-web`
+  try {
+    await fn({ baseUrl, root, stateFile, server })
+  } finally {
+    server.close()
+    await fs.rm(dir, { recursive: true, force: true })
+    await fs.rm(root, { recursive: true, force: true })
+  }
+}
+
+async function statePost(baseUrl: string, name: string, body: unknown): Promise<{ status: number; json: unknown }> {
+  const res = await fetch(`${baseUrl}/${name}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return { status: res.status, json: await res.json() }
+}
+
+interface WorkspaceJson {
+  id: string
+  label: string
+  root: string
+  ready: boolean
+}
+
+test('workspaces-add 成功：返回 ready 条目且 label 默认取目录名', wrap(async (ctx) => {
+  const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-extra-'))
+  try {
+    await fs.writeFile(path.join(extra, 'inner.txt'), 'x')
+    const { status, json } = await post('workspaces-add', { root: extra })
+    assert.equal(status, 200)
+    const info = json as WorkspaceJson
+    assert.equal(info.ready, true)
+    assert.equal(info.label, path.basename(extra))
+    assert.equal(info.root, extra)
+    // 列表含新条目，且能直接列目录。
+    const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
+    assert.ok(list.some((workspace) => workspace.id === info.id))
+    const entries = await post('list', { workspaceId: info.id, path: [] })
+    assert.equal(entries.status, 200)
+  } finally {
+    await fs.rm(extra, { recursive: true, force: true })
+  }
+}))
+
+test('workspaces-add 拒绝相对路径、不存在的路径与文件路径', wrap(async () => {
+  const s1 = await post('workspaces-add', { root: 'relative/path' })
+  assert.equal(s1.status, 400)
+  expectError(s1.json, 'bad_request')
+
+  const s2 = await post('workspaces-add', { root: '/nonexistent-dir-for-fs-web-test' })
+  assert.equal(s2.status, 404)
+  expectError(s2.json, 'not_found')
+
+  const filePath = path.join(current!.root, 'plain.txt')
+  await fs.writeFile(filePath, 'x')
+  const s3 = await post('workspaces-add', { root: filePath })
+  assert.equal(s3.status, 400)
+  expectError(s3.json, 'bad_request')
+}))
+
+test('workspaces-add 重复目录返回 409 且 id 稳定', wrap(async (ctx) => {
+  // ctx.root 经服务端探活已入清单（id 为 seed），同一 root 再次添加按 realpath 判重。
+  const first = await post('workspaces-add', { root: ctx.root })
+  assert.equal(first.status, 409)
+  expectError(first.json, 'exists')
+}))
+
+test('workspaces-rename 改显示名且 FileKey 稳定（id 不变）', wrap(async (ctx) => {
+  const { status, json } = await post('workspaces-rename', { workspaceId: 't', label: '我的项目' })
+  assert.equal(status, 200)
+  assert.equal((json as WorkspaceJson).label, '我的项目')
+  const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
+  assert.equal(list.find((workspace) => workspace.id === 't')?.label, '我的项目')
+  // id 未变，文件操作照常。
+  const entries = await post('list', { workspaceId: 't', path: [] })
+  assert.equal(entries.status, 200)
+
+  const s2 = await post('workspaces-rename', { workspaceId: 'no-such', label: 'x' })
+  assert.equal(s2.status, 404)
+  expectError(s2.json, 'workspace_not_found')
+
+  const s3 = await post('workspaces-rename', { workspaceId: 't', label: '   ' })
+  assert.equal(s3.status, 400)
+  expectError(s3.json, 'bad_request')
+}))
+
+test('workspaces-remove 从清单移除且不动文件系统', wrap(async (ctx) => {
+  const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-extra-'))
+  try {
+    const marker = path.join(extra, 'keep.txt')
+    await fs.writeFile(marker, 'data')
+    const addRes = await post('workspaces-add', { root: extra })
+    const info = addRes.json as WorkspaceJson
+    const rm = await post('workspaces-remove', { workspaceId: info.id })
+    assert.equal(rm.status, 200)
+    // 清单移除，文件保留。
+    const after = await post('list', { workspaceId: info.id, path: [] })
+    assert.equal(after.status, 404)
+    expectError(after.json, 'workspace_not_found')
+    assert.equal(await fs.readFile(marker, 'utf8'), 'data')
+    // 移除不存在的 id 返回 404。
+    const rm2 = await post('workspaces-remove', { workspaceId: info.id })
+    assert.equal(rm2.status, 404)
+  } finally {
+    await fs.rm(extra, { recursive: true, force: true })
+  }
+}))
+
+test('状态文件：播种落盘、跨实例持久化、已存在时忽略种子', wrap(async () => {
+  // 状态文件目录由外层持有：各实例的临时目录会被各自清理，状态文件必须独立存活。
+  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-statefile-'))
+  const stateFile = path.join(stateDir, 'deep', 'workspaces.json')
+  const nested = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-nested-'))
+  const nestedTarget = path.join(nested, 'sub')
+  await fs.mkdir(nestedTarget)
+  try {
+    let firstId = ''
+    await withStateServer(async (ctx) => {
+      // 添加一个运行时目录并重命名，产生与种子不同的状态。
+      const add = await statePost(ctx.baseUrl, 'workspaces-add', { root: nestedTarget, label: '别名' })
+      const info = add.json as WorkspaceJson
+      firstId = info.id
+      await statePost(ctx.baseUrl, 'workspaces-rename', { workspaceId: 'seed', label: '改名' })
+      // 状态文件已落盘且是纯契约数组。
+      const raw = JSON.parse(await fs.readFile(ctx.stateFile, 'utf8')) as WorkspaceJson[]
+      assert.ok(Array.isArray(raw))
+      assert.ok(raw.every((item) => ['id', 'label', 'provider', 'root'].every((key) => key in item)))
+    }, undefined, stateFile)
+    // 用同一状态文件重启第二个实例：运行时变更保留。
+    await withStateServer(async (ctx) => {
+      const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
+      assert.ok(list.some((workspace) => workspace.id === firstId && workspace.label === '别名'))
+      assert.equal(list.find((workspace) => workspace.id === 'seed')?.label, '改名')
+    }, undefined, stateFile)
+    // 已有状态文件时传入不同的种子：以状态文件为准。
+    const thirdRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-third-'))
+    try {
+      await withStateServer(async (ctx) => {
+        const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
+        assert.ok(!list.some((workspace) => workspace.id === 'other'))
+        assert.ok(list.some((workspace) => workspace.id === 'seed'))
+      }, [{ id: 'other', label: 'other', provider: 'local', root: thirdRoot }], stateFile)
+    } finally {
+      await fs.rm(thirdRoot, { recursive: true, force: true })
+    }
+  } finally {
+    await fs.rm(stateDir, { recursive: true, force: true })
+    await fs.rm(nested, { recursive: true, force: true })
+  }
+}))
+
+test('状态文件损坏或条目非法时启动直接失败', wrap(async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-corrupt-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-root-'))
+  const stateFile = path.join(dir, 'workspaces.json')
+  try {
+    await fs.writeFile(stateFile, '{not json', 'utf8')
+    await assert.rejects(
+      () => createServer([{ id: 'seed', label: 'seed', provider: 'local', root }], { stateFile }),
+    )
+    await fs.writeFile(stateFile, JSON.stringify([{ id: 'BAD ID', provider: 'local', root }]), 'utf8')
+    await assert.rejects(
+      () => createServer([{ id: 'seed', label: 'seed', provider: 'local', root }], { stateFile }),
+    )
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+    await fs.rm(root, { recursive: true, force: true })
+  }
+}))
+
+test('移除未就绪（root 已消失）的 workspace', wrap(async (ctx) => {
+  const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-vanish-'))
+  try {
+    const add = await post('workspaces-add', { root: extra })
+    const info = add.json as WorkspaceJson
+    await fs.rm(extra, { recursive: true, force: true })
+    // root 消失后旧实例内存仍 ready，但真实场景重启后该条目未就绪；这里直接验证移除通道可用。
+    const rm = await post('workspaces-remove', { workspaceId: info.id })
+    assert.equal(rm.status, 200)
+  } finally {
+    await fs.rm(extra, { recursive: true, force: true })
+  }
+}))
+
+test('跨站 Origin 被拒绝，回环与同 Host 放行', wrap(async (ctx) => {
+  const evil = await fetch(`${ctx.baseUrl}/workspaces`, { headers: { origin: 'https://evil.example.com' } })
+  assert.equal(evil.status, 403)
+  expectError(await evil.json(), 'forbidden_origin')
+
+  const port = (ctx.server.address() as { port: number }).port
+  const ok1 = await fetch(`${ctx.baseUrl}/workspaces`, { headers: { origin: `http://127.0.0.1:${port}` } })
+  assert.equal(ok1.status, 200)
+  const ok2 = await fetch(`${ctx.baseUrl}/workspaces`, { headers: { origin: 'http://localhost:5191' } })
+  assert.equal(ok2.status, 200)
+  const noOrigin = await post('list', { workspaceId: 't', path: [] })
+  assert.equal(noOrigin.status, 200)
 }))

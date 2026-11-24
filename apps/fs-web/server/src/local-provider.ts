@@ -257,25 +257,36 @@ export function createLocalProvider(): WorkspaceProvider {
   return provider
 }
 
+/** 单条 workspace 记录校验与规范化；配置文件与运行时状态文件共用。 */
+export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConfig {
+  if (typeof item?.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(item.id)) {
+    throw new Error(`workspace id 非法：${JSON.stringify(item?.id)}（小写字母、数字、短横线）：${source}`)
+  }
+  if (item.provider !== 'local') throw new Error(`不支持的 provider：${item.provider}：${source}`)
+  if (typeof item.root !== 'string' || !path.isAbsolute(item.root)) {
+    throw new Error(`workspace ${item.id} 的 root 必须是绝对路径：${source}`)
+  }
+  return {
+    id: item.id,
+    label: typeof item.label === 'string' && item.label ? item.label : item.id,
+    provider: 'local',
+    root: item.root,
+  }
+}
+
 /** 配置加载：内置默认清单 + FS_WEB_CONFIG JSON 覆盖。 */
 export function loadWorkspaceConfig(env: NodeJS.ProcessEnv): WorkspaceConfig[] {
   const file = env.FS_WEB_CONFIG
   if (!file) {
     return [{ id: 'default', label: 'default', provider: 'local', root: process.cwd() }]
   }
-  const raw = JSON.parse(readFileSync(file, 'utf8'))
+  const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
   if (!Array.isArray(raw)) throw new Error(`${file} 应为 workspace 数组`)
   const seen = new Set<string>()
-  return raw.map((item: WorkspaceConfig) => {
-    if (typeof item?.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(item.id)) {
-      throw new Error(`workspace id 非法：${JSON.stringify(item?.id)}（小写字母、数字、短横线）`)
-    }
-    if (seen.has(item.id)) throw new Error(`workspace id 重复：${item.id}`)
-    seen.add(item.id)
-    if (item.provider !== 'local') throw new Error(`不支持的 provider：${item.provider}`)
-    if (typeof item.root !== 'string' || !path.isAbsolute(item.root)) {
-      throw new Error(`workspace ${item.id} 的 root 必须是绝对路径`)
-    }
-    return { id: item.id, label: typeof item.label === 'string' ? item.label : item.id, provider: 'local', root: item.root }
+  return raw.map((item) => {
+    const config = parseWorkspaceSeed(item, file)
+    if (seen.has(config.id)) throw new Error(`workspace id 重复：${config.id}`)
+    seen.add(config.id)
+    return config
   })
 }

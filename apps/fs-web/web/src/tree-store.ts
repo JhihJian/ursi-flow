@@ -26,7 +26,13 @@ interface TreeState {
   lastError: string | null
 
   loadWorkspaces: () => Promise<void>
-  selectWorkspace: (id: string) => void
+  selectWorkspace: (id: string | null) => void
+  /** 运行时添加目录；成功后刷新清单并选中新 workspace。 */
+  addWorkspace: (root: string) => Promise<string | null>
+  /** 改显示名；id 与 root 不变，FileKey 与展开状态无需迁移。 */
+  renameWorkspace: (id: string, label: string) => Promise<void>
+  /** 从清单移除；返回被移除时是否是当前激活项（调用方负责清理编辑器与外壳选中）。 */
+  removeWorkspace: (id: string) => Promise<boolean>
   toggleDir: (key: string) => Promise<void>
   reloadDir: (key: string) => Promise<void>
   refreshAll: () => Promise<void>
@@ -96,9 +102,17 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   loadWorkspaces: async () => {
     try {
       const workspaces = await get().api.workspaces()
+      // 当前选中在新清单中消失（被其他页面移除或服务重启清空）时复位。
+      const current = get().activeWorkspaceId
+      const stillExists = current !== null && workspaces.some((workspace) => workspace.id === current)
       set({ workspaces, workspaceError: undefined })
-      const first = get().activeWorkspaceId ?? workspaces.find((workspace) => workspace.ready)?.id ?? null
-      if (first) get().selectWorkspace(first)
+      if (current !== null && !stillExists) {
+        get().selectWorkspace(null)
+      }
+      if (get().activeWorkspaceId === null) {
+        const first = workspaces.find((workspace) => workspace.ready)?.id ?? null
+        if (first) get().selectWorkspace(first)
+      }
     } catch (error) {
       set({ workspaceError: messageOf(error) })
     }
@@ -106,10 +120,54 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   selectWorkspace: (id) => {
     if (get().activeWorkspaceId === id) return
+    if (id === null) {
+      set({ activeWorkspaceId: null, dirs: {}, openDirs: [], selectedDirKey: null })
+      return
+    }
     const rootKey = makeKey(id, [])
     set({ activeWorkspaceId: id, dirs: {}, openDirs: [{ key: rootKey, depth: 0 }], selectedDirKey: null })
     void get().reloadDir(rootKey)
     void useGitRefreshOf().refresh(get().api, id)
+  },
+
+  addWorkspace: async (root) => {
+    try {
+      const workspace = await get().api.addWorkspace(root)
+      set((current) => ({
+        // 同名条目可能已在其他页面添加过：按 id 去重后重建列表。
+        workspaces: [...current.workspaces.filter((item) => item.id !== workspace.id), workspace],
+        workspaceError: undefined,
+      }))
+      get().selectWorkspace(workspace.id)
+      return workspace.id
+    } catch (error) {
+      set({ workspaceError: messageOf(error) })
+      return null
+    }
+  },
+
+  renameWorkspace: async (id, label) => {
+    try {
+      const workspace = await get().api.renameWorkspace(id, label)
+      set((current) => ({
+        workspaces: current.workspaces.map((item) => (item.id === id ? workspace : item)),
+      }))
+    } catch (error) {
+      set({ lastError: messageOf(error) })
+    }
+  },
+
+  removeWorkspace: async (id) => {
+    const wasActive = get().activeWorkspaceId === id
+    try {
+      await get().api.removeWorkspace(id)
+      const rest = get().workspaces.filter((workspace) => workspace.id !== id)
+      set({ workspaces: rest })
+      if (wasActive) get().selectWorkspace(rest.find((workspace) => workspace.ready)?.id ?? null)
+    } catch (error) {
+      set({ lastError: messageOf(error) })
+    }
+    return wasActive
   },
 
   reloadDir: async (key) => {

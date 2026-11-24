@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react'
-import { WorkspaceApi, keyName, keyToParent } from './api.ts'
-import { injectEditorApi, useEditorStore, registerGitSaveListener } from './editor-store.ts'
-import { registerEditorApiInjector, useTreeStore, registerGitRefresh } from './tree-store.ts'
-import { useGitStore } from './git-store.ts'
-import { GitBar } from './git-bar.tsx'
-import { FileTree } from './tree.tsx'
-import { DirActions } from './dir-actions.tsx'
+import { useState } from 'react'
+import { WorkspaceApi, keyName, keySegments } from './api.ts'
+import { useEditorStore } from './editor-store.ts'
+import { FileExplorer, reloadParentOf } from './explorer.tsx'
 import { FileView } from './file-view.tsx'
+import { useGitStore } from './git-store.ts'
 
 /**
  * 独立预览入口：不依赖工作区外壳（@ursi/workspace-shell），
@@ -14,87 +11,40 @@ import { FileView } from './file-view.tsx'
  * 模块工厂（module.tsx）仍是嵌入外壳时的正式入口。
  */
 
-registerEditorApiInjector(injectEditorApi)
-registerGitRefresh(useGitStore.getState())
-registerGitSaveListener((workspaceId) => {
-  void useGitStore.getState().refresh(useTreeStore.getState().api, workspaceId)
-})
-
 export interface FsWebStandaloneOptions {
   apiBaseUrl?: string
 }
 
-/** 独立页面：左侧文件树（含 Git 徽标），右侧编辑器。 */
+/** 独立页面：一级目录列表 + 二级文件树（含 Git 徽标），右侧编辑器。 */
 export function FsWebStandalone(options: FsWebStandaloneOptions = {}) {
   const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/fs-web')
 
   const Standalone = () => {
-    const workspaces = useTreeStore((state) => state.workspaces)
-    const workspaceError = useTreeStore((state) => state.workspaceError)
-    const activeWorkspaceId = useTreeStore((state) => state.activeWorkspaceId)
-    const selectedDirKey = useTreeStore((state) => state.selectedDirKey)
-    const lastError = useTreeStore((state) => state.lastError)
-    const clearError = useTreeStore((state) => state.clearError)
-    const setApi = useTreeStore((state) => state.setApi)
-    const selectWorkspace = useTreeStore((state) => state.selectWorkspace)
-    const loadWorkspaces = useTreeStore((state) => state.loadWorkspaces)
     const [selectedFile, setSelectedFile] = useState<string | null>(null)
-    const [creating, setCreating] = useState(false)
 
-    useEffect(() => {
-      setApi(api)
-      void loadWorkspaces()
-    }, [setApi, loadWorkspaces])
-
-    useEffect(() => {
-      if (activeWorkspaceId) useGitStore.getState().reset()
-    }, [activeWorkspaceId])
-
-    const openFile = (key: string): void => {
-      void useEditorStore.getState().openFile(api, key)
-      setSelectedFile(key)
+    const handleWorkspaceRemoved = (workspaceId: string, wasActive: boolean): void => {
+      useEditorStore.getState().closeWorkspaceFiles(workspaceId)
+      setSelectedFile((current) =>
+        current && keySegments(current).workspaceId === workspaceId ? null : current,
+      )
+      if (wasActive) useGitStore.getState().reset()
     }
-
-    const activeWorkspaceLabel = workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.label
 
     return (
       <div className="wsx-app">
-        <aside className="wsx-app-side wsx-sidebar">
-          <div className="wsx-sidebar-head">
-            <h2 className="wsx-sidebar-title">{activeWorkspaceLabel ?? 'Workspaces'}</h2>
-            <select
-              value={activeWorkspaceId ?? ''}
-              aria-label="切换工作区"
-              onChange={(event) => selectWorkspace(event.target.value)}
-            >
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id} disabled={!workspace.ready}>
-                  {workspace.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
-          {lastError ? (
-            <button type="button" className="wsx-panel-error" onClick={clearError}>
-              {lastError}（点击关闭）
-            </button>
-          ) : null}
-          <GitBar />
-          <FileTree
-            onOpenFile={openFile}
+        <aside className="wsx-app-side">
+          <FileExplorer
+            api={api}
+            onOpenFile={(key) => {
+              void useEditorStore.getState().openFile(api, key)
+              setSelectedFile(key)
+            }}
             onFileDeleted={(key) => {
               useEditorStore.getState().closeFile(key)
+              reloadParentOf(key)
               setSelectedFile((current) => (current === key ? null : current))
-              const parent = keyToParent(key)
-              void useTreeStore.getState().reloadDir(parent?.parentKey ?? key)
             }}
-            onCreateDir={() => setCreating(true)}
-          />
-          <DirActions
-            selectedDirKey={selectedDirKey}
-            creating={creating}
-            onCreatingDone={() => setCreating(false)}
+            onWorkspaceRemoved={handleWorkspaceRemoved}
           />
         </aside>
         <main className="wsx-app-main">

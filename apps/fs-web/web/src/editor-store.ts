@@ -17,6 +17,8 @@ interface EditorState {
   editors: Record<string, EditorEntry>
   openFile: (api: WorkspaceApi, key: string) => Promise<void>
   closeFile: (key: string) => void
+  /** workspace 被移除时批量关闭它的全部文件视图。 */
+  closeWorkspaceFiles: (workspaceId: string) => void
   updateDraft: (key: string, value: string) => void
   save: (api: WorkspaceApi, key: string, overwrite?: boolean) => Promise<void>
   discard: (key: string) => Promise<void>
@@ -63,6 +65,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((current) => {
       const editors = { ...current.editors }
       delete editors[key]
+      return { editors }
+    })
+  },
+
+  closeWorkspaceFiles: (workspaceId) => {
+    set((current) => {
+      const editors: Record<string, EditorEntry> = {}
+      for (const [key, entry] of Object.entries(current.editors)) {
+        if (keySegments(key).workspaceId !== workspaceId) editors[key] = entry
+      }
       return { editors }
     })
   },

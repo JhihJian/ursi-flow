@@ -6,7 +6,7 @@
 
 | 阶段 | 范围 | 明确不做 |
 | --- | --- | --- |
-| 1（当前） | 本机目录浏览 + 编辑闭环 | SSH、虚拟目录、watch/SSE、拖拽移动、搜索、上传下载、二进制预览 |
+| 1（当前） | 本机目录浏览 + 编辑闭环 + 运行时目录管理（状态文件持久化、二级侧栏目录列表） | SSH、虚拟目录、watch/SSE、拖拽移动、搜索、上传下载、二进制预览 |
 | 1.5 | 只读 Git 状态视图：分支/上游、变更文件徽标与目录聚合、增删行数（手动刷新 + 文件操作后刷新） | diff 内容查看、暂存/提交/推送、轮询与自动刷新、SSH 远端 git |
 | 2 | SSH provider：连接池 + keepalive、操作超时、错误分类 | 远程 watch、跨主机复制 |
 | 3 | 虚拟目录聚合 + 本地 SSE 推送 | 跨挂载点移动 |
@@ -31,16 +31,23 @@ watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通�
 - workspace `root` 先 `realpath` 再作为前缀；每个请求路径逐段校验（拒绝 `..`、绝对段、NUL），最终路径必须以 root 前缀开头。
 - root 内符号链接指向外部时拒绝访问（read/write/stat/delete 都校验 realpath 前缀）。
 - 服务默认绑定 `127.0.0.1`，无鉴权；对外暴露需自行加访问控制。
-- SSH 凭据后续只存私钥路径或走 ssh-agent，不落明文。
+- 带浏览器 `Origin` 头的写请求必须来自回环地址或与 Host 同名的站点，否则拒绝（403 `forbidden_origin`），防恶意网页盲打；无 Origin 的客户端（curl 等）不受影响。
+- 运行时可添加任意本机目录，攻击面等于「本机文件系统经 HTTP 可读写」，以仅回环监听 + Origin 校验为前提；SSH 凭据后续只存私钥路径或走 ssh-agent，不落明文。
 
-### 前端：模块接入形态
+### 运行时目录管理：状态文件是唯一事实源
 
-- 目录树放模块 Panel 栏（内嵌根目录下拉 + 虚拟化列表）；点击文件发布 `workspace.file` 选中，编辑器由外壳工作区区域渲染，不塞进窄栏。
-- 树行组件自写 + `@tanstack/react-virtual` 虚拟化。不用 react-arborist（react-dnd 依赖对 React 19 兼容存疑，拖拽本版砍掉）。
+- 清单不再只靠启动配置：首启用内置默认或 `FS_WEB_CONFIG` 播种，写入运行时状态文件（默认 `~/.local/state/fs-web/workspaces.json`，`FS_WEB_STATE` 可覆盖）；此后 `FS_WEB_CONFIG` 不再生效。
+- 运行时添加/重命名/移除走 API，变更原子写回状态文件（tmp + rename），重启保留；文件损坏启动即报错，不静默回退。
+- 添加的目录 `id` 取 root realpath 的 sha256 前 16 位，跨重启稳定，重命名不影响已打开文件。
+
+### 前端：二级侧边栏
+
+- 模块栏为二级侧边栏（参考 todo-web ProjectSidebar）：一级 144px 固定宽目录列表，点击切换、右键重命名/移除（内联输入与内联确认，契约禁原生对话框）；二级为 git 摘要 + 虚拟化文件树。
+- 点击文件发布 `workspace.file` 选中，编辑器由外壳工作区区域渲染，不塞进窄栏；树行组件自写 + `@tanstack/react-virtual` 虚拟化。
 - Monaco 经 `@monaco-editor/react` + `monaco-editor` 本地打包（`loader.config` 指向本地 monaco-editor 包 + vite worker 导入），`React.lazy` 分块不进首屏。
-- 编辑器草稿与展开状态存 `sessionStorage`（键前缀 `workspace.`，模块卸载保留、刷新丢失）；文件内容不缓存，`apiBaseUrl` 由宿主注入，缺省 `/api/fs-web`。
+- 编辑器草稿与展开状态存内存（页面刷新即丢，后续可评估 sessionStorage）；文件内容不缓存，`apiBaseUrl` 由宿主注入，缺省 `/api/fs-web`。
 - 保存语义：mtime 乐观锁，冲突返回 409，提供「覆盖保存」与「放弃修改」两条路；整体后写覆盖。
-- 破坏性操作（删除）用模块内内联确认对话框（契约禁原生 `confirm`）；目录重命名后自动迁移展开状态与草稿 key。
+- 破坏性操作（删除、移除目录）用内联确认；目录重命名后自动迁移展开状态与草稿 key。
 
 ### Git 状态：只读快照
 
@@ -76,15 +83,17 @@ fs-web/
 │   ├── src/types.ts         # ApiError / EntryDto / WorkspaceInfo 等共享类型
 │   ├── src/local-provider.ts # Provider 接口 + 路径安全 + 本机文件系统实现
 │   ├── src/git-provider.ts   # git 只读命令封装与 porcelain 解析
-│   ├── src/server.ts         # node:http 路由 + workspace 清单 + 启动入口
+│   ├── src/server.ts         # node:http 路由 + workspace 清单 + 状态文件 + 启动入口
 │   ├── HTTP.md               # HTTP 契约
 │   └── test/api.test.ts      # 真实 HTTP 链路测试（node:test）
 ├── web/src/           # 前端模块（导出 @ursi/fs-web 的 ./module 接入入口，也提供独立预览）
 │   ├── api.ts          # HTTP 客户端 + FileKey（JSON segments）工具
-│   ├── tree-store.ts   # 树状态：目录缓存、展开序、增删改
+│   ├── tree-store.ts   # 树状态：清单、目录缓存、展开序、增删改、运行时目录管理
 │   ├── git-store.ts    # git 快照：徽标映射、过期丢弃
 │   ├── git-bar.tsx     # git 摘要条（分支/变更数/重试入口）
 │   ├── editor-store.ts # 编辑器状态：草稿、mtime 乐观锁、冲突分支
+│   ├── workspace-list.tsx # 一级目录列表（添加/重命名/移除，右键菜单）
+│   ├── explorer.tsx    # 二级侧边栏布局（目录列表 + git 摘要 + 文件树）
 │   ├── tree.tsx        # 虚拟化文件树（行内重命名、悬浮删除）
 │   ├── dir-actions.tsx # 选中目录工具条（刷新/新建/重命名/删除）
 │   ├── file-editor.tsx # Monaco 封装（本地打包 + worker，React.lazy 懒加载）
@@ -98,8 +107,8 @@ fs-web/
 
 ```sh
 # 服务（无依赖，Node 24 直跑 TS）
-node fs-web/server/src/server.ts          # 默认 127.0.0.1:8199
-FS_WEB_CONFIG=xxx.json node fs-web/server/src/server.ts --host 0.0.0.0 --port 8199
+node fs-web/server/src/server.ts          # 默认 127.0.0.1:8199；目录清单存 ~/.local/state/fs-web/
+FS_WEB_CONFIG=xxx.json node fs-web/server/src/server.ts --host 0.0.0.0 --port 8199   # 仅首次播种；FS_WEB_STATE 可改状态文件位置
 
 # 前端：嵌入工作区宿主
 npm run dev:shell-web                           # http://localhost:5191

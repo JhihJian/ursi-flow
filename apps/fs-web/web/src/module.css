@@ -457,3 +457,133 @@
   padding: 2px 12px;
   cursor: pointer;
 }
+
+/* ---- 二级侧边栏：一级目录列表 + 二级文件树 ---- */
+
+.wsx-explorer {
+  display: flex;
+  gap: var(--wsx-space-sm, 8px);
+  height: 100%;
+  min-height: 0;
+}
+
+/* 一级列：记录的目录（workspace）列表 */
+.wsx-wslist {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 144px;
+  min-height: 0;
+  border-right: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  padding-right: var(--wsx-space-sm, 8px);
+  user-select: none;
+}
+
+.wsx-wslist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  margin-bottom: 4px;
+}
+
+.wsx-wslist-title {
+  font-family: var(--wsx-serif, var(--ws-serif, Georgia, "Times New Roman", serif));
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+}
+
+.wsx-wslist-add {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  background: none;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  cursor: pointer;
+}
+
+.wsx-wslist-add:hover {
+  border-color: var(--wsx-ink, #1a1a1a);
+}
+
+.wsx-wslist-adding {
+  flex: none;
+  margin-bottom: 4px;
+}
+
+.wsx-wslist-input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid var(--wsx-dim, #999999);
+  padding: 2px 4px;
+}
+
+.wsx-wslist-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.wsx-wslist-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-left: 2px solid transparent;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.wsx-wslist-item:hover {
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-wslist-item--active {
+  border-left-color: var(--wsx-ink, #000000);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-wslist-item--broken .wsx-wslist-name {
+  color: var(--wsx-muted, #999999);
+  text-decoration: line-through;
+}
+
+.wsx-wslist-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsx-wslist-broken {
+  flex: none;
+  color: var(--wsx-dim, #666666);
+  font-weight: 700;
+}
+
+/* 二级列：git 摘要 + 文件树 */
+.wsx-tree-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wsx-explorer-empty {
+  padding: var(--wsx-space-md, 16px) 0;
+  font-family: var(--wsx-serif, Georgia, serif);
+  color: var(--wsx-muted, #999999);
+}

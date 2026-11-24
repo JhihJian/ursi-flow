@@ -1,20 +1,10 @@
-import { useEffect, useState } from 'react'
-import { WorkspaceApi, keyName, keyToParent } from './api.ts'
-import { injectEditorApi, useEditorStore, registerGitSaveListener } from './editor-store.ts'
-import { registerEditorApiInjector, useTreeStore, registerGitRefresh } from './tree-store.ts'
-import { useGitStore } from './git-store.ts'
-import { GitBar } from './git-bar.tsx'
-import { FileTree } from './tree.tsx'
-import { DirActions } from './dir-actions.tsx'
+import { WorkspaceApi, keyName, keySegments } from './api.ts'
+import { useEditorStore } from './editor-store.ts'
+import { FileExplorer, reloadParentOf } from './explorer.tsx'
 import { FileView } from './file-view.tsx'
+import { useGitStore } from './git-store.ts'
 import { useWorkspace } from '@ursi/workspace-shell'
 import type { Selection, WorkspaceModule } from '@ursi/workspace-shell'
-
-registerEditorApiInjector(injectEditorApi)
-registerGitRefresh(useGitStore.getState())
-registerGitSaveListener((workspaceId) => {
-  void useGitStore.getState().refresh(useTreeStore.getState().api, workspaceId)
-})
 
 export interface FsWebModuleOptions {
   apiBaseUrl?: string
@@ -25,74 +15,35 @@ export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModul
   const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/fs-web')
 
   const Panel = () => {
-    const workspaces = useTreeStore((state) => state.workspaces)
-    const workspaceError = useTreeStore((state) => state.workspaceError)
-    const activeWorkspaceId = useTreeStore((state) => state.activeWorkspaceId)
-    const selectedDirKey = useTreeStore((state) => state.selectedDirKey)
-    const lastError = useTreeStore((state) => state.lastError)
-    const clearError = useTreeStore((state) => state.clearError)
-    const setApi = useTreeStore((state) => state.setApi)
-    const selectWorkspace = useTreeStore((state) => state.selectWorkspace)
-    const loadWorkspaces = useTreeStore((state) => state.loadWorkspaces)
-    const { select } = useWorkspace()
-    const [creating, setCreating] = useState(false)
+    const { select, selection } = useWorkspace()
 
-    useEffect(() => {
-      setApi(api)
-      void loadWorkspaces()
-    }, [setApi, loadWorkspaces])
-
-    // 切换 workspace 时清空 git 快照；selectWorkspace 内部会立即发起 refresh。
-    useEffect(() => {
-      if (activeWorkspaceId) useGitStore.getState().reset()
-    }, [activeWorkspaceId])
-
-    const openFile = (key: string): void => {
-      void useEditorStore.getState().openFile(api, key)
-      select({ kind: 'workspace.file', id: key, label: keyName(key) })
+    // 移除 workspace 的集中善后：关闭其全部文件视图、清指向它的外壳选中；
+    // 被移除的是激活目录时同步重置 git 快照。
+    const handleWorkspaceRemoved = (workspaceId: string, wasActive: boolean): void => {
+      useEditorStore.getState().closeWorkspaceFiles(workspaceId)
+      if (
+        selection?.kind === 'workspace.file' &&
+        keySegments(selection.id).workspaceId === workspaceId
+      ) {
+        select(null)
+      }
+      if (wasActive) useGitStore.getState().reset()
     }
-
-    const activeWorkspaceLabel = workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.label
 
     return (
       <div className="wsx-panel">
-        <div className="wsx-sidebar">
-          <div className="wsx-sidebar-head">
-            <h2 className="wsx-sidebar-title">{activeWorkspaceLabel ?? 'Workspaces'}</h2>
-            <select
-              value={activeWorkspaceId ?? ''}
-              aria-label="切换工作区"
-              onChange={(event) => selectWorkspace(event.target.value)}
-            >
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id} disabled={!workspace.ready}>
-                  {workspace.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
-          {lastError ? (
-            <button type="button" className="wsx-panel-error" onClick={clearError}>
-              {lastError}（点击关闭）
-            </button>
-          ) : null}
-          <GitBar />
-          <FileTree
-            onOpenFile={openFile}
-            onFileDeleted={(key) => {
-              useEditorStore.getState().closeFile(key)
-              const parent = keyToParent(key)
-              void useTreeStore.getState().reloadDir(parent?.parentKey ?? key)
-            }}
-            onCreateDir={() => setCreating(true)}
-          />
-          <DirActions
-            selectedDirKey={selectedDirKey}
-            creating={creating}
-            onCreatingDone={() => setCreating(false)}
-          />
-        </div>
+        <FileExplorer
+          api={api}
+          onOpenFile={(key) => {
+            void useEditorStore.getState().openFile(api, key)
+            select({ kind: 'workspace.file', id: key, label: keyName(key) })
+          }}
+          onFileDeleted={(key) => {
+            useEditorStore.getState().closeFile(key)
+            reloadParentOf(key)
+          }}
+          onWorkspaceRemoved={handleWorkspaceRemoved}
+        />
       </div>
     )
   }
@@ -118,8 +69,8 @@ export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModul
       }
       return { title: '文件', items: [{ label: '状态', value: '浏览' }] }
     },
-    defaultSize: 420,
-    minSize: 280,
+    defaultSize: 440,
+    minSize: 360,
     collapsedSize: 48,
     selection: {
       kind: 'workspace.file',

@@ -83,6 +83,19 @@ export class WorkspaceApi {
   gitStatus(workspaceId: string): Promise<GitStatusDto> {
     return this.post('git-status', { workspaceId })
   }
+
+  /** 运行时添加目录：服务端 realpath 探活后返回完整 WorkspaceInfo。 */
+  addWorkspace(root: string): Promise<WorkspaceInfo> {
+    return this.post('workspaces-add', { root })
+  }
+
+  renameWorkspace(workspaceId: string, label: string): Promise<WorkspaceInfo> {
+    return this.post('workspaces-rename', { workspaceId, label })
+  }
+
+  removeWorkspace(workspaceId: string): Promise<{ ok: true }> {
+    return this.post('workspaces-remove', { workspaceId })
+  }
 }
 
 /** 键：JSON 编码的 [workspaceId, ...segments]。文件名可含任意可见字符，JSON 编码无歧义且可逆。 */
