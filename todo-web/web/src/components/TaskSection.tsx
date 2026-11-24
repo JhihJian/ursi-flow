@@ -149,13 +149,6 @@ function TaskRow({
         </button>
       </td>
       <td className={cx('col-title', `task-title-${task.status}`)}>{task.title}</td>
-      <td className="col-tags">
-        {task.tags.map((tag) => (
-          <span key={tag} className="tag">
-            {tag}
-          </span>
-        ))}
-      </td>
       <td className="col-status" title={STATUS_LABELS[task.status]}>
         {statusSymbol(task.status)}
       </td>
@@ -236,7 +229,6 @@ export function TaskSection() {
             <th className="col-priority">Pri</th>
             <th className="col-id">ID</th>
             <th className="col-title">Task</th>
-            <th className="col-tags">Tags</th>
             <th className="col-status">Status</th>
             <th className="col-time">Time</th>
           </tr>
@@ -244,14 +236,14 @@ export function TaskSection() {
         <tbody>
           {tasksLoading ? (
             <tr>
-              <td colSpan={6} className="empty-state">
+              <td colSpan={5} className="empty-state">
                 Loading...
               </td>
             </tr>
           ) : null}
           {!tasksLoading && visibleTasks.length === 0 ? (
             <tr>
-              <td colSpan={6} className="empty-state">
+              <td colSpan={5} className="empty-state">
                 {!selectedProjectId
                   ? 'Select a project'
                   : statusFilter

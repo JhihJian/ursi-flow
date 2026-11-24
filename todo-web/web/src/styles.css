@@ -582,7 +582,17 @@ button {
 .task-table th.col-priority,
 .task-table td.col-priority,
 .task-table th.col-status,
-.task-table td.col-status,
+.task-table td.col-status {
+  text-align: center;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+/* 状态列表头去掉字距，让这一列只占状态符号需要的最小宽度。 */
+.task-table th.col-status {
+  letter-spacing: 0;
+}
+
 .task-table th.col-time,
 .task-table td.col-time {
   text-align: center;
@@ -592,12 +602,10 @@ button {
   width: 100px;
 }
 
-.col-tags {
-  width: 120px;
-}
-
 .col-status {
-  width: 46px;
+  /* 状态列只放一个符号，保持最窄宽度，剩余空间留给任务标题。 */
+  width: 1%;
+  white-space: nowrap;
 }
 
 .col-time {
@@ -694,18 +702,6 @@ button {
 .task-id.copied {
   color: var(--black);
   font-weight: 500;
-}
-
-.tag {
-  display: inline-block;
-  font-size: 11px;
-  color: var(--gray-600);
-  margin-right: var(--space-xs);
-}
-
-.tag::before {
-  content: "#";
-  color: var(--gray-400);
 }
 
 .empty-state {
