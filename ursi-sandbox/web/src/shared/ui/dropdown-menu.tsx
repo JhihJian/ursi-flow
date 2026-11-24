@@ -15,7 +15,7 @@ export function DropdownMenuContent({
       <Primitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'z-50 min-w-44 border border-line bg-surface p-1 text-txt',
+          'z-50 min-w-44 border border-accent bg-surface p-1 text-txt',
           className,
         )}
         {...props}
@@ -31,7 +31,7 @@ export function DropdownMenuItem({
   return (
     <Primitive.Item
       className={cn(
-        'flex cursor-default select-none items-center gap-2 px-2 py-2 text-sm outline-none focus:bg-elevated data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4',
+        'flex cursor-default select-none items-center gap-2 px-2 py-2 text-xs outline-none focus:bg-accent-dim data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4',
         className,
       )}
       {...props}

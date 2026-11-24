@@ -9,12 +9,12 @@ export function Switch({
   return (
     <Primitive.Root
       className={cn(
-        'inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-line-strong bg-line-strong transition-colors disabled:opacity-50 data-[state=checked]:bg-accent',
+        'inline-flex h-6 w-11 shrink-0 items-center border border-line-strong bg-line-strong transition-colors disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent',
         className,
       )}
       {...props}
     >
-      <Primitive.Thumb className="pointer-events-none block size-5 rounded-full bg-surface shadow-sm transition-transform data-[state=checked]:translate-x-5" />
+      <Primitive.Thumb className="pointer-events-none block size-5 border border-line-strong bg-surface transition-transform data-[state=checked]:translate-x-[22px] data-[state=checked]:border-accent" />
     </Primitive.Root>
   )
 }

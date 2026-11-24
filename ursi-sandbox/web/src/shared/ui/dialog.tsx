@@ -31,7 +31,7 @@ export const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          `${overlayCenteredClass} grid w-[calc(100%-2rem)] max-w-lg gap-4 border border-line bg-surface p-6`,
+          `${overlayCenteredClass} grid w-[calc(100%-2rem)] max-w-lg gap-4 border border-accent bg-surface p-6`,
           className,
         )}
         {...props}

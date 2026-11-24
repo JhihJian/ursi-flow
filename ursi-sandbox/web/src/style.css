@@ -5,7 +5,7 @@
 /* 独立控制台占满视口，页面内容与实例列表各自滚动。 */
 @layer components {
   .sbx-app {
-    @apply relative flex h-dvh min-w-0 flex-col overflow-hidden bg-base font-mono text-sm text-txt antialiased;
+    @apply relative flex h-dvh min-w-0 flex-col overflow-hidden bg-base font-mono text-[13px] text-txt antialiased;
   }
   .sbx-app :focus-visible {
     outline: 2px solid rgb(var(--c-accent));
@@ -94,7 +94,7 @@
   }
   .input,
   .textarea {
-    @apply block w-full min-w-0 border border-line-strong bg-surface px-3 py-2 text-sm text-txt transition-colors disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3;
+    @apply block w-full min-w-0 border border-line bg-surface px-3 py-2 text-sm text-txt transition-colors focus-visible:border-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3;
   }
   .textarea {
     @apply min-h-24 resize-y;

@@ -17,7 +17,7 @@ export function AlertDialogContent({
       <Primitive.Overlay className="absolute inset-0 z-50 bg-txt/60" />
       <Primitive.Content
         className={cn(
-          `${overlayCenteredClass} grid w-[calc(100%-2rem)] max-w-lg gap-5 border border-line bg-surface p-5`,
+          `${overlayCenteredClass} grid w-[calc(100%-2rem)] max-w-lg gap-5 border border-accent bg-surface p-5`,
           className,
         )}
         {...props}

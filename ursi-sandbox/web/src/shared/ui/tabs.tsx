@@ -26,7 +26,7 @@ export function TabsTrigger({
   return (
     <Primitive.Trigger
       className={cn(
-        'inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium text-txt3 transition-colors hover:text-txt data-[state=active]:bg-surface data-[state=active]:text-txt data-[state=active]:shadow-[inset_0_-2px_rgb(var(--c-accent))] [&_svg]:size-4',
+        'inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 text-sm font-medium text-txt3 transition-colors hover:text-txt data-[state=active]:border-accent data-[state=active]:bg-surface data-[state=active]:text-txt [&_svg]:size-4',
         className,
       )}
       {...props}
