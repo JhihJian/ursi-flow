@@ -45,6 +45,28 @@
 .plugin-meta dd[data-state$="failed"], .plugin-meta dd[data-state="load-timeout"] { color: #9e341c; font-weight: 650; }
 .plugin-meta dd[data-state="ready"] { color: var(--accent); }
 .inventory-empty { color: var(--muted); font-size: .875rem; }
+.region-map {
+  display: grid;
+  grid-template-areas: "title title title" "left-top center right" "left-bottom center right" "status status status";
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-rows: 40px 50px 50px 40px;
+  gap: 5px;
+}
+.region-map button { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--surface); font-size: .8125rem; }
+.region-map button[data-region="title"] { grid-area: title; }
+.region-map button[data-region="left-top"] { grid-area: left-top; }
+.region-map button[data-region="left-bottom"] { grid-area: left-bottom; }
+.region-map button[data-region="center"] { grid-area: center; }
+.region-map button[data-region="right"] { grid-area: right; }
+.region-map button[data-region="status"] { grid-area: status; }
+.region-map button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); font-weight: 650; }
+.region-map button:hover:not([aria-pressed="true"]) { background: var(--hover); }
+.region-count { font-variant-numeric: tabular-nums; }
+.region-settings { margin-block-start: 16px; }
+.region-settings h3 { margin: 0; font-size: .875rem; }
+.region-settings p { margin-block-start: 10px; }
+.region-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .875rem; }
+.region-row small { display: block; margin-block-start: 3px; color: var(--muted); }
 .preview-tools .tool { width: 36px; padding: 0; }
 .preview-tools .tool[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
 .preview-stage { background: #e9edee; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; padding: 10px; text-align: center; }

@@ -6,28 +6,28 @@ parent: ../../SPEC.md
 
 ## 功能意图
 
-`@ursi/ui-layout` 为 React 19 宿主提供通用页面骨架。宿主提供页面头部、主内容以及可选导航和辅助内容，组件负责语义结构、键盘导航与响应式排列。
+`@ursi/ui-layout` 为 React 19 宿主提供通用页面骨架。宿主提供页面头部、主内容以及可选导航、辅助内容和页脚，组件负责语义结构、键盘导航与响应式排列。
 
 ## 关键功能与验收
 
 ### 内容插槽与键盘导航
 
-`PageFrame` 接收 `header: ReactNode`、`main: ReactNode`、`aside?: ReactNode` 和 `asidePlacement?: 'right' | 'below'`。默认位置为 `right`。`skipLabel` 可指定跳转链接文案。
+`PageFrame` 接收 `header: ReactNode`、`main: ReactNode`、`aside?: ReactNode`、`footer?: ReactNode` 和 `asidePlacement?: 'right' | 'below'`。默认位置为 `right`。`skipLabel` 可指定跳转链接文案。
 
 #### 验收
 
-- 即使传入空值，页面仍有 `header` 与 `main` 元素。省略 `aside` 或传入空字符串、纯空白、布尔值、空数组或空片段时，不生成 `aside` 元素，也不预留侧栏位置。数值 `0` 正常渲染。
+- 即使传入空值，页面仍有 `header` 与 `main` 元素。省略 `aside` 或传入空字符串、纯空白、布尔值、空数组或空片段时，不生成 `aside` 元素，也不预留侧栏位置。数值 `0` 正常渲染。非空 `footer` 以全宽页脚排在各列下方，空值不占空间。
 - 在页面内按 Tab 可看到跳转到主内容的链接。按 Enter 后焦点进入该组件的 `main`，继续按 Tab 从主内容开始，跳过头部的可聚焦元素。
 
 ### 可折叠导航
 
-`navigation` 接收导航名称、展开按钮内容和导航内容。宿主决定是否传入该区域。
+`navigation` 接收导航名称、展开按钮内容、导航内容及可选 `bottom`。宿主决定是否传入该区域。
 
 #### 验收
 
 - 视口宽度至少为 `768px` 时，导航位于主区左侧，导航按钮隐藏。导航默认宽 `224px`，可通过 `--ursi-page-frame-nav-width` 覆盖。
 - 窄屏时顶栏显示导航按钮，点击可在主内容上方展开导航。收起时导航不占空间且不可聚焦。焦点位于导航中时按 Esc 收起导航，焦点回到按钮。
-- 不传导航时不生成导航列或展开按钮。
+- `bottom` 有内容时排在导航列下方，与导航一起展开或收起。空 `bottom` 不生成容器。不传导航时不生成导航列或展开按钮。
 
 ### 响应式排列与宿主覆盖
 
@@ -35,6 +35,6 @@ parent: ../../SPEC.md
 
 #### 验收
 
-- 视口宽度至少为 `768px`、组件内能容纳两列及间距、且位置为 `right` 时，`aside` 与 `main` 同行，位于主内容右侧（从左至右排版）。视口更窄、组件内空间不足或位置为 `below` 时，`aside` 在 `main` 下方占整行。切换布局时，DOM 顺序始终为 `header`、可选 `nav`、`main`、可选 `aside`。
+- 视口宽度至少为 `768px`、组件内能容纳两列及间距、且位置为 `right` 时，`aside` 与 `main` 同行，位于主内容右侧（从左至右排版）。视口更窄、组件内空间不足或位置为 `below` 时，`aside` 在 `main` 下方占整行。切换布局时，DOM 顺序始终为 `header`、可选 `nav`、`main`、可选 `aside`、可选 `footer`。
 - 默认间距为 `24px`、主列最小宽度为 `400px`、辅助列最小宽度为 `300px`。辅助列的首选宽度和上限分别为组件宽度的 `45%` 和 `70%`。例如，组件可用宽度为 `1200px` 时辅助列宽 `540px`，缩至 `768px` 时辅助列宽 `344px`。
 - 宿主在祖先元素或组件根节点上设置 `--ursi-page-frame-gap`、`--ursi-page-frame-main-min`、`--ursi-page-frame-aside-min`、`--ursi-page-frame-aside-preferred` 或 `--ursi-page-frame-aside-max` 后，对应的间距或列宽按覆盖值计算。间距与最小列宽使用长度值，辅助列的首选宽度与上限可使用相对组件宽度的百分比。组件样式只作用于带 `ursi-page-frame` 命名空间的元素。

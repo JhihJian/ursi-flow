@@ -8,7 +8,7 @@ if (!file) {
   process.exit(2)
 }
 try {
-  const config = parsePortalConfig(JSON.parse(readFileSync(file, 'utf8')), pluginManifest.map(plugin => plugin.id), 'https://portal.example')
+  const config = parsePortalConfig(JSON.parse(readFileSync(file, 'utf8')), pluginManifest, 'https://portal.example')
   console.log(`配置 ${config.revision} 校验通过`)
 } catch (error) {
   console.error(`配置校验失败：${error instanceof Error ? error.message : String(error)}`)

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Download, LayoutTemplate, Monitor, Puzzle, RotateCcw, Smartphone, Workflow } from 'lucide-react'
 import { PluginInventory } from './PluginInventory'
+import { RegionEditor } from './RegionEditor'
+import type { PortalRegion } from './portal-regions'
 import { limits, parsePortalConfig, type PortalConfig, type PublishedConfig } from './portal-config'
 import { pluginManifest } from './plugin-manifest'
 import type { PluginStatus } from './plugin-runtime'
@@ -11,7 +13,7 @@ const statuses = new Set<PluginStatus>(['loading', 'ready', 'load-failed', 'load
 const currentTab = () => location.hash === '#plugins' ? 'plugins' : 'pages'
 
 function validate(draft: PortalConfig) {
-  try { return { config: parsePortalConfig(draft, pluginIds, origin), error: undefined } }
+  try { return { config: parsePortalConfig(draft, pluginManifest, origin), error: undefined } }
   catch (error) { return { config: undefined, error: (error as Error).message } }
 }
 
@@ -24,11 +26,8 @@ function PageEditor({ page, change }: { page: PortalConfig['page']; change: <K e
       <label className="field">项目简介<textarea value={page.description} maxLength={limits.description} rows={3} onChange={event => change('description', event.target.value)} /></label>
     </section>
     <section className="manage-section" aria-labelledby="page-layout">
-      <div className="section-head"><h2 id="page-layout">链接与布局</h2></div>
+      <div className="section-head"><h2 id="page-layout">项目链接</h2></div>
       <label className="field">仓库地址<input value={page.repository} maxLength={limits.url} spellCheck={false} onChange={event => change('repository', event.target.value)} /></label>
-      <label className="field">宽屏扩展区位置<select value={page.placement} onChange={event => change('placement', event.target.value === 'below' ? 'below' : 'right')}>
-        <option value="right">主内容右侧</option><option value="below">主内容下方</option>
-      </select></label>
     </section>
   </>
 }
@@ -37,10 +36,12 @@ export function Manage({ published, projectId }: { published: PublishedConfig; p
   const { config: baseline, source, problem } = published
   const draftKey = `ursi.portal.draft:${projectId}:${baseline.revision}`
   const [draft, setDraft] = useState<PortalConfig>(() => {
-    try { return parsePortalConfig(JSON.parse(sessionStorage.getItem(draftKey) ?? 'null'), pluginIds, origin) }
+    try { return parsePortalConfig(JSON.parse(sessionStorage.getItem(draftKey) ?? 'null'), pluginManifest, origin) }
     catch { return baseline }
   })
   const [tab, setTab] = useState(currentTab)
+  const [region, selectRegion] = useState<PortalRegion>('left-top')
+  const selectedRegion = tab === 'pages' ? region : undefined
   const [mobile, setMobile] = useState(false)
   const [frameRun, setFrameRun] = useState(0)
   const [liveStatus, setLiveStatus] = useState<Partial<Record<string, PluginStatus>>>({})
@@ -82,7 +83,7 @@ export function Manage({ published, projectId }: { published: PublishedConfig; p
     function receive(event: MessageEvent) {
       if (event.origin !== origin || !iframe.current || event.source !== iframe.current.contentWindow) return
       if (event.data?.type === 'portal-preview:ready') {
-        if (serialized) iframe.current.contentWindow?.postMessage({ type: 'portal-preview:config', config: JSON.parse(serialized) }, origin)
+        if (serialized) iframe.current.contentWindow?.postMessage({ type: 'portal-preview:config', config: JSON.parse(serialized), selectedRegion }, origin)
       } else if (event.data?.type === 'portal-preview:status') {
         const { id, status } = event.data
         if (pluginIds.includes(id) && statuses.has(status)) setLiveStatus(previous => ({ ...previous, [id]: status }))
@@ -90,10 +91,10 @@ export function Manage({ published, projectId }: { published: PublishedConfig; p
     }
     window.addEventListener('message', receive)
     return () => window.removeEventListener('message', receive)
-  }, [serialized])
+  }, [serialized, selectedRegion])
   useEffect(() => {
-    if (serialized) iframe.current?.contentWindow?.postMessage({ type: 'portal-preview:config', config: JSON.parse(serialized) }, origin)
-  }, [serialized])
+    if (serialized) iframe.current?.contentWindow?.postMessage({ type: 'portal-preview:config', config: JSON.parse(serialized), selectedRegion }, origin)
+  }, [serialized, selectedRegion])
 
   function edit(update: (value: PortalConfig) => PortalConfig) {
     setNotice('')
@@ -140,12 +141,16 @@ export function Manage({ published, projectId }: { published: PublishedConfig; p
       <div className="manage-grid">
         <div className="manage-editor">
           {tab === 'pages'
-            ? <PageEditor page={draft.page} change={(key, value) => edit(previous => ({ ...previous, page: { ...previous.page, [key]: value } }))} />
-            : <PluginInventory draft={draft} statuses={liveStatus}
-                toggle={(id, enabled) => {
-                  setLiveStatus(previous => ({ ...previous, [id]: undefined }))
-                  edit(previous => ({ ...previous, plugins: { ...previous.plugins, [id]: enabled } }))
-                }}
+            ? <>
+              <RegionEditor draft={draft} region={region} select={selectRegion} toggle={(id, enabled) => edit(previous => ({
+                ...previous, plugins: { ...previous.plugins, [id]: {
+                  ...previous.plugins[id], regions: { ...previous.plugins[id].regions, [region]: enabled },
+                } },
+              }))} />
+              <PageEditor page={draft.page} change={(key, value) => edit(previous => ({ ...previous, page: { ...previous.page, [key]: value } }))} />
+            </>
+            : <PluginInventory draft={draft} statuses={liveStatus} previewPaused={!validated}
+                toggle={(id, enabled) => edit(previous => ({ ...previous, plugins: { ...previous.plugins, [id]: { ...previous.plugins[id], enabled } } }))}
                 changeUrl={workbenchUrl => edit(previous => ({ ...previous, workbenchUrl }))} />}
         </div>
         <section className="manage-preview" aria-labelledby="preview-heading">
@@ -158,7 +163,7 @@ export function Manage({ published, projectId }: { published: PublishedConfig; p
           </div>
           <div className="preview-stage" ref={stage}>
             <iframe key={frameRun} ref={iframe} title="首页草稿预览" src="/?portal-preview=1" style={{ width: previewWidth, height: mobile ? 680 : 720, zoom: scale }}
-              onLoad={() => { if (validated) iframe.current?.contentWindow?.postMessage({ type: 'portal-preview:config', config: validated }, origin) }} />
+              onLoad={() => { if (validated) iframe.current?.contentWindow?.postMessage({ type: 'portal-preview:config', config: validated, selectedRegion }, origin) }} />
           </div>
         </section>
       </div>

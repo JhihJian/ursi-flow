@@ -9,5 +9,5 @@ function WorkbenchEntry({ workbenchUrl }: PortalContext) {
 }
 
 export function activate({ slots }: PluginContext) {
-  slots.register('home.entries', { id: 'workbench', Component: WorkbenchEntry })
+  slots.register('left-top', { id: 'workbench', Component: WorkbenchEntry })
 }

@@ -1,16 +1,16 @@
 {
-  "schemaVersion": 1,
-  "revision": "example-v1",
+  "schemaVersion": 2,
+  "revision": "example-v2",
   "page": {
     "brand": "ursi-flow",
     "name": "ursi-flow",
     "description": "流程、工作项与执行记录",
-    "repository": "https://github.com/JhihJian/ursi-flow",
-    "placement": "right"
+    "repository": "https://github.com/JhihJian/ursi-flow"
   },
   "plugins": {
-    "workbench": false,
-    "project-links": true
+    "workbench": { "enabled": false, "regions": { "left-top": true } },
+    "project-links": { "enabled": true, "regions": { "right": true } },
+    "portal-info": { "enabled": true, "regions": { "title": true, "status": true } }
   },
   "workbenchUrl": ""
 }

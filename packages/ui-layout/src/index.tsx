@@ -4,8 +4,9 @@ import "./page-frame.css"
 export interface PageFrameProps {
   header: ReactNode
   main: ReactNode
-  navigation?: { label: string; toggle: ReactNode; content: ReactNode }
+  navigation?: { label: string; toggle: ReactNode; content: ReactNode; bottom?: ReactNode }
   aside?: ReactNode
+  footer?: ReactNode
   asidePlacement?: "right" | "below"
   skipLabel?: string
 }
@@ -20,7 +21,7 @@ function hasAsideContent(node: ReactNode): boolean {
   return true
 }
 
-export function PageFrame({ header, main, navigation, aside, asidePlacement = "right", skipLabel = "跳到主要内容" }: PageFrameProps) {
+export function PageFrame({ header, main, navigation, aside, footer, asidePlacement = "right", skipLabel = "跳到主要内容" }: PageFrameProps) {
   const mainId = useId()
   const mainRef = useRef<HTMLElement>(null)
   const navigationId = useId()
@@ -69,7 +70,9 @@ export function PageFrame({ header, main, navigation, aside, asidePlacement = "r
               toggle.focus()
             }
           }}
-        >{navigation.content}</nav>}
+        >{navigation.content}
+          {hasAsideContent(navigation.bottom) && <div className="ursi-page-frame__nav-bottom">{navigation.bottom}</div>}
+        </nav>}
         <div className="ursi-page-frame__body" data-aside-placement={showAside ? asidePlacement : undefined}>
           <main className="ursi-page-frame__main" id={mainId} ref={mainRef} tabIndex={-1}>
             {main}
@@ -77,6 +80,7 @@ export function PageFrame({ header, main, navigation, aside, asidePlacement = "r
           {showAside && <aside className="ursi-page-frame__aside">{aside}</aside>}
         </div>
       </div>
+      {hasAsideContent(footer) && <footer className="ursi-page-frame__footer">{footer}</footer>}
     </div>
   )
 }

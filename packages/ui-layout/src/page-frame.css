@@ -27,6 +27,16 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.ursi-page-frame__nav {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.ursi-page-frame__nav-bottom {
+  margin-block-start: auto;
+}
+
 .ursi-page-frame__nav:not([data-open]) {
   display: none;
 }
@@ -51,7 +61,7 @@
   }
 
   .ursi-page-frame__nav:not([data-open]) {
-    display: block;
+    display: flex;
   }
 
   .ursi-page-frame__nav-toggle {

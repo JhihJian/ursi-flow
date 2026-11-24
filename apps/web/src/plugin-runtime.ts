@@ -46,6 +46,7 @@ export function startPlugin(
         slots: {
           register(slot, contribution) {
             if (signal.aborted) return () => {}
+            if (!Object.hasOwn(definition.placements, slot)) throw new Error(`Plugin ${definition.id} did not declare region ${slot}`)
             const remove = registry.register(slot, { ...contribution, id: `${definition.id}/${contribution.id}` })
             removals.push(remove)
             return remove

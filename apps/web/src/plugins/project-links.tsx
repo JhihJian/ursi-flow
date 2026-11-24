@@ -11,5 +11,7 @@ function ProjectLinks({ project }: PortalContext) {
 }
 
 export function activate({ slots }: PluginContext) {
-  slots.register('home.aside', { id: 'project-links', Component: ProjectLinks })
+  for (const region of ['right', 'left-bottom', 'center'] as const) {
+    slots.register(region, { id: 'project-links', Component: ProjectLinks })
+  }
 }

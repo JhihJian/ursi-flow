@@ -24,7 +24,7 @@ h2 { font-size: 1rem; margin: 0 0 12px; }
   --ursi-page-frame-aside-min: 236px;
   --ursi-page-frame-aside-preferred: 262px;
   min-block-size: 100vh;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   gap: 0;
 }
 .ursi-page-frame__header { display: flex; align-items: flex-start; gap: 8px; padding: 9px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
@@ -57,6 +57,20 @@ h1 { font-size: 1.75rem; line-height: 1.2; margin: 8px 0 10px; overflow-wrap: an
 .muted { color: var(--muted); margin: 0; font-size: .875rem; }
 .sidebar { border-block-start: 1px solid var(--line); padding: 12px 0; display: grid; gap: 4px; }
 .sidebar h2 { margin-bottom: 2px; font-size: .875rem; }
+.brand { flex-wrap: wrap; }
+.project-badge { color: var(--muted); font-size: .75rem; font-weight: 500; }
+.nav-extra, .center-extensions { border-block-start: 1px solid var(--line); padding-block-start: 12px; }
+.center-extensions { margin-block-start: 24px; }
+.nav-extra { margin-block-start: 16px; }
+.nav-extra h2, .center-extensions h2 { font-size: .875rem; }
+.ursi-page-frame__footer { min-inline-size: 0; border-block-start: 1px solid var(--line); background: #f7f8fa; }
+.portal-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; min-height: 34px; padding: 6px 20px; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.portal[data-selected-region="title"] [data-portal-region="title"],
+.portal[data-selected-region="left-top"] [data-portal-region="left-top"],
+.portal[data-selected-region="left-bottom"] [data-portal-region="left-bottom"],
+.portal[data-selected-region="center"] [data-portal-region="center"],
+.portal[data-selected-region="right"] [data-portal-region="right"],
+.portal[data-selected-region="status"] [data-portal-region="status"] { outline: 2px solid var(--accent); outline-offset: -2px; }
 .side-link { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 5px 8px; text-decoration: none; border-radius: 6px; font-size: .875rem; }
 .side-link svg:first-child { color: var(--accent); }
 .secondary { border-color: var(--line); }

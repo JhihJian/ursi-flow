@@ -2,9 +2,13 @@ import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 
 const baseline = {
-  schemaVersion: 1, revision: 'release-a',
-  page: { brand: 'ursi-flow', name: 'ursi-flow', description: '项目资料', repository: 'https://github.com/JhihJian/ursi-flow', placement: 'right' },
-  plugins: { workbench: true, 'project-links': true }, workbenchUrl: '/work-items',
+  schemaVersion: 2, revision: 'release-a',
+  page: { brand: 'ursi-flow', name: 'ursi-flow', description: '项目资料', repository: 'https://github.com/JhihJian/ursi-flow' },
+  plugins: {
+    workbench: { enabled: true, regions: { 'left-top': true } },
+    'project-links': { enabled: true, regions: { right: true } },
+  },
+  workbenchUrl: '/work-items',
 }
 type Config = typeof baseline
 
@@ -53,8 +57,8 @@ test('plugin inventory distinguishes enabled, missing address, and render failur
   await page.route('**/assets/project-links-*.js', route => route.fulfill({
     contentType: 'application/javascript',
     body: `export function activate({ slots }) {
-      slots.register('home.aside', { id: 'broken', Component() { throw new Error('test fault') } })
-      slots.register('home.aside', { id: 'working', Component() { return '同槽其他内容' } })
+      slots.register('right', { id: 'broken', Component() { throw new Error('test fault') } })
+      slots.register('right', { id: 'working', Component() { return '同槽其他内容' } })
     }`,
   }))
   await page.goto('/manage/#plugins')
@@ -73,6 +77,55 @@ test('plugin inventory distinguishes enabled, missing address, and render failur
   await page.getByRole('combobox', { name: '筛选插件状态' }).selectOption('all')
   await page.getByRole('switch', { name: 'Workbench' }).uncheck()
   await expect(preview.getByText('暂无应用入口')).toBeVisible()
+})
+
+test('six regions support independent contributions and retain settings after a global toggle', async ({ page }) => {
+  await publish(page, () => ({ ...baseline, plugins: {
+    ...baseline.plugins,
+    'portal-info': { enabled: true, regions: { title: true, status: true } },
+  } }))
+  await page.goto('/manage/#pages')
+  const map = page.getByRole('group', { name: '页面区域' })
+  await expect(map.getByRole('button')).toHaveCount(6)
+  const preview = page.frameLocator('iframe')
+  const region = (id: string) => preview.locator(`[data-portal-region="${id}"]`)
+  await expect(region('title').locator('.project-badge')).toBeVisible()
+  await expect(region('status').getByText(/配置修订/)).toBeVisible()
+  await map.getByRole('button', { name: '下方状态栏' }).click()
+  await page.getByRole('switch', { name: '门户信息' }).uncheck()
+  await expect(region('status')).toHaveCount(0)
+  await expect(region('title').locator('.project-badge')).toBeVisible()
+  await page.getByRole('link', { name: '插件管理' }).click()
+  const globalToggle = page.getByRole('region', { name: '内置插件' }).getByRole('switch', { name: '门户信息' })
+  await globalToggle.uncheck()
+  await expect(region('title').locator('.project-badge')).toHaveCount(0)
+  await globalToggle.check()
+  await expect(region('title').locator('.project-badge')).toBeVisible()
+  await expect(region('status')).toHaveCount(0)
+  await page.getByRole('link', { name: '页面管理' }).click()
+  await map.getByRole('button', { name: '左下' }).click()
+  await page.getByRole('switch', { name: '项目链接' }).check()
+  await expect(region('left-bottom').getByRole('link', { name: '项目仓库' })).toBeVisible()
+  await map.getByRole('button', { name: '中间' }).click()
+  await page.getByRole('switch', { name: '项目链接' }).check()
+  await expect(region('center').getByRole('link', { name: '项目仓库' })).toBeVisible()
+  await map.getByRole('button', { name: '右侧' }).click()
+  await page.getByRole('switch', { name: '项目链接' }).uncheck()
+  await expect(region('right')).toHaveCount(0)
+  await expect(region('left-bottom').getByRole('link', { name: '项目仓库' })).toBeVisible()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出配置' }).click()
+  const exported = JSON.parse(await readFile((await (await download).path())!, 'utf8'))
+  expect(exported.plugins['portal-info']).toEqual({ enabled: true, regions: { title: true, status: false } })
+  expect(exported.plugins['project-links'].regions).toEqual({ 'left-bottom': true, center: true, right: false })
+  await page.getByRole('button', { name: '窄屏预览' }).click()
+  await expect(region('left-bottom')).toBeHidden()
+  await preview.getByRole('button', { name: '应用导航' }).click()
+  await expect(region('left-bottom').getByRole('link', { name: '项目仓库' })).toBeVisible()
+  await map.getByRole('button', { name: '下方状态栏' }).click()
+  await page.getByRole('switch', { name: '门户信息' }).check()
+  await expect(region('status')).toBeVisible()
+  expect(await region('status').evaluate(el => el.getBoundingClientRect().top >= document.querySelector('main')!.getBoundingClientRect().bottom)).toBe(true)
 })
 
 test('a missing production plugin chunk leaves the home shell and other entry available', async ({ page }) => {
@@ -98,7 +151,7 @@ test('missing and malformed production config fail closed, then publish and roll
   active = baseline
   await page.reload()
   await expect(page.getByRole('link', { name: /Workbench/ })).toBeVisible()
-  active = { ...baseline, revision: 'release-b', page: { ...baseline.page, name: '版本 B' }, plugins: { ...baseline.plugins, workbench: false } }
+  active = { ...baseline, revision: 'release-b', page: { ...baseline.page, name: '版本 B' }, plugins: { ...baseline.plugins, workbench: { ...baseline.plugins.workbench, enabled: false } } }
   await page.reload()
   await expect(page.getByRole('heading', { name: '版本 B' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Workbench/ })).toHaveCount(0)
@@ -108,7 +161,7 @@ test('missing and malformed production config fail closed, then publish and roll
 })
 
 test('homepage and editor are keyboard accessible and fit narrow screens', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 740 })
+  await page.setViewportSize({ width: 320, height: 740 })
   await publish(page)
   await page.goto('/')
   const toggle = page.getByRole('button', { name: '应用导航' })
@@ -126,7 +179,7 @@ test('homepage and editor are keyboard accessible and fit narrow screens', async
   await expect(page.getByRole('heading', { name: '页面管理' })).toBeVisible()
   await page.getByRole('button', { name: '窄屏预览' }).click()
   await expect(page.frameLocator('iframe').getByRole('heading', { name: 'ursi-flow' })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
   await page.goto('/manage/#plugins')
   await page.reload()
   await expect(page.getByRole('heading', { name: '插件管理' })).toBeVisible()

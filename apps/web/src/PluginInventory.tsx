@@ -5,20 +5,21 @@ import { pluginManifest } from './plugin-manifest'
 import type { PluginStatus } from './plugin-runtime'
 import { webUrl } from './project'
 
-const slotNames = { 'home.entries': '左侧应用导航', 'home.aside': '首页扩展区' }
+import { portalRegions, regionLabels } from './portal-regions'
 const statusLabels = { loading: '加载中', ready: '已加载', 'load-failed': '模块加载失败', 'load-timeout': '模块加载超时', 'activation-failed': '启动失败', 'render-failed': '内容渲染失败' }
 
-export function PluginInventory({ draft, statuses, toggle, changeUrl }: {
+export function PluginInventory({ draft, statuses, toggle, changeUrl, previewPaused }: {
   draft: PortalConfig
   statuses: Partial<Record<string, PluginStatus>>
+  previewPaused: boolean
   toggle: (id: string, enabled: boolean) => void
   changeUrl: (url: string) => void
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const available = pluginManifest.filter(plugin => {
-    if (filter === 'enabled' && !draft.plugins[plugin.id]) return false
-    if (filter === 'disabled' && draft.plugins[plugin.id]) return false
+    if (filter === 'enabled' && !draft.plugins[plugin.id].enabled) return false
+    if (filter === 'disabled' && draft.plugins[plugin.id].enabled) return false
     return `${plugin.name} ${plugin.id} ${plugin.description}`.toLowerCase().includes(query.trim().toLowerCase())
   })
   return <>
@@ -33,9 +34,10 @@ export function PluginInventory({ draft, statuses, toggle, changeUrl }: {
       {available.length === 0 && <p className="inventory-empty" role="status">没有匹配的插件</p>}
       <ul className="inventory">
         {available.map(plugin => {
-          const enabled = draft.plugins[plugin.id] ?? false
-          const status = enabled ? statuses[plugin.id] : undefined
-          const address = plugin.id === 'workbench' ? draft.workbenchUrl : draft.page.repository
+          const { enabled, regions } = draft.plugins[plugin.id]
+          const selected = portalRegions.filter(region => regions[region])
+          const status = !previewPaused && enabled && selected.length ? statuses[plugin.id] : undefined
+          const address = plugin.id === 'workbench' ? draft.workbenchUrl : plugin.id === 'project-links' ? draft.page.repository : undefined
           return <li key={plugin.id}>
             <div className="inventory-row">
               <Package size={20} aria-hidden="true" />
@@ -43,9 +45,9 @@ export function PluginInventory({ draft, statuses, toggle, changeUrl }: {
               <input type="checkbox" role="switch" id={`plugin-${plugin.id}`} checked={enabled} onChange={event => toggle(plugin.id, event.target.checked)} />
             </div>
             <dl className="plugin-meta">
-              <div><dt>位置</dt><dd>{plugin.placements.map(placement => slotNames[placement]).join('、')}</dd></div>
-              <div><dt>预览状态</dt><dd role="status" data-state={status}>{enabled ? (status ? statusLabels[status] : '待检测') : '已停用'}</dd></div>
-              <div><dt>目标地址</dt><dd>{webUrl(address, location.origin) ? '已配置' : address.trim() ? '格式无效' : '未配置'}</dd></div>
+              <div><dt>草稿区域</dt><dd>{selected.map(region => regionLabels[region]).join('、') || '未选择'}</dd></div>
+              <div><dt>预览状态</dt><dd role="status" data-state={status}>{previewPaused ? '预览暂停' : !enabled ? '已停用' : !selected.length ? '未选择区域' : status ? statusLabels[status] : '待检测'}</dd></div>
+              {address !== undefined && <div><dt>目标地址</dt><dd>{webUrl(address, location.origin) ? '已配置' : address.trim() ? '格式无效' : '未配置'}</dd></div>}
             </dl>
           </li>
         })}
