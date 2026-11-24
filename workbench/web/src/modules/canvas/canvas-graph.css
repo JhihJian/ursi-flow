@@ -3,8 +3,6 @@
   min-width: 0;
   height: var(--wb-canvas-height, clamp(24rem, 62dvh, 52rem));
   overflow: hidden;
-  border: 1px solid rgb(var(--c-line));
-  border-radius: 8px;
   background: rgb(var(--c-base));
 }
 
@@ -19,6 +17,15 @@
   --xy-minimap-mask-stroke-color: rgb(var(--c-accent));
   --xy-minimap-mask-stroke-width: 1;
   --xy-minimap-node-background-color: rgb(var(--c-line-strong));
+}
+
+.wb-canvas .wb-edge-muted .react-flow__edge-path {
+  opacity: 0.24;
+}
+
+.wb-canvas .wb-edge-emphasized .react-flow__edge-path {
+  stroke: rgb(var(--c-accent-2));
+  stroke-width: 2.5;
 }
 
 .wb-canvas .react-flow__attribution a {
@@ -37,6 +44,11 @@
   border-radius: 8px;
   background: rgb(var(--c-surface));
   color: rgb(var(--c-txt));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);
+}
+
+.wb-canvas .react-flow__node:hover .wb-canvas-card {
+  border-color: rgb(var(--c-accent));
 }
 
 .wb-canvas-card-title {
@@ -44,6 +56,8 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.625rem;
+  border-radius: 7px 7px 0 0;
+  background: rgb(var(--c-elevated) / 0.7);
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -61,7 +75,8 @@
 
 .wb-canvas-card-content {
   min-width: 0;
-  padding: 0 0.625rem 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-top: 1px solid rgb(var(--c-line));
   cursor: auto;
   overflow-wrap: anywhere;
 }
@@ -100,4 +115,19 @@
 .wb-canvas-controls button {
   width: 2rem;
   height: 2rem;
+}
+
+.wb-canvas-zoom {
+  display: grid;
+  min-width: 3rem;
+  place-items: center;
+  border-left: 1px solid rgb(var(--c-line));
+  color: rgb(var(--c-txt3));
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-canvas .react-flow__minimap svg {
+  width: min(10rem, 30vw);
+  height: auto;
 }

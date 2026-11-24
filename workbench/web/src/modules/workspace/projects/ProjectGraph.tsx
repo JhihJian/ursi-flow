@@ -4,6 +4,7 @@ import { ContextMenu, type ContextAction } from '@/shared/ui/context-menu'
 import type { MenuAnchor } from '@/shared/ui/menu-anchor'
 import type { Command, Named, Relation, Workspace } from '@/shared/api/work-projects'
 import { Button } from '@/shared/ui/button'
+import { Icon } from '@/shared/ui/icon'
 import { ResourceState } from '@/shared/ui/resource-state'
 import { GraphCanvasSummary, GraphCardItems } from './GraphCardItems'
 import { GraphInspector, RelationNeighbors } from './GraphInspector'
@@ -17,7 +18,9 @@ export type ProjectGraphProps = {
   locatedItemId?: string
   locatedCardId?: string
   busy: boolean
+  saving: boolean
   mutate: ProjectMutation
+  mutationError: string
   itemInspector?: ReactNode
   onItem: (id: string | null) => void
   onCanvas: (id: string) => void
@@ -46,7 +49,7 @@ export function ProjectGraph(props: ProjectGraphProps) {
   return <GraphScope key={JSON.stringify([props.workspace.project.id, props.canvasId])} {...props} />
 }
 
-function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, mutate, itemInspector, onItem, onCanvas }: ProjectGraphProps) {
+function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, saving, mutate, mutationError, itemInspector, onItem, onCanvas }: ProjectGraphProps) {
   const map = canvasId === null
   const canvas = workspace.canvases.find(node => node.id === canvasId)
   const noun = map ? '画布' : '任务卡'
@@ -61,9 +64,11 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
   const focusKey = locatedItemId ?? locatedCardId
   const [chosen, setChosen] = useState<{ focusKey?: string; value: Selection }>()
   const [editor, setEditor] = useState<Editor>()
+  const [editorSubmitted, setEditorSubmitted] = useState(false)
   const [menu, setMenu] = useState<{ target: MenuTarget; anchor: MenuAnchor }>()
   const [graphError, setGraphError] = useState('')
   const [listMode, setListMode] = useState(false)
+  const [reveal, setReveal] = useState<{ id: string; focusKey?: string }>()
   const [lastReset, setLastReset] = useState(0)
   const compact = useSyncExternalStore(subscribeViewport, compactViewport, () => false)
   const list = compact || listMode
@@ -90,6 +95,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
 
   function openEditor(next?: Editor) {
     setGraphError('')
+    setEditorSubmitted(false)
     setEditor(next)
   }
 
@@ -100,6 +106,8 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
   }
 
   function save(action: Command, done?: (id?: string) => void) {
+    if (busy) return
+    setEditorSubmitted(true)
     submit(action, id => {
       setEditor(current => current === editor ? undefined : current)
       done?.(id)
@@ -110,7 +118,10 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
     if (busy) return
     setGraphError('')
     mutate.layout(canvasId, { revision: layout.revision, positions: next }, () => {
-      if (reset) setLastReset(layout.revision + 1)
+      if (reset) {
+        setReveal(undefined)
+        setLastReset(layout.revision + 1)
+      }
     })
   }
 
@@ -213,7 +224,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
 
   function renderInspector() {
     if (itemInspector) return itemInspector
-    const shell = { map, reset: map && !list ? reset : undefined }
+    const shell = { map }
     const onClose = () => setSelection(null)
     if (selection?.kind === 'relations') return <GraphInspector {...shell} title={map ? '画布关系' : '任务卡关系'} icon="workflow" onClose={onClose}>
       {relations.length ? <ul className="divide-y divide-line">
@@ -250,22 +261,25 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
       </div>
       <div className="border-t border-line pt-3">{nodeActions(selectedNode, map)}</div>
     </GraphInspector>
-    if (map && !list) return <GraphInspector {...shell} title="Canvas Map" icon="workflow">
+    if (map && !list) return <GraphInspector {...shell} title="地图详情" icon="workflow">
       <p className="text-sm text-txt3">未选中画布或关系</p>
     </GraphInspector>
   }
 
   function renderEditor(): ReactNode {
     if (!editor) return null
-    const form = { busy, onCancel: () => openEditor() }
+    const form = { busy, saving, onCancel: () => openEditor() }
+    const dialog = { ...form, error: graphError || (editorSubmitted ? mutationError : '') }
     const relation = 'id' in editor ? relations.find(edge => edge.id === editor.id) : undefined
     const node = 'id' in editor ? nodes.find(candidate => candidate.id === editor.id) : undefined
     switch (editor.kind) {
       case 'create':
-        return <GraphEditor key="create" title={`新建${noun}`}>
+        return <GraphEditor {...dialog} key="create" title={`新建${noun}`}>
           <GraphNameForm {...form} label={`${noun}名称`} onSave={name => {
             save(canvasId === null ? { type: 'createCanvas', name } : { type: 'createTaskCard', canvasId, name }, id => {
-              if (id) setSelection({ kind: 'node', id })
+              if (!id) return
+              setSelection({ kind: 'node', id })
+              if (!list) setReveal({ id, focusKey })
             })
           }} />
         </GraphEditor>
@@ -276,7 +290,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
         if (!target) break
         const label = isCanvas ? '画布' : '任务卡'
         const blocked = deletionBlock(target, isCanvas)
-        return <GraphEditor key={`${editor.kind}:${target.id}`} title={`${editor.kind === 'rename' ? '重命名' : '删除'}${label}`}>
+        return <GraphEditor {...dialog} key={`${editor.kind}:${target.id}`} title={`${editor.kind === 'rename' ? '重命名' : '删除'}${label}`}>
           {editor.kind === 'rename'
             ? <GraphNameForm {...form} label={`${label}名称`} current={target.name} onSave={name => save(isCanvas
               ? { type: 'renameCanvas', canvasId: target.id, name }
@@ -291,18 +305,18 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
       }
       case 'createItem':
         if (!node || map) break
-        return <GraphEditor key={`createItem:${node.id}`} title={`新建 TODO · ${node.name}`}>
+        return <GraphEditor {...dialog} key={`createItem:${node.id}`} title={`新建 TODO · ${node.name}`}>
           <GraphTodoForm {...form} onSave={draft => save({ type: 'createItem', taskCardId: node.id, ...draft })} />
         </GraphEditor>
       case 'addItem':
         if (!node || map) break
-        return <GraphEditor key={`addItem:${node.id}`} title={`加入已有事项 · ${node.name}`}>
+        return <GraphEditor {...dialog} key={`addItem:${node.id}`} title={`加入已有事项 · ${node.name}`}>
           <GraphAddForm {...form} workspace={workspace} onSave={workItemId => save({ type: 'placeItem', taskCardId: node.id, workItemId })} />
         </GraphEditor>
       case 'moveItem': {
         const placed = workspace.items.find(row => row.item.id === editor.id && row.taskCardId === editor.sourceCardId)
         if (!placed || !names.has(placed.taskCardId) || map) break
-        return <GraphEditor key={`moveItem:${placed.item.id}`} title={`移动 TODO · ${placed.item.title}`}>
+        return <GraphEditor {...dialog} key={`moveItem:${placed.item.id}`} title={`移动 TODO · ${placed.item.title}`}>
           <GraphMoveForm {...form} workspace={workspace} cardId={placed.taskCardId}
             onSave={taskCardId => save({ type: 'placeItem', taskCardId, workItemId: placed.item.id })} />
         </GraphEditor>
@@ -310,18 +324,18 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
       case 'createRelation':
       case 'editRelation':
         if (editor.kind === 'editRelation' && !relation) break
-        return <GraphEditor key={`relation:${relation?.id ?? ''}`} title={relation ? '编辑关系' : '新建关系'}>
+        return <GraphEditor {...dialog} key={`relation:${relation?.id ?? ''}`} title={relation ? '编辑关系' : '新建关系'}>
           <GraphRelationForm {...form} nodes={nodes} relation={relation} onSave={(from, to) => saveRelation(from, to, relation, true)} />
         </GraphEditor>
       case 'deleteRelation':
         if (!relation) break
-        return <GraphEditor key={`deleteRelation:${relation.id}`} title="删除关系">
+        return <GraphEditor {...dialog} key={`deleteRelation:${relation.id}`} title="删除关系">
           <GraphDeleteForm {...form} onDelete={() => save({ type: 'deleteRelation', relationId: relation.id })}>
             删除关系「{relationLabel(relation)}」？
           </GraphDeleteForm>
         </GraphEditor>
     }
-    return <GraphEditor key="missing" title="对象已不在当前视图">
+    return <GraphEditor {...dialog} key="missing" title="对象已不在当前视图">
       <Button onClick={form.onCancel}>关闭</Button>
     </GraphEditor>
   }
@@ -332,31 +346,38 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
   const relationMode = !itemInspector && (selection?.kind === 'relations' || Boolean(selectedRelation))
   const settingsMode = !itemInspector && selection?.kind === 'settings'
 
-  return <section className="min-w-0 space-y-3" aria-label={map ? 'Canvas Map' : '规划画布'}>
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      {map ? <h2 className={`text-base font-semibold text-txt ${list ? '' : 'sr-only'}`}>Canvas Map</h2>
-        : <h2 className="min-w-0 break-words text-sm font-semibold text-txt">{canvas?.name}</h2>}
-      <div className="flex flex-wrap items-center gap-1.5">
+  return <section className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface" aria-label={map ? 'Canvas Map' : '规划画布'}>
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line bg-elevated/40 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon name={map ? 'workflow' : 'layers'} size={16} className="shrink-0 text-txt3" />
+        <h2 className="min-w-0 break-words text-sm font-semibold text-txt">{map ? '项目地图' : canvas?.name}</h2>
+        <span className="shrink-0 text-xs tabular-nums text-txt3">{nodes.length} {map ? '张' : '卡'}</span>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <Button size="sm" icon="plus" variant="primary" disabled={busy} onClick={() => openEditor({ kind: 'create' })}>新建{noun}</Button>
         <Button size="sm" icon="workflow" disabled={busy || nodes.length < 2} onClick={() => openEditor({ kind: 'createRelation' })}>新建关系</Button>
         <Button size="sm" aria-pressed={relationMode} variant={relationMode ? 'secondary' : 'ghost'}
           onClick={() => showSelection(selection?.kind === 'relations' && !itemInspector ? null : { kind: 'relations' })}>关系</Button>
-        {(!map || list) && <Button size="sm" variant="ghost" className="w-7 px-0" icon="refresh" aria-label="重置布局" title="重置布局"
-          disabled={reset.disabled} onClick={reset.run} />}
+        <Button size="sm" variant="ghost" className="w-7 px-0" icon="refresh" aria-label="重置布局" title="重置布局"
+          disabled={reset.disabled} onClick={reset.run} />
         {!map && <Button size="sm" variant={settingsMode ? 'secondary' : 'ghost'} className="w-7 px-0" icon="settings" aria-pressed={settingsMode}
           aria-label="画布设置" title="画布设置" onClick={() => showSelection(settingsMode ? null : { kind: 'settings' })} />}
-        {!compact && nodes.length > 0 && <Button size="sm" icon="menu" variant={list ? 'secondary' : 'ghost'} aria-pressed={list}
-          onClick={() => { setMenu(undefined); setListMode(current => !current) }}>列表视图</Button>}
+        {!compact && <div className="ml-1 flex rounded-md border border-line bg-base p-0.5" role="group" aria-label="规划显示方式">
+          <Button size="sm" variant={list ? 'ghost' : 'secondary'} className="h-7 w-8 px-0" icon="workflow" title="图形视图" aria-label="图形视图" aria-pressed={!list}
+            onClick={() => setListMode(false)} />
+          <Button size="sm" variant={list ? 'secondary' : 'ghost'} className="h-7 w-8 px-0" icon="menu" title="列表视图" aria-label="列表视图" aria-pressed={list}
+            onClick={() => { setMenu(undefined); setReveal(undefined); setListMode(true) }} />
+        </div>}
       </div>
-    </div>
-    {graphError && <p role="alert" className="break-words text-sm text-err">{graphError}</p>}
+    </header>
+    {!editor && (graphError || mutationError) && <p role="alert" className="break-words border-b border-line px-3 py-2 text-sm text-err">{graphError || mutationError}</p>}
     {renderEditor()}
     {menu && context && <ContextMenu anchor={menu.anchor} {...context} onClose={() => setMenu(undefined)} />}
-    <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-3 [--wb-canvas-height:clamp(24rem,62dvh,52rem)] ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]' : ''}`}>
-      <div className="relative min-w-0">
+    <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] [--wb-canvas-height:clamp(24rem,calc(100dvh-14rem),56rem)] ${inspector ? 'lg:grid-cols-[minmax(0,1fr)_17rem]' : ''}`}>
+      <div className={`relative min-w-0 ${list ? 'px-3' : ''}`}>
         {list && !nodes.length ? <ResourceState empty title={map ? '暂无画布' : '暂无任务卡'}
           description={map ? '新建画布后即可组织项目。' : '新建任务卡后即可添加 TODO。'} />
-          : list ? <ul aria-label={map ? '画布列表' : '任务卡列表'} className="divide-y divide-line border-y border-line">
+          : list ? <ul aria-label={map ? '画布列表' : '任务卡列表'} className="divide-y divide-line">
             {nodes.map(node => <li key={node.id} className="min-w-0 space-y-2 py-3">
               <h3 className={`break-words text-sm font-semibold ${node.id === focusNodeId ? 'text-accent-2' : ''}`}
                 ref={node.id === focusNodeId && !locatedItemId ? heading => { heading?.scrollIntoView?.({ block: 'nearest' }) } : undefined}>{node.name}</h3>
@@ -365,14 +386,15 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
               {nodeActions(node, map)}
             </li>)}
           </ul> : <CanvasGraph
-            key={JSON.stringify([lastReset <= layout.revision ? lastReset : 0, nodes.length])}
+            key={lastReset <= layout.revision ? lastReset : 0}
             nodes={nodes.map<CanvasNode>(node => ({ id: node.id, label: node.name, icon: map ? 'workflow' : 'layers', position: positions.get(node.id)!, content: nodeContent(node) }))}
             edges={relations}
             focusNodeId={focusNodeId}
             focusKey={focusKey}
+            revealNodeId={reveal?.focusKey === focusKey ? reveal?.id : undefined}
             selection={graphSelection}
             editableEdges={!map && !busy}
-            showMiniMap={nodes.length > 4}
+            showMiniMap={nodes.length > 0}
             onMove={(id, position) => {
               if (positions.has(id)) savePositions({ ...Object.fromEntries(positions), [id]: position })
             }}
@@ -389,7 +411,7 @@ function GraphScope({ workspace, canvasId, locatedItemId, locatedCardId, busy, m
           <p className="rounded-md bg-surface px-3 py-2 text-sm text-txt3">{map ? '暂无画布' : '暂无任务卡'}</p>
         </div>}
       </div>
-      {inspector && <div className={`min-w-0 ${itemInspector || list ? 'order-first lg:order-last' : ''} ${itemInspector ? 'scroll-area lg:max-h-[var(--wb-canvas-height)] lg:overflow-y-auto' : ''}`}>{inspector}</div>}
+      {inspector && <div className={`scroll-area min-w-0 border-line bg-surface lg:border-l lg:overflow-y-auto ${list ? 'lg:max-h-[70dvh]' : 'lg:h-[var(--wb-canvas-height)]'} ${itemInspector || list ? 'order-first border-b lg:order-last lg:border-b-0' : 'border-t lg:border-t-0'}`}>{inspector}</div>}
     </div>
   </section>
 }

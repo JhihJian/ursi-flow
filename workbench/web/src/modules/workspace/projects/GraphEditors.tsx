@@ -5,34 +5,34 @@ import { useMutation } from '@/shared/hooks/use-mutation'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Modal } from '@/shared/ui/modal'
 import { Select } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
 
-export function GraphEditor({ title, children }: { title: string; children: ReactNode }) {
-  const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus() }, [])
-  return <section className="space-y-3 rounded-md border border-line bg-surface px-3 py-3">
-    <h3 ref={heading} tabIndex={-1} className="text-sm font-semibold outline-none">{title}</h3>
+export function GraphEditor({ title, saving, error, onCancel, children }: {
+  title: string; saving: boolean; error: string; onCancel: () => void; children: ReactNode
+}) {
+  return <Modal open title={<span className="line-clamp-2 break-all" title={title}>{title}</span>} onClose={onCancel}
+    closeOnBackdrop={false} closeOnEsc={!saving} closeDisabled={saving} bodyClassName="space-y-3">
     {children}
-  </section>
+    {error && <p role="alert" className="break-words text-sm text-err">{error}</p>}
+  </Modal>
 }
 
-type FormProps = { busy: boolean; onCancel: () => void }
+type FormProps = { busy: boolean; saving: boolean; onCancel: () => void }
 
-function GraphForm({ busy, onCancel, onSubmit, children, submitLabel = '保存', disabled = false, destructive = false }: FormProps & {
+function GraphForm({ busy, saving, onCancel, onSubmit, children, submitLabel = '保存', disabled = false, destructive = false }: FormProps & {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void; children: ReactNode; submitLabel?: string; disabled?: boolean; destructive?: boolean
 }) {
   return <form onSubmit={event => {
     event.preventDefault()
     if (!busy && !disabled) onSubmit(event)
   }}>
-    <fieldset disabled={busy} className="grid min-w-0 max-w-xl gap-3 text-sm">
-      {children}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant={destructive ? 'destructive' : 'primary'} disabled={disabled}>{submitLabel}</Button>
-        <Button onClick={onCancel}>取消</Button>
-      </div>
-    </fieldset>
+    <fieldset disabled={busy} className="grid min-w-0 gap-3 text-sm">{children}</fieldset>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Button type="submit" variant={destructive ? 'destructive' : 'primary'} disabled={busy || disabled}>{submitLabel}</Button>
+      <Button disabled={saving} onClick={onCancel}>取消</Button>
+    </div>
   </form>
 }
 
@@ -69,7 +69,7 @@ export function GraphTodoForm({ onSave, ...form }: FormProps & { onSave: (draft:
   </GraphForm>
 }
 
-export function GraphAddForm({ workspace, onSave, busy, onCancel }: FormProps & {
+export function GraphAddForm({ workspace, onSave, busy, saving, onCancel }: FormProps & {
   workspace: Workspace; onSave: (workItemId: string) => void
 }) {
   // The global list has no placement data. Exclude known placements, then verify on submit.
@@ -83,7 +83,7 @@ export function GraphAddForm({ workspace, onSave, busy, onCancel }: FormProps & 
   const eligible = options.some(item => item.id === selected)
   const latest = useRef({ busy, placed })
   useEffect(() => { latest.current = { busy, placed } })
-  return <GraphForm busy={busy || verify.busy} onCancel={onCancel} submitLabel="加入任务卡" disabled={!eligible || items.loading || Boolean(items.error)} onSubmit={() => {
+  return <GraphForm busy={busy || verify.busy} saving={saving} onCancel={onCancel} submitLabel="加入任务卡" disabled={!eligible || items.loading || Boolean(items.error)} onSubmit={() => {
     setMessage('')
     void verify.run(signal => getPlacement(selected, signal), placement => {
       if (placement !== null || latest.current.placed.has(selected)) {

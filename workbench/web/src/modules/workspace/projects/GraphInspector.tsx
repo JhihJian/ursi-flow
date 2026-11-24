@@ -2,29 +2,22 @@ import type { ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 
-export function GraphInspector({ map, title, icon, onClose, reset, children }: {
-  map: boolean
-  title: string
-  icon: string
-  onClose?: () => void
-  reset?: { disabled: boolean; run: () => void }
-  children: ReactNode
+export function InspectorHeader({ title, icon, onClose, closeLabel = '关闭图详情' }: {
+  title: string; icon: string; onClose?: () => void; closeLabel?: string
 }) {
-  return <aside aria-label={map ? 'Canvas Map 详情' : title}
-    className={`min-w-0 overflow-hidden rounded-md border border-line bg-surface lg:flex lg:max-h-[var(--wb-canvas-height)] lg:flex-col ${map && reset ? 'lg:h-[var(--wb-canvas-height)]' : ''}`}>
-    {map && <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line bg-elevated/40 px-3">
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><Icon name="workflow" size={16} />Canvas Map</h3>
-      {reset && <Button size="sm" variant="ghost" className="w-7 px-0" icon="refresh" aria-label="重置布局" title="重置布局"
-        disabled={reset.disabled} onClick={reset.run} />}
-    </header>}
-    <div className="scroll-area min-h-0 space-y-3 p-3 lg:overflow-y-auto">
-      {(!map || onClose) && <div className="flex min-w-0 items-start gap-2">
-        <span className="mt-0.5 shrink-0 text-txt3"><Icon name={icon} size={16} /></span>
-        <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-txt">{title}</h3>
-        {onClose && <Button size="sm" variant="ghost" className="w-7 shrink-0 px-0" icon="close" aria-label="关闭图详情" title="关闭图详情" onClick={onClose} />}
-      </div>}
-      {children}
-    </div>
+  return <header className="flex min-h-10 items-center gap-2 border-b border-line bg-elevated/40 px-3 py-1">
+    <Icon name={icon} size={16} className="shrink-0 text-txt3" />
+    <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-txt">{title}</h3>
+    {onClose && <Button size="sm" variant="ghost" className="w-7 shrink-0 px-0" icon="close" aria-label={closeLabel} title={closeLabel} onClick={onClose} />}
+  </header>
+}
+
+export function GraphInspector({ map, title, icon, onClose, children }: {
+  map: boolean; title: string; icon: string; onClose?: () => void; children: ReactNode
+}) {
+  return <aside aria-label={map ? 'Canvas Map 详情' : title} className="min-w-0">
+    <InspectorHeader title={title} icon={icon} onClose={onClose} />
+    <div className="space-y-3 p-3">{children}</div>
   </aside>
 }
 

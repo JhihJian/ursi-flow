@@ -10,27 +10,35 @@ import { Textarea } from '@/shared/ui/textarea'
 
 import type { ProjectMutation } from './model'
 
-export function ItemInspector({ workspace, itemId, busy, mutate, onClose, onLocate }: {
+export function ItemInspector({ workspace, itemId, busy, mutate, embedded, note, onClose, onLocate }: {
   workspace: Workspace
   itemId: string
   busy: boolean
   mutate: ProjectMutation
+  embedded: boolean
+  note: string
   onClose: () => void
   onLocate: (item: PlacedItem) => void
 }) {
   const placed = workspace.items.find(({ item }) => item.id === itemId)
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus() }, [itemId])
-  return <aside aria-label="工作项详情" className="min-w-0 space-y-3 rounded-md border border-line bg-surface p-3">
-    <header className="flex items-center justify-between gap-2">
-      <h2 ref={heading} tabIndex={-1} className="font-semibold">工作项详情</h2>
-      <Button size="sm" variant="ghost" onClick={onClose}>关闭详情</Button>
+  useEffect(() => {
+    const sideBySide = window.matchMedia('(min-width: 1024px)').matches
+    heading.current?.focus({ preventScroll: embedded && sideBySide })
+  }, [embedded, itemId])
+  return <aside aria-label="工作项详情" className={embedded ? 'min-w-0' : 'min-w-0 overflow-hidden rounded-lg border border-line bg-surface'}>
+    <header className="flex min-h-10 items-center justify-between gap-2 border-b border-line bg-elevated/40 px-3 py-1">
+      <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">工作项详情</h2>
+      <Button size="sm" variant="ghost" icon="close" className="w-7 px-0" aria-label="关闭详情" title="关闭详情" onClick={onClose} />
     </header>
-    {placed ? <>
-      <ContentEditor key={itemId} item={placed.item} busy={busy} mutate={mutate} />
-      <PlacementEditor key={JSON.stringify([itemId, placed.taskCardId])} workspace={workspace} placed={placed} busy={busy} mutate={mutate} onLocate={onLocate} />
-    </> : <p role="status" className="text-sm text-txt3">此工作项已不在当前项目中，无法在此项目画布中定位。</p>}
-    <Button asChild size="sm"><Link to={workItemPath(itemId)}>查看完整详情</Link></Button>
+    <div className="space-y-3 p-3">
+      {note && <p role="status" className="text-sm text-txt3">{note}</p>}
+      {placed ? <>
+        <ContentEditor key={itemId} item={placed.item} busy={busy} mutate={mutate} />
+        <PlacementEditor key={JSON.stringify([itemId, placed.taskCardId])} workspace={workspace} placed={placed} busy={busy} mutate={mutate} onLocate={onLocate} />
+      </> : <p role="status" className="text-sm text-txt3">此工作项已不在当前项目中，无法在此项目画布中定位。</p>}
+      <Button asChild size="sm"><Link to={workItemPath(itemId)}>查看完整详情</Link></Button>
+    </div>
   </aside>
 }
 

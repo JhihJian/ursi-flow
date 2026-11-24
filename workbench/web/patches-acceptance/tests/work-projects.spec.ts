@@ -243,8 +243,15 @@ test('右键按命中对象提供快捷操作，空画布可建卡，删除仍�
   })
   await page.mouse.click(point.x, point.y, { button: 'right' })
   await action('删除关系').click()
-  await expect(path).toHaveCount(1)
-  await page.getByRole('button', { name: '确认删除', exact: true }).click()
+  const deleteDialog = page.getByRole('dialog', { name: '删除关系', exact: true })
+  await expect(deleteDialog).toContainText('准备 → 交付')
+  await expect(page.locator('path.react-flow__edge-interaction')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(deleteDialog).toBeHidden()
+  await expect(edge).toBeFocused()
+  await page.keyboard.press('Shift+F10')
+  await action('删除关系').click()
+  await deleteDialog.getByRole('button', { name: '确认删除', exact: true }).click()
   await expect(path).toHaveCount(0)
   await expect(canvas.getByRole('complementary')).toHaveCount(0)
   await page.getByRole('button', { name: '画布设置', exact: true }).click()
@@ -265,6 +272,81 @@ test('右键按命中对象提供快捷操作，空画布可建卡，删除仍�
   await expect(dock.getByRole('link', { name: '后续画布', exact: true })).toHaveAttribute('aria-current', 'true')
   await page.goForward()
   await expect(page).toHaveURL(firstCanvasUrl)
+})
+
+test('平移缩放后编辑、增删和冲突重读保留画布视口', async ({ page, request }, info) => {
+  test.skip(info.project.name !== 'desktop', '窄屏使用列表')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { token, apiBase } = readRuntime()
+  const headers = { Authorization: `Bearer ${token}` }
+  const root = `${apiBase}/api/v2/work-projects`
+  const created = await request.post(root, { headers, data: { name: '视口验收' } })
+  expect(created.ok()).toBeTruthy()
+  const { id } = await created.json()
+  const workspaceUrl = `${root}/${id}/workspace`
+  const commandsUrl = `${root}/${id}/commands`
+  const snapshot = async (): Promise<Workspace> => (await request.get(workspaceUrl, { headers })).json()
+  const canvasId = (await snapshot()).canvases[0].id
+  await login(page, token)
+  await page.goto(`/work-projects/${id}/canvases/${canvasId}`)
+  const viewport = page.locator('.react-flow__viewport')
+  const transform = () => viewport.evaluate(element => (element as HTMLElement).style.transform)
+  const zoomLabel = () => page.getByRole('group', { name: '画布视图' }).getByText(/^\d+%$/)
+  const node = (name: string) => page.getByRole('group', { name, exact: true })
+  const create = page.getByRole('button', { name: '新建任务卡', exact: true })
+  const nameField = page.getByRole('dialog').getByLabel('任务卡名称')
+  await addNamed(page, '新建任务卡', '任务卡名称', '起点')
+  await page.getByRole('button', { name: '缩小', exact: true }).click()
+  await page.getByRole('button', { name: '缩小', exact: true }).click()
+  await expect(zoomLabel()).toHaveText('69%')
+  const pane = (await page.locator('.react-flow__pane').boundingBox())!
+  await page.mouse.move(pane.x + 90, pane.y + 300)
+  await page.mouse.down()
+  await page.mouse.move(pane.x + 150, pane.y + 350, { steps: 6 })
+  await page.mouse.up()
+  const panned = await transform()
+
+  await create.click()
+  await nameField.fill('不保存')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('Escape')
+  await expect(create).toBeFocused()
+  await expect.poll(transform).toBe(panned)
+  await addNamed(page, '新建任务卡', '任务卡名称', '删除用')
+  await expect(node('删除用')).toBeInViewport()
+  await expect.poll(transform).toBe(panned)
+  await page.getByRole('complementary', { name: '删除用' }).getByRole('button', { name: '删除任务卡' }).click()
+  await page.getByRole('dialog', { name: '删除任务卡' }).getByRole('button', { name: '确认删除' }).click()
+  await expect(node('删除用')).toHaveCount(0)
+  await expect.poll(transform).toBe(panned)
+
+  await node('起点').click()
+  const rename = page.getByRole('button', { name: '重命名任务卡', exact: true })
+  await rename.click()
+  await nameField.fill('我修改的名称')
+  const latest = await snapshot()
+  const otherChange = await request.post(commandsUrl, { headers, data: {
+    revision: latest.project.revision, type: 'renameTaskCard', taskCardId: latest.taskCards[0].id, name: '另一会话先改名',
+  } })
+  expect(otherChange.ok()).toBeTruthy()
+  const conflict = page.waitForResponse(response => response.url().endsWith('/commands') && response.status() === 409)
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await conflict
+  await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible()
+  await expect(nameField).toHaveValue('我修改的名称')
+  await expect(page.locator('.react-flow__node')).toHaveText(/另一会话先改名/)
+  await expect.poll(transform).toBe(panned)
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await expect(node('我修改的名称')).toBeVisible()
+  await expect.poll(transform).toBe(panned)
+
+  // Resize across the graph/list and docked-outline breakpoints without losing the edited data.
+  for (const width of [1359, 1024, 768, 767, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(width >= 768 ? node('我修改的名称') : page.getByRole('list', { name: '任务卡列表' })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+  await expect(page.getByRole('list', { name: '任务卡列表' })).toContainText('我修改的名称')
 })
 
 test('工作入口统一，选择项目后切换视图，从项目大纲精确定位 TODO', async ({ page, request }, info) => {

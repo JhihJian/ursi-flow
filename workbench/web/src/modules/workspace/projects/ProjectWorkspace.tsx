@@ -5,6 +5,7 @@ import { ApiError } from '@/shared/http/client'
 import { useMutation } from '@/shared/hooks/use-mutation'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
+import { Icon } from '@/shared/ui/icon'
 import { Input } from '@/shared/ui/input'
 import { Modal } from '@/shared/ui/modal'
 import { ResourceState } from '@/shared/ui/resource-state'
@@ -16,7 +17,7 @@ import { ProjectTodo } from './ProjectTodo'
 import type { ProjectMutation } from './model'
 import { rememberProject } from './preferences'
 
-const viewLink = 'border-b-2 border-transparent px-1 py-2 text-sm text-txt2 hover:text-txt aria-[current=page]:border-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-2'
+const viewLink = 'inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm text-txt2 hover:bg-elevated hover:text-txt aria-[current=page]:bg-accent-dim aria-[current=page]:font-semibold aria-[current=page]:text-accent-2'
 const dockQuery = '(min-width: 1360px)'
 const wideOutline = () => window.matchMedia?.(dockQuery)?.matches ?? false
 function subscribeOutlineWidth(change: () => void) {
@@ -121,36 +122,38 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
   const focusCanvas = workspace.taskCards.find(card => card.id === focus?.taskCardId)?.canvasId
   const outline = (onNavigate?: () => void) => <ProjectOutline workspace={workspace} canvasId={canvasId} cardId={focusCardId}
     itemId={itemId ?? focusItemId} navigationKey={location.key} todoPath={returnTo} onNavigate={onNavigate} />
-  const inspector = itemId && <>
-    {locateNote && <p role="status" className="mb-2 text-sm text-txt3">{locateNote}</p>}
-    <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
-  </>
+  const graphActive = !todo && !missingCanvas
+  const inspector = itemId && <ItemInspector workspace={workspace} itemId={itemId} busy={busy} mutate={mutate}
+    embedded={graphActive} note={locateNote} onClose={() => openItem(null)} onLocate={placed => locate(placed.item.id)} />
 
-  return <div className="page-stack min-w-0">
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="min-w-0 break-words text-xl font-semibold">{workspace.project.name}</h1>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={busy} onClick={() => setSettings('rename')}>重命名项目</Button>
-        <Button size="sm" variant="danger" disabled={busy} onClick={() => setSettings('delete')}>删除项目</Button>
+  return <div className="min-w-0 space-y-3">
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line pb-3">
+      <div className="flex min-w-0 items-start gap-2">
+        <Icon name="folder" size={18} className="mt-1 shrink-0 text-txt3" />
+        <h1 className="min-w-0 break-words text-lg font-semibold">{workspace.project.name}</h1>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <nav aria-label="项目视图" className="flex gap-0.5 rounded-md border border-line bg-surface p-0.5">
+          <Link to={`${base}/map`} state={viewState} className={viewLink} aria-current={!todo && canvasId === null ? 'page' : undefined}><Icon name="workflow" size={14} />地图</Link>
+          <Link to={returnTo} className={viewLink} aria-current={todo ? 'page' : undefined}><Icon name="check" size={14} />待办</Link>
+        </nav>
+        {docked ? <Button size="sm" variant={dockOpen ? 'secondary' : 'ghost'} icon="panel-left" aria-controls={outlineId} aria-expanded={dockOpen}
+          onClick={() => setDockOpen(open => !open)}>项目大纲</Button> : <OutlineDrawer>{outline}</OutlineDrawer>}
+      </div>
+      <div role="group" aria-label="项目管理" className="flex items-center gap-1">
+        <Button size="sm" variant="ghost" icon="edit" className="w-8 px-0" aria-label="重命名项目" title="重命名项目" disabled={busy} onClick={() => setSettings('rename')} />
+        <Button size="sm" variant="ghost" icon="trash" className="w-8 px-0 text-err" aria-label="删除项目" title="删除项目" disabled={busy} onClick={() => setSettings('delete')} />
       </div>
     </header>
-    <div className="flex items-center justify-between gap-2 border-b border-line">
-      <nav aria-label="项目视图" className="flex gap-4">
-        <Link to={`${base}/map`} state={viewState} className={viewLink} aria-current={!todo && canvasId === null ? 'page' : undefined}>地图</Link>
-        <Link to={returnTo} className={viewLink} aria-current={todo ? 'page' : undefined}>待办</Link>
-      </nav>
-      {docked ? <Button size="sm" variant="ghost" icon="panel-left" aria-controls={outlineId} aria-expanded={dockOpen}
-        onClick={() => setDockOpen(open => !open)}>项目大纲</Button> : <OutlineDrawer>{outline}</OutlineDrawer>}
-    </div>
     {resource.error && <ResourceState error={resource.error} onRetry={resource.reload} />}
-    {mutation.error && <p role="alert" className="break-words text-sm text-err">{mutation.error}</p>}
+    {!graphActive && !settings && mutation.error && <p role="alert" className="break-words text-sm text-err">{mutation.error}</p>}
     {settings && <ProjectSettings key={settings} mode={settings} workspace={workspace} disabled={busy}
       error={mutation.error} onClose={() => setSettings(undefined)}
       onRename={name => run(signal => renameProject(workspace.project, name, signal), () => setSettings(undefined))}
       onDelete={() => run(signal => deleteProject(projectId, signal), () => navigate(projectsPath, { replace: true }))} />}
     <div className="flex min-w-0 items-start gap-4">
       {docked && <aside id={outlineId} aria-label="项目大纲" hidden={!dockOpen}
-        className="scroll-area max-h-[62dvh] w-48 shrink-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-surface">
+        className="scroll-area max-h-[clamp(24rem,calc(100dvh-11rem),59rem)] w-44 shrink-0 overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface">
         {outline()}
       </aside>}
       <div className="min-w-0 flex-1 space-y-3">
@@ -166,8 +169,8 @@ function WorkspaceScope({ projectId }: { projectId: string }) {
           </div> : <ProjectTodo workspace={workspace} onItem={openItem}
             onCreate={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
           {inspector && <div className="order-first min-w-0 lg:order-last">{inspector}</div>}
-        </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} mutate={mutate}
-          itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
+        </div> : <ProjectGraph workspace={workspace} canvasId={canvasId} locatedItemId={focusItemId} locatedCardId={focusCardId} busy={busy} saving={mutation.busy} mutate={mutate}
+          mutationError={settings ? '' : mutation.error} itemInspector={inspector} onItem={openItem} onCanvas={id => navigate(canvasPath(projectId, id), { state: viewState })} />}
       </div>
     </div>
   </div>

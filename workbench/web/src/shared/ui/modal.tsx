@@ -25,6 +25,7 @@ export interface ModalProps {
   bodyMinHeight?: number
   closeOnEsc?: boolean
   closeLabel?: string
+  closeDisabled?: boolean
   className?: string
   bodyClassName?: string
   header?: React.ReactNode
@@ -46,11 +47,12 @@ export function Modal({
   bodyMinHeight,
   closeOnEsc = true,
   closeLabel = '关闭',
+  closeDisabled = false,
   className,
   bodyClassName,
   header,
 }: ModalProps) {
-  const restoreFocusRef = React.useRef<HTMLElement | null>(null)
+  const restoreFocusRef = React.useRef<HTMLElement | SVGElement | null>(null)
 
   function handleOpenChange(next: boolean) {
     onOpenChange?.(next)
@@ -59,7 +61,8 @@ export function Modal({
 
   // 未使用 DialogTrigger 时 Radix 不会恢复焦点，这里记录打开前的焦点并在关闭时还原。
   function handleOpenAutoFocus() {
-    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const active = document.activeElement
+    restoreFocusRef.current = active instanceof HTMLElement || active instanceof SVGElement ? active : null
   }
 
   function handleCloseAutoFocus(event: Event) {
@@ -99,12 +102,13 @@ export function Modal({
                 <div className="flex min-w-0 flex-1 items-center">{header}</div>
               ) : (
                 <DialogPrimitive.Title asChild>
-                  <div className="flex-1 text-[15px] font-semibold text-txt">{title}</div>
+                  <div className="min-w-0 flex-1 text-[15px] font-semibold text-txt">{title}</div>
                 </DialogPrimitive.Title>
               )}
               <DialogPrimitive.Close
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-txt3 hover:bg-elevated hover:text-txt"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-txt3 enabled:hover:bg-elevated enabled:hover:text-txt disabled:opacity-40"
+                disabled={closeDisabled}
                 aria-label={closeLabel}
               >
                 <Icon name="close" size={18} />

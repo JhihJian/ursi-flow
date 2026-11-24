@@ -122,6 +122,21 @@ describe('CanvasGraph', () => {
     expect(screen.getByLabelText('画布缩略图')).toBeInTheDocument()
   })
 
+  it('emphasizes incident edges without changing hit targets or overriding a selected edge', () => {
+    const { update } = renderCanvas({ edges: [...edges, { id: 'bc', from: 'b', to: 'c' }] })
+    layout()
+    const first = screen.getByTestId('rf__edge-ab')
+    const second = screen.getByTestId('rf__edge-bc')
+    expect(first).not.toHaveClass('wb-edge-muted', 'wb-edge-emphasized')
+    fireEvent.mouseEnter(node('a'))
+    expect(first).toHaveClass('wb-edge-emphasized')
+    expect(second).toHaveClass('wb-edge-muted')
+    expect(second.querySelector('.react-flow__edge-interaction')).toBeInTheDocument()
+    update({ edges: [...edges, { id: 'bc', from: 'b', to: 'c' }], selection: { kind: 'edge', id: 'bc' } })
+    expect(first).toHaveClass('wb-edge-muted')
+    expect(second).toHaveClass('selected', 'wb-edge-emphasized')
+  })
+
   it('enables edge edits only when requested and leaves edge data controlled by the caller', () => {
     const onConnect = vi.fn()
     const onReconnect = vi.fn()

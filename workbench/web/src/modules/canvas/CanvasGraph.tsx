@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Background, Handle, MarkerType, MiniMap, Panel, Position, ReactFlow,
-  applyNodeChanges, useInternalNode, useNodesInitialized, useReactFlow, useStore,
+  applyNodeChanges, useInternalNode, useNodesInitialized, useReactFlow, useStore, useStoreApi,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps, type NodeTypes,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -29,6 +29,7 @@ export interface CanvasGraphProps {
   edges: readonly CanvasEdge[]
   focusNodeId?: string
   focusKey?: string
+  revealNodeId?: string
   selection: CanvasSelection | null
   editableEdges?: boolean
   showMiniMap?: boolean
@@ -45,10 +46,10 @@ type CardNode = Node<{ label: string; icon?: string; content?: ReactNode }, 'car
 const minZoom = 0.2
 const maxZoom = 2
 const fitOptions = { padding: 0.16, maxZoom: 1 }
-const defaultEdgeOptions = {
-  type: 'smoothstep',
-  markerEnd: { type: MarkerType.ArrowClosed, color: 'rgb(var(--c-txt3))' },
-}
+const defaultViewport = { x: 40, y: 48, zoom: 1 }
+const defaultEdgeOptions = { type: 'smoothstep' }
+const edgeMarker = { type: MarkerType.ArrowClosed, color: 'rgb(var(--c-txt3))' }
+const highlightedMarker = { ...edgeMarker, color: 'rgb(var(--c-accent-2))' }
 
 function NodeCard({ data, isConnectable }: NodeProps<CardNode>) {
   const canStartConnection = useStore((state) => Boolean(state.onConnect))
@@ -93,8 +94,9 @@ function projectNodes(input: readonly CanvasNode[], previous: CardNode[] = []): 
   })
 }
 
-function CanvasFocus({ nodeId }: { nodeId: string }) {
-  const { getInternalNode, getZoom, setCenter, viewportInitialized } = useReactFlow<CardNode>()
+function CanvasFocus({ nodeId, onlyIfOutside }: { nodeId: string; onlyIfOutside: boolean }) {
+  const { getInternalNode, getViewport, setCenter, viewportInitialized } = useReactFlow<CardNode>()
+  const store = useStoreApi()
   const node = useInternalNode<CardNode>(nodeId)
   const layoutReady = useNodesInitialized()
   const centered = useRef(false)
@@ -108,12 +110,19 @@ function CanvasFocus({ nodeId }: { nodeId: string }) {
         const height = target?.measured.height
         if (!target || width === undefined || height === undefined) return
         const { x, y } = target.internals.positionAbsolute
+        const { x: offsetX, y: offsetY, zoom } = getViewport()
+        const centerX = x + width / 2
+        const centerY = y + height / 2
+        const screenX = centerX * zoom + offsetX
+        const screenY = centerY * zoom + offsetY
+        const { width: viewWidth, height: viewHeight } = store.getState()
         centered.current = true
-        void setCenter(x + width / 2, y + height / 2, { zoom: getZoom() })
+        if (onlyIfOutside && screenX >= 0 && screenX <= viewWidth && screenY >= 0 && screenY <= viewHeight) return
+        void setCenter(centerX, centerY, { zoom })
       })
     })
     return () => cancelAnimationFrame(frame)
-  }, [getInternalNode, getZoom, layoutReady, node, nodeId, setCenter, viewportInitialized])
+  }, [getInternalNode, getViewport, layoutReady, node, nodeId, onlyIfOutside, setCenter, store, viewportInitialized])
   return null
 }
 
@@ -129,16 +138,20 @@ function CanvasControls() {
         onClick={() => void zoomOut()} />
       <Button size="icon" variant="ghost" icon="expand" title="适应视图" aria-label="适应视图" disabled={!hasNodes}
         onClick={() => void fitView(fitOptions)} />
+      <span className="wb-canvas-zoom" aria-label={`缩放 ${Math.round(zoom * 100)}%`}>{Math.round(zoom * 100)}%</span>
     </Panel>
   )
 }
 
 export function CanvasGraph({
-  nodes, edges, focusNodeId, focusKey, selection, editableEdges = false, showMiniMap = false,
+  nodes, edges, focusNodeId, focusKey, revealNodeId, selection, editableEdges = false, showMiniMap = false,
   onMove, onSelection, onOpenNode, onContext, onConnect, onReconnect,
 }: CanvasGraphProps) {
   const graphId = useId()
   const surface = useRef<HTMLDivElement>(null)
+  const [hover, setHover] = useState<CanvasSelection | null>(null)
+  const [keyboardFocus, setKeyboardFocus] = useState<CanvasSelection | null>(null)
+  const [initialFit] = useState(() => nodes.length > 0)
   const [nodeState, setNodeState] = useState(() => ({ input: nodes, view: projectNodes(nodes) }))
   if (nodeState.input !== nodes) {
     setNodeState({ input: nodes, view: projectNodes(nodes, nodeState.view) })
@@ -147,14 +160,22 @@ export function CanvasGraph({
   const selectedNodeId = selection?.kind === 'node' ? selection.id : undefined
   const selectedEdgeId = selection?.kind === 'edge' ? selection.id : undefined
   const flowNodes = useMemo(() => nodeState.view.map(node => ({ ...node, selected: node.id === selectedNodeId })), [nodeState.view, selectedNodeId])
-  const flowEdges = useMemo<Edge[]>(() => edges.flatMap(({ id, from, to }) => {
-    const source = nodesById.get(from)
-    const target = nodesById.get(to)
-    return source && target ? [{
-      id, source: from, target: to, selected: id === selectedEdgeId,
-      ariaLabel: `${source.label} → ${target.label}`,
-    }] : []
-  }), [edges, nodesById, selectedEdgeId])
+  const focus = selectedEdgeId ? selection : hover ?? keyboardFocus ?? selection
+  const flowEdges = useMemo<Edge[]>(() => {
+    const visibleEdges = edges.filter(edge => nodesById.has(edge.from) && nodesById.has(edge.to))
+    const isRelated = (edge: CanvasEdge) => focus?.kind === 'node' ? edge.from === focus.id || edge.to === focus.id : edge.id === focus?.id
+    const hasRelated = visibleEdges.some(isRelated)
+    return visibleEdges.map(edge => {
+      const { id, from, to } = edge
+      const related = isRelated(edge)
+      return {
+        id, source: from, target: to, selected: id === selectedEdgeId,
+        className: related ? 'wb-edge-emphasized' : hasRelated ? 'wb-edge-muted' : undefined,
+        markerEnd: related ? highlightedMarker : edgeMarker,
+        ariaLabel: `${nodesById.get(from)!.label} → ${nodesById.get(to)!.label}`,
+      }
+    })
+  }, [edges, focus, nodesById, selectedEdgeId])
 
   const changeNodes = useCallback((changes: NodeChange<CardNode>[]) => {
     const geometry = changes.flatMap<NodeChange<CardNode>>((change) => {
@@ -184,6 +205,16 @@ export function CanvasGraph({
 
   return (
     <div className="wb-canvas" ref={surface} tabIndex={onContext ? 0 : undefined} role="group" aria-label="画布操作" onKeyDown={selectOnKey}
+      onMouseLeave={() => setHover(null)}
+      onFocus={event => {
+        const target = event.target
+        const id = target.getAttribute('data-id')
+        if (id && target.matches(':focus-visible')) {
+          if (target.matches('.react-flow__node')) setKeyboardFocus({ kind: 'node', id })
+          if (target.matches('.react-flow__edge')) setKeyboardFocus({ kind: 'edge', id })
+        }
+      }}
+      onBlur={() => setKeyboardFocus(null)}
       onContextMenu={onContext ? event => {
         if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
       } : undefined}>
@@ -196,7 +227,8 @@ export function CanvasGraph({
         defaultEdgeOptions={defaultEdgeOptions}
         minZoom={minZoom}
         maxZoom={maxZoom}
-        fitView
+        defaultViewport={initialFit ? undefined : defaultViewport}
+        fitView={initialFit}
         fitViewOptions={fitOptions}
         attributionPosition="top-right"
         zoomOnDoubleClick={false}
@@ -212,6 +244,10 @@ export function CanvasGraph({
         onPaneClick={() => onSelection?.(null)}
         onNodeClick={(_, node) => onSelection?.({ kind: 'node', id: node.id })}
         onEdgeClick={(_, edge) => onSelection?.({ kind: 'edge', id: edge.id })}
+        onNodeMouseEnter={(_, node) => setHover({ kind: 'node', id: node.id })}
+        onNodeMouseLeave={() => setHover(null)}
+        onEdgeMouseEnter={(_, edge) => setHover({ kind: 'edge', id: edge.id })}
+        onEdgeMouseLeave={() => setHover(null)}
         onPaneContextMenu={onContext ? event => {
           if (event.target === event.currentTarget) onContext({ kind: 'pane' }, menuAnchor(event, surface.current))
         } : undefined}
@@ -233,11 +269,14 @@ export function CanvasGraph({
           }
         } : undefined}
       >
-        <Background gap={20} size={1.25} color="rgb(var(--c-txt3) / 0.25)" />
+        <Background gap={24} size={1.35} color="rgb(var(--c-txt3) / 0.28)" />
         <CanvasControls />
         {showMiniMap && <MiniMap ariaLabel="画布缩略图" pannable zoomable />}
         {focusNodeId !== undefined && nodesById.has(focusNodeId) && (
-          <CanvasFocus key={JSON.stringify([focusNodeId, focusKey])} nodeId={focusNodeId} />
+          <CanvasFocus key={JSON.stringify([focusNodeId, focusKey])} nodeId={focusNodeId} onlyIfOutside={false} />
+        )}
+        {revealNodeId !== undefined && nodesById.has(revealNodeId) && (
+          <CanvasFocus key={revealNodeId} nodeId={revealNodeId} onlyIfOutside />
         )}
       </ReactFlow>
     </div>
