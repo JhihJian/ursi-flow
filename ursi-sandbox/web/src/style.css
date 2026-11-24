@@ -2,12 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * 全部样式进 .sbx-app 容器作用域（工作台模块契约）：
- * 不写 html/body/:root 全局规则；滚动放在栏内的 .sbx-main 上，
- * 不做整页滚动。@tailwind base 的 preflight 仍是全局注入，
- * 嵌入外壳时由宿主与模块协调，见 SPEC「嵌入工作台外壳」一节。
- */
+/* 独立控制台占满视口，页面内容与实例列表各自滚动。 */
 @layer components {
   .sbx-app {
     @apply relative flex h-dvh min-w-0 flex-col overflow-hidden bg-base font-mono text-sm text-txt antialiased;
@@ -20,8 +15,70 @@
   .sbx-app h2 {
     @apply font-serif font-semibold;
   }
-  .sbx-main {
-    @apply flex min-h-0 w-full flex-1 flex-col items-stretch self-center;
+  .sbx-app > header {
+    @apply shrink-0;
+  }
+  .sbx-app > .page-shell {
+    @apply min-h-0 flex-1 overflow-auto;
+  }
+  .sbx-app .sbx-instance-layout {
+    @apply grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)];
+  }
+  .sbx-app .sbx-instance-sidebar {
+    @apply flex min-h-0 min-w-0 flex-col bg-surface;
+  }
+  .sbx-app .sbx-instance-sidebar-head {
+    @apply shrink-0 space-y-2 border-b border-line p-3;
+  }
+  .sbx-app .sbx-instance-filters {
+    @apply grid grid-cols-2 gap-1 bg-elevated/50 p-1;
+  }
+  .sbx-app .sbx-instance-scroll {
+    @apply min-h-0 flex-1 overflow-auto overscroll-contain;
+  }
+  .sbx-app .sbx-instance-link {
+    @apply flex min-h-[3.5rem] min-w-0 items-center gap-2 border-l-2 border-transparent py-2 pl-2.5 pr-3 text-txt hover:bg-elevated;
+  }
+  .sbx-app .sbx-instance-link[aria-current='page'] {
+    @apply border-l-accent bg-accent-dim;
+  }
+  .sbx-app .sbx-instance-link:focus-visible {
+    outline-offset: -2px;
+  }
+  .sbx-app .sbx-instance-content {
+    @apply min-h-0 min-w-0 overflow-auto overscroll-contain;
+    container: sbx-instance-content / inline-size;
+  }
+  .sbx-app .sbx-instance-overview {
+    @apply flex min-h-full flex-col items-center justify-center gap-3 p-4 text-txt2;
+  }
+  .sbx-app .sbx-detail-grid {
+    @apply grid min-w-0 gap-4;
+  }
+  .sbx-app .sbx-detail-inspector {
+    @apply min-w-0 self-start border-t border-line pt-2;
+  }
+  @media (max-width: 767px) {
+    .sbx-app .sbx-instance-layout[data-detail='true'] > .sbx-instance-sidebar,
+    .sbx-app .sbx-instance-layout[data-detail='false'] > .sbx-instance-content {
+      display: none;
+    }
+  }
+  @media (min-width: 768px) {
+    .sbx-app .sbx-instance-layout {
+      grid-template-columns: clamp(14rem, 21vw, 17rem) minmax(0, 1fr);
+    }
+    .sbx-app .sbx-instance-sidebar {
+      @apply border-r border-line;
+    }
+  }
+  @container sbx-instance-content (min-width: 56rem) {
+    .sbx-app .sbx-detail-grid {
+      grid-template-columns: minmax(0, 1fr) 17.5rem;
+    }
+    .sbx-app .sbx-detail-inspector {
+      @apply border-l border-t-0 pl-3 pt-0;
+    }
   }
   .page-shell {
     @apply mx-auto w-full min-w-0 max-w-[1680px] px-3 sm:px-6 lg:px-8;

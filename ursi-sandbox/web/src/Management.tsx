@@ -197,6 +197,7 @@ export function CreateSandbox({ source }: { source: Source }) {
       if (attempt.current.body !== body)
         attempt.current = { body, key: randomKey() }
       const row = await source.create(spec, attempt.current.key)
+      show(false)
       navigate('/sandboxes/' + row.id)
     } catch (e) {
       fail(e instanceof Error ? e.message : '创建请求失败')

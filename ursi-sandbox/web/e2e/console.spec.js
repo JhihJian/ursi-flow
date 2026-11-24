@@ -31,12 +31,17 @@ for (const width of [320, 390, 1280])
     await page.route('**/dist/api/v1/images', (route) =>
       route.fulfill({ json: { inventory: 'available', images: [] } }),
     )
-    await page.route('**/dist/api/v1/sandboxes/' + rows[0].id, (route) =>
-      route.fulfill({ json: rows[0] }),
-    )
+    for (const row of rows)
+      await page.route('**/dist/api/v1/sandboxes/' + row.id, (route) =>
+        route.fulfill({ json: row }),
+      )
+    let logRequests = 0
     await page.route(
       '**/dist/api/v1/sandboxes/' + rows[0].id + '/logs?tail=200',
-      (route) => route.fulfill({ json: { content: '[status] running' } }),
+      (route) => {
+        logRequests++
+        return route.fulfill({ json: { content: '[status] running' } })
+      },
     )
     await page.goto('./#/sandboxes')
     await expect(page.getByText('Gateway · 只读')).toBeVisible()
@@ -51,19 +56,34 @@ for (const width of [320, 390, 1280])
     await expect(page.getByLabel('SandboxSpec JSON')).toBeVisible()
     await page.getByRole('button', { name: '取消' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
-    const links = page.getByRole('link', { name: /^查看 / })
+    const sidebar = page.getByRole('complementary', { name: '实例列表' })
+    const links = sidebar.getByRole('link', { name: /^查看 / })
     await expect(links).toHaveCount(3)
-    if (width >= 768)
-      await expect(page.getByRole('table', { name: '实例列表' })).toBeVisible()
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width)
     await page.getByRole('button', { name: /运行中/ }).click()
     await expect(links).toHaveCount(2)
-    await page.getByRole('button', { name: /全部实例/ }).click()
-    await expect(links).toHaveCount(3)
-    await page.getByRole('link', { name: '查看 test-sandbox-1' }).click()
+    const first = sidebar.getByRole('link', { name: '查看 test-sandbox-1' })
+    await first.focus()
+    await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/\/dist\/#\/sandboxes\/[a-f0-9]{32}$/)
+    const heading = page.getByRole('heading', { name: 'test-sandbox-1' })
+    await expect(heading).toBeVisible()
+    if (width >= 768) {
+      await expect(first).toHaveAttribute('aria-current', 'page')
+      await expect(links).toHaveCount(2)
+      await sidebar.getByRole('link', { name: '查看 test-sandbox-2' }).click()
+      await expect(page.getByRole('heading', { name: 'test-sandbox-2' })).toBeVisible()
+      await page.goBack()
+      await expect(heading).toBeVisible()
+    } else {
+      await expect(sidebar).toBeHidden()
+      await page.goBack()
+      await expect(links).toHaveCount(2)
+      await page.goForward()
+      await expect(heading).toBeVisible()
+    }
     await page.reload()
     await expect(
       page.getByRole('heading', { name: 'test-sandbox-1' }),
@@ -72,8 +92,9 @@ for (const width of [320, 390, 1280])
     const inspector = page.getByRole('complementary', { name: '实例检查' })
     const stage = await workbench.boundingBox()
     const side = await inspector.boundingBox()
-    if (width < 1024) expect(side.y).toBeGreaterThan(stage.y + stage.height - 1)
+    if (width < 1200) expect(side.y).toBeGreaterThan(stage.y + stage.height - 1)
     else expect(side.x).toBeGreaterThan(stage.x + stage.width - 1)
+    expect(logRequests).toBe(0)
     await inspector.getByRole('button', { name: '实例日志' }).click()
     await expect(page.getByLabel('实例日志输出')).toContainText(
       '[status] running',
@@ -188,6 +209,7 @@ test('快速创建从清单选择镜像并提交 SandboxSpec', async ({ page }) 
   ).toBeLessThanOrEqual(390)
   await submit.click()
   await expect(page).toHaveURL(/#\/sandboxes\/[a-f0-9]{32}$/)
+  await expect(page.getByRole('dialog')).toBeHidden()
 })
 
 test('镜像清单查询可重试，JSON 创建独立可用', async ({ page }) => {
@@ -313,4 +335,34 @@ test('Gateway 失败时显示错误，重试后识别空列表', async ({ page }
   await expect(page.getByRole('status')).toContainText('Gateway 暂不可用')
   await page.getByRole('button', { name: '重试' }).click()
   await expect(page.getByRole('status')).toHaveText('暂无沙箱实例')
+})
+
+test('长实例列表独立滚动，详情也能读到底部', async ({ page }) => {
+  const many = Array.from({ length: 24 }, (_, index) => ({
+    ...rows[0],
+    id: index.toString(16).padStart(32, '0'),
+    spec: { ...rows[0].spec, labels: { name: `实例 ${index + 1}` } },
+  }))
+  await page.setViewportSize({ width: 1024, height: 480 })
+  await page.route('**/dist/console-config.json', (route) =>
+    route.fulfill({ json: { mode: 'gateway' } }),
+  )
+  await page.route('**/dist/api/v1/sandboxes', (route) =>
+    route.fulfill({ json: { sandboxes: many } }),
+  )
+  await page.route('**/dist/api/v1/sandboxes/' + many.at(-1).id, (route) =>
+    route.fulfill({ json: many.at(-1) }),
+  )
+  await page.goto('./#/sandboxes')
+  const last = page.getByRole('link', { name: '查看 实例 24' })
+  await last.click()
+  await expect(last).toHaveAttribute('aria-current', 'page')
+  const list = page.locator('.sbx-instance-scroll')
+  const listScroll = await list.evaluate((el) => el.scrollTop)
+  expect(listScroll).toBeGreaterThan(0)
+  const cli = page.getByRole('button', { name: '端点访问（独立 CLI）' })
+  await cli.click()
+  await expect(cli).toHaveAttribute('aria-expanded', 'true')
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(listScroll)
+  await expect(page.getByRole('heading', { name: '实例列表' })).toBeInViewport()
 })

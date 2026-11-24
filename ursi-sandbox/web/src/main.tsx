@@ -23,8 +23,12 @@ import {
   HashRouter,
   Link,
   NavLink,
+  Outlet,
   Route,
   Routes,
+  useLocation,
+  useMatch,
+  useOutletContext,
   useParams,
   useNavigate,
 } from 'react-router'
@@ -41,14 +45,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from './shared/ui/collapsible'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './shared/ui/table'
 import { cn } from './shared/lib/utils'
 import { loadSource, GatewayError, type Source, type Sandbox } from './data'
 import './tokens.css'
@@ -205,150 +201,127 @@ const filters = [
 ] as const
 function InstanceLink({ row }: { row: Sandbox }) {
   return (
-    <Link
+    <NavLink
       to={'/sandboxes/' + row.id}
+      end
       aria-label={'查看 ' + nameOf(row)}
-      className="group flex min-w-0 items-center gap-3 font-medium text-txt hover:text-accent-2"
+      className="sbx-instance-link"
+      title={nameOf(row)}
     >
-      <span className="icon-tile size-8 shrink-0">
-        <Box className="size-4" />
-      </span>
-      <span className="min-w-0">
-        <span className="block break-all">{nameOf(row)}</span>
-        {row.spec.labels.name && (
-          <span className="block font-mono text-xs text-txt3">
-            {row.id.slice(0, 12)}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{nameOf(row)}</span>
+        <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-txt2">
+          <span className="inline-flex shrink-0 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                'size-1.5 rounded-full border border-current',
+                row.status === 'running' && 'bg-current',
+              )}
+            />
+            {statuses[row.status] || row.status}
           </span>
-        )}
+          <span aria-hidden="true">·</span>
+          <span className="truncate" title={row.spec.image}>{row.spec.image}</span>
+        </span>
       </span>
-      <ChevronRight
-        aria-hidden="true"
-        className="ml-auto size-4 shrink-0 text-txt3 md:hidden"
-      />
-    </Link>
+      <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-txt3" />
+    </NavLink>
   )
 }
-function List({ source }: { source: Source }) {
-  const state = useLoad((s) => source.list(s), [source])
+function InstanceSidebar({
+  source,
+  state,
+}: {
+  source: Source
+  state: State<Sandbox[]> & { refresh: () => void }
+}) {
   const [status, filter] = useState('')
   const rows = state.value ?? []
   const result = rows.filter((row) => !status || row.status === status)
+  const counts = new Map<string, number>()
+  for (const row of rows) counts.set(row.status, (counts.get(row.status) ?? 0) + 1)
   return (
-    <main className="page-shell page-content space-y-5">
-      <div className="page-heading">
-        <h1>沙箱管理</h1>
-        <div className="flex items-center gap-2">
-          <Refresh state={state} />
-          <CreateSandbox source={source} />
-        </div>
-      </div>
-      <div
-        className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3"
-        aria-label="按状态筛选"
-      >
-        {filters.map(([value, label, Icon]) => (
+    <aside className="sbx-instance-sidebar" aria-labelledby="instances">
+      <div className="sbx-instance-sidebar-head">
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="instances" className="text-base">实例列表</h2>
           <Button
-            key={label}
-            variant="outline"
-            aria-pressed={status === value}
-            onClick={() => filter(value)}
-            className="h-auto min-h-14 justify-between gap-1.5 px-2.5 py-2.5 text-xs aria-pressed:border-accent/40 aria-pressed:bg-accent-dim aria-pressed:text-accent-2 sm:px-4 sm:text-sm"
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            aria-label="刷新实例列表"
+            title="刷新实例列表"
+            onClick={state.refresh}
+            disabled={state.loading}
           >
-            <span className="inline-flex items-center gap-1.5">
-              <Icon />
-              {label}
-            </span>
-            <strong className="font-mono text-lg tabular-nums">
-              {state.value
-                ? rows.filter((r) => !value || r.status === value).length
-                : '·'}
-            </strong>
+            <RefreshCw className={cn(state.loading && 'motion-safe:animate-spin')} />
           </Button>
-        ))}
-      </div>
-      <section aria-labelledby="instances" className="space-y-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 id="instances" className="font-semibold">
-            实例列表
-          </h2>
-          {state.value && (
-            <span className="text-xs text-txt3">
-              显示 {result.length} / {rows.length} 个实例
-            </span>
-          )}
         </div>
-        {state.value && state.error && <AsyncState state={state} />}
-        {!state.value ? (
-          <AsyncState state={state} />
-        ) : !result.length ? (
-          <div className="empty-state" role="status">
-            <Boxes className="size-5" />
-            {rows.length ? '没有匹配的实例' : '暂无沙箱实例'}
-            {status && (
-              <Button variant="outline" size="sm" onClick={() => filter('')}>
+        <CreateSandbox source={source} />
+        <div className="sbx-instance-filters" role="group" aria-label="按状态筛选">
+          {filters.map(([value, label, Icon]) => (
+            <Button
+              key={value}
+              variant="ghost"
+              aria-pressed={status === value}
+              onClick={() => filter(value)}
+              className="h-8 justify-between gap-1 px-1.5 text-xs aria-pressed:bg-accent-dim aria-pressed:text-txt"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Icon aria-hidden="true" />
+                {label}
+              </span>
+              <span className="tabular-nums">
+                {state.value ? (value ? counts.get(value) ?? 0 : rows.length) : '·'}
+              </span>
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="sbx-instance-scroll">
+        {(!state.value || state.error) && (
+          <div className="p-3"><AsyncState state={state} /></div>
+        )}
+        {state.value && !result.length && !state.error && (
+          <div className="px-3 py-5 text-xs text-txt2">
+            <p role="status">{rows.length ? '没有匹配的实例' : '暂无沙箱实例'}</p>
+            {rows.length > 0 && (
+              <Button variant="link" size="sm" className="px-0" onClick={() => filter('')}>
                 显示全部
               </Button>
             )}
           </div>
-        ) : (
-          <div className="overflow-hidden border border-line bg-surface">
-            <div className="hidden md:block">
-              <Table aria-labelledby="instances" className="table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[30%]">实例名称 / ID</TableHead>
-                    <TableHead className="w-28">运行状态</TableHead>
-                    <TableHead>容器镜像</TableHead>
-                    <TableHead className="w-44">资源配额</TableHead>
-                    <TableHead className="w-20 text-right">端点</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {result.map((row) => (
-                    <TableRow key={row.id} className="last:border-0">
-                      <TableCell>
-                        <InstanceLink row={row} />
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={row.status} />
-                      </TableCell>
-                      <TableCell className="break-all font-mono text-xs">
-                        {row.spec.image}
-                      </TableCell>
-                      <TableCell>
-                        {row.spec.cpus} CPU · {memory(row.spec.memory_mb)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {row.endpoints.length}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <ul
-              className="divide-y divide-line md:hidden"
-              aria-labelledby="instances"
-            >
-              {result.map((row) => (
-                <li key={row.id} className="space-y-2.5 p-3">
-                  <InstanceLink row={row} />
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 pl-11 text-xs text-txt3">
-                    <StatusBadge status={row.status} />
-                    <span className="break-all font-mono">
-                      {row.spec.image}
-                    </span>
-                    <span>
-                      {row.spec.cpus} CPU · {memory(row.spec.memory_mb)}
-                    </span>
-                    <span>{row.endpoints.length} 个端点</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
-      </section>
+        {result.length > 0 && (
+          <ul className="divide-y divide-line" aria-labelledby="instances">
+            {result.map((row) => (
+              <li key={row.id}><InstanceLink row={row} /></li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </aside>
+  )
+}
+function InstanceLayout({ source }: { source: Source }) {
+  const { pathname } = useLocation()
+  const hasDetail = Boolean(useMatch('/sandboxes/:id'))
+  const list = useLoad((signal) => source.list(signal), [source, pathname])
+  return (
+    <div className="sbx-instance-layout" data-detail={hasDetail}>
+      <InstanceSidebar source={source} state={list} />
+      <div className="sbx-instance-content" key={pathname}>
+        <Outlet context={list.refresh} />
+      </div>
+    </div>
+  )
+}
+function InstanceOverview() {
+  return (
+    <main className="sbx-instance-overview" aria-labelledby="instances-heading">
+      <Boxes aria-hidden="true" className="size-6 text-txt2" />
+      <h1 id="instances-heading" className="text-lg">未选择实例</h1>
     </main>
   )
 }
@@ -416,9 +389,18 @@ function Logs({ source, id }: { source: Source; id: string }) {
 }
 function DetailsRoute({ source }: { source: Source }) {
   const id = useParams<'id'>().id!
-  return <Details key={id} source={source} id={id} />
+  const refreshList = useOutletContext<() => void>()
+  return <Details key={id} source={source} id={id} refreshList={refreshList} />
 }
-function Details({ source, id }: { source: Source; id: string }) {
+function Details({
+  source,
+  id,
+  refreshList,
+}: {
+  source: Source
+  id: string
+  refreshList: () => void
+}) {
   const navigate = useNavigate(),
     deleting = useRef(false)
   const state = useLoad(
@@ -439,6 +421,13 @@ function Details({ source, id }: { source: Source; id: string }) {
     [source, id],
   )
   const row = state.value
+  const lastListSnapshot = useRef<string>(undefined)
+  const listSnapshot = row && `${row.revision}:${row.status}`
+  useEffect(() => {
+    if (!listSnapshot) return
+    if (lastListSnapshot.current && lastListSnapshot.current !== listSnapshot) refreshList()
+    lastListSnapshot.current = listSnapshot
+  }, [listSnapshot, refreshList])
   useEffect(() => {
     if (!row?.operation || state.loading) return
     deleting.current = row.operation.kind === 'delete'
@@ -501,7 +490,7 @@ function Details({ source, id }: { source: Source; id: string }) {
             </Alert>
           )}
           {state.error && <AsyncState state={state} />}
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_17.5rem] xl:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="sbx-detail-grid">
             <EndpointWorkbench
               key={`${row.id}:${row.resource.generation}`}
               row={row}
@@ -510,7 +499,7 @@ function Details({ source, id }: { source: Source; id: string }) {
             />
             <aside
               aria-label="实例检查"
-              className="min-w-0 self-start border-t border-line pt-2 lg:border-l lg:border-t-0 lg:pl-3 lg:pt-0"
+              className="sbx-detail-inspector"
             >
               <h2 className="px-2 pb-2 pt-1 text-xs font-semibold text-txt3">
                 实例检查
@@ -588,8 +577,11 @@ function App() {
         </main>
       ) : (
         <Routes>
-          <Route index element={<List source={config.value} />} />
-          <Route path="sandboxes" element={<List source={config.value} />} />
+          <Route element={<InstanceLayout source={config.value} />}>
+            <Route index element={<InstanceOverview />} />
+            <Route path="sandboxes" element={<InstanceOverview />} />
+            <Route path="sandboxes/:id" element={<DetailsRoute source={config.value} />} />
+          </Route>
           <Route
             path="registry"
             element={<CapabilityRegistry source={config.value} />}
@@ -601,10 +593,6 @@ function App() {
           <Route
             path="sandboxes/:id/observations/:run?"
             element={<ObservationRoute source={config.value} />}
-          />
-          <Route
-            path="sandboxes/:id"
-            element={<DetailsRoute source={config.value} />}
           />
           <Route
             path="*"

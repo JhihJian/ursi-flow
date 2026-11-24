@@ -59,6 +59,10 @@ test('刷新保留当前连接，切换、端点失效、代际变化和离开�
   await expect(status).toHaveText('已连接')
   await refresh()
   await expect(status).toHaveText('已连接')
+  await page.setViewportSize({ width: 390, height: 820 })
+  await expect(status).toHaveText('已连接')
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await expect(status).toHaveText('已连接')
   expect(sockets).toHaveLength(1)
   expect(closed).toEqual([])
 
