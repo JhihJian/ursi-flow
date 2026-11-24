@@ -45,13 +45,13 @@ function useInlineConfirm(): [(message: string) => Promise<boolean>, React.React
   return [confirm, dialog]
 }
 
-export interface WorkspaceWebModuleOptions {
+export interface FsWebModuleOptions {
   apiBaseUrl?: string
 }
 
-/** workspace-web 模块工厂。apiBaseUrl 由宿主注入，缺省走开发代理。 */
-export function createWorkspaceModule(options: WorkspaceWebModuleOptions = {}): WorkspaceModule {
-  const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/workspace-web')
+/** fs-web 模块工厂。apiBaseUrl 由宿主注入，缺省走开发代理。 */
+export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModule {
+  const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/fs-web')
 
   const Panel = () => {
     const workspaces = useTreeStore((state) => state.workspaces)
@@ -124,7 +124,7 @@ export function createWorkspaceModule(options: WorkspaceWebModuleOptions = {}): 
   }
 
   return {
-    id: 'workspace-web',
+    id: 'fs-web',
     title: '文件',
     Panel,
     useCollapsedSummary: () => {

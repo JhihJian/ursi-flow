@@ -1,6 +1,6 @@
-# workspace-web HTTP 契约
+# fs-web HTTP 契约
 
-基址 `/api/workspace-web`。除 `GET workspaces` 外一律 `POST + JSON body`；路径一律用 `path` 字段传 segments 数组（相对 workspace root），不走 URL 编码。错误统一 `{ code, message }`，code 取值见 `server/src/types.ts` 的 `ApiError`。
+基址 `/api/fs-web`。除 `GET workspaces` 外一律 `POST + JSON body`；路径一律用 `path` 字段传 segments 数组（相对 workspace root），不走 URL 编码。错误统一 `{ code, message }`，code 取值见 `server/src/types.ts` 的 `ApiError`。
 
 | 接口 | 方法 | body | 响应 |
 | --- | --- | --- | --- |

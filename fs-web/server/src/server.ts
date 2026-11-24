@@ -100,7 +100,7 @@ async function handle(
   res: http.ServerResponse,
   pathname: string,
 ): Promise<void> {
-  const prefix = '/api/workspace-web/'
+  const prefix = '/api/fs-web/'
   if (!pathname.startsWith(prefix)) {
     send(res, 404, { code: 'bad_request', message: '未知接口' } satisfies ApiError)
     return
@@ -199,15 +199,15 @@ interface StartOptions {
 
 export async function start(options: StartOptions = {}): Promise<http.Server> {
   const configs = loadWorkspaceConfig(process.env)
-  const host = options.host ?? process.env.WORKSPACE_WEB_HOST ?? '127.0.0.1'
-  const port = options.port ?? Number(process.env.WORKSPACE_WEB_PORT ?? 8199)
+  const host = options.host ?? process.env.FS_WEB_HOST ?? '127.0.0.1'
+  const port = options.port ?? Number(process.env.FS_WEB_PORT ?? 8199)
   const server = await createServer(configs)
   await new Promise<void>((resolve) => server.listen(port, host, resolve))
-  console.log(`workspace-web listening on http://${host}:${port}`)
+  console.log(`fs-web listening on http://${host}:${port}`)
   return server
 }
 
-// 直接运行时启动：node workspace-web/server/src/server.ts --host 0.0.0.0 --port 8199
+// 直接运行时启动：node fs-web/server/src/server.ts --host 0.0.0.0 --port 8199
 const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href
 if (isMain) {
   const args = process.argv.slice(2)

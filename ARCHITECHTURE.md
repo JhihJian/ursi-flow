@@ -7,7 +7,7 @@
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [项目门户](apps/web/SPEC.md) | `/` 展示已发布的项目资料和应用入口。`/manage/` 编辑并导出草稿，部署流程发布共享配置。 |
-| [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `apps/workspace`，已完成 todo 模块接入。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
+| [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `shell-web`，已完成 todo 与 fs-web 模块接入。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
 | [SUMM-Todo 看板](todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [页面布局](packages/ui-layout/SPEC.md) · [UI 插槽](packages/ui-slots/SPEC.md) | 布局包负责响应式排列，插槽包负责注册与渲染贡献。两者可由其他 React 页面单独使用。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
@@ -46,6 +46,6 @@
 | Flow Core | [Flow Core SDK 设计](docs/design/flow-runtime/FLOW-CORE.md) |
 | Flow 能力 | [Agent 装配](docs/design/flow-runtime/ability/agent-assembly.md) · [Agent 生命周期](docs/design/flow-runtime/ability/agent-harness.md) · [Agent 会话复用](docs/design/flow-runtime/ability/agent-continuity.md) · [运行时工具](docs/design/flow-runtime/ability/runtime-tools.md) · [命令执行](docs/design/flow-runtime/ability/command-execution.md) · [子 Flow](docs/design/flow-runtime/ability/child-flow.md) · [并行执行](docs/design/flow-runtime/ability/parallel-execution.md) · [用户确认门禁](docs/design/flow-runtime/ability/user-confirmation.md)（[实现改动](docs/design/flow-runtime/ability/user-confirmation-impl.md)）· [节点级执行器选择](docs/design/flow-runtime/NODE-EXECUTORS.md) |
 | MCP 服务管理 | [独立模块与宿主边界](docs/design/ursi-mcp/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/ursi-mcp/EXECUTOR-DISCOVERY-DESIGN.md) |
-| 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) |
+| 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) · [控制台接入工作区](docs/design/ursi-sandbox/WORKSPACE-INTEGRATION.md) |
 
 相关入口：[根规格](SPEC.md) · [Flow 导读](flow-core/docs/flow-overview.md) · [Flow 文件规范](flow-core/docs/flow-spec.md) · [执行器 MCP 协议](docs/EXECUTOR-MCP.md) · [Workbench 执行器接入](workbench/EXECUTOR-INTEGRATION.md)。

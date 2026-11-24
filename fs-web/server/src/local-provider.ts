@@ -257,9 +257,9 @@ export function createLocalProvider(): WorkspaceProvider {
   return provider
 }
 
-/** 配置加载：内置默认清单 + WORKSPACE_WEB_CONFIG JSON 覆盖。 */
+/** 配置加载：内置默认清单 + FS_WEB_CONFIG JSON 覆盖。 */
 export function loadWorkspaceConfig(env: NodeJS.ProcessEnv): WorkspaceConfig[] {
-  const file = env.WORKSPACE_WEB_CONFIG
+  const file = env.FS_WEB_CONFIG
   if (!file) {
     return [{ id: 'default', label: 'default', provider: 'local', root: process.cwd() }]
   }

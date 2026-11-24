@@ -5,11 +5,11 @@ references:
   - README.md
 ---
 
-# workspace-web 文件管理器
+# fs-web 文件资源管理器
 
 ## 功能意图
 
-workspace-web 为工作区提供类资源管理器的文件能力。每个 workspace 是一个目录，来源由 provider 抽象统一：第一版实现本机目录（local），SSH 远程目录与虚拟目录按设计预留接口后续接入。模块按[工作区外壳契约](../packages/workspace-shell/MODULE-CONTRACT.md)接入：目录树放在模块栏内浏览，文件编辑经全局选中交给外壳的工作区区域，由 Monaco Editor 渲染。
+fs-web 为工作区提供类资源管理器的文件能力。每个 workspace 是一个目录，来源由 provider 抽象统一：第一版实现本机目录（local），SSH 远程目录与虚拟目录按设计预留接口后续接入。模块按[工作区外壳契约](../packages/workspace-shell/MODULE-CONTRACT.md)接入：目录树放在模块栏内浏览，文件编辑经全局选中交给外壳的工作区区域，由 Monaco Editor 渲染。
 
 设计决策与分阶段范围见 [README](README.md)。
 
@@ -17,7 +17,7 @@ workspace-web 为工作区提供类资源管理器的文件能力。每个 works
 
 ### workspace 清单
 
-workspace 清单来自服务端配置：内置默认清单（仓库根、workspace-web 自身），可用 `WORKSPACE_WEB_CONFIG` 指向 JSON 数组覆盖，每项含 `id`、`label`、`provider`、`root`。
+workspace 清单来自服务端配置：内置默认清单（仓库根、fs-web 自身），可用 `FS_WEB_CONFIG` 指向 JSON 数组覆盖，每项含 `id`、`label`、`provider`、`root`。
 
 #### 验收
 

@@ -15,12 +15,12 @@ interface TestContext {
 
 /** 起临时目录 + 真实 HTTP 服务，用 fetch 走完整链路。 */
 async function withServer(fn: (ctx: TestContext) => Promise<void>): Promise<void> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'workspace-web-test-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-test-'))
   const server = await createServer([{ id: 't', label: 'test', provider: 'local', root }])
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (typeof address !== 'object' || !address) throw new Error('no address')
-  const baseUrl = `http://127.0.0.1:${address.port}/api/workspace-web`
+  const baseUrl = `http://127.0.0.1:${address.port}/api/fs-web`
   try {
     await fn({ baseUrl, root, server })
   } finally {
@@ -98,7 +98,7 @@ test('路径越界与非法段被拒绝', wrap(async () => {
 
 test('软链跳出 root 被拒绝', wrap(async (ctx) => {
   const { root } = ctx
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'workspace-web-out-'))
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-out-'))
   try {
     await fs.writeFile(path.join(outside, 'secret.txt'), 'no')
     await fs.symlink(outside, path.join(root, 'link'))
@@ -342,7 +342,7 @@ test('git-status workspace 为仓库子目录时过滤并映射路径', wrap(asy
   const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'local', root: path.join(ctx.root, 'sub') }])
   await new Promise<void>((resolve) => sub.listen(0, '127.0.0.1', resolve))
   try {
-    const res = await fetch(`http://127.0.0.1:${(sub.address() as import('node:net').AddressInfo).port}/api/workspace-web/git-status`, {
+    const res = await fetch(`http://127.0.0.1:${(sub.address() as import('node:net').AddressInfo).port}/api/fs-web/git-status`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ workspaceId: 'sub' }),

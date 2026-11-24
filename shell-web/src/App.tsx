@@ -1,9 +1,9 @@
 import { WorkspaceShell, useWorkspace, type WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from './modules/todo'
-import { createWorkspaceModule } from '@workspace-web/module'
-import '@workspace-web/module.css'
+import { createFsModule } from '@fs-web/module'
+import '@fs-web/module.css'
 
-const modules = [createTodoModule(), createWorkspaceModule()]
+const modules = [createTodoModule(), createFsModule()]
 
 /** 设置页不占栏，注册成不占栏的视图，由标题栏按钮选中它。 */
 const SETTINGS = { kind: 'app.settings', id: 'settings' } as const

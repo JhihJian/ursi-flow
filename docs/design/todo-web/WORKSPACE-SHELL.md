@@ -86,7 +86,7 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 
 ## 已实现的第一版
 
-`packages/workspace-shell` 与 `apps/workspace` 已经落地，形态是一个独立入口把 todo 作为**一栏**接入：
+`packages/workspace-shell` 与 `shell-web` 已经落地，形态是一个独立入口把 todo 作为**一栏**接入：
 
 - 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
 - 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`hideHeader?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
@@ -95,9 +95,9 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 - 模块自带标题或工具条时声明 `hideHeader: true`：外壳不画标题行，内容贴住栏顶；折叠按钮挪到分隔线顶部（18×34 的 `‹`，纵向加大命中区）并常驻显示，避开拖拽中段，也不压住模块自己的控件。`react-resizable-panels` 在悬停分隔线时会往页面注入 `*, *:hover { cursor: ew-resize !important }`，所以按钮上的 `cursor: pointer !important` 必须带 `!important` 并且选择器特异度高于 `*`，否则悬停到按钮上光标仍会变成拖拽箭头；按钮的 `pointerdown` 也做了阻止冒泡，避免误触拖拽。todo 用这条路径，否则会出现「外壳标题 + todo 统计栏」两层抬头。
 - 纵向分三层：40px 标题栏（左侧 `title`、右侧设置入口）、主区、24px 状态栏（左侧选中摘要、右侧宿主 `status`）。标题栏与状态栏固定高度、不可拖拽，中间仍是横向的模块栏 / 工作区区域 / 操作栏。
 - 设置这类不占栏的页面用 `views` 注册成 `{ kind, summary, Component }`，选中后占用工作区区域，模块栏不受影响。
-- todo 模块：`apps/workspace/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
+- todo 模块：`shell-web/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
 
-第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。`apps/workspace` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
+第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。`shell-web` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
 
 ## 现在就在 todo-web 里做的三步
 

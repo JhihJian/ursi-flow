@@ -1,4 +1,4 @@
-/* workspace-web 模块样式：全部限定在 .wsx-panel / .wsx-view 下，禁止全局选择器。 */
+/* fs-web 模块样式：全部限定在 .wsx-panel / .wsx-view 下，禁止全局选择器。 */
 
 .wsx-panel {
   display: flex;

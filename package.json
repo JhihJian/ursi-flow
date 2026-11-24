@@ -7,7 +7,8 @@
   },
   "workspaces": [
     "apps/web",
-    "apps/workspace",
+    "fs-web/web",
+    "shell-web",
     "packages/ui-layout",
     "packages/ui-slots",
     "packages/workspace-shell"
@@ -16,9 +17,9 @@
     "dev": "npm run dev -w @ursi/portal-web",
     "build": "npm run build -w @ursi/portal-web",
     "portal:check-config": "node apps/web/scripts/check-config.ts",
-    "test": "node --test packages/ui-slots/test/*.test.ts apps/web/test/*.test.ts workspace-web/server/test/*.test.ts",
+    "test": "node --test packages/ui-slots/test/*.test.ts apps/web/test/*.test.ts fs-web/server/test/*.test.ts",
     "test:e2e": "npm run test:e2e -w @ursi/portal-web",
-    "dev:workspace": "npm run dev -w @ursi/workspace",
-    "build:workspace": "npm run build -w @ursi/workspace"
+    "dev:shell-web": "npm run dev -w @ursi/shell-web",
+    "build:shell-web": "npm run build -w @ursi/shell-web"
   }
 }

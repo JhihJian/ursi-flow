@@ -52,6 +52,6 @@ cd todo-web/server && cargo run          # 或已有实例
 
 ## 当前限制
 
-- todo 仍整栏挂载（`apps/workspace/src/modules/todo.tsx`），内部的项目栏与任务栏还没拆成独立面板。
+- todo 仍整栏挂载（`shell-web/src/modules/todo.tsx`），内部的项目栏与任务栏还没拆成独立面板。
 - 用 `@todo` 别名直接编译 todo-web 源码，并复用其 `styles.css`；等模块协议稳定再抽成独立包。
 - 没有鉴权与路由。

@@ -85,7 +85,7 @@ export function flattenOpen(openDirs: OpenDir[], dirs: Record<string, DirState>)
 }
 
 export const useTreeStore = create<TreeState>((set, get) => ({
-  api: new WorkspaceApi('/api/workspace-web'),
+  api: new WorkspaceApi('/api/fs-web'),
   workspaces: [],
   activeWorkspaceId: null,
   dirs: {},

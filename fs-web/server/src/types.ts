@@ -1,5 +1,5 @@
 /**
- * workspace-web 服务端契约：HTTP 层与 provider 层共用。
+ * fs-web 服务端契约：HTTP 层与 provider 层共用。
  * 前端用 `import type` 复制这些类型，不引服务端代码。
  */
 
