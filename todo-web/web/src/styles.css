@@ -903,56 +903,6 @@ button {
   animation: detail-sheet-rise 200ms ease-out;
 }
 
-/* 折叠成一行摘要，把空间让给任务列表 */
-.detail-sheet.is-collapsed {
-  height: 34px;
-  border-top-color: var(--gray-200);
-}
-
-.detail-collapsed {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  width: 100%;
-  height: 100%;
-  padding: 0 var(--space-lg);
-  border: 0;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.detail-collapsed:hover {
-  background: var(--gray-200);
-}
-
-.detail-collapsed-title {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-serif);
-  font-size: 13px;
-  color: var(--gray-900);
-}
-
-.detail-collapsed-meta {
-  flex: none;
-  font-size: 11px;
-  color: var(--gray-400);
-}
-
-.detail-collapsed-toggle {
-  flex: none;
-  margin-left: auto;
-  color: var(--gray-400);
-  font-size: 14px;
-  line-height: 1;
-}
-
-.detail-collapsed:hover .detail-collapsed-toggle {
-  color: var(--gray-900);
-}
-
 @keyframes detail-sheet-rise {
   from {
     transform: translateY(100%);
