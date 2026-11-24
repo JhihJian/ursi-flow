@@ -1,0 +1,101 @@
+@config '../tailwind.config.cjs';
+
+/* 出版物式设计语言：衬线标题 + 等宽正文，纯灰度，直角，无阴影无渐变。
+   设计令牌与复用规则见 /data/web-style/ursi-style/。 */
+.mcp-web {
+  --c-base: 255 255 255;
+  --c-surface: 255 255 255;
+  --c-elevated: 229 229 229;
+  --c-line: 229 229 229;
+  --c-line-strong: 153 153 153;
+  --c-txt: 26 26 26;
+  --c-txt2: 102 102 102;
+  --c-txt3: 153 153 153;
+  --c-accent: 26 26 26;
+  --c-accent-2: 26 26 26;
+  --c-accent-hover: 0 0 0;
+  --c-accent-dim: 219 219 219;
+  --c-err: 180 60 60;
+  --c-ok: 102 102 102;
+
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  font: 13px/1.5 var(--font-mono);
+  color: rgb(var(--c-txt));
+  scrollbar-width: none;
+}
+
+/* 保留滚动能力，隐藏滚动条以维持出版物式版面。 */
+.mcp-web ::-webkit-scrollbar { display: none; }
+.mcp-web-portal { display: contents; }
+
+.mcp-web :where(*, *::before, *::after) {
+  box-sizing: border-box;
+  border: 0 solid;
+  --tw-ring-offset-width: 0px;
+  --tw-ring-offset-color: #fff;
+  --tw-ring-color: transparent;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-shadow: 0 0 #0000;
+}
+
+.mcp-web :where(h1, h2, h3, p, pre, ul, dl, dd, fieldset) { margin: 0; padding: 0; }
+.mcp-web :where(h1, h2, h3) { font-size: inherit; }
+/* 出版物式标题：衬线体。 */
+.mcp-web :where(h1, h2, h3) { font-family: var(--font-serif); }
+.mcp-web ul { list-style: none; }
+.mcp-web table { border-collapse: collapse; }
+.mcp-web a { color: inherit; text-decoration: inherit; }
+.mcp-web :where(button, input, select, textarea) { font: inherit; color: inherit; background: transparent; }
+.mcp-web button:not(:disabled) { cursor: pointer; }
+.mcp-web :focus-visible { outline: 2px solid rgb(var(--c-txt)); outline-offset: 2px; }
+
+/* 卡片面板：直角、灰边、无阴影。 */
+.mcp-web .panel {
+  min-width: 0;
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 0;
+  background: rgb(var(--c-surface));
+}
+
+/* 输入控件：直角、灰边，聚焦转黑边。 */
+.mcp-web :is(.input, .select, .search-input) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 0;
+  background: rgb(var(--c-surface));
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: rgb(var(--c-txt));
+}
+.mcp-web :is(.input, .select, .search-input):focus {
+  outline: none;
+  border-color: rgb(var(--c-txt));
+}
+
+.mcp-web .page-stack { display: flex; min-width: 0; flex-direction: column; gap: 20px; }
+.mcp-web .skeleton { border-radius: 0; background: rgb(var(--c-elevated)); }
+.mcp-web .scroll-area { scrollbar-width: none; overscroll-behavior: contain; }
+.mcp-web .app-icon { display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.mcp-web .app-switch-thumb { transition: transform .18s; }
+.mcp-web .app-switch-thumb[data-state='checked'] { transform: translateX(16px); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mcp-web .icon-spinner { animation: mcp-web-spin .85s linear infinite; }
+  @keyframes mcp-web-spin { to { transform: rotate(360deg); } }
+}
+@media (min-width: 1024px) {
+  .mcp-web .page-stack { flex: 1 0 auto; min-height: 0; }
+  .mcp-web .page-stack-fill { flex: 1 1 auto; overflow: hidden; }
+}
+@tailwind utilities;

@@ -1,0 +1,29 @@
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { font: 13px/1.5 "SF Mono", "Menlo", "Monaco", "Courier New", monospace; background: #fff; color: #1a1a1a; }
+
+.preview-shell { display: flex; flex-direction: column; height: 100dvh; }
+.preview-top { flex: none; background: #fff; border-bottom: 1px solid #e5e5e5; }
+.preview-top-inner {
+  width: min(100%, 74rem);
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 4vw, 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.5rem;
+}
+.preview-brand { font-family: Georgia, "Times New Roman", serif; font-weight: 600; font-size: 1rem; color: #1a1a1a; text-decoration: none; }
+.preview-nav { display: flex; flex-wrap: wrap; gap: 1.25rem; font-size: 12px; }
+.preview-nav a { color: #666; text-decoration: none; }
+.preview-nav a:hover { color: #1a1a1a; text-decoration: underline; }
+.preview-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: min(100%, 74rem);
+  margin-inline: auto;
+  padding: 1.5rem clamp(1rem, 4vw, 2rem);
+  display: flex;
+  flex-direction: column;
+}

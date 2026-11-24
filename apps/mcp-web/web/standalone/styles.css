@@ -1,0 +1,41 @@
+@config '../tailwind.config.cjs';
+
+:root {
+  --c-base: 255 255 255;
+  --c-accent: 26 26 26;
+  --c-accent-2: 26 26 26;
+  --c-accent-hover: 0 0 0;
+  --c-err: 180 60 60;
+  font: 13px/1.5 "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  background: rgb(var(--c-base));
+  color: #1a1a1a;
+}
+
+body { margin: 0; }
+.host-width { box-sizing: border-box; width: min(100%, 74rem); padding-inline: clamp(1rem, 4vw, 2rem); margin-inline: auto; }
+.host-skip:not(:focus) { position: fixed; clip-path: inset(50%); }
+.host-skip:focus { position: fixed; z-index: 100; inset: .5rem auto auto .5rem; padding: .5rem; background: #fff; }
+:where(.host-bar, .host-route-message, .host-skip) :focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }
+
+.host-top { background: #fff; border-bottom: 1px solid #e5e5e5; }
+.host-bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1.75rem; min-height: 4rem; }
+.host-brand { display: inline-flex; align-items: center; gap: .5rem; width: fit-content; color: #1a1a1a; font-family: Georgia, "Times New Roman", serif; font-size: 1rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.host-brand svg { color: rgb(var(--c-accent)); }
+.host-content { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - 4rem); padding-block: 1.75rem; }
+.host-route-message { overflow-wrap: anywhere; }
+.host-route-message button { margin-right: 1rem; }
+
+.host-login { box-sizing: border-box; min-height: 100dvh; justify-content: center; align-items: center; padding: 1rem; }
+.host-login .host-login-form { width: min(100%, 25rem); display: grid; gap: 1.25rem; padding: clamp(1.25rem, 6vw, 2rem); }
+.host-login h1 { font-size: 1.375rem; line-height: 1.25; font-weight: 600; }
+.host-field { display: grid; min-width: 0; gap: .375rem; }
+.host-error { color: rgb(var(--c-err)); overflow-wrap: anywhere; }
+.host-muted { color: #666666; font-size: .875rem; }
+
+.mcp-web [role="status"].fixed, .mcp-web [role="alert"].fixed { max-width: calc(100vw - 2rem); overflow-wrap: anywhere; }
+
+@media (max-width: 36rem) {
+  .host-bar { grid-template-columns: 1fr auto; gap: .5rem; padding-block: .5rem; }
+  .host-content { min-height: 0; padding-block: 1rem; }
+  .mcp-web :is(.input, .select, .search-input) { font-size: 16px; }
+}
