@@ -1,9 +1,12 @@
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
+import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
-import { cx, readTaskDrag } from '@/lib/ui'
+import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
-import { useState } from 'react'
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+
+type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
 
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
 
@@ -26,8 +29,16 @@ function StatusTarget({ status, count }: { status: TaskStatus; count: number }) 
   )
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({
+  task,
+  openMenu,
+}: {
+  task: Task
+  openMenu: OpenMenu
+}) {
   const openTask = useTodoStore((state) => state.openTask)
+  const openNewTask = useTodoStore((state) => state.openNewTask)
+  const removeTask = useTodoStore((state) => state.removeTask)
   const setDetailConfirmDelete = useTodoStore((state) => state.setDetailConfirmDelete)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
@@ -48,15 +59,47 @@ function TaskRow({ task }: { task: Task }) {
     }
   }
 
+  const menuItems: MenuItem[] = [
+    { label: 'New task', onSelect: openNewTask },
+    {
+      label: 'Delete task',
+      danger: true,
+      onSelect: () => {
+        const confirmItems: MenuItem[] = [
+          {
+            label: 'Delete task',
+            danger: true,
+            onSelect: () => {
+              void removeTask(task.id).catch((error) =>
+                alert(`Failed to delete task: ${errorMessage(error)}`),
+              )
+            },
+          },
+          { label: 'Cancel', onSelect: () => {} },
+        ]
+        const rect = document
+          .querySelector(`[data-task-id="${task.id}"]`)
+          ?.getBoundingClientRect()
+        openMenu(rect?.left ?? 0, (rect?.bottom ?? 0) + 4, confirmItems, `Delete "${task.title}"?`)
+      },
+    },
+  ]
+
   return (
     <tr
       ref={setNodeRef}
+      data-task-id={task.id}
       className={cx(
         `status-${task.status}`,
         selected && 'is-selected',
         isDragging && 'is-dragging',
       )}
       onClick={() => openTask(task)}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        openMenu(event.clientX, event.clientY, menuItems)
+      }}
     >
       <td className="col-priority">
         <span
@@ -121,13 +164,27 @@ export function TaskSection() {
   const tasksLoading = useTodoStore((state) => state.tasksLoading)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
 
+  const openNewTask = useTodoStore((state) => state.openNewTask)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+
   const counts = statuses.reduce<Record<TaskStatus, number>>((result, status) => {
     result[status] = tasks.filter((task) => task.status === status).length
     return result
   }, {} as Record<TaskStatus, number>)
 
   return (
-    <section className="tasks-section">
+    <section
+      className="tasks-section"
+      onContextMenu={(event) => {
+        // 行右键自己处理；落在列表空白处时只给新建任务。
+        if (!selectedProjectId) return
+        event.preventDefault()
+        openMenu(event.clientX, event.clientY, [
+          { label: 'New task', onSelect: openNewTask },
+        ])
+      }}
+    >
       <div className="tasks-header">
         <h3 className="section-title">Tasks</h3>
         {selectedProjectId ? (
@@ -166,9 +223,12 @@ export function TaskSection() {
               </td>
             </tr>
           ) : null}
-          {!tasksLoading ? tasks.map((task) => <TaskRow key={task.id} task={task} />) : null}
+          {!tasksLoading
+            ? tasks.map((task) => <TaskRow key={task.id} task={task} openMenu={openMenu} />)
+            : null}
         </tbody>
       </table>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </section>
   )
 }

@@ -22,7 +22,6 @@ function ProjectItem({
   openMenu: OpenMenu
 }) {
   const selectProject = useTodoStore((state) => state.selectProject)
-  const openNewTask = useTodoStore((state) => state.openNewTask)
   const startEditProject = useTodoStore((state) => state.startEditProject)
   const startCreateProject = useTodoStore((state) => state.startCreateProject)
   const removeProject = useTodoStore((state) => state.removeProject)
@@ -35,14 +34,6 @@ function ProjectItem({
   const open = project.task_count.pending + project.task_count.in_progress + project.task_count.blocked
 
   const menuItems: MenuItem[] = [
-    {
-      label: 'New task',
-      onSelect: () => {
-        void selectProject(project.id)
-          .then(() => openNewTask())
-          .catch((error) => alert(errorMessage(error)))
-      },
-    },
     { label: 'New project', onSelect: startCreateProject },
     { label: 'Edit project', onSelect: () => startEditProject(project.id) },
     {
