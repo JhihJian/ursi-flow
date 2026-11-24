@@ -138,30 +138,16 @@ export type DesktopTodoItem = {
   title: string;
   status: BlockStatus;
   dependencyBlockers: string[];
-  dispatchable: boolean;
-  sharedResources: string[];
   reviewGate: ReviewGateHint | null;
 };
 
 export type DesktopTodoGroups = Record<DesktopTodoGroupName, DesktopTodoItem[]>;
 
-export type DesktopProjectExecutionPhase = {
-  phaseIndex: number;
+export type TodoPhase = {
   canvasId: string;
   canvasName: string;
-  taskCount: number;
-  readyQueue: DesktopTodoItem[];
-  parallelReadyQueue: DesktopTodoItem[];
-  sequentialReadyQueue: DesktopTodoItem[];
+  readyItems: DesktopTodoItem[];
   blockedCount: number;
-  inProgressCount: number;
-  completedCount: number;
-};
-
-export type DesktopProjectExecutionPlan = {
-  phases: DesktopProjectExecutionPhase[];
-  readyQueue: DesktopTodoItem[];
-  notes: string[];
 };
 
 export type DesktopCanvasMapLayout = {

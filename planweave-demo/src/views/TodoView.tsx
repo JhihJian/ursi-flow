@@ -1,4 +1,4 @@
-import type { DesktopProjectExecutionPlan, DesktopTodoGroups } from "@/model";
+import type { DesktopTodoGroups, TodoPhase } from "@/model";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -9,7 +9,7 @@ import type { createTranslator } from "../i18n";
 
 type TodoViewProps = {
   assigneeIndex?: AssigneeSurfaceIndex | null;
-  executionPlan: DesktopProjectExecutionPlan | null;
+  phases: TodoPhase[];
   handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   t: ReturnType<typeof createTranslator>;
   todoGroups: DesktopTodoGroups | null;
@@ -56,12 +56,12 @@ const toneDot: Record<Tone, string> = {
 
 export function TodoView({
   assigneeIndex = null,
-  executionPlan,
+  phases,
   handleBlockSelect,
   t,
   todoGroups
 }: TodoViewProps) {
-  const readyCount = executionPlan?.readyQueue.length ?? todoGroups?.ready.length ?? 0;
+  const readyCount = todoGroups?.ready.length ?? 0;
 
   const statusLabel = (status: StatusKey) =>
     t(
@@ -73,7 +73,7 @@ export function TodoView({
     count: todoGroups?.[status].length ?? 0
   }));
   const distributionTotal = distribution.reduce((total, item) => total + item.count, 0);
-  const note = executionPlan?.notes[0] ?? `${t("readyQueue")}: ${readyCount}`;
+  const phaseOrder = phases.map(({ canvasName }) => canvasName).join(" → ");
 
   return (
     <ScrollArea aria-label={t("todo")} className="h-full" data-testid="todo-view" role="region">
@@ -85,7 +85,7 @@ export function TodoView({
                 <span className="font-mono text-6xl leading-none font-semibold tracking-tight tabular-nums">
                   {readyCount}
                 </span>
-                <span className="pb-1.5 text-sm text-muted-foreground">{t("readyQueue")}</span>
+                <span className="pb-1.5 text-sm text-muted-foreground">{t("readyItems")}</span>
               </div>
             </div>
             <div className="flex flex-col justify-center gap-4 p-6">
@@ -99,26 +99,25 @@ export function TodoView({
                   </div>
                 ))}
               </div>
-              <p className="max-w-3xl text-sm text-muted-foreground">{note}</p>
+              {phaseOrder && <p className="max-w-3xl text-sm text-muted-foreground">{phaseOrder}</p>}
             </div>
           </div>
         </section>
 
-        {executionPlan ? (
+        {phases.length > 0 ? (
           <section className="animate-in fade-in slide-in-from-bottom-2 rounded-md border border-border/80 bg-surface-raised p-4 shadow-sm delay-75 duration-500">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-heading text-base font-semibold">{t("canvasPhases")}</h2>
-                <p className="text-xs text-muted-foreground">{executionPlan.notes[0]}</p>
+                <p className="text-xs text-muted-foreground">{phaseOrder}</p>
               </div>
               <Badge className="h-6 font-mono tabular-nums" variant="secondary">
-                {t("readyQueue")}: {executionPlan.readyQueue.length}
+                {t("readyItems")}: {readyCount}
               </Badge>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {executionPlan.phases.map((phase) => {
-                const dispatchable = phase.readyQueue.filter((item) => item.dispatchable).length;
-                const notDispatchable = phase.readyQueue.length - dispatchable;
+              {phases.map((phase, index) => {
+                const ready = phase.readyItems.length;
                 const blocked = phase.blockedCount;
                 return (
                   <div
@@ -128,38 +127,32 @@ export function TodoView({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                          {t("phase")} {phase.phaseIndex}
+                          {t("phase")} {index + 1}
                         </div>
                         <div className="mt-0.5 truncate text-sm font-semibold">
                           {phase.canvasName}
                         </div>
                       </div>
                       <Badge className="shrink-0 font-mono tabular-nums" variant="outline">
-                        {t("ready")}: {phase.readyQueue.length}
+                        {t("ready")}: {ready}
                       </Badge>
                     </div>
                     <div className="mt-3">
                       <SegmentedBar
                         items={[
-                          { status: "dispatchable", count: dispatchable, tone: "emerald" },
-                          { status: "not-dispatchable", count: notDispatchable, tone: "amber" },
-                          { status: "blocked", count: blocked, tone: "rose" }
+                          { status: "ready", count: ready },
+                          { status: "blocked", count: blocked }
                         ]}
-                        total={dispatchable + notDispatchable + blocked}
+                        total={ready + blocked}
                       />
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                        <LegendItem count={dispatchable} label={t("dispatchable")} tone="emerald" />
-                        <LegendItem
-                          count={notDispatchable}
-                          label={t("notDispatchable")}
-                          tone="amber"
-                        />
+                        <LegendItem count={ready} label={t("ready")} tone="emerald" />
                         <LegendItem count={blocked} label={t("blocked")} tone="rose" />
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {phase.readyQueue.length > 0 ? (
-                        phase.readyQueue.map((item) => (
+                      {ready > 0 ? (
+                        phase.readyItems.map((item) => (
                           <Button
                             className="h-7 font-mono"
                             key={`${item.canvasId}:${item.ref}`}
@@ -191,12 +184,7 @@ export function TodoView({
                   labels={{
                     assignee: t("assignee"),
                     dependencyBlockers: t("dependencyBlockers"),
-                    dispatchability: t("dispatchability"),
-                    dispatchable: t("dispatchable"),
-                    notDispatchable: t("notDispatchable"),
                     noBlockers: t("noBlockers"),
-                    noSharedResources: t("noSharedResources"),
-                    sharedResources: t("sharedResources"),
                     reviewExecutor: t("reviewExecutor"),
                     reviewGate: t("reviewGate"),
                     reviewNeedsChangesReturnsTo: t("reviewNeedsChangesReturnsTo"),
@@ -218,7 +206,7 @@ function SegmentedBar({
   items,
   total
 }: {
-  items: { status: StatusKey | string; count: number; tone?: Tone }[];
+  items: { status: StatusKey; count: number }[];
   total: number;
 }) {
   return (
@@ -230,7 +218,7 @@ function SegmentedBar({
               <div
                 className={cn(
                   "h-full transition-[width] duration-700 ease-out",
-                  toneBar[item.tone ?? statusTone[item.status as StatusKey]]
+                  toneBar[statusTone[item.status]]
                 )}
                 key={item.status}
                 style={{ width: `${(item.count / total) * 100}%` }}

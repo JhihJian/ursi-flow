@@ -73,8 +73,6 @@ function PreviewDialog({ preview, graph, items, t, onClose, onCanvasOpen }: {
         <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2 rounded-md border border-border bg-surface-raised p-3">
           <dt>{t("status")}</dt><dd><Badge variant="secondary">{block.status}</Badge></dd>
           <dt>{t("dependencyBlockers")}</dt><dd className="break-all">{block.dependencyBlockers.join(", ") || t("noBlockers")}</dd>
-          <dt>{t("dispatchability")}</dt><dd>{block.dispatchable ? t("dispatchable") : t("notDispatchable")}</dd>
-          <dt>{t("sharedResources")}</dt><dd>{block.sharedResources.join(", ") || t("noSharedResources")}</dd>
           {block.reviewGate && <><dt>{t("reviewGate")}</dt><dd>{block.reviewGate.requiredReason}</dd></>}
         </dl>
       </>}
@@ -156,7 +154,7 @@ export function App() {
       </>}>
       {view === "graph" ? <TaskGraphView graph={graph} items={data.items} focusCanvasId={activeCanvas?.canvasId ?? null}
           selectedTaskId={selectedTaskId} focusRevision={focusRevision} dark={dark} onTaskSelect={focusGraph} onBlockOpen={openBlock} t={t} />
-        : view === "todo" ? <TodoView t={t} assigneeIndex={assignees} todoGroups={data.todoGroups} executionPlan={data.executionPlan} handleBlockSelect={openBlock} />
+        : view === "todo" ? <TodoView t={t} assigneeIndex={assignees} todoGroups={data.todoGroups} phases={data.phases} handleBlockSelect={openBlock} />
         : <CanvasMapView dark={dark} executorOptions={executorOptions} packageExecutorNames={["reviewer"]} selectedProject={project} t={t}
             handleOpenBlockInspector={openBlock} handleRevealTaskCanvas={openPackage} handleRenameTaskCanvas={rename}
             onCanvasOpen={openCanvas} onTaskPanelSelect={focusGraph} onAgentPromptCopied={promptCopied} refreshProjectDerivedState={refreshGraph} setError={setError} />}

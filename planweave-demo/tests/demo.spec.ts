@@ -30,6 +30,24 @@ test("TODO opens phased and grouped items and preserves scroll on close", async 
   expect(await scroll.evaluate((element) => element.scrollTop)).toBe(previous);
 });
 
+test("TODO limits phase summaries and block details to task tracking", async ({ page }) => {
+  await page.goto("/#/todo");
+  const removedLabels = /dispatch|shared resources|派发|共享资源/i;
+  const todo = page.getByTestId("todo-view");
+  const phases = page.getByRole("heading", { name: "Canvas phases" }).locator("xpath=ancestor::section[1]");
+  await expect(phases.getByText("Ready items: 3", { exact: true })).toBeVisible();
+  await expect(phases.getByText("blocked", { exact: true })).toHaveCount(4);
+  await expect(todo).not.toContainText(removedLabels);
+  await expect(todo.getByText("Mia Chen", { exact: true })).toBeVisible();
+  await expect(todo.getByText("Required review", { exact: true })).toBeVisible();
+  await phases.getByRole("button", { name: "workspace/review", exact: true }).click();
+  const detail = page.getByRole("dialog");
+  await expect(detail).toHaveAccessibleName("Review workspace integration");
+  await expect(detail).toContainText("Dependency blockers");
+  await expect(detail).toContainText("Review gate");
+  await expect(detail).not.toContainText(removedLabels);
+});
+
 test("map inspects dependencies and follows the blocked block link", async ({ page }) => {
   await page.goto("/#/map");
   await expect(page.locator(".react-flow__minimap")).toBeVisible();

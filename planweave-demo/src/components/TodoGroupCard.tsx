@@ -16,12 +16,7 @@ import { CompactAssigneeChipView } from "../team/CompactAssigneeChip";
 type TodoGroupCardLabels = {
   assignee: string;
   dependencyBlockers: string;
-  dispatchability: string;
-  dispatchable: string;
-  notDispatchable: string;
   noBlockers: string;
-  noSharedResources: string;
-  sharedResources: string;
   reviewExecutor: string;
   reviewGate: string;
   reviewNeedsChangesReturnsTo: string;
@@ -117,21 +112,16 @@ export function TodoGroupCard({
             type="button"
             onClick={() => onSelect(item)}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <div className="truncate text-sm font-medium group-hover:text-foreground">
-                    {item.title}
-                  </div>
-                  {chip ? <CompactAssigneeChipView chip={chip} label={labels.assignee} /> : null}
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <div className="min-w-0 truncate text-sm font-medium group-hover:text-foreground">
+                  {item.title}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                  {item.taskId} / {item.blockId}
-                </div>
+                {chip ? <CompactAssigneeChipView chip={chip} label={labels.assignee} /> : null}
               </div>
-              <Badge className="shrink-0" variant={item.dispatchable ? "secondary" : "destructive"}>
-                {item.dispatchable ? labels.dispatchable : labels.notDispatchable}
-              </Badge>
+              <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                {item.taskId} / {item.blockId}
+              </div>
             </div>
             <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md bg-surface-muted/70 p-2 text-muted-foreground">
               <span className="font-medium text-foreground/70">{labels.dependencyBlockers}</span>
@@ -139,14 +129,6 @@ export function TodoGroupCard({
                 {item.dependencyBlockers.length
                   ? item.dependencyBlockers.join(", ")
                   : labels.noBlockers}
-              </span>
-              <span className="font-medium text-foreground/70">{labels.dispatchability}</span>
-              <span>{item.dispatchable ? labels.dispatchable : labels.notDispatchable}</span>
-              <span className="font-medium text-foreground/70">{labels.sharedResources}</span>
-              <span className="truncate font-mono">
-                {item.sharedResources.length
-                  ? item.sharedResources.join(", ")
-                  : labels.noSharedResources}
               </span>
               {item.reviewGate ? (
                 <>

@@ -1,7 +1,7 @@
 import type {
   DesktopCanvasExecutionPolicy, DesktopCanvasGraphViewModel, DesktopCanvasHealthBlockedBlock,
-  DesktopCanvasNodeViewModel, DesktopProjectExecutionPlan, DesktopProjectSummary,
-  DesktopTodoGroupName, DesktopTodoGroups, DesktopTodoItem
+  DesktopCanvasNodeViewModel, DesktopProjectSummary,
+  DesktopTodoGroupName, DesktopTodoGroups, DesktopTodoItem, TodoPhase
 } from "./model";
 import type { AssigneeSurfaceIndex } from "./assignees";
 
@@ -46,8 +46,6 @@ export function readDemoProjection(graph: DesktopCanvasGraphViewModel) {
     const item: DesktopTodoItem = {
       canvasId, canvasName: names.get(canvasId), ref: `${taskId}/${blockId}`, taskId, blockId, title,
       status: group === "implemented" ? "completed" : group, dependencyBlockers,
-      dispatchable: group === "ready" && blockId !== "review",
-      sharedResources: taskId === "workspace" ? ["workspace-ui"] : [],
       reviewGate: blockId === "review" ? {
         isGate: true, required: true, requiredReason: "Required before release verification.", executorRole: "reviewer",
         downstreamTasks: ["quality"], unlocksTasks: ["quality"], needsChangesReturnsTo: ["workspace/editor"]
@@ -56,21 +54,13 @@ export function readDemoProjection(graph: DesktopCanvasGraphViewModel) {
     todoGroups[group].push(item);
     return item;
   });
-  const phases = graph.canvases.map(({ canvasId, title }, index) => {
-    const scoped = items.filter((item) => item.canvasId === canvasId);
-    const readyQueue = scoped.filter((item) => item.status === "ready");
-    return { phaseIndex: index + 1, canvasId, canvasName: title,
-      taskCount: new Set(scoped.map(({ taskId }) => taskId)).size, readyQueue,
-      parallelReadyQueue: readyQueue.filter((item) => !item.reviewGate),
-      sequentialReadyQueue: readyQueue.filter((item) => item.reviewGate),
-      blockedCount: scoped.filter(({ status }) => ["blocked", "diverged", "needs_changes"].includes(status)).length,
-      inProgressCount: scoped.filter(({ status }) => status === "in_progress").length,
-      completedCount: scoped.filter(({ status }) => status === "completed").length };
-  });
-  const executionPlan: DesktopProjectExecutionPlan = {
-    phases, readyQueue: todoGroups.ready, notes: ["Foundation → Delivery → Verification → Release"]
-  };
-  return { items, todoGroups, executionPlan };
+  const phases: TodoPhase[] = graph.canvases.map(({ canvasId, title }) => ({
+    canvasId,
+    canvasName: title,
+    readyItems: todoGroups.ready.filter((item) => item.canvasId === canvasId),
+    blockedCount: todoGroups.blocked.filter((item) => item.canvasId === canvasId).length
+  }));
+  return { items, todoGroups, phases };
 }
 
 export function createGraph(currentCanvases: DesktopCanvasNodeViewModel[]): DesktopCanvasGraphViewModel {
