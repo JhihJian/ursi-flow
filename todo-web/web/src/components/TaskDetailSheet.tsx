@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
-import { renderMarkdown } from '@/lib/markdown'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
 const priorities: Priority[] = ['high', 'medium', 'low']
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done', 'cancelled']
+
+const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
 const HEIGHT_KEY = 'todo-web.detail-height'
 const DEFAULT_HEIGHT = 360
@@ -236,13 +237,15 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
               onChange={(event) => setNote(event.target.value)}
             />
           ) : (
-            <div
-              className="detail-note-preview markdown-body"
-              // renderMarkdown 先转义 HTML，只生成受控标签。
-              dangerouslySetInnerHTML={{
-                __html: note.trim() ? renderMarkdown(note) : '<p class="detail-note-empty">Nothing written yet</p>',
-              }}
-            />
+            <div className="detail-note-preview">
+              {note.trim() ? (
+                <Suspense fallback={<p className="detail-note-empty">Rendering…</p>}>
+                  <MarkdownPreview source={note} />
+                </Suspense>
+              ) : (
+                <p className="detail-note-empty">Nothing written yet</p>
+              )}
+            </div>
           )}
         </div>
       </div>

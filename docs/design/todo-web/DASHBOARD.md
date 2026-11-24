@@ -63,7 +63,9 @@ Zustand store 保存项目、当前任务、活动任务、三份周期统计、
 
 详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（状态、优先级、标签、时间、工具按钮）、Markdown 正文、底部工具条。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。
 
-正文用 `textarea` 书写，`Preview` 切到渲染稿。渲染走 [`src/lib/markdown.ts`](../../../todo-web/web/src/lib/markdown.ts)：先转义 HTML，再按块和行内规则生成标签，所以备注里写原始 HTML 只会显示成文本，链接只接受 `http(s)`。渲染器不引入第三方依赖，覆盖标题、段落、粗斜体、删除线、行内代码、围栏代码、有序/无序列表、引用、分隔线和链接。任务模型只有 `result` 一个自由文本字段，正文即写在这里；状态切到 `done` 且正文为空时，底部提示 `Result required to finish`，保存会被拦下，规则与 `todo_core` 状态机一致。
+正文用 `textarea` 书写，`Preview` 切到渲染稿。渲染交给 `react-markdown` 配 `remark-gfm`，支持表格、任务列表、删除线、自动链接等 GFM 语法。这两组依赖单独放在 `MarkdownPreview` 模块里，用 `React.lazy` 在第一次切到预览时加载，主包因此维持在 350KB 左右，Markdown 相关代码另成 168KB 分块。渲染时只挂 `remarkPlugins`，不加 `rehype-raw`，所以备注里的原始 HTML 会作为文本显示，不会被执行。
+
+任务模型只有 `result` 一个自由文本字段，正文即写在这里；状态切到 `done` 且正文为空时，底部提示 `Result required to finish`，保存会被拦下，规则与 `todo_core` 状态机一致。
 
 ### 调整高度
 

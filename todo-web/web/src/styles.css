@@ -1267,6 +1267,56 @@ button {
 .markdown-body a {
   color: var(--gray-900);
   text-decoration: underline;
+  word-break: break-word;
+}
+
+.markdown-body del {
+  color: var(--gray-400);
+}
+
+.markdown-body table {
+  margin: 0 0 var(--space-sm);
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  text-align: left;
+}
+
+.markdown-body th {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--gray-600);
+  background: var(--gray-200);
+}
+
+.markdown-body .contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.markdown-body .task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  list-style: none;
+}
+
+.markdown-body .task-list-item input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--gray-900);
+}
+
+.markdown-body sup {
+  font-size: 10px;
+}
+
+.markdown-body img {
+  max-width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
