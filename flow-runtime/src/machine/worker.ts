@@ -1,6 +1,6 @@
 import { PlatformAgent, PlatformClient, type ExecutorRef, type PlatformConfig } from "../executor-adapters/platform.ts";
 import { executorNames } from "./runs.ts";
-import { AttemptUnconfirmed, AwaitingInput } from "../core/contracts/extensions.ts";
+import { AttemptUnconfirmed, AwaitingInput } from "ursi-flow-core/engine";
 import { join } from "node:path";
 import {
 	AgentRunModel,
@@ -9,7 +9,7 @@ import {
 	createFlowCoordinator,
 	loadFlow,
 } from "../index.ts";
-import type { FlowVariables } from "../core/contracts/types.ts";
+import type { FlowVariables } from "ursi-flow-core/engine";
 import type { PiProviderConfig } from "../executor-adapters/local-pi/sdk.ts";
 
 function localAgent(provider: PiProviderConfig, dir: string) {

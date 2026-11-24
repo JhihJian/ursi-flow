@@ -3,7 +3,7 @@ import type {
 	CommandExecutor,
 	CommandRequest,
 	CommandResult,
-} from "../../core/contracts/types.ts";
+} from "ursi-flow-core/engine";
 export class ProcessCommandExecutor implements CommandExecutor {
 	async execute(request: CommandRequest): Promise<CommandResult> {
 		return await new Promise((resolve, reject) => {

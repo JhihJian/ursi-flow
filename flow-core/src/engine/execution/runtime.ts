@@ -7,9 +7,9 @@ import {
 	RouteNotFoundError,
 	validateOutcomeVariables,
 	VariableReferenceError,
-} from "ursi-flow-core/runtime";
+} from "../../rules.ts";
 import { AttemptUnconfirmed, AwaitingInput } from "../contracts/extensions.ts";
-import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
+import { normalizeAgentCapabilities } from "../../agent-capabilities.ts";
 import type {
 	AgentRunExecutor,
 	FlowExecutionExtensions,
@@ -39,7 +39,7 @@ import type {
 	RunRecoveryRecord,
 	RunStore,
 } from "../contracts/types.ts";
-import { validateVariables } from "../contracts/variables.ts";
+import { validateVariables } from "../../variables.ts";
 import {
 	resolveCommandResources,
 	resolvePromptResources,
@@ -49,7 +49,7 @@ import {
 	FLOW_REFERENCE_SUCCESS_RESULT,
 	renderCommandRequest,
 	renderTemplate,
-} from "../definition/parser.ts";
+} from "../../parser.ts";
 import { snapshotFlowDefinition } from "../definition/snapshot.ts";
 import { runtimeToolsForNode } from "./preflight.ts";
 

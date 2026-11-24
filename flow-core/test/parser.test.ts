@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { validateVariableDeclarations } from "../src/core/contracts/variables.ts";
+import { validateVariableDeclarations } from "../src/variables.ts";
 import {
 	FlowSyntaxError,
 	parseFlow,
 	renderCommandRequest,
 	renderTemplate,
-} from "../src/core/definition/parser.ts";
+} from "../src/parser.ts";
 
 const table = "| 变量 | 含义 |\n| --- | --- |\n| 问题 | 需要处理的问题 |";
 const serial = (

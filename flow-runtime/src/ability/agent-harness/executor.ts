@@ -1,11 +1,11 @@
-import { normalizeAgentCapabilities } from "../../core/contracts/agent-capabilities.ts";
-import { validateAgentIdentity } from "../../core/contracts/agent-identity.ts";
+import { normalizeAgentCapabilities } from "ursi-flow-core/engine";
+import { validateAgentIdentity } from "ursi-flow-core/engine";
 import type {
 	AgentHarnessExtensions,
 	AgentNodeExecutionRequest,
 	AgentRunExecutor,
 	FlowExecutionExtensions,
-} from "../../core/contracts/extensions.ts";
+} from "ursi-flow-core/engine";
 import type {
 	AgentAssemblyIdentity,
 	AgentAssemblyRequest,
@@ -17,9 +17,9 @@ import type {
 	FlowPackage,
 	NodeOutcome,
 	NodeSession,
-} from "../../core/contracts/types.ts";
-import { preflightFlow } from "../../core/execution/preflight.ts";
-import { RuntimeOutcomeBridge } from "../runtime-tools/bridge.ts";
+} from "ursi-flow-core/engine";
+import { preflightFlow } from "ursi-flow-core/engine";
+import { RuntimeOutcomeBridge } from "ursi-flow-core/engine";
 
 type Binding = { agent: AgentHandle; bridge: RuntimeOutcomeBridge };
 type Restoration = {

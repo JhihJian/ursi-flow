@@ -4,12 +4,12 @@ import { mkdir, readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { join } from "node:path";
 import { Catalog, id, optional, readJson, save } from "./catalog.ts";
-import { validateVariables } from "../core/contracts/variables.ts";
+import { validateVariables } from "ursi-flow-core/engine";
 import { BusinessError, invalid } from "./errors.ts";
-import { loadFlow } from "../core/definition/flow-loader.ts";
-import type { FlowDefinition } from "../core/contracts/types.ts";
+import { loadFlow } from "ursi-flow-core/engine";
+import type { FlowDefinition } from "ursi-flow-core/engine";
 import { createFlowExecutionExtensions } from "../executor-adapters/local-pi/runtime.ts";
-import { InMemoryRunStore } from "../core/state/memory-store.ts";
+import { InMemoryRunStore } from "ursi-flow-core/engine";
 import { PlatformClient, PlatformAgent, parseExecutorRef, platformConfig, type ExecutorRef, type PlatformConfig } from "../executor-adapters/platform.ts";
 import type { PiProviderConfig } from "../executor-adapters/local-pi/sdk.ts";
 

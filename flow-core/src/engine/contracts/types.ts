@@ -7,7 +7,7 @@ import type {
 	FlowDestination,
 	FlowValue,
 	FlowVariables,
-} from "ursi-flow-core/runtime";
+} from "../../types.ts";
 
 export type {
 	AgentAction,
@@ -28,7 +28,7 @@ export type {
 	FlowVariables,
 	ParallelStart,
 	TemplateContext,
-} from "ursi-flow-core/runtime";
+} from "../../types.ts";
 
 /** Host-resolved identity of a profile-backed Agent assembly. */
 export interface AgentAssemblyIdentity {

@@ -10,9 +10,9 @@ import type {
 	CommandRequest,
 	CommandResult,
 	UnifiedMessage,
-} from "../src/core/contracts/types.ts";
-import { loadFlow } from "../src/core/definition/flow-loader.ts";
-import { InMemoryRunStore } from "../src/core/state/memory-store.ts";
+} from "ursi-flow-core/engine";
+import { loadFlow } from "ursi-flow-core/engine";
+import { InMemoryRunStore } from "ursi-flow-core/engine";
 import {
 	createTestAgentModel,
 	createTestCoordinator,

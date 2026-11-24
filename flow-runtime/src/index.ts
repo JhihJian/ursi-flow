@@ -1,4 +1,4 @@
-export * from './core/index.ts';
+export * from 'ursi-flow-core/engine';
 export { PiSdkHarness, validateProviderConfig, PROVIDER_APIS, THINKING_LEVELS } from './executor-adapters/local-pi/sdk.ts';
 export type { PiProviderConfig, ProviderApi, ThinkingLevel } from './executor-adapters/local-pi/sdk.ts';
 export { AgentRunModel } from './ability/agent-harness/executor.ts';

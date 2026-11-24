@@ -1,6 +1,6 @@
 import type { FileHandle } from 'node:fs/promises';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
-import type { RuntimeOutcomeBridge } from '../ability/runtime-tools/bridge.ts';
+import type { RuntimeOutcomeBridge } from "ursi-flow-core/engine";
 import { Type } from 'typebox';
 import { authorize, record, type Policy } from './policy.ts';
 import { listInputs, readInput } from './session-files.ts';

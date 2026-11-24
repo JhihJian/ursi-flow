@@ -1,7 +1,7 @@
 import type {
 	AgentRunExecutor,
 	FlowExecutionExtensions,
-} from "../../core/contracts/extensions.ts";
+} from "ursi-flow-core/engine";
 import type {
 	CommandExecutor,
 	FlowDefinition,
@@ -10,8 +10,8 @@ import type {
 	FlowPackage,
 	FlowResourceContext,
 	RunStore,
-} from "../../core/contracts/types.ts";
-import { createFlowRuntime, type FlowCoordinator } from "../../core/runtime.ts";
+} from "ursi-flow-core/engine";
+import { createFlowRuntime, type FlowCoordinator } from "ursi-flow-core/engine";
 import { ProcessCommandExecutor } from "./process-command.ts";
 
 export { JsonFileRunStore } from "./json-file-store.ts";

@@ -1,4 +1,4 @@
-import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
+import { normalizeAgentCapabilities } from "../../agent-capabilities.ts";
 import type {
 	AgentHarnessExtensions,
 	FlowExecutionExtensions,
