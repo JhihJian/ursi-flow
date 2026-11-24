@@ -12,6 +12,7 @@ const priorities: Priority[] = ['high', 'medium', 'low']
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done', 'cancelled']
 
 const HEIGHT_KEY = 'todo-web.detail-height'
+const COLLAPSED_KEY = 'todo-web.detail-collapsed'
 const DEFAULT_HEIGHT = 360
 const MIN_HEIGHT = 200
 /** 面板上方至少留给任务列表的高度。 */
@@ -41,6 +42,9 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [note, setNote] = useState(task?.result ?? '')
   const [copied, setCopied] = useState(false)
   const [height, setHeight] = useState(readStoredHeight)
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSED_KEY) === '1',
+  )
 
   const sheetRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -119,6 +123,14 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     }
   }
 
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
+      return next
+    })
+  }
+
   const save = () => {
     const trimmed = title.trim()
     if (!trimmed) {
@@ -146,6 +158,34 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       workspace: workspace.trim() || null,
       sessionId: sessionId.trim() || null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
+  }
+
+  if (collapsed) {
+    return (
+      <section
+        ref={sheetRef}
+        className="detail-sheet is-collapsed"
+        role="dialog"
+        aria-modal="false"
+        aria-label={detail.mode === 'new' ? 'New task' : 'Task details'}
+      >
+        <button
+          type="button"
+          className="detail-collapsed"
+          title="Expand task details"
+          aria-expanded={false}
+          onClick={toggleCollapsed}
+        >
+          <span className="detail-collapsed-title">{title.trim() || 'Untitled task'}</span>
+          <span className="detail-collapsed-meta">
+            {status} · {priority}
+          </span>
+          <span className="detail-collapsed-toggle" aria-hidden="true">
+            ⌃
+          </span>
+        </button>
+      </section>
+    )
   }
 
   return (
@@ -192,6 +232,16 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
               onClick={() => void copyAsMarkdown()}
             >
               {copied ? '✓' : '⧉'}
+            </button>
+            <button
+              type="button"
+              className="detail-tool"
+              title="Collapse"
+              aria-label="Collapse task details"
+              aria-expanded
+              onClick={toggleCollapsed}
+            >
+              ⌄
             </button>
           </div>
         </div>
