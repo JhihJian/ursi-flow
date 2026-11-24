@@ -1,5 +1,5 @@
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/ui'
 import { ContentRail } from './ContentRail'
 import { ProjectEditorSheet } from './ProjectEditorSheet'
@@ -10,27 +10,16 @@ import { TaskSection } from './TaskSection'
 const SIDEBAR_COLLAPSED_SIZE = 32
 const CONTENT_COLLAPSED_SIZE = 32
 const TASKS_COLLAPSED_KEY = 'todo-web.tasks-collapsed'
-const FULL_PANELS = ['projects', 'content']
-const COLLAPSED_PANELS = ['projects', 'content', 'rest']
 
 export function Workspace() {
+  const layout = useDefaultLayout({ id: 'todo-web.columns' })
   const sidebarRef = usePanelRef()
-  const contentRef = usePanelRef()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [contentCollapsed, setContentCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
   const [tasksCollapsed, setTasksCollapsed] = useState(
     () => localStorage.getItem(TASKS_COLLAPSED_KEY) === '1',
   )
   const lastExpandedWidth = useRef(240)
-
-  // 折叠任务列表时组里多一块空白面板接住剩余宽度，否则布局无法收起内容栏。
-  const layout = useDefaultLayout({
-    id: 'todo-web.columns',
-    panelIds: useMemo(
-      () => (tasksCollapsed ? COLLAPSED_PANELS : FULL_PANELS),
-      [tasksCollapsed],
-    ),
-  })
 
   const toggleTasks = (collapsed: boolean) => {
     setTasksCollapsed(collapsed)
@@ -38,6 +27,10 @@ export function Workspace() {
   }
 
   const collapseSidebar = () => {
+    if (tasksCollapsed) {
+      setSidebarCollapsed(true)
+      return
+    }
     const panel = sidebarRef.current
     if (!panel) return
     const { inPixels } = panel.getSize()
@@ -46,26 +39,39 @@ export function Workspace() {
   }
 
   const expandSidebar = () => {
+    if (tasksCollapsed) {
+      setSidebarCollapsed(false)
+      return
+    }
     sidebarRef.current?.resize(lastExpandedWidth.current)
   }
 
   useEffect(() => {
     const panel = sidebarRef.current
-    if (panel) setSidebarCollapsed(panel.isCollapsed())
-  }, [sidebarRef])
+    if (panel && !tasksCollapsed) setSidebarCollapsed(panel.isCollapsed())
+  }, [sidebarRef, tasksCollapsed])
 
-  useEffect(() => {
-    const frameId = requestAnimationFrame(() => {
-      const panel = contentRef.current
-      if (!panel) return
-      if (tasksCollapsed) {
-        if (!panel.isCollapsed()) panel.collapse()
-      } else if (panel.isCollapsed()) {
-        panel.expand()
-      }
-    })
-    return () => cancelAnimationFrame(frameId)
-  }, [contentRef, tasksCollapsed])
+  // 任务列表折叠后整体收窄到侧栏与窄条的实际宽度，按内容左对齐。
+  if (tasksCollapsed) {
+    return (
+      <div className="workspace is-collapsed">
+        <div
+          className={cx('panel', 'panel-sidebar', sidebarCollapsed && 'panel-sidebar-collapsed')}
+          style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_SIZE : sidebarWidth }}
+        >
+          <ProjectSidebar
+            collapsed={sidebarCollapsed}
+            onCollapse={collapseSidebar}
+            onExpand={expandSidebar}
+          />
+        </div>
+        <div className="separator" aria-hidden="true" />
+        <div className="panel panel-content is-collapsed" style={{ width: CONTENT_COLLAPSED_SIZE }}>
+          <ContentRail onExpand={() => toggleTasks(false)} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Group
@@ -86,7 +92,10 @@ export function Workspace() {
         groupResizeBehavior="preserve-pixel-size"
         onResize={(size) => {
           const collapsed = size.inPixels <= SIDEBAR_COLLAPSED_SIZE + 1
-          if (!collapsed) lastExpandedWidth.current = size.inPixels
+          if (!collapsed) {
+            lastExpandedWidth.current = size.inPixels
+            setSidebarWidth(size.inPixels)
+          }
           setSidebarCollapsed(collapsed)
         }}
       >
@@ -97,26 +106,11 @@ export function Workspace() {
         />
       </Panel>
       <Separator className="separator" title="Drag to resize, double-click to reset" />
-      <Panel
-        id="content"
-        className={cx('panel', 'panel-content', contentCollapsed && 'is-collapsed')}
-        panelRef={contentRef}
-        minSize={380}
-        collapsible
-        collapsedSize={CONTENT_COLLAPSED_SIZE}
-        onResize={(size) => setContentCollapsed(size.inPixels <= CONTENT_COLLAPSED_SIZE + 1)}
-      >
-        {tasksCollapsed ? (
-          <ContentRail onExpand={() => toggleTasks(false)} />
-        ) : (
-          <>
-            <TaskSection onCollapse={() => toggleTasks(true)} />
-            <ProjectEditorSheet />
-            <TaskDetailSheet />
-          </>
-        )}
+      <Panel id="content" className="panel panel-content" minSize={380}>
+        <TaskSection onCollapse={() => toggleTasks(true)} />
+        <ProjectEditorSheet />
+        <TaskDetailSheet />
       </Panel>
-      {tasksCollapsed ? <Panel id="rest" /> : null}
     </Group>
   )
 }

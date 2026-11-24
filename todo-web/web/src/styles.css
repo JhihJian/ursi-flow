@@ -71,6 +71,23 @@ button {
   min-height: 0;
 }
 
+/* 任务列表折叠后整体收窄到侧栏与窄条的实际宽度，按内容左对齐 */
+.workspace.is-collapsed {
+  display: flex;
+  flex: none;
+  align-self: flex-start;
+  height: 100%;
+}
+
+.workspace.is-collapsed > .panel {
+  flex: none;
+  height: 100%;
+}
+
+.workspace.is-collapsed .separator::after {
+  display: none;
+}
+
 .panel {
   height: 100%;
   min-width: 0;
