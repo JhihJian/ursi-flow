@@ -26,6 +26,8 @@ export interface AgentNodeExecutionRequest {
 	runId: string;
 	action: "新建Agent" | "复用Agent";
 	nodeExecutionReference: string;
+	/** 节点标记后缀声明的执行器名称；宿主负责解析为具体修订，未声明时宿主用默认执行器。 */
+	executor?: string;
 	capabilities?: AgentCapabilityDeclaration;
 	profile?: AgentProfileReference;
 	prompt: string;

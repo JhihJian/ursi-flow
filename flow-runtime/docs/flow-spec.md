@@ -125,7 +125,7 @@ Agent 节点的提示词只由三部分组成：动作代码块内容（替换�
 
 动作代码块使用以下标记：
 
-- `新建Agent`：创建一个 Agent，并将它绑定到本次 Flow 运行。
+- `新建Agent`：创建一个 Agent，并将它绑定到本次 Flow 运行。标记可带执行器后缀 `新建Agent:名称`，名称是平台执行器 id，由宿主在启动 Run 时解析为该执行器的最新发布修订并钉进本次运行。
 - `复用Agent`：继续本次 Flow 运行已绑定的 Agent。
 - `执行自定义命令`：执行代码块中的 JSON 命令请求。
 - `执行Flow`：把输入交给另一个 Flow，作为一次独立子 Run 运行到终态。
@@ -140,7 +140,7 @@ Agent 节点的提示词只由三部分组成：动作代码块内容（替换�
 }
 ```
 
-`profile` 只能出现在`新建Agent`中。`params`必须是 JSON 对象，可以使用 Flow 已支持的模板引用。Profile 由宿主插件解析，Profile 需要的工具和 Skill 必须是 Flow `capabilities` 的子集。`复用Agent`沿用已绑定会话的 Profile，不能重新指定或扩大能力；未配置对应 Profile 的宿主必须明确失败。
+`profile` 只能出现在`新建Agent`中。`params`必须是 JSON 对象，可以使用 Flow 已支持的模板引用。Profile 由宿主插件解析，Profile 需要的工具和 Skill 必须是 Flow `capabilities` 的子集。`复用Agent`沿用已绑定会话的 Profile，不能重新指定或扩大能力；未配置对应 Profile 的宿主必须明确失败。执行器后缀同理只能出现在`新建Agent`标记上，可与结构化 JSON 组合；`复用Agent`继承当前绑定的执行器，带后缀是语法错误。
 
 自定义命令的代码块必须是一个 JSON 对象：
 

@@ -1,6 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { parseAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
+	AgentAction,
 	CommandAction,
 	CommandRequest,
 	FlowAction,
@@ -282,21 +283,42 @@ function parseAction(nodeName: string, actionArea: string): FlowAction {
 		throw new FlowSyntaxError(
 			`节点“${nodeName}”必须有且仅有一个非空动作代码块`,
 		);
-	const kind = blocks[0][1].trim();
 	const content = blocks[0][2].trim();
-	if (kind === "新建Agent" || kind === "复用Agent")
-		return parseAgentAction(nodeName, kind, content);
-	if (kind === "执行Flow") return parseFlowReferenceAction(nodeName, content);
-	if (kind !== "执行自定义命令")
-		throw new FlowSyntaxError(`节点“${nodeName}”的动作标记无效: ${kind}`);
+	const [marker, executorSuffix] = splitAgentMarker(blocks[0][1].trim());
+	if (marker === "新建Agent" || marker === "复用Agent") {
+		if (executorSuffix === undefined) return parseAgentAction(nodeName, marker, content);
+		if (marker !== "新建Agent")
+			throw new FlowSyntaxError(
+				`节点“${nodeName}”的 复用Agent 标记不能带执行器后缀：${executorSuffix}`,
+			);
+		const agent = parseAgentAction(nodeName, marker, content);
+		return { ...agent, executor: executorSuffix };
+	}
+	if (marker === "执行Flow") return parseFlowReferenceAction(nodeName, content);
+	if (marker !== "执行自定义命令")
+		throw new FlowSyntaxError(`节点“${nodeName}”的动作标记无效: ${marker}`);
 	return parseCommandAction(nodeName, content);
+}
+
+/** 新建Agent:名称 的后缀；返回 undefined 表示无后缀。名称格式与 profile 相同，且只允许一个冒号。 */
+function splitAgentMarker(marker: string): [string, string?] {
+	const colon = marker.indexOf(":");
+	if (colon < 0) return [marker];
+	const head = marker.slice(0, colon);
+	const tail = marker.slice(colon + 1);
+	if (
+		(head === "新建Agent" || head === "复用Agent") &&
+		!/^[A-Za-z][A-Za-z0-9_-]*$/.test(tail)
+	)
+		return [marker];
+	return [head, tail];
 }
 
 function parseAgentAction(
 	nodeName: string,
 	kind: "新建Agent" | "复用Agent",
 	content: string,
-): FlowAction {
+): AgentAction {
 	if (!content.startsWith("{")) return { kind, prompt: content };
 	let parsed: unknown;
 	try {

@@ -942,6 +942,9 @@ export class FlowCoordinator {
 					nodeExecutionReference: record.id,
 					attemptId: record.attemptId,
 					inspectOnly,
+					...(node.action.kind === "新建Agent" && node.action.executor
+						? { executor: node.action.executor }
+						: {}),
 					capabilities: normalizeAgentCapabilities(this.flow.capabilities),
 					profile,
 					prompt: renderAgentPrompt(

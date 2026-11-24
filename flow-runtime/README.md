@@ -43,6 +43,8 @@ daemon 默认用 Pi SDK 在进程内执行 Agent 节点，不再调用外部 `pi
 
 给 daemon 设置 `URSI_EXECUTOR_PLATFORM_URL`（HTTP(S) origin，不含 `/api/v2`）和 `URSI_EXECUTOR_PLATFORM_TOKEN`（服务端 Bearer 令牌）。在 `run.start` 或 `run.startPinned` 的参数中加入 `"executorRef":{"id":"reviewer","revision":7}`，即可把本次运行中独立的 `新建Agent` 节点交给该修订。平台执行器须支持 `runConfig.nodeContract` 并生成 `flow-outcome.json`。平台使用自己的工作区，命令和子 Flow 仍由 daemon 调度。
 
+节点可以声明自己的执行器：`新建Agent:名称` 的名称是平台执行器 id，可与结构化 JSON 组合（标记带执行器，JSON 带 profile/prompt）。启动 Run 时 daemon 按名称查询平台当前最新发布修订并钉进 Run，重试与恢复沿用同一修订；`复用Agent` 继承当前绑定的执行器，不能带后缀。本地 Pi 模式遇到执行器后缀会拒绝启动。
+
 每次节点访问的 `attemptId` 可在 `run.history` 中查看。启动回执丢失后 daemon 查询原尝试；重启后状态为 `unknown` 时，用 `run.resume` 继续核实。已请求停止的运行应重试 `run.stop`。缺失结果文件或提交了该结果不允许的变量时，节点失败，历史里不会出现对应的路由判定。
 
 ## 项目边界

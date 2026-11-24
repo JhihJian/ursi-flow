@@ -52,7 +52,7 @@ flowchart LR
 
 一个节点只执行一个动作：
 
-- `新建Agent`：为当前 Run 创建新的 Agent。
+- `新建Agent`：为当前 Run 创建新的 Agent；标记可带执行器后缀 `新建Agent:名称` 指定平台执行器。
 - `复用Agent`：继续使用当前 Run 已绑定的 Agent。
 - `执行自定义命令`：执行 Flow 中定义的 JSON 命令。
 - `执行Flow`：按显式 `inputs` 启动独立子 Run。

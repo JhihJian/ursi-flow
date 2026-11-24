@@ -7,6 +7,7 @@ import { Catalog, id, optional, readJson, save } from "./catalog.ts";
 import { validateVariables } from "../core/contracts/variables.ts";
 import { BusinessError, invalid } from "./errors.ts";
 import { loadFlow } from "../core/definition/flow-loader.ts";
+import type { FlowDefinition } from "../core/contracts/types.ts";
 import { createFlowExecutionExtensions } from "../executor-adapters/local-pi/runtime.ts";
 import { InMemoryRunStore } from "../core/state/memory-store.ts";
 import { PlatformClient, PlatformAgent, parseExecutorRef, platformConfig, type ExecutorRef, type PlatformConfig } from "../executor-adapters/platform.ts";
@@ -39,6 +40,8 @@ export function publicConfig(config: Config): PublicConfig {
 const TRAJECTORY_LIMIT = 8 * 1024 * 1024;
 interface Job {
 	executorRef?: ExecutorRef;
+	/** 节点标记声明的执行器名称到启动时钉死的平台修订。 */
+	nodeExecutors?: Record<string, ExecutorRef>;
 	platformOrigin?: string;
 	stopRequested?: boolean;
 	id: string;
@@ -122,6 +125,14 @@ function sameRequest(
 		previous.cwd === cwd &&
 		isDeepStrictEqual(previous.variables, variables)
 	);
+}
+/** 收集闭包内全部节点标记声明的执行器名称；同 ID 重试的修订一致性由已钉死的 job.json 保证。 */
+export function executorNames(pkg: { flow: FlowDefinition; references: ReadonlyMap<string, { flow: FlowDefinition }> }) {
+	const names = new Set<string>();
+	for (const definition of [pkg.flow, ...Array.from(pkg.references.values(), p => p.flow)])
+		for (const node of definition.nodes.values())
+			if (node.action.kind === "新建Agent" && node.action.executor) names.add(node.action.executor);
+	return names;
 }
 export class Runs {
 	readonly active = new Map<
@@ -229,15 +240,21 @@ export class Runs {
 			throw new BusinessError("busy", "达到运行并发上限");
 		const { revision } = pinned ?? (await this.catalog.get(flow));
 		let platform: PlatformConfig | undefined;
+		let pinnedExecutors: Record<string, ExecutorRef> | undefined;
 		if (executorRef) {
 			try {
 				platform = platformConfig();
 				const client = new PlatformClient(platform);
 				await client.checkNodeExecutor(executorRef);
-				const agentModel = new PlatformAgent(client, executorRef);
 				const pkg = await loadFlow(join(this.catalog.root(revision), flow));
+				// 节点标记声明的执行器名称在启动时解析为最新发布修订并钉死，重试与恢复都用这份事实。
+				const names = executorNames(pkg);
+				const nodeExecutors: Record<string, ExecutorRef> = {};
+				for (const name of names) nodeExecutors[name] = await client.resolveExecutor(name);
+				const agentModel = new PlatformAgent(client, executorRef, new Map(Object.entries(nodeExecutors)));
 				const execution = createFlowExecutionExtensions({ agentModel, store: new InMemoryRunStore() });
 				await agentModel.preflight(pkg.flow, { execution, references: pkg.references });
+				pinnedExecutors = nodeExecutors;
 			} catch (e) { throw invalid(e instanceof Error ? e.message : "无效的平台配置"); }
 		}
 		const dir = this.dir(key);
@@ -245,6 +262,7 @@ export class Runs {
 		const job: Job = {
 			id: key,
 			...(executorRef && platform ? { executorRef, platformOrigin: platform.origin } : {}),
+			...(pinnedExecutors && Object.keys(pinnedExecutors).length ? { nodeExecutors: pinnedExecutors } : {}),
 			flow,
 			revision,
 			cwd: workdir,

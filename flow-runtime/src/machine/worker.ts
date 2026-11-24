@@ -1,5 +1,5 @@
 import { PlatformAgent, PlatformClient, type ExecutorRef, type PlatformConfig } from "../executor-adapters/platform.ts";
-import { AttemptUnconfirmed } from "../core/contracts/extensions.ts";
+import { executorNames } from "./runs.ts";import { AttemptUnconfirmed } from "../core/contracts/extensions.ts";
 import { join } from "node:path";
 import {
 	AgentRunModel,
@@ -30,6 +30,7 @@ process.once(
 		dir: string;
 		job: {
 			executorRef?: ExecutorRef;
+			nodeExecutors?: Record<string, ExecutorRef>;
 			id: string;
 			cwd: string;
 			variables: FlowVariables;
@@ -40,8 +41,10 @@ process.once(
 	}) => {
 		try {
 			const pkg = await loadFlow(path);
+			if (!job.executorRef && executorNames(pkg).size)
+				throw Error("本地 Pi 模式不支持节点级执行器声明，请改用平台执行器启动，或去掉新建Agent 标记的执行器后缀");
 			const agentModel = job.executorRef
-				? new PlatformAgent(new PlatformClient(platform!), job.executorRef)
+				? new PlatformAgent(new PlatformClient(platform!), job.executorRef, new Map(Object.entries(job.nodeExecutors ?? {})))
 				: localAgent(provider!, dir);
 			const runner = createFlowCoordinator({
 				...pkg,

@@ -500,6 +500,47 @@ describe("Flow Agent 能力声明", () => {
 		).toThrow(FlowSyntaxError);
 	});
 
+	it("新建Agent 标记后缀解析为执行器名称", () => {
+		const flow = parseFlow(
+			serial({ first: "请完成任务。" }).replace("```新建Agent", "```新建Agent:deep-reviewer"),
+			"executor-suffix",
+		);
+		expect(flow.nodes.get("analyze")?.action).toEqual({
+			kind: "新建Agent",
+			prompt: "请完成任务。",
+			executor: "deep-reviewer",
+		});
+	});
+
+	it("新建Agent:名称 可与结构化 JSON 组合", () => {
+		const flow = parseFlow(
+			serial({
+				first: JSON.stringify({ profile: "reviewer", prompt: "请完成评审。" }),
+			}).replace("```新建Agent", "```新建Agent:deep-reviewer"),
+			"executor-with-profile",
+		);
+		expect(flow.nodes.get("analyze")?.action).toEqual({
+			kind: "新建Agent",
+			prompt: "请完成评审。",
+			executor: "deep-reviewer",
+			profile: { id: "reviewer" },
+		});
+	});
+
+	it.each([
+		"复用Agent:deep-reviewer",
+		"新建Agent:",
+		"新建Agent:1bad",
+		"新建Agent:deep:reviewer",
+	])("拒绝无效的执行器标记 %s", (marker) => {
+		expect(() =>
+			parseFlow(
+				serial().replace("```新建Agent", "```" + marker),
+				"invalid-executor-marker",
+			),
+		).toThrow(FlowSyntaxError);
+	});
+
 	it.each([
 		"capabilities: []",
 		"capabilities:\n  tools: read",

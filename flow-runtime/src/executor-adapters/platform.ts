@@ -46,6 +46,22 @@ export class PlatformClient {
 		const value: unknown = await (await this.request(`node-executors/${encodeURIComponent(ref.id)}/${ref.revision}`, "GET")).json();
 		if (!isRecord(value) || value.id !== ref.id || value.revision !== ref.revision) throw Error("平台未确认所选执行器修订");
 	}
+	/** 按执行器 id 解析当前最新发布修订并校验能力；名称不存在或修订缺 flowOutcome 能力时抛错。 */
+	async resolveExecutor(id: string) {
+		if (id === "." || id === "..") throw Error(`无效的执行器名称: ${id}`);
+		let value: unknown;
+		try {
+			value = await (await this.request(`executors/${encodeURIComponent(id)}`, "GET")).json();
+		} catch (e) {
+			if (e instanceof HttpError && e.status === 404) throw Error(`平台没有执行器 ${id} 的任何发布修订`);
+			throw e;
+		}
+		if (!isRecord(value) || value.id !== id || typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 1)
+			throw Error(`平台未返回执行器 ${id} 的有效修订`);
+		const ref = { id, revision: value.revision as number };
+		await this.checkNodeExecutor(ref);
+		return ref;
+	}
 	private path(id: string) {
 		if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) throw Error("无效的 attemptId");
 		return `executor-attempts/${id}`;
@@ -82,9 +98,12 @@ export class PlatformAgent implements AgentRunExecutor {
 	readonly allocateAttemptId = randomUUID;
 	private readonly client: PlatformClient;
 	private readonly ref: ExecutorRef;
-	constructor(client: PlatformClient, ref: ExecutorRef) {
+	/** 节点标记声明的执行器名称到已钉死修订的映射；未声明的节点用构造时的 ref。 */
+	private readonly executors: ReadonlyMap<string, ExecutorRef>;
+	constructor(client: PlatformClient, ref: ExecutorRef, executors?: ReadonlyMap<string, ExecutorRef>) {
 		this.client = client;
 		this.ref = ref;
+		this.executors = executors ?? new Map();
 	}
 	async preflight(...[flow, options]: Parameters<AgentRunExecutor["preflight"]>) {
 		await preflightFlow(flow, options);
@@ -98,8 +117,10 @@ export class PlatformAgent implements AgentRunExecutor {
 	async executeNode(request: AgentNodeExecutionRequest) {
 		const { attemptId, inspectOnly } = request;
 		if (!attemptId || request.action !== "新建Agent") throw Error("平台只支持独立的新建Agent访问");
+		const ref = request.executor ? this.executors.get(request.executor) : this.ref;
+		if (!ref) throw Error(`节点声明的执行器 ${request.executor} 没有已钉死的修订`);
 		if (!inspectOnly) await this.client.start(attemptId, {
-			executorRef: this.ref, workInstruction: { text: request.prompt, encoding: "utf-8" },
+			executorRef: ref, workInstruction: { text: request.prompt, encoding: "utf-8" },
 			runConfig: {
 				nodeContract: {
 					outcomes: request.outcomes.map(o => o.name),

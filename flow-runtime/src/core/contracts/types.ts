@@ -43,6 +43,8 @@ export type AgentActionKind = "新建Agent" | "复用Agent";
 export interface AgentAction {
 	kind: AgentActionKind;
 	prompt: string;
+	/** 新建Agent 标记后缀声明的平台执行器 id；派发时由宿主解析为已钉死的修订。 */
+	executor?: string;
 	profile?: AgentProfileReference;
 }
 
