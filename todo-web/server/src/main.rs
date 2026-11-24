@@ -20,7 +20,9 @@ fn static_dir() -> PathBuf {
 #[tokio::main]
 async fn main() -> Result<()> {
     let db_path = db::get_db_path();
-    db::connect()?.query_row("SELECT COUNT(*) FROM tasks", [], |_| Ok(()))?;
+    let conn = db::connect()?;
+    db::ensure_database(&conn)?;
+    drop(conn);
     println!("Database connected: {}", db_path.display());
 
     let index = static_dir().join("index.html");

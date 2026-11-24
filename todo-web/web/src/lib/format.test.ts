@@ -14,7 +14,9 @@ import {
 const baseTask: Task = {
   id: 't1',
   title: 'Task',
+  creator: 'human',
   priority: 'medium',
+  artifacts: [],
   status: 'pending',
   tags: [],
   project_id: 'p1',

@@ -5,7 +5,7 @@ import { errorMessage } from '@/lib/ui'
 import { useTodoStore, type DetailState } from '@/store/todo-store'
 
 const priorities: Priority[] = ['high', 'medium', 'low']
-const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
+const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done', 'cancelled']
 
 function TaskDetailForm({ detail }: { detail: DetailState }) {
   const task = detail.mode === 'view' ? detail.task : null
@@ -26,6 +26,11 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
     const trimmed = title.trim()
     if (!trimmed) {
       alert('Task title is required')
+      return
+    }
+    // 完成任务必须写明结果，规则来自 todo-core 的状态机。
+    if (status === 'done' && !result.trim()) {
+      alert('Completing a task requires a result')
       return
     }
     const parsedTags = tags
@@ -114,7 +119,7 @@ function TaskDetailForm({ detail }: { detail: DetailState }) {
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="detail-task-result">
-            Result
+            {status === 'done' ? 'Result (required)' : 'Result'}
           </label>
           <textarea
             id="detail-task-result"

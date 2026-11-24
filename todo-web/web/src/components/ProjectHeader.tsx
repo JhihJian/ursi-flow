@@ -107,7 +107,8 @@ export function ProjectHeader() {
     project.task_count.pending +
     project.task_count.in_progress +
     project.task_count.blocked +
-    project.task_count.done
+    project.task_count.done +
+    project.task_count.cancelled
 
   if (projectDeleteConfirm) {
     return (

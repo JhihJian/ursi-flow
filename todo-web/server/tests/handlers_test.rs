@@ -5,9 +5,11 @@ use todo_web_server::handlers::{
     fetch_tasks, update_project, update_task, AppError,
 };
 use todo_web_server::models::{
-    CreateProjectRequest, CreateTaskRequest, UpdateProjectRequest, UpdateTaskRequest,
+    CreateProjectRequest, CreateTaskRequest, Priority, Status, UpdateProjectRequest,
+    UpdateTaskRequest,
 };
 
+/// 与 SUMM-Todo CLI v6 建出的库一致。
 fn setup() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
@@ -16,6 +18,44 @@ fn setup() -> Connection {
             name TEXT NOT NULL UNIQUE,
             description TEXT,
             path TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            creator TEXT NOT NULL DEFAULT 'human',
+            created_at TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'medium',
+            tags TEXT DEFAULT '[]',
+            parent_id TEXT,
+            pre_id TEXT,
+            due TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            assignee TEXT,
+            blocked_reason TEXT,
+            result TEXT,
+            artifacts TEXT DEFAULT '[]',
+            log TEXT,
+            started_at TEXT,
+            finished_at TEXT,
+            content TEXT,
+            project_id TEXT,
+            updated_at TEXT
+        );",
+    )
+    .unwrap();
+    conn
+}
+
+/// 早期版本 CLI 的库，缺少后来加入的列。
+fn setup_legacy() -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
             created_at TEXT NOT NULL
         );
         CREATE TABLE tasks (
@@ -61,6 +101,18 @@ fn insert_task(conn: &Connection, id: &str, project: &str, status: &str, priorit
     .unwrap();
 }
 
+fn update(_id: &str) -> UpdateTaskRequest {
+    UpdateTaskRequest {
+        title: None,
+        priority: None,
+        status: None,
+        tags: None,
+        project_id: None,
+        blocked_reason: None,
+        result: None,
+    }
+}
+
 #[test]
 fn empty_database_returns_empty_lists_and_zero_stats() {
     let conn = setup();
@@ -80,6 +132,7 @@ fn projects_carry_status_counts_and_total_time() {
     insert_task(&conn, "t2", "proj-a", "in_progress", "medium");
     insert_task(&conn, "t3", "proj-a", "blocked", "low");
     insert_task(&conn, "t4", "proj-a", "done", "medium");
+    insert_task(&conn, "t5", "proj-a", "cancelled", "low");
 
     let started = Utc::now() - Duration::minutes(90);
     conn.execute(
@@ -92,12 +145,13 @@ fn projects_carry_status_counts_and_total_time() {
     assert_eq!(projects.len(), 2);
     let alpha = projects
         .iter()
-        .find(|project| project.id == "proj-a")
+        .find(|stat| stat.project.id == "proj-a")
         .unwrap();
     assert_eq!(alpha.task_count.pending, 1);
     assert_eq!(alpha.task_count.in_progress, 1);
     assert_eq!(alpha.task_count.blocked, 1);
     assert_eq!(alpha.task_count.done, 1);
+    assert_eq!(alpha.task_count.cancelled, 1);
     assert!(
         (89..=90).contains(&alpha.total_time_minutes),
         "{}",
@@ -106,7 +160,7 @@ fn projects_carry_status_counts_and_total_time() {
 
     let active = fetch_projects(&conn, true).unwrap();
     assert_eq!(active.len(), 1);
-    assert_eq!(active[0].id, "proj-a");
+    assert_eq!(active[0].project.id, "proj-a");
 }
 
 #[test]
@@ -149,10 +203,13 @@ fn tasks_filter_by_project_status_and_period() {
 
     let daily_b = fetch_tasks(&conn, Some("proj-b"), None, Some("daily")).unwrap();
     assert!(daily_b.is_empty());
+
+    let unknown = fetch_tasks(&conn, None, Some("archived"), None).unwrap_err();
+    assert!(matches!(unknown, AppError::BadRequest { .. }));
 }
 
 #[test]
-fn daily_stats_count_done_tasks_and_minutes() {
+fn daily_and_all_stats_count_done_tasks_and_minutes() {
     let conn = setup();
     insert_project(&conn, "proj-a", "Alpha");
     insert_task(&conn, "t1", "proj-a", "done", "medium");
@@ -177,6 +234,26 @@ fn daily_stats_count_done_tasks_and_minutes() {
     let all_time = calculate_stats(&conn, "all").unwrap();
     assert_eq!(all_time.period, "all");
     assert_eq!(all_time.total_tasks, 1);
+
+    let unknown = calculate_stats(&conn, "yearly").unwrap_err();
+    assert!(matches!(unknown, AppError::BadRequest { .. }));
+}
+
+#[test]
+fn cancelled_tasks_count_in_stats_but_not_in_active_projects() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "t1", "proj-a", "cancelled", "low");
+    conn.execute(
+        "UPDATE tasks SET finished_at = ?1 WHERE id = 't1'",
+        rusqlite::params![Utc::now().to_rfc3339()],
+    )
+    .unwrap();
+
+    let stats = calculate_stats(&conn, "daily").unwrap();
+    assert_eq!(stats.by_status.cancelled, 1);
+    assert_eq!(stats.total_tasks, 0);
+    assert!(fetch_projects(&conn, true).unwrap().is_empty());
 }
 
 #[test]
@@ -191,7 +268,7 @@ fn project_crud_keeps_tasks_when_deleting() {
         },
     )
     .unwrap();
-    let project = fetch_projects(&conn, false).unwrap().remove(0);
+    let project = fetch_projects(&conn, false).unwrap().remove(0).project;
     assert_eq!(project.name, "Alpha");
     assert_eq!(project.description.as_deref(), Some("first"));
     assert_eq!(project.path.as_deref(), Some("/tmp/alpha"));
@@ -206,7 +283,7 @@ fn project_crud_keeps_tasks_when_deleting() {
         },
     )
     .unwrap();
-    let project = fetch_projects(&conn, false).unwrap().remove(0);
+    let project = fetch_projects(&conn, false).unwrap().remove(0).project;
     assert!(project.description.is_none());
     assert!(project.path.is_none());
 
@@ -226,24 +303,24 @@ fn task_create_update_and_delete() {
         &conn,
         &CreateTaskRequest {
             title: "Write spec".into(),
-            priority: Some("high".into()),
+            priority: Some(Priority::High),
             tags: Some(vec!["docs".into()]),
             project_id: Some("proj-a".into()),
         },
     )
     .unwrap();
 
+    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    assert_eq!(task.status, Status::Pending);
+    assert_eq!(task.priority, Priority::High);
+    assert_eq!(task.tags, vec!["docs".to_string()]);
+
     update_task(
         &conn,
         &id,
         &UpdateTaskRequest {
-            title: None,
-            priority: None,
-            status: Some("in_progress".into()),
-            tags: None,
-            project_id: None,
-            blocked_reason: None,
-            result: None,
+            status: Some(Status::InProgress),
+            ..update(&id)
         },
     )
     .unwrap();
@@ -256,18 +333,16 @@ fn task_create_update_and_delete() {
         &id,
         &UpdateTaskRequest {
             title: Some("Write docs".into()),
-            priority: None,
-            status: Some("done".into()),
-            tags: None,
+            status: Some(Status::Done),
             project_id: Some(Some("proj-b".into())),
-            blocked_reason: None,
             result: Some(Some("shipped".into())),
+            ..update(&id)
         },
     )
     .unwrap();
     let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
     assert_eq!(task.title, "Write docs");
-    assert_eq!(task.status, "done");
+    assert_eq!(task.status, Status::Done);
     assert!(task.finished_at.is_some());
     assert_eq!(task.project_id.as_deref(), Some("proj-b"));
     assert_eq!(task.result.as_deref(), Some("shipped"));
@@ -276,22 +351,187 @@ fn task_create_update_and_delete() {
         &conn,
         &id,
         &UpdateTaskRequest {
-            title: None,
-            priority: None,
-            status: Some("in_progress".into()),
-            tags: None,
+            status: Some(Status::InProgress),
             project_id: Some(None),
-            blocked_reason: None,
-            result: None,
+            ..update(&id)
         },
     )
     .unwrap();
     let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
     assert!(task.finished_at.is_none());
+    assert!(task.result.is_none());
     assert!(task.project_id.is_none());
 
     delete_task(&conn, &id).unwrap();
     assert!(fetch_tasks(&conn, None, None, None).unwrap().is_empty());
+}
+
+#[test]
+fn status_changes_follow_core_state_machine() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    let id = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Ship".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+        },
+    )
+    .unwrap();
+
+    // pending 不能直接跳到 done。
+    let skipped = update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Done),
+            result: Some(Some("done".into())),
+            ..update(&id)
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        skipped,
+        AppError::BadRequest {
+            code: "E_INVALID_TRANSITION",
+            ..
+        }
+    ));
+
+    // 未填写结果不能完成任务。
+    update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::InProgress),
+            ..update(&id)
+        },
+    )
+    .unwrap();
+    let missing_result = update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Done),
+            ..update(&id)
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        missing_result,
+        AppError::BadRequest {
+            code: "E_RESULT_REQUIRED",
+            ..
+        }
+    ));
+
+    // 阻塞必须写明原因。
+    let missing_reason = update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Blocked),
+            ..update(&id)
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        missing_reason,
+        AppError::BadRequest {
+            code: "E_BLOCKED_REASON_REQUIRED",
+            ..
+        }
+    ));
+
+    // 已取消的任务不能再改状态。
+    update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Cancelled),
+            ..update(&id)
+        },
+    )
+    .unwrap();
+    let rejected = update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Pending),
+            ..update(&id)
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(rejected, AppError::BadRequest { .. }));
+}
+
+#[test]
+fn null_clears_optional_fields_and_omitted_fields_keep_values() {
+    let conn = setup();
+    let id = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Probe".into(),
+            priority: None,
+            tags: None,
+            project_id: None,
+        },
+    )
+    .unwrap();
+
+    // 显式 null 清空，字段缺省不动原值。
+    let request: UpdateTaskRequest =
+        serde_json::from_str(r#"{"result": "first", "blocked_reason": "waiting"}"#).unwrap();
+    assert!(request.result.as_ref().unwrap().is_some());
+    update_task(&conn, &id, &request).unwrap();
+    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    assert_eq!(task.result.as_deref(), Some("first"));
+    assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
+
+    let request: UpdateTaskRequest = serde_json::from_str(r#"{"result": null}"#).unwrap();
+    assert_eq!(request.result, Some(None));
+    update_task(&conn, &id, &request).unwrap();
+    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    assert!(task.result.is_none());
+    assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
+
+    let request: UpdateTaskRequest = serde_json::from_str("{}").unwrap();
+    assert!(request.result.is_none());
+    update_task(&conn, &id, &request).unwrap();
+    let task = fetch_tasks(&conn, None, None, None).unwrap().remove(0);
+    assert_eq!(task.blocked_reason.as_deref(), Some("waiting"));
+}
+
+#[test]
+fn legacy_database_without_new_columns_still_works() {
+    let conn = setup_legacy();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "t1", "proj-a", "in_progress", "high");
+
+    let tasks = fetch_tasks(&conn, None, None, None).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].status, Status::InProgress);
+    assert!(tasks[0].artifacts.is_empty());
+    assert!(tasks[0].updated_at.is_none());
+
+    update_task(
+        &conn,
+        &tasks[0].id,
+        &UpdateTaskRequest {
+            title: Some("Renamed".into()),
+            ..update("t1")
+        },
+    )
+    .unwrap();
+    let tasks = fetch_tasks(&conn, None, None, None).unwrap();
+    assert_eq!(tasks[0].title, "Renamed");
+    assert_eq!(tasks[0].status, Status::InProgress);
+
+    let projects = fetch_projects(&conn, false).unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].task_count.in_progress, 1);
 }
 
 #[test]
@@ -306,21 +546,28 @@ fn invalid_input_and_missing_rows_are_reported() {
         },
     )
     .unwrap_err();
-    assert!(matches!(invalid_project, AppError::BadRequest(_)));
+    assert!(matches!(invalid_project, AppError::BadRequest { .. }));
 
     insert_project(&conn, "proj-a", "Alpha");
-    let invalid_priority = create_task(
+    let unknown_project = create_task(
         &conn,
         &CreateTaskRequest {
             title: "Task".into(),
-            priority: Some("urgent".into()),
+            priority: None,
             tags: None,
-            project_id: Some("proj-a".into()),
+            project_id: Some("nope".into()),
         },
     )
     .unwrap_err();
-    assert!(matches!(invalid_priority, AppError::BadRequest(_)));
+    assert!(matches!(unknown_project, AppError::NotFound(_)));
+
+    let invalid_priority: Result<CreateTaskRequest, _> =
+        serde_json::from_str(r#"{"title": "Task", "priority": "urgent"}"#);
+    assert!(invalid_priority.is_err());
 
     let missing = delete_task(&conn, "nope").unwrap_err();
     assert!(matches!(missing, AppError::NotFound(_)));
+
+    let missing_project = delete_project(&conn, "nope").unwrap_err();
+    assert!(matches!(missing_project, AppError::NotFound(_)));
 }

@@ -21,25 +21,29 @@ const mocked = vi.mocked(api)
 const projectA: ProjectStats = {
   id: 'p1',
   name: 'Alpha',
+  created_at: '2026-03-01T09:00:00Z',
   description: null,
   path: null,
-  task_count: { pending: 1, in_progress: 0, blocked: 0, done: 0 },
+  task_count: { pending: 1, in_progress: 0, blocked: 0, done: 0, cancelled: 0 },
   total_time_minutes: 0,
 }
 
 const projectB: ProjectStats = {
   id: 'p2',
   name: 'Beta',
+  created_at: '2026-03-01T09:00:00Z',
   description: null,
   path: null,
-  task_count: { pending: 1, in_progress: 0, blocked: 0, done: 0 },
+  task_count: { pending: 1, in_progress: 0, blocked: 0, done: 0, cancelled: 0 },
   total_time_minutes: 0,
 }
 
 const task: Task = {
   id: 't1',
   title: 'Task',
+  creator: 'human',
   priority: 'high',
+  artifacts: [],
   status: 'pending',
   tags: ['x'],
   project_id: 'p1',
@@ -57,7 +61,7 @@ function stats(period: string): Stats {
     end: '2026-03-01',
     total_tasks: 0,
     total_time_minutes: 0,
-    by_status: { pending: 0, in_progress: 0, blocked: 0, done: 0 },
+    by_status: { pending: 0, in_progress: 0, blocked: 0, done: 0, cancelled: 0 },
   }
 }
 

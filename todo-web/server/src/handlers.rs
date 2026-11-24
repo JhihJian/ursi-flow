@@ -1,38 +1,61 @@
-use crate::db;
+use crate::db::{self, Columns};
 use crate::models::{
-    CreateProjectRequest, CreateResponse, CreateTaskRequest, ProjectStats, ProjectsResponse, Stats,
-    StatsResponse, SuccessResponse, Task, TaskCount, TasksResponse, UpdateProjectRequest,
-    UpdateTaskRequest,
+    CreateProjectRequest, CreateResponse, CreateTaskRequest, Priority, Project, ProjectStats,
+    ProjectsResponse, Stats, StatsResponse, Status, SuccessResponse, Task, TaskCount, TasksResponse,
+    UpdateProjectRequest, UpdateTaskRequest,
 };
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use rusqlite::{Connection, ToSql};
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::str::FromStr;
+use todo_core::{TodoError, TransitionContext};
 
-const PRIORITIES: [&str; 3] = ["high", "medium", "low"];
-const STATUSES: [&str; 5] = ["pending", "in_progress", "blocked", "done", "cancelled"];
+/// 已完成与已取消的任务都带完成时间，其余状态属于未完成。
+const TERMINAL_STATUSES: &str = "('done', 'cancelled')";
 
 pub type ApiResult<T> = Result<T, AppError>;
 
 #[derive(Debug)]
 pub enum AppError {
-    BadRequest(String),
+    BadRequest {
+        code: &'static str,
+        message: String,
+    },
     NotFound(String),
     Internal(anyhow::Error),
 }
 
+impl AppError {
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        Self::BadRequest {
+            code: "E_INVALID_INPUT",
+            message: message.into(),
+        }
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            AppError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
-            AppError::NotFound(message) => (StatusCode::NOT_FOUND, message),
-            AppError::Internal(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        let (status, code, message) = match self {
+            AppError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
+            AppError::NotFound(message) => (StatusCode::NOT_FOUND, "E_NOT_FOUND", message),
+            AppError::Internal(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "E_INTERNAL",
+                error.to_string(),
+            ),
         };
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
+        (
+            status,
+            Json(serde_json::json!({ "error": message, "code": code })),
+        )
+            .into_response()
     }
 }
 
@@ -51,6 +74,22 @@ impl From<rusqlite::Error> for AppError {
 impl From<serde_json::Error> for AppError {
     fn from(error: serde_json::Error) -> Self {
         Self::Internal(error.into())
+    }
+}
+
+/// 状态机与输入校验的错误码沿用 SUMM-Todo，前端可直接展示 `error` 文案。
+impl From<TodoError> for AppError {
+    fn from(error: TodoError) -> Self {
+        match error {
+            TodoError::TaskNotFound(_) | TodoError::ProjectNotFound(_) => {
+                Self::NotFound(error.to_string())
+            }
+            TodoError::Database(inner) => Self::Internal(inner.into()),
+            other => Self::BadRequest {
+                code: other.code(),
+                message: other.to_string(),
+            },
+        }
     }
 }
 
@@ -142,57 +181,38 @@ pub async fn remove_task(Path(id): Path<String>) -> ApiResult<Json<SuccessRespon
 }
 
 pub fn fetch_projects(conn: &Connection, active_only: bool) -> ApiResult<Vec<ProjectStats>> {
-    let mut statement = conn.prepare(
-        "SELECT p.id, p.name, p.description, p.path,
-                COALESCE(SUM(CASE WHEN t.status = 'pending' THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE
-                    WHEN t.status = 'done' AND t.started_at IS NOT NULL AND t.finished_at IS NOT NULL
-                    THEN CAST((julianday(replace(t.finished_at, 'T', ' '))
-                             - julianday(replace(t.started_at, 'T', ' '))) * 24 * 60 AS INTEGER)
-                    ELSE 0 END), 0)
-         FROM projects p
-         LEFT JOIN tasks t ON t.project_id = p.id
-         GROUP BY p.id, p.name, p.description, p.path
-         ORDER BY p.created_at DESC",
-    )?;
-
-    let mut projects = statement
-        .query_map([], |row| {
-            Ok(ProjectStats {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                path: row.get(3)?,
-                task_count: TaskCount {
-                    pending: row.get(4)?,
-                    in_progress: row.get(5)?,
-                    blocked: row.get(6)?,
-                    done: row.get(7)?,
-                },
-                total_time_minutes: row.get(8)?,
-            })
-        })?
+    let columns = Columns::load(conn, "projects", &db::PROJECT_FIELDS)?;
+    let mut statement = conn.prepare(&format!(
+        "SELECT {} FROM projects ORDER BY created_at DESC",
+        columns.select_list()
+    ))?;
+    let projects = statement
+        .query_map([], |row| db::read_project(row, &columns))?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let counts = project_task_counts(conn)?;
+    let minutes = project_minutes(conn)?;
+
+    let mut stats = projects
+        .into_iter()
+        .map(|project| ProjectStats {
+            task_count: counts.get(&project.id).cloned().unwrap_or_default(),
+            total_time_minutes: minutes.get(&project.id).copied().unwrap_or(0),
+            project,
+        })
+        .collect::<Vec<_>>();
+
     if active_only {
-        projects.retain(|project| {
-            project.task_count.pending > 0
-                || project.task_count.in_progress > 0
-                || project.task_count.blocked > 0
+        stats.retain(|stat| {
+            stat.task_count.pending > 0
+                || stat.task_count.in_progress > 0
+                || stat.task_count.blocked > 0
         });
     }
 
-    projects.sort_by(|a, b| {
-        let active = |project: &ProjectStats| {
-            project.task_count.pending + project.task_count.in_progress + project.task_count.blocked
-        };
-        active(b).cmp(&active(a))
-    });
+    stats.sort_by_key(|stat| std::cmp::Reverse(active_count(stat)));
 
-    Ok(projects)
+    Ok(stats)
 }
 
 pub fn fetch_tasks(
@@ -201,10 +221,15 @@ pub fn fetch_tasks(
     status: Option<&str>,
     period: Option<&str>,
 ) -> ApiResult<Vec<Task>> {
-    let mut sql = String::from(
-        "SELECT id, title, priority, status, tags, project_id, created_at,
-                started_at, finished_at, blocked_reason, result
-         FROM tasks WHERE 1 = 1",
+    let status = match status {
+        Some(value) => Some(Status::from_str(value)?),
+        None => None,
+    };
+
+    let columns = Columns::load(conn, "tasks", &db::TASK_FIELDS)?;
+    let mut sql = format!(
+        "SELECT {} FROM tasks WHERE 1 = 1",
+        columns.select_list()
     );
     let mut params: Vec<Box<dyn ToSql>> = Vec::new();
 
@@ -213,57 +238,36 @@ pub fn fetch_tasks(
         params.push(Box::new(project.to_string()));
     }
 
-    if let Some(status) = status {
+    if let Some(status) = &status {
         sql.push_str(" AND status = ?");
         params.push(Box::new(status.to_string()));
     }
 
     if let Some(range) = period.and_then(period_range) {
         // 只按完成时间过滤已完成任务，未完成任务始终可见。
-        sql.push_str(
-            " AND (status != 'done' OR (
+        sql.push_str(&format!(
+            " AND (status NOT IN {TERMINAL_STATUSES} OR (
                   finished_at IS NOT NULL
-                  AND datetime(replace(finished_at, 'T', ' ')) BETWEEN datetime(?) AND datetime(?)))",
-        );
+                  AND datetime(replace(finished_at, 'T', ' ')) BETWEEN datetime(?) AND datetime(?)))"
+        ));
         params.push(Box::new(range.start));
         params.push(Box::new(range.end));
     }
 
-    sql.push_str(
+    sql.push_str(&format!(
         " ORDER BY
-            CASE WHEN status = 'done' THEN 1 ELSE 0 END,
-            CASE WHEN status != 'done' THEN
-                CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
+            CASE WHEN status IN {TERMINAL_STATUSES} THEN 1 ELSE 0 END,
+            CASE WHEN status IN {TERMINAL_STATUSES} THEN NULL
+                 ELSE CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
             END,
-            CASE WHEN status != 'done' THEN created_at END ASC,
-            finished_at DESC",
-    );
+            CASE WHEN status IN {TERMINAL_STATUSES} THEN NULL ELSE created_at END ASC,
+            finished_at DESC"
+    ));
 
     let params: Vec<&dyn ToSql> = params.iter().map(|param| param.as_ref()).collect();
     let mut statement = conn.prepare(&sql)?;
     let tasks = statement
-        .query_map(params.as_slice(), |row| {
-            let tags_json: String = row.get(4)?;
-            Ok(Task {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                priority: row.get(2)?,
-                status: row.get(3)?,
-                tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                project_id: row.get(5)?,
-                created_at: parse_datetime(&row.get::<_, String>(6)?),
-                started_at: row
-                    .get::<_, Option<String>>(7)?
-                    .as_deref()
-                    .and_then(parse_datetime_opt),
-                finished_at: row
-                    .get::<_, Option<String>>(8)?
-                    .as_deref()
-                    .and_then(parse_datetime_opt),
-                blocked_reason: row.get(9)?,
-                result: row.get(10)?,
-            })
-        })?
+        .query_map(params.as_slice(), |row| db::read_task(row, &columns))?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(tasks)
@@ -271,15 +275,16 @@ pub fn fetch_tasks(
 
 pub fn calculate_stats(conn: &Connection, period: &str) -> ApiResult<Stats> {
     let range = period_range(period)
-        .unwrap_or_else(|| period_range("daily").expect("daily range always exists"));
+        .ok_or_else(|| AppError::invalid_input(format!("Unknown period: {period}")))?;
 
-    let total_tasks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM tasks
+    let done_in_period = "FROM tasks
          WHERE status = 'done' AND finished_at IS NOT NULL
-           AND datetime(replace(finished_at, 'T', ' ')) BETWEEN datetime(?1) AND datetime(?2)",
-        [&range.start, &range.end],
-        |row| row.get(0),
-    )?;
+           AND datetime(replace(finished_at, 'T', ' ')) BETWEEN datetime(?1) AND datetime(?2)";
+
+    let total_tasks: i64 =
+        conn.query_row(&format!("SELECT COUNT(*) {done_in_period}"), [&range.start, &range.end], |row| {
+            row.get(0)
+        })?;
 
     let total_time_minutes: i64 = conn.query_row(
         "SELECT COALESCE(SUM(
@@ -294,21 +299,29 @@ pub fn calculate_stats(conn: &Connection, period: &str) -> ApiResult<Stats> {
         |row| row.get(0),
     )?;
 
-    let count_created = |status: &str| -> ApiResult<i64> {
+    let count_status = |status: Status| -> ApiResult<i64> {
+        // 终态按完成时间落周期，其余按创建时间。
+        let column = match status {
+            Status::Done | Status::Cancelled => "finished_at",
+            _ => "created_at",
+        };
         Ok(conn.query_row(
-            "SELECT COUNT(*) FROM tasks
-             WHERE status = ?1
-               AND datetime(replace(created_at, 'T', ' ')) BETWEEN datetime(?2) AND datetime(?3)",
-            rusqlite::params![status, range.start, range.end],
+            &format!(
+                "SELECT COUNT(*) FROM tasks
+                 WHERE status = ?1 AND {column} IS NOT NULL
+                   AND datetime(replace({column}, 'T', ' ')) BETWEEN datetime(?2) AND datetime(?3)"
+            ),
+            rusqlite::params![status.to_string(), range.start, range.end],
             |row| row.get(0),
         )?)
     };
 
     let by_status = TaskCount {
-        pending: count_created("pending")?,
-        in_progress: count_created("in_progress")?,
-        blocked: count_created("blocked")?,
+        pending: count_status(Status::Pending)?,
+        in_progress: count_status(Status::InProgress)?,
+        blocked: count_status(Status::Blocked)?,
         done: total_tasks,
+        cancelled: count_status(Status::Cancelled)?,
     };
 
     Ok(Stats {
@@ -322,16 +335,13 @@ pub fn calculate_stats(conn: &Connection, period: &str) -> ApiResult<Stats> {
 }
 
 pub fn create_project(conn: &Connection, request: &CreateProjectRequest) -> ApiResult<String> {
-    let name = required_text(&request.name, "Project name")?;
-    let id = uuid::Uuid::new_v4().to_string();
-    let description = optional_text(request.description.as_deref());
-    let path = optional_text(request.path.as_deref());
-    conn.execute(
-        "INSERT INTO projects (id, name, description, path, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![&id, name, description, path, Utc::now().to_rfc3339()],
-    )?;
-    Ok(id)
+    let name = required_text(&request.name, "Project name")?.to_string();
+    let columns = Columns::load(conn, "projects", &db::PROJECT_FIELDS)?;
+    let mut project = Project::new(todo_core::generate_id(conn)?, name);
+    project.description = optional_text(request.description.as_deref()).map(str::to_string);
+    project.path = optional_text(request.path.as_deref()).map(str::to_string);
+    db::insert_project(conn, &project, &columns)?;
+    Ok(project.id)
 }
 
 pub fn update_project(
@@ -339,41 +349,26 @@ pub fn update_project(
     id: &str,
     request: &UpdateProjectRequest,
 ) -> ApiResult<()> {
-    ensure_project_exists(conn, id)?;
-
-    let mut updates: Vec<&str> = Vec::new();
-    let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+    let columns = Columns::load(conn, "projects", &db::PROJECT_FIELDS)?;
+    let mut project = read_project_by_id(conn, &columns, id)?;
 
     if let Some(name) = &request.name {
-        let name = required_text(name, "Project name")?;
-        updates.push("name = ?");
-        params.push(Box::new(name.to_string()));
+        project.name = required_text(name, "Project name")?.to_string();
     }
     if let Some(description) = &request.description {
-        updates.push("description = ?");
-        params.push(Box::new(
-            optional_text(description.as_deref()).map(str::to_string),
-        ));
+        project.description = optional_text(description.as_deref()).map(str::to_string);
     }
     if let Some(path) = &request.path {
-        updates.push("path = ?");
-        params.push(Box::new(optional_text(path.as_deref()).map(str::to_string)));
+        project.path = optional_text(path.as_deref()).map(str::to_string);
     }
 
-    if updates.is_empty() {
-        return Ok(());
-    }
-
-    params.push(Box::new(id.to_string()));
-
-    let sql = format!("UPDATE projects SET {} WHERE id = ?", updates.join(", "));
-    let params: Vec<&dyn ToSql> = params.iter().map(|param| param.as_ref()).collect();
-    conn.execute(&sql, params.as_slice())?;
+    db::update_project_row(conn, &project, &columns)?;
     Ok(())
 }
 
 pub fn delete_project(conn: &Connection, id: &str) -> ApiResult<()> {
-    ensure_project_exists(conn, id)?;
+    let columns = Columns::load(conn, "projects", &db::PROJECT_FIELDS)?;
+    read_project_by_id(conn, &columns, id)?;
     conn.execute(
         "UPDATE tasks SET project_id = NULL WHERE project_id = ?",
         [id],
@@ -383,131 +378,123 @@ pub fn delete_project(conn: &Connection, id: &str) -> ApiResult<()> {
 }
 
 pub fn create_task(conn: &Connection, request: &CreateTaskRequest) -> ApiResult<String> {
-    let title = required_text(&request.title, "Task title")?;
-    let priority = request.priority.as_deref().unwrap_or("medium");
-    validate_priority(priority)?;
-    let tags = serde_json::to_string(request.tags.as_deref().unwrap_or(&[]))?;
-    let id = uuid::Uuid::new_v4().to_string();
+    let title = required_text(&request.title, "Task title")?.to_string();
+    let columns = Columns::load(conn, "tasks", &db::TASK_FIELDS)?;
+    if let Some(project_id) = &request.project_id {
+        ensure_project_exists(conn, project_id)?;
+    }
 
-    conn.execute(
-        "INSERT INTO tasks (id, title, priority, status, tags, project_id, created_at)
-         VALUES (?1, ?2, ?3, 'pending', ?4, ?5, ?6)",
-        rusqlite::params![
-            &id,
-            title,
-            priority,
-            tags,
-            request.project_id.as_deref(),
-            Utc::now().to_rfc3339()
-        ],
-    )?;
-    Ok(id)
+    let mut task = Task::new(todo_core::generate_id(conn)?, title);
+    task.priority = request.priority.clone().unwrap_or(Priority::Medium);
+    task.tags = request.tags.clone().unwrap_or_default();
+    task.project_id = request.project_id.clone();
+    db::insert_task(conn, &task, &columns)?;
+    Ok(task.id)
 }
 
 pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> ApiResult<()> {
-    let current_status = task_status(conn, id)?;
-    let now = Utc::now().to_rfc3339();
-
-    let mut updates: Vec<&str> = Vec::new();
-    let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+    let columns = Columns::load(conn, "tasks", &db::TASK_FIELDS)?;
+    let mut task = read_task_by_id(conn, &columns, id)?;
 
     if let Some(title) = &request.title {
-        let title = required_text(title, "Task title")?;
-        updates.push("title = ?");
-        params.push(Box::new(title.to_string()));
+        task.title = required_text(title, "Task title")?.to_string();
     }
     if let Some(priority) = &request.priority {
-        validate_priority(priority)?;
-        updates.push("priority = ?");
-        params.push(Box::new(priority.to_string()));
+        task.priority = priority.clone();
     }
     if let Some(tags) = &request.tags {
-        updates.push("tags = ?");
-        params.push(Box::new(serde_json::to_string(tags)?));
+        task.tags = tags.clone();
     }
     if let Some(project_id) = &request.project_id {
-        updates.push("project_id = ?");
-        params.push(Box::new(project_id.clone()));
-    }
-
-    if let Some(status) = request.status.as_deref() {
-        validate_status(status)?;
-        // 状态未变时保留开始/完成时间，避免编辑已完成任务时改写历史。
-        if status != current_status {
-            apply_status_transition(status, &now, request, &mut updates, &mut params);
+        if let Some(project_id) = project_id {
+            ensure_project_exists(conn, project_id)?;
         }
+        task.project_id = project_id.clone();
     }
 
-    if let Some(blocked_reason) = &request.blocked_reason {
-        updates.push("blocked_reason = ?");
-        params.push(Box::new(blocked_reason.clone()));
+    // 状态迁移交给 todo-core 的状态机，看板不重复实现规则。
+    if let Some(status) = request.status.clone() {
+        task.transition(
+            status,
+            TransitionContext {
+                result: request.result.clone().flatten(),
+                blocked_reason: request.blocked_reason.clone().flatten(),
+                ..Default::default()
+            },
+        )?;
     }
+
     if let Some(result) = &request.result {
-        updates.push("result = ?");
-        params.push(Box::new(result.clone()));
+        task.result = result.clone();
+    }
+    if let Some(blocked_reason) = &request.blocked_reason {
+        task.blocked_reason = blocked_reason.clone();
     }
 
-    if updates.is_empty() {
-        return Ok(());
-    }
-
-    params.push(Box::new(id.to_string()));
-
-    let sql = format!("UPDATE tasks SET {} WHERE id = ?", updates.join(", "));
-    let params: Vec<&dyn ToSql> = params.iter().map(|param| param.as_ref()).collect();
-    conn.execute(&sql, params.as_slice())?;
+    db::update_task_row(conn, &task, &columns)?;
     Ok(())
-}
-
-fn apply_status_transition(
-    status: &str,
-    now: &str,
-    request: &UpdateTaskRequest,
-    updates: &mut Vec<&'static str>,
-    params: &mut Vec<Box<dyn ToSql>>,
-) {
-    match status {
-        "pending" => {
-            updates.push("started_at = NULL");
-            updates.push("finished_at = NULL");
-            if request.blocked_reason.is_none() {
-                updates.push("blocked_reason = NULL");
-            }
-        }
-        "in_progress" => {
-            updates.push("started_at = COALESCE(started_at, ?)");
-            params.push(Box::new(now.to_string()));
-            updates.push("finished_at = NULL");
-            if request.blocked_reason.is_none() {
-                updates.push("blocked_reason = NULL");
-            }
-        }
-        "blocked" => {
-            updates.push("finished_at = NULL");
-        }
-        "done" => {
-            updates.push("started_at = COALESCE(started_at, ?)");
-            params.push(Box::new(now.to_string()));
-            updates.push("finished_at = ?");
-            params.push(Box::new(now.to_string()));
-            if request.blocked_reason.is_none() {
-                updates.push("blocked_reason = NULL");
-            }
-        }
-        "cancelled" => {
-            updates.push("finished_at = ?");
-            params.push(Box::new(now.to_string()));
-        }
-        _ => unreachable!("validated status"),
-    }
-    updates.push("status = ?");
-    params.push(Box::new(status.to_string()));
 }
 
 pub fn delete_task(conn: &Connection, id: &str) -> ApiResult<()> {
-    ensure_task_exists(conn, id)?;
+    let columns = Columns::load(conn, "tasks", &db::TASK_FIELDS)?;
+    read_task_by_id(conn, &columns, id)?;
     conn.execute("DELETE FROM tasks WHERE id = ?", [id])?;
     Ok(())
+}
+
+fn active_count(stat: &ProjectStats) -> i64 {
+    stat.task_count.pending + stat.task_count.in_progress + stat.task_count.blocked
+}
+
+fn project_task_counts(conn: &Connection) -> ApiResult<HashMap<String, TaskCount>> {
+    let mut statement = conn.prepare(
+        "SELECT project_id, status, COUNT(*) FROM tasks
+         WHERE project_id IS NOT NULL
+         GROUP BY project_id, status",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut counts: HashMap<String, TaskCount> = HashMap::new();
+    for (project_id, status, count) in rows {
+        let entry = counts.entry(project_id).or_default();
+        match status.as_str() {
+            "pending" => entry.pending += count,
+            "in_progress" => entry.in_progress += count,
+            "blocked" => entry.blocked += count,
+            "done" => entry.done += count,
+            "cancelled" => entry.cancelled += count,
+            _ => {}
+        }
+    }
+    Ok(counts)
+}
+
+fn project_minutes(conn: &Connection) -> ApiResult<HashMap<String, i64>> {
+    let mut statement = conn.prepare(
+        "SELECT project_id, COALESCE(SUM(
+             CAST((julianday(replace(finished_at, 'T', ' '))
+                  - julianday(replace(started_at, 'T', ' '))) * 24 * 60 AS INTEGER)
+         ), 0)
+         FROM tasks
+         WHERE project_id IS NOT NULL
+           AND status = 'done'
+           AND started_at IS NOT NULL AND finished_at IS NOT NULL
+         GROUP BY project_id",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows.into_iter().collect())
 }
 
 struct PeriodRange {
@@ -517,18 +504,42 @@ struct PeriodRange {
 
 fn period_range(period: &str) -> Option<PeriodRange> {
     let now = Utc::now();
+    let today = now.date_naive();
     let start: NaiveDate = match period {
-        "daily" => now.date_naive(),
-        "weekly" => {
-            (now - Duration::days(now.weekday().num_days_from_monday() as i64)).date_naive()
-        }
+        "all" => NaiveDate::from_ymd_opt(1970, 1, 1)?,
+        "daily" => today,
+        "weekly" => today - Duration::days(now.weekday().num_days_from_monday() as i64),
         "monthly" => NaiveDate::from_ymd_opt(now.year(), now.month(), 1)?,
         _ => return None,
     };
     Some(PeriodRange {
         start: format!("{start} 00:00:00"),
-        end: format!("{} 23:59:59", now.date_naive()),
+        end: format!("{today} 23:59:59"),
     })
+}
+
+fn read_task_by_id(conn: &Connection, columns: &Columns, id: &str) -> ApiResult<Task> {
+    let mut statement = conn.prepare(&format!(
+        "SELECT {} FROM tasks WHERE id = ?1",
+        columns.select_list()
+    ))?;
+    let mut rows = statement.query([id])?;
+    match rows.next()? {
+        Some(row) => Ok(db::read_task(row, columns)?),
+        None => Err(AppError::NotFound(format!("Task {id} not found"))),
+    }
+}
+
+fn read_project_by_id(conn: &Connection, columns: &Columns, id: &str) -> ApiResult<Project> {
+    let mut statement = conn.prepare(&format!(
+        "SELECT {} FROM projects WHERE id = ?1",
+        columns.select_list()
+    ))?;
+    let mut rows = statement.query([id])?;
+    match rows.next()? {
+        Some(row) => Ok(db::read_project(row, columns)?),
+        None => Err(AppError::NotFound(format!("Project {id} not found"))),
+    }
 }
 
 fn ensure_project_exists(conn: &Connection, id: &str) -> ApiResult<()> {
@@ -544,42 +555,10 @@ fn ensure_project_exists(conn: &Connection, id: &str) -> ApiResult<()> {
     }
 }
 
-fn task_status(conn: &Connection, id: &str) -> ApiResult<String> {
-    conn.query_row("SELECT status FROM tasks WHERE id = ?", [id], |row| {
-        row.get(0)
-    })
-    .map_err(|error| match error {
-        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound(format!("Task {id} not found")),
-        other => AppError::Internal(other.into()),
-    })
-}
-
-fn ensure_task_exists(conn: &Connection, id: &str) -> ApiResult<()> {
-    task_status(conn, id).map(|_| ())
-}
-
-fn validate_priority(priority: &str) -> ApiResult<()> {
-    if PRIORITIES.contains(&priority) {
-        Ok(())
-    } else {
-        Err(AppError::BadRequest(format!(
-            "Invalid priority: {priority}"
-        )))
-    }
-}
-
-fn validate_status(status: &str) -> ApiResult<()> {
-    if STATUSES.contains(&status) {
-        Ok(())
-    } else {
-        Err(AppError::BadRequest(format!("Invalid status: {status}")))
-    }
-}
-
 fn required_text<'a>(value: &'a str, field: &str) -> ApiResult<&'a str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        Err(AppError::BadRequest(format!("{field} is required")))
+        Err(AppError::invalid_input(format!("{field} is required")))
     } else {
         Ok(trimmed)
     }
@@ -587,29 +566,4 @@ fn required_text<'a>(value: &'a str, field: &str) -> ApiResult<&'a str> {
 
 fn optional_text(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn parse_datetime(value: &str) -> DateTime<Utc> {
-    parse_datetime_opt(value).unwrap_or_else(Utc::now)
-}
-
-fn parse_datetime_opt(value: &str) -> Option<DateTime<Utc>> {
-    let formats = [
-        "%Y-%m-%dT%H:%M:%S%.f%:z",
-        "%Y-%m-%dT%H:%M:%S%:z",
-        "%Y-%m-%d %H:%M:%S",
-    ];
-    for format in formats {
-        if let Ok(parsed) = DateTime::parse_from_str(value, format) {
-            return Some(parsed.with_timezone(&Utc));
-        }
-    }
-
-    let with_timezone = format!("{}+00:00", value.replace(' ', "T"));
-    for format in ["%Y-%m-%dT%H:%M:%S%.f%:z", "%Y-%m-%dT%H:%M:%S%:z"] {
-        if let Ok(parsed) = DateTime::parse_from_str(&with_timezone, format) {
-            return Some(parsed.with_timezone(&Utc));
-        }
-    }
-    None
 }

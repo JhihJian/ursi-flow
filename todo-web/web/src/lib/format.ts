@@ -53,7 +53,10 @@ export function formatShortDate(value: string | null | undefined): string {
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export function elapsedMinutes(startedAt: string | null, now = Date.now()): number | null {
+export function elapsedMinutes(
+  startedAt: string | null | undefined,
+  now = Date.now(),
+): number | null {
   if (!startedAt) return null
   const started = new Date(startedAt).getTime()
   if (Number.isNaN(started)) return null
