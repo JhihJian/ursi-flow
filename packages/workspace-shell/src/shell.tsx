@@ -130,6 +130,7 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
             className="ws-separator-pin"
             title={`折叠 ${module.title}`}
             aria-label={`折叠 ${module.title}`}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={collapse}
           >
             ‹

@@ -132,22 +132,26 @@
 }
 
 /* 模块自带标题时隐藏外壳标题行，折叠入口放在分隔线上 */
-/* 折叠按钮常驻在分隔线中点，比 6px 的分隔线宽，方便点击 */
+/*
+ * 折叠按钮放在分隔线上方（不在拖拽中段），并强制指针光标：
+ * react-resizable-panels 悬停分隔线时会注入 `*{cursor:ew-resize!important}`，
+ * 只有带 !important 的更高特异度规则能盖过它。
+ */
 .ws-separator .ws-separator-pin {
   position: absolute;
-  top: 50%;
+  top: 6px;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   z-index: 2;
-  min-width: 14px;
-  padding: 2px 0;
+  min-width: 16px;
+  padding: 3px 0;
   border: 1px solid var(--ws-line);
   border-radius: 2px;
   background: #fff;
   color: var(--ws-muted);
   font-size: 10px;
   line-height: 12px;
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 .ws-separator .ws-separator-pin:hover {
