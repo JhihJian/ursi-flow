@@ -87,12 +87,15 @@ button {
   flex-direction: column;
   padding: var(--space-sm) 0 0;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: tasks;
 }
 
 .tasks-header-right {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  margin-left: auto;
 }
 
 .panel-content .tasks-section {
@@ -1192,4 +1195,18 @@ button {
 
 .mute-btn .mute-icon {
   display: inline-block;
+}
+
+/* 内容区变窄时先收起时间列，再收起按天筛选，把宽度留给任务标题。 */
+@container tasks (max-width: 640px) {
+  .task-table th.col-time,
+  .task-table td.col-time {
+    display: none;
+  }
+}
+
+@container tasks (max-width: 480px) {
+  .day-filter {
+    display: none;
+  }
 }
