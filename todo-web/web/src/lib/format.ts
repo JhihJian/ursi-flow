@@ -8,10 +8,10 @@ const prioritySymbols: Record<Priority, string> = {
 
 const statusSymbols: Record<TaskStatus, string> = {
   done: '✓',
-  in_progress: '●',
-  blocked: '◆',
-  pending: '○',
-  cancelled: '×',
+  in_progress: '▶',
+  blocked: '⊘',
+  pending: '□',
+  cancelled: '✕',
 }
 
 // 状态色与 styles.css 中的 --status-* 变量一一对应，class 由组件拼接使用。
