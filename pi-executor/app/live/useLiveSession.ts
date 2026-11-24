@@ -15,7 +15,7 @@ export type ChatDriver = Partial<DemoAgent> & Pick<DemoAgent,
 >;
 
 export function useLiveSession(live: LiveWorkspace, id: string, composer?: React.RefObject<ChatInputHandle | null>): ChatDriver {
-  const { token, canWrite, onDisconnect } = live;
+  const { canWrite } = live;
   const { t } = useI18n();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
@@ -35,15 +35,14 @@ export function useLiveSession(live: LiveWorkspace, id: string, composer?: React
     let timer: ReturnType<typeof setTimeout>;
     async function listen() {
       try {
-        await observe(token, id, lifetime.signal, next => {
+        await observe(id, lifetime.signal, next => {
           if (lifetime.signal.aborted) return;
           setSnapshot(next);
           setConnected(true);
         });
       } catch (error) {
         if (lifetime.signal.aborted) return;
-        if (error instanceof ApiError && error.status === 401) { onDisconnect(); return; }
-        if (error instanceof ApiError && [403, 404].includes(error.status)) { setError(error.message); return; }
+        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) { setError(error.message); return; }
       }
       if (lifetime.signal.aborted) return;
       setConnected(false);
@@ -51,7 +50,7 @@ export function useLiveSession(live: LiveWorkspace, id: string, composer?: React
     }
     void listen();
     return () => { lifetime.abort(); clearTimeout(timer); command.current?.abort(); };
-  }, [id, token, onDisconnect]);
+  }, [id]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     follow.current = true;
@@ -87,22 +86,19 @@ export function useLiveSession(live: LiveWorkspace, id: string, composer?: React
     setCommandError(null);
     follow.current = true;
     try {
-      const next = await json<Summary>(token, `${sessionPath(id)}/prompt`, {
+      const next = await json<Summary>(`${sessionPath(id)}/prompt`, {
         method: "POST", body: JSON.stringify({ message }), signal: controller.signal,
       });
       if (!controller.signal.aborted) setSnapshot(previous =>
         previous && previous.updatedAt < next.updatedAt ? { ...previous, ...next } : previous);
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof ApiError && error.status === 401) onDisconnect();
-      else {
-        setCommandError(error instanceof Error ? error.message : String(error));
-        composer?.current?.insertIfEmpty(message);
-      }
+      setCommandError(error instanceof Error ? error.message : String(error));
+      composer?.current?.insertIfEmpty(message);
     } finally {
       if (!controller.signal.aborted) { command.current = null; setSubmitting(false); }
     }
-  }, [id, token, canWrite, connected, running, composer, onDisconnect]);
+  }, [id, canWrite, connected, running, composer]);
 
   const handleAbort = useCallback(async () => {
     if (!canWrite || command.current || !connected || !running) return;
@@ -110,15 +106,14 @@ export function useLiveSession(live: LiveWorkspace, id: string, composer?: React
     command.current = controller;
     setCommandError(null);
     try {
-      await json(token, `${sessionPath(id)}/cancel`, { method: "POST", signal: controller.signal });
+      await json(`${sessionPath(id)}/cancel`, { method: "POST", signal: controller.signal });
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof ApiError && error.status === 401) onDisconnect();
-      else setCommandError(error instanceof Error ? error.message : String(error));
+      setCommandError(error instanceof Error ? error.message : String(error));
     } finally {
       if (!controller.signal.aborted) command.current = null;
     }
-  }, [id, token, canWrite, connected, running, onDisconnect]);
+  }, [id, canWrite, connected, running]);
 
   const messages = useMemo(() => snapshot?.messages ?? [], [snapshot?.messages]);
   const entryIds = useMemo(() => messages.map((message, index) => `${message.timestamp ?? 0}:${index}`), [messages]);

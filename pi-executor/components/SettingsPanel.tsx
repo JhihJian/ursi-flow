@@ -32,7 +32,7 @@ import { PluginsConfig } from "./PluginsConfig";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
-  live?: { canWrite: boolean; onDisconnect: () => void };
+  live?: boolean;
   cwd: string | null;
   sessionId: string | null;
   initialSection: SettingsSection;
@@ -88,7 +88,6 @@ function GeneralSettings({ live, sessionId, onSessionReloaded, quoteSelectionEna
   }, [localOnly]);
 
   const logOut = async () => {
-    if (live) { live.onDisconnect(); return; }
     setLoggingOut(true);
     setLogoutError("");
     try {
@@ -340,7 +339,7 @@ function GeneralSettings({ live, sessionId, onSessionReloaded, quoteSelectionEna
         </div>
       </section>
 
-      {(live || webAuthEnabled) && (
+      {webAuthEnabled && (
         <section className="settings-general-section">
           <ConfigButton variant="secondary" disabled={loggingOut} onClick={() => void logOut()}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

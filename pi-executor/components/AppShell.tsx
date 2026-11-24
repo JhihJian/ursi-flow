@@ -1181,7 +1181,8 @@ export function AppShell({ live }: { live?: LiveWorkspace }) {
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
-  const showChat = selectedSession !== null || (!isLive && effectiveNewSessionCwd !== null);
+  const awaitingLiveAccess = live?.canWrite === null;
+  const showChat = !awaitingLiveAccess && (selectedSession !== null || (!isLive && effectiveNewSessionCwd !== null));
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
@@ -2131,7 +2132,7 @@ export function AppShell({ live }: { live?: LiveWorkspace }) {
               {renderSessionStatsButton(false)}
             </>
           )}
-          {live && !live.canWrite && <span className="px-2 text-[11px] text-text-muted">{translate("live.readOnly")}</span>}
+          {live?.canWrite === false && <span className="px-2 text-[11px] text-text-muted">{translate("live.readOnly")}</span>}
           {!isMobile && renderMainFileToggle(false)}
           {isMobile && sessionHasBranches && (
             <BranchNavigator
@@ -2453,6 +2454,10 @@ export function AppShell({ live }: { live?: LiveWorkspace }) {
               </div>
               <div style={{ maxWidth: 720, fontSize: 12 }}>{initialCwdError}</div>
             </div>
+          ) : awaitingLiveAccess ? (
+            <div role={live.error ? "alert" : "status"} className="grid h-full place-items-center px-4 text-center text-sm text-text-muted">
+              {live.error ?? translate("workspace.opening")}
+            </div>
           ) : showPlaceholder ? (
             activeCwd ? (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 15 }}>
@@ -2607,7 +2612,7 @@ export function AppShell({ live }: { live?: LiveWorkspace }) {
     </div>
     {settingsSection && (
       <SettingsPanel
-        live={live}
+        live={isLive}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}
         initialSection={settingsSection}

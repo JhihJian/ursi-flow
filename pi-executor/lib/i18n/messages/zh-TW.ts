@@ -6,9 +6,6 @@ export const zhTWLocale: LocalePlugin = {
   label: "繁體中文",
   messages: {
     "common.ok": "確定",
-    "live.token": "工作階段權杖",
-    "live.connect": "連線",
-    "live.connecting": "連線中…",
     "live.readOnly": "唯讀",
     "live.noFiles": "沒有可瀏覽的檔案",
     "live.reconnecting": "正在重新連線…",

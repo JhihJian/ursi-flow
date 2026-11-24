@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
+import { Readable } from 'node:stream';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { startService } from '../src/server.mjs';
@@ -122,3 +124,72 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal((await request(`${session}/cancel`, writer, 'POST')).status, 409);
   assert.equal(provider.requests.length, 3);
 });
+
+for (const role of ['read', 'write']) {
+  test(`token-free Web access is restricted to the configured origin and role: ${role}`, async t => {
+    const provider = await fakeProvider();
+    const root = await mkdtemp(join(tmpdir(), 'ursi-pi-web-test-'));
+    const origin = 'http://pi.example.test';
+    const env = {
+      PI_SESSION_PORT: '0', PI_SESSION_STATE_DIR: root, PI_SESSION_MODEL: model,
+      PI_SESSION_MODEL_URL: provider.url, PI_SESSION_MODEL_KEY: modelKey,
+      PI_SESSION_WEB_ORIGIN: origin, PI_SESSION_WEB_ACCESS: role,
+      ...(role === 'write' && { PI_SESSION_WRITE_TOKEN: writer, PI_SESSION_READ_TOKEN: reader }),
+    };
+    let service;
+    t.after(async () => {
+      await service?.close();
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    });
+    await assert.rejects(startService({ ...env, PI_SESSION_WEB_ACCESS: '' }), /PI_SESSION_WEB_ACCESS/);
+    service = await startService(env);
+    const base = `http://127.0.0.1:${service.server.address().port}/api/pi`;
+    const signal = AbortSignal.timeout(10_000);
+    const request = (path, { method, headers, body } = {}) => new Promise((resolve, reject) => {
+      const req = httpRequest(`${base}${path}`, {
+        signal, method, headers: { host: 'pi.example.test', 'x-pi-web': '1', ...headers },
+      }, res => resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers })));
+      req.on('error', reject);
+      req.end(body);
+    });
+    const create = headers => request('/sessions', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin, ...headers }, body: '{}',
+    });
+    assert.equal((await request('/access', { headers: { host: 'external.example.test' } })).status, 401);
+    assert.equal((await request('/sessions', { headers: { 'x-pi-web': '' } })).status, 401);
+    assert.equal((await request('/access', { headers: { authorization: '' } })).status, 401);
+    assert.equal((await request('/access', { headers: { authorization: 'Bearer invalid' } })).status, 401);
+    assert.equal((await request('/access', { headers: { authorization: [`Bearer ${writer}`, `Bearer ${reader}`] } })).status, 401);
+    assert.deepEqual(await (await request('/access')).json(), { canWrite: role === 'write' });
+    assert.equal((await request('/sessions', { headers: { 'sec-fetch-site': 'same-site' } })).status, 403);
+    assert.equal((await create({ origin: 'https://other.example.test' })).status, 403);
+    assert.equal((await create({ origin: 'null' })).status, 403);
+    assert.equal((await request('/sessions', { method: 'POST' })).status, 403);
+    assert.deepEqual(await (await request('/sessions')).json(), { sessions: [] });
+    if (role === 'read') {
+      assert.equal((await create()).status, 403);
+      assert.equal((await create({ authorization: `Bearer ${writer}` })).status, 401);
+    } else {
+      assert.equal((await create({ authorization: `Bearer ${reader}` })).status, 403);
+      const created = await create();
+      assert.equal(created.status, 201);
+      const { id } = await created.json();
+      const session = `/sessions/${id}`;
+      const watcher = await observe(await request(`${session}/events`), signal);
+      await watcher.until(data => data.status === 'idle');
+      await watcher.close();
+      assert.equal(provider.requests.length, 0);
+      assert.equal((await request(`${session}/prompt`, {
+        method: 'POST', headers: { 'content-type': 'application/json', origin }, body: '{"message":"hello"}',
+      })).status, 202);
+      await t.waitFor(() => assert.equal(provider.requests.length, 1));
+      assert.equal((await request(`${session}/cancel`, {
+        method: 'POST', headers: { origin: 'http://other.example.test' },
+      })).status, 403);
+      assert.equal((await (await request(session)).json()).status, 'running');
+      assert.equal((await request(`${session}/cancel`, { method: 'POST', headers: { origin } })).status, 202);
+    }
+    assert.equal(provider.requests.length, role === 'write' ? 1 : 0);
+  });
+}

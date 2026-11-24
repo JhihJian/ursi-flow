@@ -71,11 +71,43 @@ export async function startService(env = process.env) {
     if (!value) throw new Error(`${name} is required`);
     return value;
   }
-  const writeToken = required('PI_SESSION_WRITE_TOKEN');
-  const readToken = required('PI_SESSION_READ_TOKEN');
-  if (writeToken.length < 24 || readToken.length < 24 || writeToken === readToken) throw new Error('Use distinct session tokens of at least 24 characters');
-  const writers = hash(writeToken);
-  const readers = hash(readToken);
+  const webAccess = env.PI_SESSION_WEB_ACCESS?.trim();
+  const webOrigin = env.PI_SESSION_WEB_ORIGIN?.trim();
+  const webUrl = webOrigin ? new URL(webOrigin) : null;
+  if ((webAccess || webUrl) && (!['read', 'write'].includes(webAccess) || !webUrl || webUrl.origin !== webOrigin || !['http:', 'https:'].includes(webUrl.protocol))) {
+    throw new Error('Set PI_SESSION_WEB_ACCESS to read or write and PI_SESSION_WEB_ORIGIN to the exact HTTP(S) origin');
+  }
+  const writeToken = env.PI_SESSION_WRITE_TOKEN?.trim() || '';
+  const readToken = env.PI_SESSION_READ_TOKEN?.trim() || '';
+  const useBearer = Boolean(writeToken || readToken || !webUrl);
+  if (useBearer && (writeToken.length < 24 || readToken.length < 24 || writeToken === readToken)) {
+    throw new Error('Use distinct session tokens of at least 24 characters');
+  }
+  const writers = useBearer ? hash(writeToken) : null;
+  const readers = useBearer ? hash(readToken) : null;
+
+  function authorize(req) {
+    const credentials = req.headersDistinct.authorization;
+    if (credentials) {
+      const token = credentials.length === 1 && /^Bearer (\S+)$/i.exec(credentials[0])?.[1];
+      if (!token || !writers) throw new RequestError(401, 'API 凭据无效');
+      const key = hash(token);
+      if (timingSafeEqual(key, writers)) return true;
+      if (timingSafeEqual(key, readers)) return false;
+      throw new RequestError(401, 'API 凭据无效');
+    }
+    if (!webUrl || req.headers.host !== webUrl.host || req.headers['x-pi-web'] !== '1') {
+      throw new RequestError(401, '此入口未启用免登录访问');
+    }
+    // The custom header forces cross-origin browser requests through a preflight.
+    const origin = req.headers.origin;
+    const site = req.headers['sec-fetch-site'];
+    if ((origin !== undefined && origin !== webOrigin) || (site !== undefined && site !== 'same-origin') ||
+        (req.method === 'POST' && origin !== webOrigin)) {
+      throw new RequestError(403, '请求来源与实时页不一致');
+    }
+    return webAccess === 'write';
+  }
   const apiKey = required('PI_SESSION_MODEL_KEY');
   const modelId = required('PI_SESSION_MODEL');
   const modelUrl = new URL(required('PI_SESSION_MODEL_URL'));
@@ -120,11 +152,7 @@ export async function startService(env = process.env) {
         const url = new URL(req.url, 'http://localhost');
         if (!(url.pathname === api || url.pathname.startsWith(`${api}/`))) return await staticFile(req, res, url, web);
         if (closing) throw new RequestError(503, '会话服务正在关闭');
-        const auth = /^Bearer (\S+)$/i.exec(req.headers.authorization ?? '')?.[1];
-        if (!auth) throw new RequestError(401, '需要会话令牌');
-        const key = hash(auth);
-        const canWrite = timingSafeEqual(key, writers);
-        if (!canWrite && !timingSafeEqual(key, readers)) throw new RequestError(401, '会话令牌无效');
+        const canWrite = authorize(req);
         const parts = url.pathname.slice(api.length + 1).split('/');
         const [resource, id, action] = parts;
         if (resource === 'access' && parts.length === 1 && req.method === 'GET') return json(res, 200, { canWrite });
@@ -135,7 +163,7 @@ export async function startService(env = process.env) {
           if (parts.length === 2) return json(res, 200, await sessions.snapshot(id));
         }
         if (req.method === 'POST') {
-          if (!canWrite) throw new RequestError(403, '此令牌只允许查看');
+          if (!canWrite) throw new RequestError(403, '当前访问权限只允许查看');
           if (parts.length === 1) return json(res, 201, await sessions.create(await body(req, 'title', { optional: true })));
           if (action === 'prompt') return json(res, 202, await sessions.prompt(id, await body(req, 'message')));
           if (action === 'cancel') {

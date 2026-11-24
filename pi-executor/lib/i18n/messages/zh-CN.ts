@@ -6,9 +6,6 @@ export const zhCNLocale: LocalePlugin = {
   label: "简体中文",
   messages: {
     "common.ok": "确定",
-    "live.token": "会话令牌",
-    "live.connect": "连接",
-    "live.connecting": "连接中…",
     "live.readOnly": "只读",
     "live.noFiles": "暂无可浏览的文件",
     "live.reconnecting": "正在重连…",

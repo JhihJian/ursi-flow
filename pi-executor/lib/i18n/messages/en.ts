@@ -6,9 +6,6 @@ export const enLocale: LocalePlugin = {
   label: "English",
   messages: {
     "common.ok": "OK",
-    "live.token": "Session token",
-    "live.connect": "Connect",
-    "live.connecting": "Connecting…",
     "live.readOnly": "Read only",
     "live.noFiles": "No files available",
     "live.reconnecting": "Reconnecting…",

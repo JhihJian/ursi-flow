@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { ApiError, json, type Summary } from "./api";
+import { json, type Summary } from "./api";
 
 export const liveCwd = "/Pi Sessions";
 
@@ -12,7 +12,9 @@ export function liveSessionInfo(id: string, summary?: Summary): SessionInfo {
   };
 }
 
-export function useLiveWorkspace(token: string, canWrite: boolean, onDisconnect: () => void) {
+export function useLiveWorkspace() {
+  const [canWrite, setCanWrite] = useState<boolean | null>(null);
+  const access = useRef<boolean | null>(null);
   const [summaries, setSummaries] = useState<Summary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,18 +26,21 @@ export function useLiveWorkspace(token: string, canWrite: boolean, onDisconnect:
     const controller = new AbortController();
     list.current = controller;
     try {
-      const data = await json<{ sessions: Summary[] }>(token, "/sessions", { signal: controller.signal });
+      const options = { signal: controller.signal };
+      const canWrite = access.current ?? (await json<{ canWrite: boolean }>("/access", options)).canWrite;
+      const data = await json<{ sessions: Summary[] }>("/sessions", options);
       if (controller.signal.aborted) return;
+      access.current = canWrite;
+      setCanWrite(canWrite);
       setSummaries(data.sessions);
       setError(null);
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof ApiError && error.status === 401) onDisconnect();
-      else setError(String(error instanceof Error ? error.message : error));
+      setError(error instanceof Error ? error.message : String(error));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [token, onDisconnect]);
+  }, []);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -53,7 +58,7 @@ export function useLiveWorkspace(token: string, canWrite: boolean, onDisconnect:
     opening.current = true;
     setCreating(true);
     try {
-      const summary = await json<Summary>(token, "/sessions", { method: "POST", body: "{}" });
+      const summary = await json<Summary>("/sessions", { method: "POST", body: "{}" });
       setSummaries(previous => [summary, ...previous.filter(item => item.id !== summary.id)]);
       void refresh();
       return liveSessionInfo(summary.id, summary);
@@ -64,11 +69,11 @@ export function useLiveWorkspace(token: string, canWrite: boolean, onDisconnect:
       opening.current = false;
       setCreating(false);
     }
-  }, [token, canWrite, refresh]);
+  }, [canWrite, refresh]);
 
   const sessions = useMemo(() => summaries.map(s => liveSessionInfo(s.id, s)), [summaries]);
   const running = useMemo(() => summaries.filter(s => s.status === "running").map(s => s.id), [summaries]);
-  return { token, canWrite, onDisconnect, sessions, running, loading, error, creating, refresh, create };
+  return { canWrite, sessions, running, loading, error, creating, refresh, create };
 }
 
 export type LiveWorkspace = ReturnType<typeof useLiveWorkspace>;

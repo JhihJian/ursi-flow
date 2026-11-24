@@ -11,16 +11,17 @@
 | `PI_SESSION_STATE_DIR` | 必填。私有状态目录的绝对路径，应由服务账户持有且权限为 `0700`。目录不存在时服务会创建。 |
 | `PI_SESSION_MODEL_URL` | 必填。OpenAI 兼容模型的基础 URL，例如 `https://provider.example/v1`。SDK 在其后请求 `chat/completions`。 |
 | `PI_SESSION_MODEL`、`PI_SESSION_MODEL_KEY` | 必填。模型 ID 和服务端模型密钥。 |
-| `PI_SESSION_WRITE_TOKEN`、`PI_SESSION_READ_TOKEN` | 必填。分别用于对话和只读的随机令牌，必须不同且各至少 24 个字符。 |
+| `PI_SESSION_WRITE_TOKEN`、`PI_SESSION_READ_TOKEN` | 外部 API 的对话和只读令牌，必须成对配置、彼此不同且各至少 24 个字符。仅使用受信 Web 入口时可同时省略。 |
+| `PI_SESSION_WEB_ORIGIN`、`PI_SESSION_WEB_ACCESS` | 免登录入口的完整源和访问权限，例如 `https://pi.example.com` 配 `read` 或 `write`。源包含协议、主机和非默认端口，不带路径或末尾斜杠。未配置时仅接受 Bearer。 |
 | `PI_SESSION_HOST`、`PI_SESSION_PORT` | 可选，默认 `127.0.0.1:30146`。 |
 | `PI_SESSION_WEB_DIR` | 可选。根路径构建的前端 `out/` 绝对路径，须和状态目录分开。 |
 | `PI_SESSION_REFERENCE_FILE` | 可选。服务启动时加载的 UTF-8 文本文件，最大 12,000 字节。配置后 Agent 可用 `read_reference` 读取，内容可出现在模型请求和会话历史中。 |
 
-跨机器访问时由 HTTPS 反向代理转发，并关闭 SSE 响应缓冲。两个令牌均可查看该实例下的所有会话，`sessionId` 仅用于定位。需要隔离数据的调用方应使用独立实例和独立状态目录。Agent 接收文本，仅加载显式配置的模型和可选参考工具。
+将免登录入口部署在受信网络内，或通过已有访问控制的网关提供。网关通过 HTTPS 接收请求，保留 Web 入口的 `Host`，关闭 SSE 响应缓冲，并限制后端端口仅供网关访问。来源检查用于限制浏览器跨站请求。入口的访问者共享同一权限和实例下的全部会话。`sessionId` 仅用于定位。需要隔离数据时使用独立实例和状态目录。Agent 接收文本，仅加载显式配置的模型和可选参考工具。
 
 ## HTTP 接口
 
-下列路径均以 `/api/pi` 为前缀。每次请求带 `Authorization: Bearer <token>`。有 JSON 请求体时带 `Content-Type: application/json`。
+下列路径均以 `/api/pi` 为前缀。外部调用带 `Authorization: Bearer <token>`。同源实时页带 `X-Pi-Web: 1`，免登录写请求还需匹配配置的 `Origin`。有 JSON 请求体时带 `Content-Type: application/json`。
 
 | 方法与路径 | 最低权限 | 成功响应 |
 | --- | --- | --- |
@@ -34,7 +35,7 @@
 
 会话摘要含 `id`、`title`、`updatedAt`（Unix 毫秒）和 `status`。状态包括 `idle`、`running`、`completed`、`failed`、`cancelled` 和 `interrupted`。快照还包含最新 100 条公开消息、正在生成的 `partial` 和当前运行的 `activeTool`。SSE 每个 `data` 帧携带一份 JSON 快照，慢连接在恢复时获得最新状态。连接中断后重新订阅即可；命令与事件流彼此独立。
 
-无有效令牌返回 `401`，只读令牌提交命令返回 `403`，未知会话返回 `404`。向运行中的会话提交新消息，或向空闲会话发出停止命令，返回 `409`。实例执行或订阅容量已满时返回 `429`。命令受理后由服务异步执行，以快照中的终态为准。
+无有效凭据且不匹配免登录入口时返回 `401`。来源不匹配或只读访问提交命令时返回 `403`，未知会话返回 `404`。向运行中的会话提交新消息，或向空闲会话发出停止命令，返回 `409`。实例执行或订阅容量已满时返回 `429`。命令受理后由服务异步执行，以快照中的终态为准。
 
 ## 从外部提交并分享会话
 
@@ -52,7 +53,7 @@ curl -fsS "$api/sessions/$session_id/prompt" \
   -d '{"message":"请整理三个交付检查项"}'
 ```
 
-分享前端 `/live/?session=<id>` 链接，通过独立渠道提供只读令牌。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
+通过受信 Web 入口分享 `/live/?session=<id>` 链接。API 调用方也可使用只读令牌直接订阅同一 ID 的 SSE。
 
 ## 重启与验证
 

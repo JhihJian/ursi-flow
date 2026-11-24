@@ -13,11 +13,13 @@ export class ApiError extends Error {
 
 export function sessionPath(id: string) { return `/sessions/${encodeURIComponent(id)}`; }
 
-async function request(token: string, path: string, init: RequestInit = {}) {
+async function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${token}`);
+  headers.set("X-Pi-Web", "1");
   if (init.body) headers.set("Content-Type", "application/json");
-  const response = await fetch(`/api/pi${path}`, { ...init, headers, cache: "no-store", redirect: "error" });
+  const response = await fetch(`/api/pi${path}`, {
+    ...init, headers, cache: "no-store", mode: "same-origin", redirect: "error", referrerPolicy: "origin",
+  });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
     throw new ApiError(response.status, data?.error ?? `请求失败（${response.status}）`);
@@ -25,12 +27,12 @@ async function request(token: string, path: string, init: RequestInit = {}) {
   return response;
 }
 
-export async function json<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  return (await request(token, path, init)).json();
+export async function json<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await request(path, init)).json();
 }
 
-export async function observe(token: string, id: string, signal: AbortSignal, receive: (snapshot: Snapshot) => void) {
-  const response = await request(token, `${sessionPath(id)}/events`, { signal });
+export async function observe(id: string, signal: AbortSignal, receive: (snapshot: Snapshot) => void) {
+  const response = await request(`${sessionPath(id)}/events`, { signal });
   if (!response.body || !response.headers.get("content-type")?.startsWith("text/event-stream")) throw new Error("事件流不可用");
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   try {
