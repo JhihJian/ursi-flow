@@ -74,21 +74,23 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
         >
           »
         </button>
-        <button
-          type="button"
-          className="collapsed-project"
-          title={summary}
-          aria-label={`${summary}. Expand projects`}
-          onClick={onExpand}
-        >
-          <span className="collapsed-project-name">{selectedProject?.name ?? 'No project'}</span>
-          {selectedProject ? (
-            <span className="collapsed-project-meta">
-              {' · '}
-              {active} tasks · {formatTime(selectedProject.total_time_minutes)}
-            </span>
-          ) : null}
-        </button>
+        <div className="collapsed-rail">
+          <button
+            type="button"
+            className="collapsed-project"
+            title={summary}
+            aria-label={`${summary}. Expand projects`}
+            onClick={onExpand}
+          >
+            <span className="collapsed-project-name">{selectedProject?.name ?? 'No project'}</span>
+            {selectedProject ? (
+              <span className="collapsed-project-meta">
+                {' · '}
+                {active} tasks · {formatTime(selectedProject.total_time_minutes)}
+              </span>
+            ) : null}
+          </button>
+        </div>
       </aside>
     )
   }

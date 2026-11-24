@@ -260,10 +260,19 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-sm);
   height: 100%;
   padding: var(--space-sm) 0;
   overflow: hidden;
+}
+
+/* 撑满剩余高度，给折叠文字一个确定的可裁剪区域。 */
+.collapsed-rail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
 }
 
 /* 折叠态只有一列：文字整体侧转，自上而下读。 */
@@ -272,13 +281,18 @@ button {
   /* 竖排时 margin-block 指向左右，这里要用物理方向让短名称垂直居中。 */
   margin-top: auto;
   margin-bottom: auto;
+  /* 名称过长时在文字层裁掉尾部，保证开头仍然可见。 */
+  max-height: 100%;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
-  /* 默认 mixed：拉丁字母随行旋转，中日韩字符保持直立，符合竖排习惯。 */
-  writing-mode: vertical-rl;
+  /* 书脊式：先竖向排版再整体转 180°，文字从下往上读。
+     mixed 定向让拉丁字母随行旋转，中日韩字符保持直立。 */
+  writing-mode: vertical-lr;
   text-align: start;
+  transform: rotate(180deg);
   white-space: nowrap;
   font-size: 12px;
   letter-spacing: 0.5px;
