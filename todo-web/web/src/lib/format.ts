@@ -6,14 +6,6 @@ const prioritySymbols: Record<Priority, string> = {
   low: '○',
 }
 
-const statusSymbols: Record<TaskStatus, string> = {
-  done: '✓',
-  in_progress: '▷',
-  blocked: '⊘',
-  pending: '□',
-  cancelled: '✕',
-}
-
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   pending: 'pending',
   in_progress: 'in_progress',
@@ -24,10 +16,6 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 
 export function prioritySymbol(priority: Priority): string {
   return prioritySymbols[priority]
-}
-
-export function statusSymbol(status: TaskStatus): string {
-  return statusSymbols[status]
 }
 
 export function formatTime(minutes: number | null | undefined): string {

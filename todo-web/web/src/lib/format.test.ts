@@ -7,7 +7,6 @@ import {
   formatTaskTime,
   formatTime,
   prioritySymbol,
-  statusSymbol,
   taskTimeInfo,
 } from './format'
 
@@ -77,13 +76,9 @@ describe('task formatting', () => {
 })
 
 describe('symbols', () => {
-  it('maps priorities and statuses to text symbols', () => {
+  it('maps priorities to text symbols', () => {
     expect(prioritySymbol('high')).toBe('!')
     expect(prioritySymbol('medium')).toBe('-')
     expect(prioritySymbol('low')).toBe('○')
-    expect(statusSymbol('done')).toBe('✓')
-    expect(statusSymbol('in_progress')).toBe('▷')
-    expect(statusSymbol('blocked')).toBe('⊘')
-    expect(statusSymbol('pending')).toBe('□')
   })
 })

@@ -1,10 +1,11 @@
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
-import { formatTaskTime, prioritySymbol, statusSymbol, STATUS_LABELS } from '@/lib/format'
+import { formatTaskTime, prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { StatusIcon } from './StatusIcon'
 
 type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
 
@@ -41,7 +42,7 @@ function StatusTarget({
       title={filtered ? `Show all tasks` : `Show only ${status} tasks`}
       onClick={() => toggleStatusFilter(status)}
     >
-      <span className="status-symbol">{statusSymbol(status)}</span>
+      <StatusIcon status={status} />
       <span className="status-count">{count}</span>
     </button>
   )
@@ -125,7 +126,7 @@ function TaskRow({
       </td>
       <td className={cx('col-title', `task-title-${task.status}`)}>{task.title}</td>
       <td className="col-status" title={STATUS_LABELS[task.status]}>
-        {statusSymbol(task.status)}
+        <StatusIcon status={task.status} />
       </td>
       <td className="col-time">{formatTaskTime(task)}</td>
     </tr>

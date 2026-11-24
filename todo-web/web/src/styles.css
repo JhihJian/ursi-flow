@@ -470,7 +470,7 @@ button {
 
 .status-target {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
   gap: var(--space-xs);
   min-width: 44px;
@@ -493,6 +493,10 @@ button {
   border-color: var(--gray-900);
   background: var(--gray-900);
   color: var(--white);
+}
+
+.status-symbol {
+  display: block;
 }
 
 .status-target.is-active .status-symbol,
@@ -593,6 +597,10 @@ button {
 /* 状态列表头去掉字距，让这一列只占状态符号需要的最小宽度。 */
 .task-table th.col-status {
   letter-spacing: 0;
+}
+
+.task-table td.col-status .status-symbol {
+  margin: 0 auto;
 }
 
 .task-table th.col-time,
