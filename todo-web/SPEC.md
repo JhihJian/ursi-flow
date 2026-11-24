@@ -5,6 +5,7 @@ references:
   - server/HTTP.md
   - ../docs/design/todo-web/DASHBOARD.md
   - ../docs/design/todo-web/EXECUTION-AND-EMBEDDING.md
+  - ../docs/design/todo-web/WORKSPACE-SHELL.md
 ---
 
 # SUMM-Todo 看板
