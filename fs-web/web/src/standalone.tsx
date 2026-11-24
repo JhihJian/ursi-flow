@@ -20,34 +20,6 @@ registerGitSaveListener((workspaceId) => {
   void useGitStore.getState().refresh(useTreeStore.getState().api, workspaceId)
 })
 
-interface ConfirmState {
-  message: string
-  resolve: (ok: boolean) => void
-}
-
-/** 破坏性操作确认 hook：返回 confirm 函数与对话框节点。 */
-function useInlineConfirm(): [(message: string) => Promise<boolean>, React.ReactNode] {
-  const [state, setState] = useState<ConfirmState | null>(null)
-  const confirm = (message: string) =>
-    new Promise<boolean>((resolve) => {
-      setState({ message, resolve })
-    })
-  const onClose = (ok: boolean): void => {
-    state?.resolve(ok)
-    setState(null)
-  }
-  const dialog = state ? (
-    <div className="wsx-confirm">
-      <div className="wsx-confirm-text">{state.message}</div>
-      <div className="wsx-confirm-buttons">
-        <button type="button" onClick={() => onClose(true)}>删除</button>
-        <button type="button" onClick={() => onClose(false)}>取消</button>
-      </div>
-    </div>
-  ) : null
-  return [confirm, dialog]
-}
-
 export interface FsWebStandaloneOptions {
   apiBaseUrl?: string
 }
@@ -67,7 +39,7 @@ export function FsWebStandalone(options: FsWebStandaloneOptions = {}) {
     const selectWorkspace = useTreeStore((state) => state.selectWorkspace)
     const loadWorkspaces = useTreeStore((state) => state.loadWorkspaces)
     const [selectedFile, setSelectedFile] = useState<string | null>(null)
-    const [confirm, confirmDialog] = useInlineConfirm()
+    const [creating, setCreating] = useState(false)
 
     useEffect(() => {
       setApi(api)
@@ -83,11 +55,18 @@ export function FsWebStandalone(options: FsWebStandaloneOptions = {}) {
       setSelectedFile(key)
     }
 
+    const activeWorkspaceLabel = workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.label
+
     return (
       <div className="wsx-app">
-        <div className="wsx-app-side">
-          <div className="wsx-workspace-bar">
-            <select value={activeWorkspaceId ?? ''} onChange={(event) => selectWorkspace(event.target.value)}>
+        <aside className="wsx-app-side wsx-sidebar">
+          <div className="wsx-sidebar-head">
+            <h2 className="wsx-sidebar-title">{activeWorkspaceLabel ?? 'Workspaces'}</h2>
+            <select
+              value={activeWorkspaceId ?? ''}
+              aria-label="切换工作区"
+              onChange={(event) => selectWorkspace(event.target.value)}
+            >
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id} disabled={!workspace.ready}>
                   {workspace.label}
@@ -104,24 +83,27 @@ export function FsWebStandalone(options: FsWebStandaloneOptions = {}) {
           <GitBar />
           <FileTree
             onOpenFile={openFile}
-            confirm={confirm}
             onFileDeleted={(key) => {
               useEditorStore.getState().closeFile(key)
               setSelectedFile((current) => (current === key ? null : current))
               const parent = keyToParent(key)
               void useTreeStore.getState().reloadDir(parent?.parentKey ?? key)
             }}
+            onCreateDir={() => setCreating(true)}
           />
-          <DirActions selectedDirKey={selectedDirKey} confirm={confirm} />
-          {confirmDialog}
-        </div>
-        <div className="wsx-app-main">
+          <DirActions
+            selectedDirKey={selectedDirKey}
+            creating={creating}
+            onCreatingDone={() => setCreating(false)}
+          />
+        </aside>
+        <main className="wsx-app-main">
           {selectedFile ? (
             <FileView fileKey={selectedFile} />
           ) : (
             <div className="wsx-view-empty">在左侧选择文件打开</div>
           )}
-        </div>
+        </main>
       </div>
     )
   }

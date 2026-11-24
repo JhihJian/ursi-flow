@@ -1,7 +1,8 @@
 import { useTreeStore } from './tree-store.ts'
 import { useGitStore } from './git-store.ts'
 
-/** 窄栏顶部的 git 摘要条：分支 + 变更数，失败可点击重试；非仓库整条隐藏。 */
+/** 侧栏 git 摘要：分支/变更 chip 徽标串（对齐 todo-web status-target 风格），
+ *  点击刷新；失败显示错误 chip；非仓库整条隐藏。 */
 export function GitBar() {
   const api = useTreeStore((state) => state.api)
   const workspaceId = useTreeStore((state) => state.activeWorkspaceId)
@@ -19,9 +20,11 @@ export function GitBar() {
 
   if (error) {
     return (
-      <button type="button" className="wsx-git-bar wsx-git-bar--error" onClick={retry}>
-        git 状态获取失败，点击重试
-      </button>
+      <div className="wsx-git-bar">
+        <button type="button" className="wsx-git-chip wsx-git-chip--error" onClick={retry}>
+          git 状态获取失败，点击重试
+        </button>
+      </div>
     )
   }
 
@@ -29,15 +32,28 @@ export function GitBar() {
   const branchLabel = snapshot.branch ?? 'detached'
   const dirty = snapshot.changes.filter((change) => change.kind === 'file').length
   return (
-    <button
-      type="button"
-      className="wsx-git-bar"
-      onClick={retry}
-      title={snapshot.upstream ? `${branchLabel} → ${snapshot.upstream}，+${snapshot.additions}/-${snapshot.deletions}` : `+${snapshot.additions}/-${snapshot.deletions}`}
-    >
-      <span className="wsx-git-branch">{branchLabel}</span>
-      {snapshot.upstream ? <span className="wsx-git-upstream">→ {snapshot.upstream}</span> : null}
-      <span className="wsx-git-count">{loading ? '…' : `${dirty} 变更 +${snapshot.additions}/-${snapshot.deletions}`}</span>
-    </button>
+    <div className="wsx-git-bar">
+      <button
+        type="button"
+        className="wsx-git-chip wsx-git-chip--branch"
+        onClick={retry}
+        title={snapshot.upstream ? `${branchLabel} → ${snapshot.upstream}` : branchLabel}
+      >
+        {loading ? '…' : branchLabel}
+      </button>
+      {snapshot.upstream ? (
+        <span className="wsx-git-chip wsx-git-upstream" title={snapshot.upstream}>
+          → {snapshot.upstream}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="wsx-git-chip"
+        onClick={retry}
+        title={`+${snapshot.additions}/-${snapshot.deletions}，点击刷新`}
+      >
+        {dirty} 变更 +{snapshot.additions}/-{snapshot.deletions}
+      </button>
+    </div>
   )
 }

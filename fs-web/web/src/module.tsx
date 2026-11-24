@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { WorkspaceApi, keyName, keyToParent } from './api.ts'
-import { injectEditorApi, useEditorStore } from './editor-store.ts'
-import { registerEditorApiInjector, useTreeStore, registerGitRefresh, useGitRefreshOf } from './tree-store.ts'
+import { injectEditorApi, useEditorStore, registerGitSaveListener } from './editor-store.ts'
+import { registerEditorApiInjector, useTreeStore, registerGitRefresh } from './tree-store.ts'
 import { useGitStore } from './git-store.ts'
 import { GitBar } from './git-bar.tsx'
-import { registerGitSaveListener } from './editor-store.ts'
 import { FileTree } from './tree.tsx'
 import { DirActions } from './dir-actions.tsx'
 import { FileView } from './file-view.tsx'
@@ -16,34 +15,6 @@ registerGitRefresh(useGitStore.getState())
 registerGitSaveListener((workspaceId) => {
   void useGitStore.getState().refresh(useTreeStore.getState().api, workspaceId)
 })
-
-interface ConfirmState {
-  message: string
-  resolve: (ok: boolean) => void
-}
-
-/** 破坏性操作确认 hook：返回 confirm 函数与对话框节点。 */
-function useInlineConfirm(): [(message: string) => Promise<boolean>, React.ReactNode] {
-  const [state, setState] = useState<ConfirmState | null>(null)
-  const confirm = (message: string) =>
-    new Promise<boolean>((resolve) => {
-      setState({ message, resolve })
-    })
-  const onClose = (ok: boolean): void => {
-    state?.resolve(ok)
-    setState(null)
-  }
-  const dialog = state ? (
-    <div className="wsx-confirm">
-      <div className="wsx-confirm-text">{state.message}</div>
-      <div className="wsx-confirm-buttons">
-        <button type="button" onClick={() => onClose(true)}>删除</button>
-        <button type="button" onClick={() => onClose(false)}>取消</button>
-      </div>
-    </div>
-  ) : null
-  return [confirm, dialog]
-}
 
 export interface FsWebModuleOptions {
   apiBaseUrl?: string
@@ -64,7 +35,7 @@ export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModul
     const selectWorkspace = useTreeStore((state) => state.selectWorkspace)
     const loadWorkspaces = useTreeStore((state) => state.loadWorkspaces)
     const { select } = useWorkspace()
-    const [confirm, confirmDialog] = useInlineConfirm()
+    const [creating, setCreating] = useState(false)
 
     useEffect(() => {
       setApi(api)
@@ -81,39 +52,47 @@ export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModul
       select({ kind: 'workspace.file', id: key, label: keyName(key) })
     }
 
-    const reloadParent = (key: string): void => {
-      const parent = keyToParent(key)
-      void useTreeStore.getState().reloadDir(parent?.parentKey ?? key)
-    }
+    const activeWorkspaceLabel = workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.label
 
     return (
       <div className="wsx-panel">
-        <div className="wsx-workspace-bar">
-          <select value={activeWorkspaceId ?? ''} onChange={(event) => selectWorkspace(event.target.value)}>
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id} disabled={!workspace.ready}>
-                {workspace.label}
-              </option>
-            ))}
-          </select>
+        <div className="wsx-sidebar">
+          <div className="wsx-sidebar-head">
+            <h2 className="wsx-sidebar-title">{activeWorkspaceLabel ?? 'Workspaces'}</h2>
+            <select
+              value={activeWorkspaceId ?? ''}
+              aria-label="切换工作区"
+              onChange={(event) => selectWorkspace(event.target.value)}
+            >
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id} disabled={!workspace.ready}>
+                  {workspace.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
+          {lastError ? (
+            <button type="button" className="wsx-panel-error" onClick={clearError}>
+              {lastError}（点击关闭）
+            </button>
+          ) : null}
+          <GitBar />
+          <FileTree
+            onOpenFile={openFile}
+            onFileDeleted={(key) => {
+              useEditorStore.getState().closeFile(key)
+              const parent = keyToParent(key)
+              void useTreeStore.getState().reloadDir(parent?.parentKey ?? key)
+            }}
+            onCreateDir={() => setCreating(true)}
+          />
+          <DirActions
+            selectedDirKey={selectedDirKey}
+            creating={creating}
+            onCreatingDone={() => setCreating(false)}
+          />
         </div>
-        {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
-        {lastError ? (
-          <button type="button" className="wsx-panel-error" onClick={clearError}>
-            {lastError}（点击关闭）
-          </button>
-        ) : null}
-        <GitBar />
-        <FileTree
-          onOpenFile={openFile}
-          confirm={confirm}
-          onFileDeleted={(key) => {
-            useEditorStore.getState().closeFile(key)
-            reloadParent(key)
-          }}
-        />
-        <DirActions selectedDirKey={selectedDirKey} confirm={confirm} />
-        {confirmDialog}
       </div>
     )
   }

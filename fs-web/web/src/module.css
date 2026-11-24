@@ -1,101 +1,271 @@
-/* fs-web 模块样式：全部限定在 .wsx-panel / .wsx-view 下，禁止全局选择器。 */
+/* fs-web 模块样式：类名限定 wsx- 前缀；颜色/字体取 :root 变量（独立入口由
+   standalone.css 定义 todo-web 同款变量，嵌入模式由外壳 --ws-* 或兜底值提供）。 */
 
 .wsx-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  font-family: var(--ws-mono, monospace);
-  font-size: 12px;
-  color: var(--ws-ink, #1a1a1a);
+  font-family: var(--wsx-mono, var(--ws-mono, "SF Mono", "Menlo", "Monaco", "Courier New", monospace));
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
-.wsx-workspace-bar {
+.wsx-panel button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ---- 侧栏（workspace 选择 + git 摘要 + 文件树） ---- */
+
+.wsx-sidebar {
   display: flex;
-  padding: 8px;
-  border-bottom: 1px solid var(--ws-line, #e5e5e5);
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: var(--wsx-space-md, 16px);
+  user-select: none;
 }
 
-.wsx-workspace-bar select {
+.wsx-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--wsx-space-md, 16px);
+}
+
+.wsx-sidebar-title {
+  font-family: var(--wsx-serif, var(--ws-serif, Georgia, "Times New Roman", serif));
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.wsx-sidebar-head select {
   flex: 1;
   min-width: 0;
-  font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
-  background: transparent;
-  padding: 2px 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--wsx-serif, Georgia, serif);
+  font-size: 13px;
+  color: var(--wsx-ink, #1a1a1a);
+  cursor: pointer;
+}
+
+.wsx-sidebar-head select:focus {
+  outline: none;
+}
+
+.wsx-rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wsx-rail-toggle:hover {
+  color: var(--wsx-ink, #1a1a1a);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-panel-error {
-  padding: 4px 8px;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  border: 0;
+  background: none;
+  text-align: left;
   color: #a00;
   white-space: pre-wrap;
+  cursor: pointer;
+}
+
+/* ---- git 摘要条：对齐 todo-web status-target 徽标风格 ---- */
+
+.wsx-git-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-bottom: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wsx-git-bar:hover {
+  background: none;
+}
+
+.wsx-git-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wsx-git-chip:hover {
+  border-color: var(--wsx-dim, var(--ws-muted, #999999));
+  color: var(--wsx-ink, #1a1a1a);
+}
+
+.wsx-git-chip--branch {
+  color: var(--wsx-ink, #1a1a1a);
+}
+
+.wsx-git-chip--error {
+  border-color: #a00;
+  color: #a00;
+}
+
+.wsx-git-upstream {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- 文件树：对齐 todo-web project-item 行风格 ---- */
+
+.wsx-tree {
+  flex: 1;
+  min-height: 0;
 }
 
 .wsx-tree-row {
   display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+
+.wsx-tree-row:hover {
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-tree-row--selected {
+  border-left-color: var(--wsx-ink, #000000);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-tree-row-main {
+  display: flex;
   align-items: center;
   gap: 4px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 26px;
+  padding: 0 4px;
   border: 0;
   background: transparent;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wsx-tree-row:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.wsx-tree-row--selected {
-  background: rgba(0, 0, 0, 0.08);
 }
 
 .wsx-tree-caret {
   width: 12px;
   flex: none;
-  color: var(--ws-dim, #666);
+  color: var(--wsx-dim, var(--ws-muted, #999999));
 }
 
 .wsx-tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wsx-ink, #1a1a1a);
+  font-weight: 500;
 }
 
 .wsx-tree-name--file {
-  color: var(--ws-muted, #999);
+  font-weight: 400;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
 }
 
 .wsx-tree-loading {
-  color: var(--ws-muted, #999);
+  color: var(--wsx-dim, var(--ws-muted, #999999));
 }
+
+.wsx-tree-rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 2px 0;
+  font: inherit;
+  border: 1px solid var(--wsx-dim, #999999);
+  padding: 0 4px;
+  background: #fff;
+}
+
+.wsx-tree-rename:focus {
+  outline: none;
+  border-color: var(--wsx-ink, #000000);
+}
+
+/* ---- 状态徽标：文件显示状态字母，目录显示聚合数 ---- */
+
+.wsx-git-badge {
+  flex: none;
+  min-width: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* ---- 底部操作条：对齐 todo-web btn 风格 ---- */
 
 .wsx-diractions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 6px 8px;
-  border-top: 1px solid var(--ws-line, #e5e5e5);
+  flex: none;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-diractions button {
-  font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
+  padding: 2px 8px;
+  border: 1px solid var(--wsx-ink, #1a1a1a);
   background: transparent;
-  padding: 1px 6px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .wsx-diractions button:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-diractions button:disabled {
-  opacity: 0.5;
+  border-color: var(--wsx-line, var(--ws-line, #e5e5e5));
+  color: var(--wsx-dim, var(--ws-muted, #999999));
   cursor: default;
 }
 
@@ -109,62 +279,62 @@
   flex: 1;
   min-width: 0;
   font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
-  padding: 1px 4px;
+  font-size: 11px;
+  border: 1px solid var(--wsx-dim, #999999);
+  padding: 2px 6px;
+  background: #fff;
 }
 
-/* ---- git 摘要条与状态徽标 ---- */
+.wsx-diractions-form input:focus {
+  outline: none;
+  border-color: var(--wsx-ink, #000000);
+}
 
-.wsx-git-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* ---- 右键菜单：对齐 todo-web context-menu ---- */
+
+.wsx-context-menu {
+  position: fixed;
+  z-index: 200;
+  padding: 4px 0;
+  border: 1px solid var(--wsx-ink, #1a1a1a);
+  background: #fff;
+}
+
+.wsx-context-menu-heading {
+  padding: 4px 8px;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 11px;
+  border-bottom: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-context-menu-item {
+  display: block;
+  width: 100%;
   padding: 4px 8px;
   border: 0;
-  border-bottom: 1px solid var(--ws-line, #e5e5e5);
-  background: transparent;
-  font: inherit;
+  background: none;
   text-align: left;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--wsx-ink, #1a1a1a);
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
 }
 
-.wsx-git-bar:hover {
-  background: rgba(0, 0, 0, 0.04);
+.wsx-context-menu-item:hover,
+.wsx-context-menu-item:focus-visible {
+  outline: none;
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
-.wsx-git-bar--error {
-  color: #a00;
+.wsx-context-menu-item--danger {
+  color: #b43c3c;
 }
 
-.wsx-git-branch {
-  font-weight: 600;
+.wsx-context-menu-item--danger:hover {
+  background: rgba(180, 60, 60, 0.1);
 }
 
-.wsx-git-upstream {
-  color: var(--ws-muted, #999);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wsx-git-count {
-  margin-left: auto;
-  color: var(--ws-muted, #999);
-}
-
-.wsx-git-badge {
-  flex: none;
-  min-width: 16px;
-  padding: 0 3px;
-  border: 1px solid var(--ws-line, #e5e5e5);
-  color: var(--ws-muted, #999);
-  font-size: 10px;
-  line-height: 14px;
-  text-align: center;
-}
-
-/* ---- 文件视图（外壳工作区区域） ---- */
+/* ---- 文件视图（右侧编辑区） ---- */
 
 .wsx-view {
   display: flex;
@@ -177,27 +347,31 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--ws-line, #e5e5e5);
-  font-family: var(--ws-mono, monospace);
-  font-size: 12px;
+  flex: none;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-view-path {
-  color: var(--ws-muted, #999);
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .wsx-view-name {
-  font-family: var(--ws-serif, Georgia, serif);
+  font-family: var(--wsx-serif, var(--ws-serif, Georgia, serif));
   font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.wsx-view-dirty,
-.wsx-view-conflict {
+.wsx-view-dirty {
   color: #a00;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -205,18 +379,26 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
+  color: #a00;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .wsx-view-bar button {
-  font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
-  background: transparent;
-  padding: 1px 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--wsx-ink, #1a1a1a);
+  background: none;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .wsx-view-bar button:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-view-save {
+  margin-left: auto;
 }
 
 .wsx-view-editor {
@@ -224,19 +406,26 @@
   min-height: 0;
 }
 
+/* 独立入口隐藏全局滚动条后，编辑器仍保留自己的滚动条。 */
+.wsx-view-editor .monaco-editor * {
+  scrollbar-width: auto;
+  -ms-overflow-style: auto;
+}
+
 .wsx-view-empty,
 .wsx-view-error {
   padding: 24px;
-  color: var(--ws-muted, #999);
-  font-family: var(--ws-mono, monospace);
-  font-size: 12px;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-family: var(--wsx-mono, monospace);
+  font-size: 13px;
+  text-align: center;
 }
 
 .wsx-view-error {
   color: #a00;
 }
 
-/* 内联确认对话框 */
+/* 嵌入模式的确认遮罩（独立入口已改为右键菜单确认，此样式仅为兼容保留）。 */
 .wsx-confirm {
   position: absolute;
   inset: 0;
@@ -251,7 +440,7 @@
 }
 
 .wsx-confirm-text {
-  font-family: var(--ws-serif, Georgia, serif);
+  font-family: var(--wsx-serif, Georgia, serif);
   font-size: 13px;
   max-width: 90%;
 }
@@ -263,57 +452,8 @@
 
 .wsx-confirm-buttons button {
   font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
+  border: 1px solid var(--wsx-ink, #1a1a1a);
   background: #fff;
   padding: 2px 12px;
   cursor: pointer;
-}
-
-.wsx-confirm-buttons button:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-/* 行内操作 */
-.wsx-tree-row-main {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  padding: 0;
-}
-
-.wsx-tree-row-delete {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  line-height: 1;
-  border: 0;
-  background: transparent;
-  color: var(--ws-dim, #666);
-  cursor: pointer;
-  visibility: hidden;
-  margin-right: 4px;
-  padding: 0;
-}
-
-.wsx-tree-row:hover .wsx-tree-row-delete {
-  visibility: visible;
-}
-
-.wsx-tree-row-delete:hover {
-  color: #a00;
-}
-
-.wsx-tree-rename {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  border: 1px solid var(--ws-line, #e5e5e5);
-  padding: 0 4px;
 }
