@@ -5,15 +5,15 @@
 ## 目录
 
 - `core/`：`todo-core` crate，任务与项目的实体、状态机与错误码，最早来自 SUMM-Todo，现在由本目录维护。
-- `server/`：Rust + axum + rusqlite，读写 `~/.todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
+- `server/`：Rust + axum + rusqlite，读写 `~/.ursi/todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
 - `Cargo.toml`：workspace，成员为 `core` 与 `server`，构建产物在 `target/`。
 - `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 正文用 ProseMirror 做成所见即所得编辑器。
 
 ## 本地开发
 
-待办库由 SUMM-Todo CLI 创建（`~/.todo/todo.db`），看板只读写现有库，不建表、不迁移。整个 Rust 侧只有 workspace 内的两个 crate，不依赖外部 git 仓库。
+默认数据目录是 `~/.ursi/todo`，库文件为其中的 `todo.db`，可用 `TODO_DB_PATH` 指向其它位置；看板只读写现有库，不建表、不迁移。整个 Rust 侧只有 workspace 内的两个 crate，不依赖外部 git 仓库。
 
-先启动 Server（默认监听 `0.0.0.0:8090`，读取 `~/.todo/todo.db`）：
+先启动 Server（默认监听 `0.0.0.0:8090`，读取 `~/.ursi/todo/todo.db`）：
 
 ```sh
 cargo run -p todo-web-server
@@ -43,7 +43,7 @@ cd .. && cargo build --release
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `TODO_DB_PATH` | `~/.todo/todo.db` | SUMM-Todo 本机库 |
+| `TODO_DB_PATH` | `~/.ursi/todo/todo.db` | 待办库文件 |
 | `PORT` | `8090` | HTTP 监听端口，绑定 `0.0.0.0` |
 | `TODO_WEB_STATIC_DIR` | `web/dist` | 静态文件目录 |
 

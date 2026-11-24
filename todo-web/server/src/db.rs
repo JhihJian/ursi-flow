@@ -39,19 +39,28 @@ pub const PROJECT_FIELDS: [&str; 6] = [
     "updated_at",
 ];
 
-/// Reads `TODO_DB_PATH`; otherwise uses the SUMM-Todo CLI default location.
+/// 默认数据目录：`~/.ursi/todo`。
+pub fn default_data_dir() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".ursi").join("todo")
+}
+
+/// Reads `TODO_DB_PATH`; otherwise uses `<默认数据目录>/todo.db`.
 pub fn get_db_path() -> PathBuf {
     if let Ok(path) = std::env::var("TODO_DB_PATH") {
         return PathBuf::from(path);
     }
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".todo").join("todo.db")
+    default_data_dir().join("todo.db")
 }
 
 pub fn connect() -> Result<Connection> {
-    let conn = Connection::open(get_db_path())?;
+    let path = get_db_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let conn = Connection::open(path)?;
     conn.busy_timeout(Duration::from_secs(5))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     Ok(conn)

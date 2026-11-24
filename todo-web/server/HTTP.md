@@ -6,7 +6,7 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `TODO_DB_PATH` | `$HOME/.todo/todo.db` | SUMM-Todo 待办库 |
+| `TODO_DB_PATH` | `$HOME/.ursi/todo/todo.db` | 待办库文件 |
 | `PORT` | `8090` | HTTP 端口，监听 `0.0.0.0` |
 | `TODO_WEB_STATIC_DIR` | `../web/dist` | 静态文件目录，找不到文件时回退 `index.html` |
 

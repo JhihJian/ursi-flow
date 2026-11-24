@@ -23,7 +23,7 @@
 ## 模块关系
 
 - **从门户进入应用。** 门户声明插槽及位置，构建时登记的源码插件提供内容。Workbench 插件通过发布配置中的 `workbenchUrl` 链接到独立部署，其 `/` 仍是 Workbench 内部路由，认证与 API 由 Workbench 处理。
-- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.todo/todo.db`；它不依赖 ursi-flow 的门户、Workbench 或 Flow。
+- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的门户、Workbench 或 Flow。
 - **管理 Flow。** Workbench 的可选 `/api/v1` 通过 Rust `FlowClient` 连接 daemon 的 Unix socket。[CLI](flow-runtime/client/SPEC.md) 直连 daemon，[独立控制台](flow-runtime/web/SPEC.md) 通过自己的同源桥接入。连接同一 daemon 的三个入口共享运行历史。
 - **执行一次工作。** Workbench 和 Flow Runtime 各自用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。Flow Runtime 校验节点提交的结果后选择后续路径。
 - **共享 Pi 会话。** 外部调用方和 Pi Web 实时页以同一 `sessionId` 访问会话服务。只读接口提供历史和实时快照，只有显式提交才会打开 Agent。该入口独立于执行器平台和 Flow 的 ACP 链路。
