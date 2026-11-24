@@ -40,3 +40,7 @@ references:
 #### 验收
 
 - `generate_id` 从 UUID v7 取 8 位十六进制，长度固定，并在写入前检查 `tasks` 表是否已存在同 ID。
+
+## 边界
+
+- 本目录内容只在用户明确确认后才修改，约束见 [AGENTS.md](AGENTS.md)。
