@@ -96,6 +96,12 @@ button {
   gap: var(--space-lg);
 }
 
+/* 工作台没有内容可嵌时内容栏只留窄条，内边距与会间隙一并去掉 */
+.panel-content.is-workspace.is-collapsed {
+  padding: 0;
+  gap: 0;
+}
+
 .content-rail {
   display: flex;
   flex: none;
