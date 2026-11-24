@@ -19,3 +19,5 @@ node_modules
 /workbench/web/.env
 /workbench/web/.env.*
 !/workbench/web/.env.example
+/todo-web/server/target/
+/todo-web/web/dist/

@@ -7,6 +7,7 @@
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [项目门户](apps/web/SPEC.md) | `/` 展示已发布的项目资料和应用入口。`/manage/` 编辑并导出草稿，部署流程发布共享配置。 |
+| [SUMM-Todo 看板](todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [页面布局](packages/ui-layout/SPEC.md) · [UI 插槽](packages/ui-slots/SPEC.md) | 布局包负责响应式排列，插槽包负责注册与渲染贡献。两者可由其他 React 页面单独使用。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
@@ -20,6 +21,7 @@
 ## 模块关系
 
 - **从门户进入应用。** 门户声明插槽及位置，构建时登记的源码插件提供内容。Workbench 插件通过发布配置中的 `workbenchUrl` 链接到独立部署，其 `/` 仍是 Workbench 内部路由，认证与 API 由 Workbench 处理。
+- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.todo/todo.db`；它不依赖 ursi-flow 的门户、Workbench 或 Flow。
 - **管理 Flow。** Workbench 的可选 `/api/v1` 通过 Rust `FlowClient` 连接 daemon 的 Unix socket。[CLI](flow-runtime/client/SPEC.md) 直连 daemon，[独立控制台](flow-runtime/web/SPEC.md) 通过自己的同源桥接入。连接同一 daemon 的三个入口共享运行历史。
 - **执行一次工作。** Workbench 和 Flow Runtime 各自用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。Flow Runtime 校验节点提交的结果后选择后续路径。
 - **共享 Pi 会话。** 外部调用方和 Pi Web 实时页以同一 `sessionId` 访问会话服务。只读接口提供历史和实时快照，只有显式提交才会打开 Agent。该入口独立于执行器平台和 Flow 的 ACP 链路。
@@ -34,6 +36,7 @@
 | --- | --- |
 | Workbench Server | [Flow 管理与进程边界](docs/design/workbench/SERVER-FLOW.md) · [工作清单、目录与定义](docs/design/workbench/SERVER-WORK-MANAGEMENT.md) |
 | Workbench Web | [应用壳、认证与 Flow 工具](docs/design/workbench/WEB-SHELL-AND-FLOW.md) · [工作管理界面](docs/design/workbench/WEB-WORK-MANAGEMENT.md) |
+| SUMM-Todo 看板 | [布局、拖拽与数据流](docs/design/todo-web/DASHBOARD.md) |
 | 工作项与文件包 | [工作清单与包来源](docs/design/workbench/WORK-LIST-DESIGN.md) · [版本化工作包生成器](docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md) · [工作包和配置包编辑台](docs/design/workbench/PATCH-STUDIO.md) |
 | 执行器 | [平台拆分与调用边界](docs/design/executor-platform/OVERVIEW.md) · [执行器协议统一为 ACP 的提案](docs/design/executor-platform/ACP-BACKEND.md) · [ACP 执行契约](docs/design/executor-platform/ACP-PROFILE.md) · [ACP 基线与首版范围](docs/design/executor-platform/ACP-SCOPE.md) · [平台部署](executor-platform/server/README.md) · [定义与尝试](docs/design/workbench/EXECUTOR-DESIGN.md) · [Flow 执行器](docs/design/workbench/FLOW-EXECUTOR-DESIGN.md) · [Agent 执行器](docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md) · [Runtime MCP 适配器](docs/design/flow-runtime/MCP-ADAPTER.md) |
 | Pi 会话 | [前端部署](pi-executor/README.md) · [会话 API 与服务部署](pi-executor/session-service/README.md) |

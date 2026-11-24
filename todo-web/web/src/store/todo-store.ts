@@ -1,0 +1,269 @@
+import { create } from 'zustand'
+import * as api from '@/api/client'
+import type {
+  Period,
+  ProjectInput,
+  ProjectStats,
+  Stats,
+  StatsPeriod,
+  Task,
+  TaskDraft,
+  TaskStatus,
+} from '@/api/types'
+
+export type DetailState =
+  | { mode: 'view'; task: Task; confirmDelete: boolean }
+  | { mode: 'new'; confirmDelete: false }
+
+export interface ProjectEditing {
+  /** null 表示新建项目。 */
+  id: string | null
+}
+
+export type MoveTarget = { status: TaskStatus } | { projectId: string }
+
+export interface TodoState {
+  projects: ProjectStats[]
+  tasks: Task[]
+  activeTasks: Task[]
+  stats: Record<StatsPeriod, Stats | null>
+  selectedProjectId: string | null
+  period: Period
+  projectsLoading: boolean
+  projectsError: boolean
+  tasksLoading: boolean
+  activeLoading: boolean
+  detail: DetailState | null
+  projectEditing: ProjectEditing | null
+  projectDeleteConfirm: boolean
+
+  bootstrap: () => Promise<void>
+  selectProject: (id: string) => Promise<void>
+  selectPeriod: (period: Period) => Promise<void>
+  refreshProjects: () => Promise<void>
+  refreshTasks: (clear?: boolean) => Promise<void>
+  refreshStats: () => Promise<void>
+  refreshActive: () => Promise<void>
+  refreshAll: () => Promise<void>
+  openTask: (task: Task) => void
+  openNewTask: () => void
+  closeDetail: () => void
+  setDetailConfirmDelete: (confirm: boolean) => void
+  saveTask: (draft: TaskDraft) => Promise<void>
+  removeTask: (id: string) => Promise<void>
+  moveTask: (task: Task, target: MoveTarget) => Promise<void>
+  startCreateProject: () => void
+  startEditProject: (id: string) => void
+  cancelProjectForm: () => void
+  requestDeleteProject: () => void
+  cancelDeleteProject: () => void
+  saveProject: (id: string | null, input: ProjectInput) => Promise<void>
+  removeProject: () => Promise<void>
+}
+
+let tasksRequestId = 0
+
+export const useTodoStore = create<TodoState>((set, get) => ({
+  projects: [],
+  tasks: [],
+  activeTasks: [],
+  stats: { daily: null, weekly: null, monthly: null },
+  selectedProjectId: null,
+  period: 'daily',
+  projectsLoading: true,
+  projectsError: false,
+  tasksLoading: false,
+  activeLoading: true,
+  detail: null,
+  projectEditing: null,
+  projectDeleteConfirm: false,
+
+  bootstrap: async () => {
+    await get().refreshProjects()
+    const first = get().projects[0]
+    if (first) {
+      await get().selectProject(first.id)
+    } else {
+      set({ selectedProjectId: null, tasks: [] })
+    }
+    await Promise.all([get().refreshStats(), get().refreshActive()])
+  },
+
+  selectProject: async (id) => {
+    set({
+      selectedProjectId: id,
+      detail: null,
+      projectEditing: null,
+      projectDeleteConfirm: false,
+    })
+    await get().refreshTasks(true)
+  },
+
+  selectPeriod: async (period) => {
+    if (get().period === period) return
+    set({ period })
+    await get().refreshTasks()
+  },
+
+  refreshProjects: async () => {
+    const hasProjects = get().projects.length > 0
+    set({ projectsLoading: !hasProjects, projectsError: false })
+    try {
+      const { projects } = await api.listProjects(false)
+      set({ projects, projectsLoading: false })
+    } catch (error) {
+      set({ projectsLoading: false, projectsError: !hasProjects })
+      throw error
+    }
+  },
+
+  refreshTasks: async (clear = false) => {
+    const { selectedProjectId, period } = get()
+    const requestId = ++tasksRequestId
+    if (!selectedProjectId) {
+      set({ tasks: [], tasksLoading: false })
+      return
+    }
+    if (clear) set({ tasks: [], tasksLoading: true })
+    try {
+      const { tasks } = await api.listTasks({ project: selectedProjectId, period })
+      if (requestId !== tasksRequestId) return
+      set({ tasks, tasksLoading: false })
+    } catch (error) {
+      if (requestId === tasksRequestId) set({ tasksLoading: false })
+      throw error
+    }
+  },
+
+  refreshStats: async () => {
+    const [daily, weekly, monthly] = await Promise.all([
+      api.getStats('daily'),
+      api.getStats('weekly'),
+      api.getStats('monthly'),
+    ])
+    set({ stats: { daily: daily.stats, weekly: weekly.stats, monthly: monthly.stats } })
+  },
+
+  refreshActive: async () => {
+    set({ activeLoading: true })
+    try {
+      const [inProgress, blocked] = await Promise.all([
+        api.listTasks({ status: 'in_progress' }),
+        api.listTasks({ status: 'blocked' }),
+      ])
+      set({
+        activeTasks: [...inProgress.tasks, ...blocked.tasks],
+        activeLoading: false,
+      })
+    } catch (error) {
+      set({ activeLoading: false })
+      throw error
+    }
+  },
+
+  refreshAll: async () => {
+    await Promise.all([
+      get().refreshProjects(),
+      get().refreshTasks(),
+      get().refreshStats(),
+      get().refreshActive(),
+    ])
+  },
+
+  openTask: (task) => set({ detail: { mode: 'view', task, confirmDelete: false } }),
+
+  openNewTask: () =>
+    set({
+      detail: { mode: 'new', confirmDelete: false },
+      projectEditing: null,
+      projectDeleteConfirm: false,
+    }),
+
+  closeDetail: () => set({ detail: null }),
+
+  setDetailConfirmDelete: (confirm) => {
+    const detail = get().detail
+    if (!detail || detail.mode !== 'view') return
+    set({ detail: { ...detail, confirmDelete: confirm } })
+  },
+
+  saveTask: async (draft) => {
+    if (draft.id) {
+      await api.updateTask(draft.id, {
+        title: draft.title,
+        priority: draft.priority,
+        status: draft.status,
+        tags: draft.tags,
+        result: draft.result,
+      })
+    } else {
+      await api.createTask({
+        title: draft.title,
+        priority: draft.priority,
+        tags: draft.tags,
+        project_id: get().selectedProjectId,
+      })
+    }
+    set({ detail: null })
+    await get().refreshAll()
+  },
+
+  removeTask: async (id) => {
+    await api.deleteTask(id)
+    const detail = get().detail
+    if (detail?.mode === 'view' && detail.task.id === id) set({ detail: null })
+    await get().refreshAll()
+  },
+
+  moveTask: async (task, target) => {
+    if ('status' in target) {
+      if (task.status === target.status) return
+      await api.updateTask(task.id, { status: target.status })
+    } else {
+      if (task.project_id === target.projectId) return
+      await api.updateTask(task.id, { project_id: target.projectId })
+    }
+    const detail = get().detail
+    if (detail?.mode === 'view' && detail.task.id === task.id) set({ detail: null })
+    await get().refreshAll()
+  },
+
+  startCreateProject: () =>
+    set({ projectEditing: { id: null }, projectDeleteConfirm: false, detail: null }),
+
+  startEditProject: (id) =>
+    set({ projectEditing: { id }, projectDeleteConfirm: false, detail: null }),
+
+  cancelProjectForm: () => set({ projectEditing: null }),
+
+  requestDeleteProject: () => set({ projectDeleteConfirm: true, projectEditing: null }),
+
+  cancelDeleteProject: () => set({ projectDeleteConfirm: false }),
+
+  saveProject: async (id, input) => {
+    if (id) {
+      await api.updateProject(id, input)
+      set({ projectEditing: null })
+      await get().refreshProjects()
+      return
+    }
+    const created = await api.createProject(input)
+    set({ projectEditing: null, selectedProjectId: created.id })
+    await get().refreshProjects()
+    await get().selectProject(created.id)
+    await get().refreshActive()
+  },
+
+  removeProject: async () => {
+    const id = get().selectedProjectId
+    if (!id) return
+    await api.deleteProject(id)
+    set({ projectDeleteConfirm: false, detail: null, selectedProjectId: null, tasks: [] })
+    await get().refreshProjects()
+    const first = get().projects[0]
+    if (first) {
+      await get().selectProject(first.id)
+    }
+    await Promise.all([get().refreshStats(), get().refreshActive()])
+  },
+}))
