@@ -49,12 +49,13 @@ cd server && cargo build --release
 - 顶部统计块显示项目数、今日、本周、本月与全部任务数，点击切换任务表的周期筛选。
 - 任务行首的 `⠿` 是拖拽手柄。拖动后状态标签与左侧项目项出现虚线放置提示；拖到状态标签改状态，拖到项目项改归属。
 - 两条分隔线可拖动调整三栏宽度，悬停时显示 `⋮` 和拖动光标；双击分隔线恢复默认宽度。布局保存在浏览器本地。
+- Projects 侧边栏点 `«` 可折叠成 44px 窄条，窄条竖排显示当前项目名称、活跃任务数和累计时间；点 `»` 或窄条展开，宽度回到折叠前的值。把分隔线拖到最小宽度也会自动折叠。
 - 完成任务后播放提示音并发送桌面通知，右下角按钮可静音。
 
 ## 交互实现
 
 - `@dnd-kit/core` 提供任务的 `useDraggable` 与状态标签、项目项的 `useDroppable`，以及 6px 启动阈值、拖拽预览和放置高亮。拖拽结果通过 `PUT /api/tasks/{id}` 写回。
-- `react-resizable-panels` 提供三栏 `Group` / `Panel` / `Separator`，限制每栏最小和最大宽度，并用 `useDefaultLayout` 保存和恢复布局。
+- `react-resizable-panels` 提供三栏 `Group` / `Panel` / `Separator`，限制每栏最小和最大宽度，`collapsible` 的 Projects 面板支持折叠窄条，并用 `useDefaultLayout` 保存和恢复布局。
 
 ## 检查
 

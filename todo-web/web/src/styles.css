@@ -221,7 +221,7 @@ button {
 .action-bar {
   display: flex;
   gap: var(--space-sm);
-  align-items: baseline;
+  align-items: center;
   margin-bottom: var(--space-md);
 }
 
@@ -229,8 +229,83 @@ button {
   margin-bottom: 0;
 }
 
-.action-bar .btn {
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
   margin-left: auto;
+}
+
+.sidebar-collapse,
+.sidebar-expand {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-collapse:hover,
+.sidebar-expand:hover {
+  color: var(--black);
+}
+
+.panel-sidebar-collapsed {
+  padding: 0;
+}
+
+.sidebar-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  height: 100%;
+  padding: var(--space-sm) 0;
+}
+
+.collapsed-project {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.collapsed-project-name {
+  writing-mode: vertical-rl;
+  max-height: 100%;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--gray-900);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.collapsed-project-meta {
+  writing-mode: vertical-rl;
+  max-height: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--gray-400);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.collapsed-project:hover .collapsed-project-name {
+  color: var(--black);
+}
+
+.collapsed-project:hover .collapsed-project-meta {
+  color: var(--gray-600);
 }
 
 .project-list {
