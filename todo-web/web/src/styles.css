@@ -78,6 +78,12 @@ button {
   overscroll-behavior-y: contain;
 }
 
+/* 项目栏和任务表以拖拽、点击为主，不参与文本选择。 */
+.panel-sidebar,
+.tasks-section {
+  user-select: none;
+}
+
 .panel-sidebar {
   padding: var(--space-md);
 }

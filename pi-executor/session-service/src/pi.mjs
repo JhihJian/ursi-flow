@@ -29,12 +29,22 @@ export async function createPi({ root, cwd, modelId, baseUrl, apiKey, reference 
     async execute() { return { content: [{ type: 'text', text: reference }], details: {} }; },
   }];
   const systemPrompt = 'You are a helpful assistant.';
+  const publicModel = ({ id, name, provider, contextWindow, maxTokens }) => ({ id, name, provider, contextWindow, maxTokens });
+  const publicPrompt = text => text.replaceAll(apiKey, '[redacted]').replaceAll(cwd, '[workspace]').replaceAll(root, '[state]');
   const runtimeInfo = {
-    systemPrompt,
-    model: { id: model.id, name: model.name, provider: model.provider },
+    scope: 'service', systemPrompt,
+    model: publicModel(model),
     tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters, active: true })),
-    skills: [],
+    skills: [], mcp: [],
   };
+  function effectiveRuntime(session) {
+    const active = new Set(session.getActiveToolNames());
+    return {
+      ...runtimeInfo, scope: 'session', systemPrompt: publicPrompt(session.systemPrompt),
+      model: publicModel(session.model ?? model),
+      tools: runtimeInfo.tools.filter(tool => active.has(tool.name)),
+    };
+  }
   async function openPi(sessionManager) {
     const runtime = createExtensionRuntime();
     const { session } = await createAgentSession({
@@ -57,5 +67,5 @@ export async function createPi({ root, cwd, modelId, baseUrl, apiKey, reference 
     });
     return session;
   }
-  return { openPi, runtimeInfo };
+  return { openPi, runtimeInfo, effectiveRuntime };
 }

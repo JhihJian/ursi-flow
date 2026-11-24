@@ -6,13 +6,15 @@ export const statuses = {
 };
 
 export type Summary = { id: string; title: string; updatedAt: number; status: keyof typeof statuses };
-export type Snapshot = Summary & { messages: AgentMessage[]; partial: AgentMessage | null; activeTool: string | null };
+export type Snapshot = Summary & { messages: AgentMessage[]; entryIds: string[]; partial: AgentMessage | null; activeTool: string | null };
 
 export type RuntimeInfo = {
+  scope: "service" | "session";
   systemPrompt: string;
-  model: { id: string; name: string; provider: string };
+  model: { id: string; name: string; provider: string; contextWindow?: number; maxTokens?: number };
   tools: ToolEntry[];
   skills: { name: string; description: string }[];
+  mcp: { name: string }[];
 };
 
 export class ApiError extends Error {

@@ -26,7 +26,7 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function body(req, key, { optional = false } = {}) {
+async function body(req, key, { optional = false, limit = optional ? 100 : 16_000 } = {}) {
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw new RequestError(415, '需要 JSON 请求');
   let size = 0;
   const chunks = [];
@@ -42,7 +42,6 @@ async function body(req, key, { optional = false } = {}) {
     throw new RequestError(400, '请求字段无效');
   }
   if (optional && !(key in input)) return '';
-  const limit = optional ? 100 : 16_000;
   const value = typeof input[key] === 'string' ? input[key].trim() : '';
   if (!value || value.length > limit) throw new RequestError(400, `${key} 无效`);
   return value;
@@ -138,12 +137,19 @@ export async function startService(env = process.env) {
       if (!info.isFile() || info.size > 12_000) throw new Error('Use a reference text file of at most 12000 bytes');
       reference = await readFile(env.PI_SESSION_REFERENCE_FILE, 'utf8');
     }
-    const { openPi, runtimeInfo } = await createPi({ root, cwd, modelId, baseUrl: modelUrl.href, apiKey, reference });
-    const sessions = createSessions({ root, cwd, openPi, apiKey });
+    const { openPi, runtimeInfo, effectiveRuntime } = await createPi({ root, cwd, modelId, baseUrl: modelUrl.href, apiKey, reference });
+    const sessions = createSessions({ root, cwd, openPi, apiKey, runtimeInfo, effectiveRuntime });
     await sessions.restore();
     const streamClosers = new Set();
+    const writes = new Set();
     let closing = false;
     let closePromise;
+    function mutate(operation) {
+      if (closing) throw new RequestError(503, '会话服务正在关闭');
+      const pending = operation();
+      writes.add(pending);
+      return pending.finally(() => writes.delete(pending));
+    }
     const server = createServer(async (req, res) => {
       res.setHeader('x-content-type-options', 'nosniff');
       res.setHeader('referrer-policy', 'no-referrer');
@@ -163,12 +169,29 @@ export async function startService(env = process.env) {
         if (req.method === 'GET') {
           if (parts.length === 1) return json(res, 200, { sessions: sessions.list() });
           if (action === 'events') return await stream(id, res);
-          if (parts.length === 2) return json(res, 200, await sessions.snapshot(id));
+          if (action === 'structure') return json(res, 200, await sessions.structure(id));
+          if (action === 'runtime') return json(res, 200, sessions.runtime(id));
+          if (parts.length === 2) {
+            const entries = url.searchParams.getAll('entry');
+            const entryId = entries[0]?.trim();
+            if (entries.length > 1 || (entries.length === 1 && (!entryId || entryId.length > 128))) throw new RequestError(400, 'entry 无效');
+            return json(res, 200, await sessions.snapshot(id, entryId));
+          }
         }
         if (req.method === 'POST') {
           if (!canWrite) throw new RequestError(403, '当前访问权限只允许查看');
-          if (parts.length === 1) return json(res, 201, await sessions.create(await body(req, 'title', { optional: true })));
-          if (action === 'prompt') return json(res, 202, await sessions.prompt(id, await body(req, 'message')));
+          if (parts.length === 1) {
+            const title = await body(req, 'title', { optional: true });
+            return json(res, 201, await mutate(() => sessions.create(title)));
+          }
+          if (action === 'prompt') {
+            const instruction = await body(req, 'message');
+            return json(res, 202, await mutate(() => sessions.prompt(id, instruction)));
+          }
+          if (action === 'fork') {
+            const entryId = await body(req, 'entryId', { limit: 128 });
+            return json(res, 201, await mutate(() => sessions.fork(id, entryId)));
+          }
           if (action === 'cancel') {
             req.resume();
             if (!sessions.cancel(id)) throw new RequestError(409, '没有正在运行的任务');
@@ -248,6 +271,8 @@ export async function startService(env = process.env) {
           closing = true;
           for (const disconnect of streamClosers) disconnect();
           await new Promise((accept, reject) => server.close(error => error ? reject(error) : accept()));
+          // A client can disconnect while its accepted write is still persisting.
+          await Promise.allSettled(writes);
           await sessions.stop();
           await rm(lock, { recursive: true });
         })();

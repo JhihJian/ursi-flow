@@ -26,19 +26,24 @@
 | 方法与路径 | 最低权限 | 成功响应 |
 | --- | --- | --- |
 | `GET /access` | 只读 | `200`，`{ "canWrite": false }` 或 `{ "canWrite": true }`。 |
-| `GET /runtime` | 只读 | `200`，`{ systemPrompt, model: { id, name, provider }, tools, skills }`。 |
+| `GET /runtime` | 只读 | `200`，服务默认配置。 |
+| `GET /sessions/:id/runtime` | 只读 | `200`，会话生效配置。未捕获生效配置时返回服务默认配置。 |
 | `GET /sessions` | 只读 | `200`，`{ sessions: [...] }`，按更新时间倒序。 |
-| `GET /sessions/:id` | 只读 | `200`，当前快照。 |
+| `GET /sessions/:id` | 只读 | `200`，当前快照。带 `?entry=<entryId>` 时返回截至该消息的历史快照。 |
+| `GET /sessions/:id/structure` | 只读 | `200`，`{ activeLeafId, nodes, forkedFrom, forks }`。 |
 | `GET /sessions/:id/events` | 只读 | `200`，SSE，先发送当前快照，随后随会话更新发送新的快照。 |
 | `POST /sessions` | 对话 | `201`，会话摘要。请求体为 `{}` 或 `{ "title": "任务名称" }`。 |
 | `POST /sessions/:id/prompt` | 对话 | `202`，已受理。请求体为 `{ "message": "任务内容" }`。 |
 | `POST /sessions/:id/cancel` | 对话 | `202`，已请求停止。最终状态从快照读取。 |
+| `POST /sessions/:id/fork` | 对话 | `201`，派生会话摘要。请求体为 `{ "entryId": "消息条目 ID" }`。 |
 
-`GET /runtime` 返回服务当前使用的系统提示、模型标识和工具定义。仅配置参考文件时才列出 `read_reference`，`skills` 为空数组。响应不包含密钥、模型端点、参考文件路径或内容。读取配置不会创建 Agent 或请求模型。
+配置响应包含 `scope`、`systemPrompt`、`model`、`tools`、`skills` 和 `mcp`。`scope: "service"` 表示服务默认值。`scope: "session"` 表示来自当前运行或上次运行的配置。模型字段含 ID、名称、提供方、上下文窗口和输出上限。只有显式配置参考文件时才可使用 `read_reference`。服务不加载技能或 MCP，两者均返回空数组。配置响应不包含密钥、模型端点、私有目录、参考文件路径或内容。
 
-会话摘要含 `id`、`title`、`updatedAt`（Unix 毫秒）和 `status`。状态包括 `idle`、`running`、`completed`、`failed`、`cancelled` 和 `interrupted`。快照还包含最新 100 条公开消息、正在生成的 `partial` 和当前运行的 `activeTool`。SSE 每个 `data` 帧携带一份 JSON 快照，慢连接在恢复时获得最新状态。连接中断后重新订阅即可；命令与事件流彼此独立。
+会话摘要含 `id`、`title`、`updatedAt`（Unix 毫秒）和 `status`。状态包括 `idle`、`running`、`completed`、`failed`、`cancelled` 和 `interrupted`。快照包含当前路径末尾最多 100 条公开 `messages`、与之逐条对应的稳定 `entryIds`、正在生成的 `partial` 和当前运行的 `activeTool`。历史快照不包含实时输出或活动工具。SSE 每个 `data` 帧携带一份 JSON 快照，慢连接在恢复时获得最新状态。连接中断后重新订阅即可，命令与订阅彼此独立。
 
-无有效凭据且不匹配免登录入口时返回 `401`。来源不匹配或只读访问提交命令时返回 `403`，未知会话返回 `404`。向运行中的会话提交新消息，或向空闲会话发出停止命令，返回 `409`。实例执行或订阅容量已满时返回 `429`。命令受理后由服务异步执行，以快照中的终态为准。
+结构中的 `nodes` 包含 `id`、`parentId`、`role` 和截取后的 `text`。根节点的 `parentId` 为 `null`。`activeLeafId` 对应实时路径的最后一条公开消息。`forkedFrom` 记录来源会话和条目，`forks` 列出由此会话派生的子会话。历史预览使用条目 ID 读取路径，不移动实时末端。派生复制从根至选中条目的路径，返回新会话 ID，保留复制消息的条目 ID。读取和派生都不会启动 Agent 或请求模型。
+
+无有效凭据且不匹配免登录入口时返回 `401`。来源不匹配或只读访问提交命令时返回 `403`，未知会话或消息条目返回 `404`。向运行中的会话提交新消息或派生会话，向正在派生的会话提交新消息，或向空闲会话发出停止命令，均返回 `409`。实例执行或订阅容量已满时返回 `429`。命令受理后由服务异步执行，以快照中的终态为准。
 
 ## 从外部提交并分享会话
 
@@ -60,6 +65,6 @@ curl -fsS "$api/sessions/$session_id/prompt" \
 
 ## 重启与验证
 
-服务启动时加载会话索引。历史读取直接投影已落盘的消息；只有显式提交才会打开 Pi 会话。正常退出会请求停止正在运行的任务。异常退出后，已落盘的历史保持可读，未完成的运行显示为 `interrupted`。状态目录内的 `.session-owner` 用于保证单进程持有会话。异常退出后如有残留，先确认原进程已退出，再移除该空目录并启动服务。
+服务启动时加载会话索引。历史读取直接投影已落盘的消息。只有显式提交提示词才创建 Agent。正常退出会请求停止正在运行的任务。异常退出后，已落盘的历史保持可读，未完成的运行显示为 `interrupted`。状态目录内的 `.session-owner` 用于保证单进程持有会话。异常退出后如有残留，先确认原进程已退出，再移除该空目录并启动服务。
 
-运行 `npm test` 进行集成验证。测试使用回环地址上的假 OpenAI SSE 模型，覆盖中途观察、工具结果、超大快照、权限拒绝、并发冲突、会话续聊与重启历史。
+运行 `npm test` 进行集成验证。测试使用回环地址上的假 OpenAI SSE 模型，覆盖中途观察、工具结果、超大快照、权限拒绝、并发冲突、会话续聊、运行配置、历史预览、派生和重启后的条目寻址。

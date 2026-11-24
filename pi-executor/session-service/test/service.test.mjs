@@ -74,10 +74,11 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal(runtime.headers.get('cache-control'), 'no-store');
   const configuration = await runtime.json();
   assert.deepEqual(configuration, {
+    scope: 'service',
     systemPrompt: 'You are a helpful assistant.',
-    model: { id: model, name: model, provider: 'ursi-session' },
+    model: { id: model, name: model, provider: 'ursi-session', contextWindow: 128_000, maxTokens: 8192 },
     tools: [{ name: 'read_reference', description: 'Read the reference material provided by the operator.', parameters: { type: 'object', properties: {} }, active: true }],
-    skills: [],
+    skills: [], mcp: [],
   });
   assert.deepEqual(await (await request('/runtime', writer)).json(), configuration);
   assert.equal(provider.requests.length, 0);
@@ -87,6 +88,8 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal(created.status, 201);
   const { id } = await created.json();
   const session = `/sessions/${id}`;
+  assert.deepEqual(await (await request(`${session}/runtime`, reader)).json(), configuration);
+  assert.equal((await request(`${session}/runtime`)).status, 401);
   const before = await observe(await request(`${session}/events`, reader), signal);
   assert.equal((await before.until(data => data.status === 'idle')).snapshot.id, id);
   await before.close();
@@ -100,6 +103,11 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.ok(provider.requests[0].body.messages.some(entry => entry.role === 'system' && entry.content.includes(configuration.systemPrompt)));
   assert.equal(provider.requests[0].body.model, configuration.model.id);
   assert.deepEqual(provider.requests[0].body.tools.map(tool => tool.function.name), ['read_reference']);
+  const sentPrompt = provider.requests[0].body.messages.find(entry => entry.role === 'system').content;
+  const expectedRuntime = {
+    ...configuration, scope: 'session', systemPrompt: sentPrompt.replaceAll(join(root, 'workspace'), '[workspace]'),
+  };
+  assert.deepEqual(await (await request(`${session}/runtime`, reader)).json(), expectedRuntime);
   const midflight = await observe(await request(`${session}/events`, reader), signal);
   const first = await midflight.until(data => text(data.partial).includes('第一段输出'));
   assert.ok(first.bytes > 32_000, 'SSE snapshot exercises socket backpressure');
@@ -116,6 +124,9 @@ test('shared Pi session: viewer observes live and cold history without starting 
   provider.requests[1].finish();
   const finished = (await reconnected.until(data => data.status === 'completed')).snapshot;
   assert.equal(text(finished.messages.at(-1)), '第一段输出。第二段输出。');
+  const effective = await (await request(`${session}/runtime`, reader)).json();
+  assert.deepEqual(effective, expectedRuntime);
+  assert.equal(provider.requests.length, 2);
   await reconnected.close();
 
   await service.close();
@@ -125,6 +136,7 @@ test('shared Pi session: viewer observes live and cold history without starting 
   assert.equal(JSON.parse(history.split('\n')[0]).id, id);
   service = await startService(env);
   assert.deepEqual(await (await request(session, reader)).json(), finished);
+  assert.deepEqual(await (await request(`${session}/runtime`, reader)).json(), effective);
   const restored = await observe(await request(`${session}/events`, reader), signal);
   assert.deepEqual((await restored.until(data => data.status === 'completed')).snapshot, finished);
   assert.equal(await readFile(join(root, file), 'utf8'), history);

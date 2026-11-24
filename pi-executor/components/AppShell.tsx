@@ -11,9 +11,9 @@ import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
-import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
-import { SystemPromptPanel } from "./SystemPromptPanel";
-import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
+import { LiveSessionStructure } from "@/app/live/structure";
+import { LiveRuntimePanel } from "@/app/live/runtime";
+import { useRuntimeInfo } from "@/app/live/runtime/useRuntimeInfo";
 import { AgentSessionPanel } from "./AgentSessionPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
@@ -54,7 +54,7 @@ import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
 } from "@/lib/panel-layout";
-import type { BlockingExtensionUiRequest, SessionInfo, SessionTreeNode } from "@/lib/types";
+import type { BlockingExtensionUiRequest, SessionInfo } from "@/lib/types";
 import type { ProjectTrustStatus } from "@/lib/api-types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -259,24 +259,13 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
   const topBarRef = useRef<HTMLDivElement>(null);
   const mobileToolbarRef = useRef<HTMLDivElement>(null);
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
-  const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
-  const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
-  const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
-  const sessionHasBranches = hasSessionBranches(branchTree);
-
-  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
-    setBranchTree(tree);
-    setBranchActiveLeafId(activeLeafId);
-    branchLeafChangeFnRef.current = onLeafChange;
-  }, []);
-
-  const handleBranchLeafChange = useCallback((leafId: string | null) => {
-    branchLeafChangeFnRef.current?.(leafId);
-  }, []);
-
-  const systemPrompt = live.runtime?.systemPrompt ?? null;
-  const systemTools = live.runtime?.tools ?? null;
-  const systemInfoLoading = !live.runtime && !live.runtimeError;
+  const [preview, setPreview] = useState<{ sessionId: string; entryId: string } | null>(null);
+  const selectedId = selectedSession?.id ?? null;
+  const previewEntryId = preview && preview.sessionId === selectedId ? preview.entryId : null;
+  const selectedRunning = selectedId !== null && live.running.includes(selectedId);
+  const handlePreview = (entryId: string | null) => {
+    setPreview(selectedId && entryId ? { sessionId: selectedId, entryId } : null);
+  };
   const systemBtnRef = useRef<HTMLButtonElement>(null);
 
   // Session stats (tokens + cost) — populated by ChatWindow, displayed in top bar
@@ -310,11 +299,8 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  useEffect(() => {
-    if (!sessionHasBranches) {
-      setActiveTopPanel((panel) => panel === "branches" ? null : panel);
-    }
-  }, [sessionHasBranches]);
+  const showingRuntime = activeTopPanel === "system" || activeTopPanel === "tools" || settingsSection !== null;
+  const { runtime, error: runtimeError } = useRuntimeInfo(live.canWrite !== null && showingRuntime, selectedId, selectedRunning);
 
   useEffect(() => {
     if (!hasSubagentSessions) {
@@ -671,8 +657,7 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
       return prev;
     });
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
+    setPreview(null);
     setActiveTopPanel(null);
     if (currentProject !== newProject) {
       // File tabs are keyed by absolute path, so tabs opened in the previous
@@ -724,9 +709,8 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
     setNewSessionCwd(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
-    branchLeafChangeFnRef.current = null;
+    setPreview(null);
+    setActiveTopPanel(panel => panel === "branches" ? null : panel);
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
@@ -757,6 +741,8 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
     else {
       invalidateWorkspaceRestore();
       setSelectedSession(null);
+      setPreview(null);
+      setActiveTopPanel(panel => panel === "branches" ? null : panel);
       setSessionKey(key => key + 1);
     }
   });
@@ -781,8 +767,7 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
     setSessionKey((k) => k + 1);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
+    setPreview(null);
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace(`?cwd=${encodeURIComponent(cwd)}`, { scroll: false });
@@ -830,7 +815,10 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
       handleSelectSession(catalogued);
       return;
     }
-    if (isLive) return;
+    if (isLive) {
+      handleSelectSession(liveSessionInfo(sessionId));
+      return;
+    }
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       const data = await response.json() as { info?: SessionInfo; error?: string };
@@ -976,8 +964,7 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
       setSessionKey((k) => k + 1);
-      setBranchTree([]);
-      setBranchActiveLeafId(null);
+      setPreview(null);
       setActiveTopPanel(null);
       router.replace(cwd ? `?cwd=${encodeURIComponent(cwd)}` : "/", { scroll: false });
     }
@@ -1306,16 +1293,16 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
             </span>
           </button>
         )}
-        {sessionHasBranches && (mobile ? (
+        {selectedId && (
           <button
             type="button"
-            onClick={() => toggleTopPanel("branches", true)}
-            title={translate("i18n.branches")}
-            aria-label={translate("i18n.branches")}
+            onClick={() => toggleTopPanel("branches", mobile)}
+            title={translate("live.sessionStructure")}
+            aria-label={translate("live.sessionStructure")}
             aria-pressed={activeTopPanel === "branches"}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined, height: "100%", padding: mobile ? 0 : "0 12px", gap: 6, fontSize: 11,
               background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
               border: "none",
               borderTop: activeTopPanel === "branches" ? "2px solid var(--accent)" : "2px solid transparent",
@@ -1323,27 +1310,17 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
               color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0,
             }}
-            data-mobile-toolbar-action="branches"
+            data-mobile-toolbar-action={mobile ? "branches" : undefined}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="6" y1="3" x2="6" y2="15" />
               <circle cx="18" cy="6" r="3" />
               <circle cx="6" cy="18" r="3" />
               <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
+            {!mobile && <span>{translate("live.sessionStructure")}</span>}
           </button>
-        ) : (
-          <BranchNavigator
-            tree={branchTree}
-            activeLeafId={branchActiveLeafId}
-            onLeafChange={handleBranchLeafChange}
-            inline
-            containerRef={topBarRef}
-            open={activeTopPanel === "branches"}
-            onToggle={() => toggleTopPanel("branches")}
-            hasSession
-          />
-        ))}
+        )}
         <button
           ref={systemBtnRef}
           type="button"
@@ -1371,7 +1348,7 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
           }}
           data-mobile-toolbar-action={mobile ? "system" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: runtime?.systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="8" y1="13" x2="16" y2="13" />
@@ -1405,7 +1382,7 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
           }}
           data-mobile-toolbar-action={mobile ? "tools" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemTools?.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: runtime?.tools.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
           </svg>
           {!mobile && <span>{translate("tools.label")}</span>}
@@ -1862,20 +1839,6 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
           )}
           {live?.canWrite === false && <span className="px-2 text-[11px] text-text-muted">{translate("live.readOnly")}</span>}
           {!isMobile && renderMainFileToggle(false)}
-          {isMobile && sessionHasBranches && (
-            <BranchNavigator
-              tree={branchTree}
-              activeLeafId={branchActiveLeafId}
-              onLeafChange={handleBranchLeafChange}
-              inline
-              compact
-              containerRef={topBarRef}
-              open={activeTopPanel === "branches"}
-              onToggle={() => toggleTopPanel("branches")}
-              hasSession={showChat}
-              hideInlineButton
-            />
-          )}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div style={{
@@ -1896,24 +1859,22 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
                   onSelectSession={handleSelectSession}
                 />
               )}
+              {activeTopPanel === "branches" && selectedId && (
+                <LiveSessionStructure
+                  sessionId={selectedId}
+                  canWrite={live.canWrite === true}
+                  running={selectedRunning}
+                  previewEntryId={previewEntryId}
+                  onPreview={handlePreview}
+                  onOpenSession={handleOpenSession}
+                  onForked={summary => {
+                    handleSelectSession(liveSessionInfo(summary.id, summary));
+                    void live.refresh();
+                  }}
+                />
+              )}
               {(activeTopPanel === "system" || activeTopPanel === "tools") && (
-                <div className="border-b border-border bg-bg-panel px-4 py-2 text-xs text-text-muted">
-                  {live.runtimeError ? <span role="alert">{live.runtimeError}</span> : translate("live.runtimeInfo")}
-                </div>
-              )}
-              {activeTopPanel === "system" && !live.runtimeError && (
-                <SystemPromptPanel
-                  loading={systemInfoLoading}
-                  prompt={systemPrompt}
-                  translate={translate}
-                />
-              )}
-              {activeTopPanel === "tools" && !live.runtimeError && (
-                <ToolDefinitionsPanel
-                  loading={systemInfoLoading}
-                  tools={systemTools}
-                  translate={translate}
-                />
+                <LiveRuntimePanel kind={activeTopPanel} runtime={runtime} error={runtimeError} />
               )}
               {activeTopPanel === "session" && (
                 <div className="session-info-popover" style={{
@@ -2131,38 +2092,48 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           {showChat ? (
-            <ChatWindow
-              live={live}
-              key={sessionKey}
-              session={selectedSession}
-              searchTarget={searchTarget?.sessionId === selectedSession?.id ? searchTarget : null}
-              onSearchTargetHandled={handleSearchTargetHandled}
-              initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
-              onScrollPositionChange={handleSessionScrollPositionChange}
-              sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
-              newSessionCwd={effectiveNewSessionCwd}
-              newSessionDraftKey={newSessionDraftKey}
-              onAgentEnd={handleAgentEnd}
-              onAttentionNeeded={handleAttentionNeeded}
-              onSessionCreated={handleSessionCreated}
-              onSessionForked={handleSessionForked}
-              modelsRefreshKey={modelsRefreshKey}
-              chatInputRef={chatInputRef}
-              onBranchDataChange={handleBranchDataChange}
-              onSessionStatsChange={handleSessionStatsChange}
-              onSessionStatsPanelOpen={openSessionStatsPanel}
-              onContextUsageChange={handleContextUsageChange}
-              onOpenFile={isLive ? undefined : handleOpenLinkedFile}
-              onOpenSession={handleOpenSession}
-              onAskInNewChat={isLive ? undefined : handleAskInNewChat}
-              quoteSelectionEnabled={!isLive && quoteSelectionEnabled}
-              initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
-              onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
-              soundEnabled={soundEnabled}
-              onSoundToggle={onSoundToggle}
-              playDoneSound={playDoneSound}
-              unlockAudio={unlockAudio}
-            />
+            <div className="flex h-full min-h-0 flex-col">
+              {previewEntryId && (
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-panel px-4 py-2 text-xs">
+                  <span>{translate("live.historyPreview")}</span>
+                  <button type="button" className="cursor-pointer text-accent hover:underline" onClick={() => handlePreview(null)}>{translate("live.returnToLive")}</button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <ChatWindow
+                  live={live}
+                  previewEntryId={previewEntryId}
+                  key={sessionKey}
+                  session={selectedSession}
+                  searchTarget={searchTarget?.sessionId === selectedSession?.id ? searchTarget : null}
+                  onSearchTargetHandled={handleSearchTargetHandled}
+                  initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
+                  onScrollPositionChange={handleSessionScrollPositionChange}
+                  sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
+                  newSessionCwd={effectiveNewSessionCwd}
+                  newSessionDraftKey={newSessionDraftKey}
+                  onAgentEnd={handleAgentEnd}
+                  onAttentionNeeded={handleAttentionNeeded}
+                  onSessionCreated={handleSessionCreated}
+                  onSessionForked={handleSessionForked}
+                  modelsRefreshKey={modelsRefreshKey}
+                  chatInputRef={chatInputRef}
+                  onSessionStatsChange={handleSessionStatsChange}
+                  onSessionStatsPanelOpen={openSessionStatsPanel}
+                  onContextUsageChange={handleContextUsageChange}
+                  onOpenFile={isLive ? undefined : handleOpenLinkedFile}
+                  onOpenSession={handleOpenSession}
+                  onAskInNewChat={isLive ? undefined : handleAskInNewChat}
+                  quoteSelectionEnabled={!isLive && quoteSelectionEnabled}
+                  initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
+                  onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
+                  soundEnabled={soundEnabled}
+                  onSoundToggle={onSoundToggle}
+                  playDoneSound={playDoneSound}
+                  unlockAudio={unlockAudio}
+                />
+              </div>
+            </div>
           ) : initialCwdStatus === "validating" ? (
             <div
               role="status"
@@ -2343,8 +2314,8 @@ export function AppShell({ live }: { live: LiveWorkspace }) {
     {settingsSection && (
       <SettingsPanel
         live={isLive}
-        runtime={live.runtime}
-        runtimeError={live.runtimeError}
+        runtime={runtime}
+        runtimeError={runtimeError}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}
         initialSection={settingsSection}

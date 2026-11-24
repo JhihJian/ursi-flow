@@ -25,6 +25,7 @@ import {
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
 import type { RuntimeInfo } from "@/app/live/api";
+import { LiveRuntimeSettings } from "@/app/live/runtime";
 import { ModelsConfig } from "./ModelsConfig";
 import { setupPushSubscription } from "@/lib/push-client";
 import { SkillsConfig } from "./SkillsConfig";
@@ -62,6 +63,7 @@ export function SettingsSectionIcon({ section, size = 16, strokeWidth = 1.8 }: {
   if (section === "general") return <svg {...common}><path d="M20 7h-9M14 17H5" /><circle cx="7" cy="7" r="3" /><circle cx="17" cy="17" r="3" /></svg>;
   if (section === "models") return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" /></svg>;
   if (section === "skills") return <svg {...common}><path d="m12 2-10 5 10 5 10-5-10-5Z" /><path d="m2 12 10 5 10-5M2 17l10 5 10-5" /></svg>;
+  if (section === "mcp") return <svg {...common}><rect x="9" y="3" width="6" height="6" rx="1" /><rect x="3" y="15" width="6" height="6" rx="1" /><rect x="15" y="15" width="6" height="6" rx="1" /><path d="M12 9v3m-6 3v-3h12v3" /></svg>;
   if (section === "agents") return <svg {...common} className="settings-section-icon is-agent"><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" /></svg>;
   return <svg {...common}><path d="M9 7V2M15 7V2M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0ZM12 19v3" /></svg>;
 }
@@ -357,32 +359,9 @@ function GeneralSettings({ live, sessionId, onSessionReloaded, quoteSelectionEna
   );
 }
 
-function RuntimeSettings({ kind, runtime, error }: { kind: "models" | "skills"; runtime?: RuntimeInfo | null; error?: string | null }) {
+export function SettingsPanel({ live, runtime = null, runtimeError = null, cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
   const { t } = useI18n();
-  return (
-    <div className="settings-general">
-      <section className="settings-general-section">
-        <h2 className="settings-general-heading">{t("live.runtimeInfo")}</h2>
-        {error ? <p role="alert" className="settings-general-error">{error}</p> : !runtime ? (
-          <p role="status" className="settings-general-description">{t("workspace.opening")}</p>
-        ) : kind === "models" ? (
-          <dl className="grid gap-1 text-sm break-all">
-            <dt className="text-text-muted">{runtime.model.provider}</dt>
-            <dd title={runtime.model.id}>{runtime.model.name}</dd>
-          </dl>
-        ) : runtime.skills.length ? (
-          <dl className="grid gap-2 text-sm">
-            {runtime.skills.map(skill => <div key={skill.name}><dt>{skill.name}</dt><dd className="text-text-muted">{skill.description}</dd></div>)}
-          </dl>
-        ) : <p className="settings-general-description">{t("live.noSkills")}</p>}
-      </section>
-    </div>
-  );
-}
-
-export function SettingsPanel({ live, runtime, runtimeError, cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
-  const { t } = useI18n();
-  const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [section, setSection] = useState<SettingsSection>(() => !live && initialSection === "mcp" ? "general" : initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
     () => new Set([section]),
   );
@@ -391,13 +370,19 @@ export function SettingsPanel({ live, runtime, runtimeError, cwd, sessionId, ini
     { id: "models", label: t("common.models"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: !live },
   ];
-  if (!live) sections.push(
-    { id: "agents", label: t("common.agents"), requiresProject: true },
-    { id: "plugins", label: t("common.plugins"), requiresProject: true },
-  );
+  if (live) {
+    sections.push({ id: "mcp", label: t("common.mcp"), requiresProject: false });
+  } else {
+    sections.push(
+      { id: "agents", label: t("common.agents"), requiresProject: true },
+      { id: "plugins", label: t("common.plugins"), requiresProject: true },
+    );
+  }
 
   const localOnly = Boolean(live);
-  useEffect(() => { if (!localOnly) setLastSettingsSection(initialSection); }, [initialSection, localOnly]);
+  useEffect(() => {
+    if (!localOnly) setLastSettingsSection(initialSection === "mcp" ? "general" : initialSection);
+  }, [initialSection, localOnly]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -419,7 +404,7 @@ export function SettingsPanel({ live, runtime, runtimeError, cwd, sessionId, ini
   const activateSection = (nextSection: SettingsSection) => {
     setMountedSections((current) => new Set(current).add(nextSection));
     setSection(nextSection);
-    setLastSettingsSection(nextSection);
+    if (nextSection !== "mcp") setLastSettingsSection(nextSection);
   };
 
   const sectionHost = (id: SettingsSection, content: ReactNode) => mountedSections.has(id) ? (
@@ -481,11 +466,12 @@ export function SettingsPanel({ live, runtime, runtimeError, cwd, sessionId, ini
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings live={live} sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
           {sectionHost("models", live
-            ? <RuntimeSettings kind="models" runtime={runtime} error={runtimeError} />
+            ? <LiveRuntimeSettings kind="models" runtime={runtime} error={runtimeError} />
             : <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
           {sectionHost("skills", live
-            ? <RuntimeSettings kind="skills" runtime={runtime} error={runtimeError} />
+            ? <LiveRuntimeSettings kind="skills" runtime={runtime} error={runtimeError} />
             : cwd && <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
+          {live && sectionHost("mcp", <LiveRuntimeSettings kind="mcp" runtime={runtime} error={runtimeError} />)}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
         </main>
