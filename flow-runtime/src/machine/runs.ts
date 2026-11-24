@@ -272,7 +272,13 @@ export class Runs {
 		};
 		return this.launch(job, config, platform, false);
 	}
-	private async launch(job: Job, config: Config, platform: PlatformConfig | undefined, resume: boolean) {
+	private async launch(
+		job: Job,
+		config: Config,
+		platform: PlatformConfig | undefined,
+		resume: boolean,
+		respond?: { nodeRunId: string; result: string },
+	) {
 		const { id: key, flow, revision } = job;
 		const dir = this.dir(key), file = join(dir, "job.json");
 		delete job.error;
@@ -286,7 +292,12 @@ export class Runs {
 			{ env, detached: true, stdio: ["ignore", "ignore", "inherit", "ipc"] },
 		);
 		let error: string | undefined;
+		let awaiting = false;
 		child.on("message", (msg: unknown) => {
+			if (msg === "awaiting") {
+				awaiting = true;
+				return;
+			}
 			if (typeof msg === "string") error = msg.slice(0, 2000);
 		});
 		const info = { pid: child.pid ?? 0, stop: false, done: Promise.resolve() };
@@ -303,17 +314,19 @@ export class Runs {
 					)?.status;
 					if (info.stop && job.executorRef) job.stopRequested = true;
 					job.status =
-						terminal && terminal !== "running"
-							? terminal
-							: job.executorRef && (signal || code === 75 || info.stop)
-								? "unknown"
-							: info.stop && signal === "SIGKILL"
-								? (await groupStopped(info.pid))
-									? "stopped"
-									: "unknown"
-								: code === 0
+						awaiting && code === 0 && !error
+							? "waiting_input"
+							: terminal && terminal !== "running"
+								? terminal
+								: job.executorRef && (signal || code === 75 || info.stop)
 									? "unknown"
-									: "failed";
+									: info.stop && signal === "SIGKILL"
+										? (await groupStopped(info.pid))
+											? "stopped"
+											: "unknown"
+										: code === 0
+											? "unknown"
+											: "failed";
 					if (error) job.error = error;
 					await save(file, job);
 				} catch (e) {
@@ -326,7 +339,7 @@ export class Runs {
 		});
 		// provider 只经进程间消息交给 worker，避免密钥进入已落盘的 job.json。
 		child.send(
-			{ job, resume, platform, provider: platform ? undefined : config.provider, path: join(this.catalog.root(revision), flow), dir },
+			{ job, resume, respond, platform, provider: platform ? undefined : config.provider, path: join(this.catalog.root(revision), flow), dir },
 			(err) => {
 				if (err) error = err.message;
 			},
@@ -341,10 +354,53 @@ export class Runs {
 	async resume(key: string, readConfig: () => Promise<Config>) {
 		const job = await this.get(key);
 		if (this.active.has(key)) return job;
+		if (job.status === "waiting_input") {
+			if (job.executorRef) throw invalid("平台 Run 不支持人工确认门禁");
+			const config = await readConfig();
+			if (this.active.size >= config.maxConcurrent) throw new BusinessError("busy", "达到运行并发上限");
+			// 恢复等于重新提问：不带应答重启 worker，Runtime 重新渲染并挂起。
+			return this.launch(job, config, undefined, true);
+		}
 		if (!job.executorRef || job.status !== "unknown" || job.stopRequested) throw invalid("只能恢复待核实且未请求取消的平台 Run");
 		const config = await readConfig();
 		if (this.active.size >= config.maxConcurrent) throw new BusinessError("busy", "达到运行并发上限");
 		return this.launch(job, config, this.boundPlatform(job), true);
+	}
+	/** 人工应答：校验 Job 处于 waiting_input，把应答写入 job.json 后以应答模式重启 worker。 */
+	async respond(
+		key: string,
+		nodeRunId: string,
+		result: string,
+		readConfig: () => Promise<Config>,
+	) {
+		const job = await this.get(key);
+		if (this.active.has(key)) return job;
+		if (job.status !== "waiting_input")
+			throw invalid("只能应答等待人工确认的 Run");
+		if (job.executorRef) throw invalid("平台 Run 不支持人工确认门禁");
+		if (typeof nodeRunId !== "string" || !nodeRunId || typeof result !== "string" || !result)
+			throw invalid("应答需要 nodeRunId 与 result");
+		// 非法应答在这里拒绝，不启动 worker：挂起中的事实由 facts.json 权威给出。
+		const facts = await optional(readJson(join(this.dir(key), "facts.json")), null);
+		const pending = (facts?.nodeRuns ?? []).find(
+			(n: { id: string; status: string; pendingInput?: unknown }) =>
+				n.id === nodeRunId && n.status === "running" && n.pendingInput,
+		);
+		if (!pending || (facts?.runs ?? []).find((r: { id: string }) => r.id === key)?.currentNodeRunId !== nodeRunId)
+			throw invalid("节点不在等待人工确认");
+		const pkg = await loadFlow(join(this.catalog.root(job.revision), job.flow));
+		const node = pkg.flow.nodes.get(pending.nodeRef);
+		if (!node || node.action.kind !== "confirm")
+			throw invalid("节点不是确认节点");
+		if (!node.results.has(result))
+			throw invalid(
+				`无效的确认结果 “${result}”，可选：${[...node.results.keys()].join("、")}`,
+			);
+		const config = await readConfig();
+		if (this.active.size >= config.maxConcurrent) throw new BusinessError("busy", "达到运行并发上限");
+		// 重复 respond 由 Job 状态机拒绝：worker 消费应答后 Job 离开 waiting_input。
+		await save(join(this.dir(key), "job.json"), { ...job, respond: { nodeRunId, result } });
+		return this.launch(job, config, undefined, false, { nodeRunId, result });
 	}
 	async stop(key: string) {
 		const before = await this.get(key);
@@ -362,6 +418,8 @@ export class Runs {
 			}
 			await info.done;
 		}
+		if (!info && before.status === "waiting_input")
+			await save(join(this.dir(key), "job.json"), { ...before, status: "stopped" });
 		const job = await this.get(key);
 		if (job.executorRef && job.status === "unknown") {
 			const facts = await optional(readJson(join(this.dir(key), "facts.json")), null);

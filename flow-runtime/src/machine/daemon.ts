@@ -159,6 +159,8 @@ async function dispatch(request: unknown) {
 			);
 		case "run.resume":
 			return runs.resume(a.id, config);
+		case "run.respond":
+			return runs.respond(a.id, a.nodeRunId, a.result, config);
 		case "run.stop":
 			return runs.stop(a.id);
 		case "run.get":

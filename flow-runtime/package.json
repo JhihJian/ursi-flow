@@ -29,7 +29,7 @@
   "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
   "prepack": "npm run build",
   "typecheck": "tsc --noEmit",
-  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/platform-daemon.test.mjs test/local-pi.test.mjs test/pi-session.test.mjs test/pi-acp.test.mjs && vitest run"
+  "test": "npm run build && node --import tsx --test test/flow-package.test.ts test/flow-reference.test.ts test/platform-daemon.test.mjs test/confirm-daemon.test.mjs test/local-pi.test.mjs test/pi-session.test.mjs test/pi-acp.test.mjs && vitest run"
  },
  "bundleDependencies": ["ursi-executor-sdk"],
  "dependencies": {
