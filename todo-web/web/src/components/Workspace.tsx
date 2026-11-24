@@ -2,7 +2,7 @@ import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-re
 import { useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/ui'
 import { ActiveTasksPanel } from './ActiveTasksPanel'
-import { ProjectHeader } from './ProjectHeader'
+import { ProjectEditorSheet } from './ProjectEditorSheet'
 import { ProjectSidebar } from './ProjectSidebar'
 import { TaskDetailSheet } from './TaskDetailSheet'
 import { TaskSection } from './TaskSection'
@@ -63,8 +63,8 @@ export function Workspace() {
       </Panel>
       <Separator className="separator" title="Drag to resize, double-click to reset" />
       <Panel id="content" className="panel panel-content" minSize={380}>
-        <ProjectHeader />
         <TaskSection />
+        <ProjectEditorSheet />
         <TaskDetailSheet />
       </Panel>
       <Separator className="separator" title="Drag to resize, double-click to reset" />

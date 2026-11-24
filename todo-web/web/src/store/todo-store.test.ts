@@ -79,7 +79,6 @@ function resetStore() {
     activeLoading: true,
     detail: null,
     projectEditing: null,
-    projectDeleteConfirm: false,
   })
 }
 
@@ -192,7 +191,7 @@ describe('project actions', () => {
     mocked.deleteProject.mockResolvedValue({ success: true })
     mocked.listProjects.mockResolvedValue({ projects: [projectB] })
 
-    await useTodoStore.getState().removeProject()
+    await useTodoStore.getState().removeProject('p1')
 
     expect(useTodoStore.getState().selectedProjectId).toBe('p2')
     expect(useTodoStore.getState().projects.map((project) => project.id)).toEqual(['p2'])

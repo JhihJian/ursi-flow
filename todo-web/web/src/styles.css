@@ -153,11 +153,6 @@ button {
   overflow: hidden;
 }
 
-.panel-content .project-header {
-  flex: none;
-  padding: 0 var(--space-lg);
-}
-
 .panel-content .tasks-section {
   flex: 1;
   min-height: 0;
@@ -388,116 +383,81 @@ button {
   cursor: default;
 }
 
-/* Content */
-.project-header {
-  margin-bottom: var(--space-lg);
-  padding-bottom: var(--space-md);
-  border-bottom: 1px solid var(--gray-200);
-}
-
-.project-header-row {
+/* Project editor sheet shares the task sheet's bottom dock */
+.project-sheet {
   display: flex;
-  align-items: center;
-  margin-bottom: var(--space-xs);
+  flex: none;
+  flex-direction: column;
+  border-top: 1px solid var(--gray-900);
+  background: var(--white);
+  animation: detail-sheet-rise 200ms ease-out;
 }
 
-.project-title {
-  font-family: var(--font-serif);
-  font-size: 24px;
-  font-weight: 400;
-  color: var(--black);
-  margin-bottom: var(--space-xs);
-}
-
-.project-actions {
+.project-sheet-body {
   display: flex;
-  gap: var(--space-xs);
-  margin-left: auto;
-}
-
-.project-description {
-  font-size: 13px;
-  color: var(--gray-600);
-  margin-bottom: var(--space-sm);
-  white-space: pre-wrap;
-}
-
-.project-description:empty {
-  display: none;
-}
-
-.project-meta {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--gray-600);
-}
-
-.project-meta span,
-.project-path {
-  margin-right: var(--space-md);
-}
-
-.project-path {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--gray-600);
-}
-
-.project-new-task {
-  margin-left: auto;
-}
-
-/* Project edit mode */
-.project-edit {
-  margin-bottom: var(--space-md);
-}
-
-.project-edit-row {
-  margin-bottom: var(--space-sm);
-}
-
-.project-name-input {
-  font-family: var(--font-serif);
-  font-size: 20px;
-  font-weight: 400;
-  border: none;
-  border-bottom: 1px solid var(--gray-200);
-  padding: var(--space-xs) 0;
-}
-
-.project-name-input:focus {
-  border-bottom-color: var(--black);
-}
-
-.project-desc-input {
-  min-height: 60px;
-  resize: vertical;
-}
-
-.project-path-input {
-  font-size: 12px;
-  color: var(--gray-600);
-}
-
-.project-edit-actions {
-  display: flex;
-  gap: var(--space-sm);
-  margin-top: var(--space-sm);
-}
-
-.project-delete-confirm {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-md);
-  padding: var(--space-md);
+  padding: var(--space-md) var(--space-lg) var(--space-sm);
+}
+
+.project-sheet-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-lg);
+}
+
+.project-sheet-field {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-sheet-description {
+  min-height: 56px;
+}
+
+/* Right-click menu on lists */
+.context-menu {
+  position: fixed;
+  z-index: 200;
+  padding: var(--space-xs) 0;
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+}
+
+.context-menu-heading {
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--gray-400);
+  font-size: 11px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
+  cursor: pointer;
+}
+
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
+  outline: none;
   background: var(--gray-200);
 }
 
-.project-delete-confirm .confirm-text {
-  font-size: 13px;
-  color: var(--gray-900);
+.context-menu-item.danger {
+  color: #b43c3c;
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(180, 60, 60, 0.1);
 }
 
 /* Tasks section */

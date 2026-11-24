@@ -35,7 +35,6 @@ export interface TodoState {
   activeLoading: boolean
   detail: DetailState | null
   projectEditing: ProjectEditing | null
-  projectDeleteConfirm: boolean
 
   bootstrap: () => Promise<void>
   selectProject: (id: string) => Promise<void>
@@ -55,10 +54,8 @@ export interface TodoState {
   startCreateProject: () => void
   startEditProject: (id: string) => void
   cancelProjectForm: () => void
-  requestDeleteProject: () => void
-  cancelDeleteProject: () => void
   saveProject: (id: string | null, input: ProjectInput) => Promise<void>
-  removeProject: () => Promise<void>
+  removeProject: (id: string) => Promise<void>
 }
 
 let tasksRequestId = 0
@@ -76,7 +73,6 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   activeLoading: true,
   detail: null,
   projectEditing: null,
-  projectDeleteConfirm: false,
 
   bootstrap: async () => {
     await get().refreshProjects()
@@ -94,7 +90,6 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       selectedProjectId: id,
       detail: null,
       projectEditing: null,
-      projectDeleteConfirm: false,
     })
     await get().refreshTasks(true)
   },
@@ -176,7 +171,6 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     set({
       detail: { mode: 'new', confirmDelete: false },
       projectEditing: null,
-      projectDeleteConfirm: false,
     }),
 
   closeDetail: () => set({ detail: null }),
@@ -228,17 +222,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     await get().refreshAll()
   },
 
-  startCreateProject: () =>
-    set({ projectEditing: { id: null }, projectDeleteConfirm: false, detail: null }),
+  startCreateProject: () => set({ projectEditing: { id: null }, detail: null }),
 
-  startEditProject: (id) =>
-    set({ projectEditing: { id }, projectDeleteConfirm: false, detail: null }),
+  startEditProject: (id) => set({ projectEditing: { id }, detail: null }),
 
   cancelProjectForm: () => set({ projectEditing: null }),
-
-  requestDeleteProject: () => set({ projectDeleteConfirm: true, projectEditing: null }),
-
-  cancelDeleteProject: () => set({ projectDeleteConfirm: false }),
 
   saveProject: async (id, input) => {
     if (id) {
@@ -254,15 +242,18 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     await get().refreshActive()
   },
 
-  removeProject: async () => {
-    const id = get().selectedProjectId
-    if (!id) return
+  removeProject: async (id) => {
     await api.deleteProject(id)
-    set({ projectDeleteConfirm: false, detail: null, selectedProjectId: null, tasks: [] })
+    const removingSelected = get().selectedProjectId === id
+    set({
+      detail: null,
+      projectEditing: null,
+      ...(removingSelected ? { selectedProjectId: null, tasks: [] } : {}),
+    })
     await get().refreshProjects()
-    const first = get().projects[0]
-    if (first) {
-      await get().selectProject(first.id)
+    if (removingSelected) {
+      const first = get().projects[0]
+      if (first) await get().selectProject(first.id)
     }
     await Promise.all([get().refreshStats(), get().refreshActive()])
   },

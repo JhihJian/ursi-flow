@@ -1,11 +1,30 @@
+import { useState } from 'react'
 import { useDndContext, useDroppable } from '@dnd-kit/core'
 import type { ProjectStats } from '@/api/types'
 import { formatTime } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
-function ProjectItem({ project, active }: { project: ProjectStats; active: boolean }) {
+function projectTooltip(project: ProjectStats): string {
+  return [project.name, project.description, project.path].filter(Boolean).join(' · ')
+}
+
+type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+
+function ProjectItem({
+  project,
+  active,
+  openMenu,
+}: {
+  project: ProjectStats
+  active: boolean
+  openMenu: OpenMenu
+}) {
   const selectProject = useTodoStore((state) => state.selectProject)
+  const openNewTask = useTodoStore((state) => state.openNewTask)
+  const startEditProject = useTodoStore((state) => state.startEditProject)
+  const removeProject = useTodoStore((state) => state.removeProject)
   const { active: drag } = useDndContext()
   const dragging = readTaskDrag(drag?.data.current) !== null
   const { setNodeRef, isOver } = useDroppable({
@@ -14,17 +33,59 @@ function ProjectItem({ project, active }: { project: ProjectStats; active: boole
   })
   const open = project.task_count.pending + project.task_count.in_progress + project.task_count.blocked
 
+  const menuItems: MenuItem[] = [
+    {
+      label: 'New task',
+      onSelect: () => {
+        void selectProject(project.id)
+          .then(() => openNewTask())
+          .catch((error) => alert(errorMessage(error)))
+      },
+    },
+    { label: 'Edit project', onSelect: () => startEditProject(project.id) },
+    {
+      label: 'Delete project',
+      danger: true,
+      onSelect: () => {
+        const confirmItems: MenuItem[] = [
+          {
+            label: 'Delete project',
+            danger: true,
+            onSelect: () => {
+              void removeProject(project.id).catch((error) =>
+                alert(`Failed to delete project: ${errorMessage(error)}`),
+              )
+            },
+          },
+          { label: 'Cancel', onSelect: () => {} },
+        ]
+        // 菜单已关闭，再在项目项位置弹出确认菜单。
+        const rect = document
+          .querySelector(`[data-project-id="${project.id}"]`)
+          ?.getBoundingClientRect()
+        openMenu(rect?.left ?? 0, (rect?.bottom ?? 0) + 4, confirmItems, `Delete "${project.name}"?`)
+      },
+    },
+  ]
+
   return (
     <li
       ref={setNodeRef}
+      data-project-id={project.id}
       className={cx(
         'project-item',
         active && 'active',
         dragging && 'drop-ready',
         isOver && 'drop-over',
       )}
+      title={projectTooltip(project)}
       onClick={() => {
         void selectProject(project.id).catch((error) => alert(errorMessage(error)))
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        openMenu(event.clientX, event.clientY, menuItems)
       }}
     >
       <span className="name">{project.name}</span>
@@ -52,6 +113,9 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
       ? state.projects.find((project) => project.id === state.selectedProjectId)
       : undefined,
   )
+  const [menu, setMenu] = useState<MenuState | null>(null)
+
+  const showMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
 
   if (collapsed) {
     const active = selectedProject
@@ -114,7 +178,15 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
           </button>
         </div>
       </div>
-      <ul className="project-list">
+      <ul
+        className="project-list"
+        onContextMenu={(event) => {
+          event.preventDefault()
+          showMenu(event.clientX, event.clientY, [
+            { label: 'New project', onSelect: startCreateProject },
+          ])
+        }}
+      >
         {projectsLoading ? <li className="project-item loading">Loading...</li> : null}
         {!projectsLoading && projectsError ? (
           <li className="project-item loading">Error loading projects</li>
@@ -128,10 +200,12 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
                 key={project.id}
                 project={project}
                 active={project.id === selectedProjectId}
+                openMenu={showMenu}
               />
             ))
           : null}
       </ul>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </aside>
   )
 }

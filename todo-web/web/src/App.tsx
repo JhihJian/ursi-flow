@@ -43,8 +43,6 @@ export default function App() {
         state.setDetailConfirmDelete(false)
       } else if (state.projectEditing) {
         state.cancelProjectForm()
-      } else if (state.projectDeleteConfirm) {
-        state.cancelDeleteProject()
       } else if (state.detail) {
         state.closeDetail()
       }
