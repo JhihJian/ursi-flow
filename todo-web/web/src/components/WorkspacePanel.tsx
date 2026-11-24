@@ -8,18 +8,16 @@ import { useTodoStore } from '@/store/todo-store'
 
 /**
  * 工作台只负责「按配置嵌入别人的页面」，执行详情由外部页面自己实现。
- * 没有配置、没有选中任务或任务缺少 workbench 字段时显示说明。
+ * 没有配置、没有选中任务或任务缺少 workbench 字段时不渲染任何内容。
  */
 export function WorkspacePanel() {
   const [target, setTarget] = useState<WorkspaceTarget | null>(null)
-  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     let alive = true
     void loadWorkspaceTarget().then((value) => {
       if (!alive) return
       setTarget(value)
-      setLoaded(true)
     })
     return () => {
       alive = false
@@ -43,53 +41,36 @@ export function WorkspacePanel() {
       })
     : null
 
-  if (url) {
-    // 嵌入时关掉被嵌页自带的头部，避免宿主栏与页面栏叠成两条。
-    const embedUrl = (() => {
-      try {
-        const next = new URL(url, window.location.origin)
-        next.searchParams.set('embed', '1')
-        return next.toString()
-      } catch {
-        return url
-      }
-    })()
+  if (!url) return null
 
-    return (
-      <div className="workspace-panel has-frame">
-        <div className="workspace-bar">
-          <span className="workspace-bar-title">{target?.label}</span>
-          <span className="workspace-bar-task">{task?.title}</span>
-          <a className="workspace-bar-link" href={url} target="_blank" rel="noreferrer">
-            Open in new tab ↗
-          </a>
-        </div>
-        <iframe
-          className="workspace-frame"
-          src={embedUrl}
-          title={`${target?.label} for ${task?.title ?? 'task'}`}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
-      </div>
-    )
-  }
-
-  const hint = !loaded
-    ? 'Loading workspace…'
-    : !target
-      ? 'Add public/workspace-config.json with a urlTemplate to embed an external page.'
-      : !task
-        ? 'Select a task to see its execution details here.'
-        : 'This task has no workspace or session yet.'
+  // 嵌入时关掉被嵌页自带的头部，避免宿主栏与页面栏叠成两条。
+  const embedUrl = (() => {
+    try {
+      const next = new URL(url, window.location.origin)
+      next.searchParams.set('embed', '1')
+      return next.toString()
+    } catch {
+      return url
+    }
+  })()
 
   return (
     <div className="workspace-panel">
-      <div className="workspace-placeholder">
-        <span className="workspace-placeholder-title">Workspace</span>
-        <span className="workspace-placeholder-text">{hint}</span>
+      <div className="workspace-bar">
+        <span className="workspace-bar-title">{target?.label}</span>
+        <span className="workspace-bar-task">{task?.title}</span>
+        <a className="workspace-bar-link" href={url} target="_blank" rel="noreferrer">
+          Open in new tab ↗
+        </a>
       </div>
+      <iframe
+        className="workspace-frame"
+        src={embedUrl}
+        title={`${target?.label} for ${task?.title ?? 'task'}`}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        referrerPolicy="no-referrer"
+        loading="lazy"
+      />
     </div>
   )
 }
