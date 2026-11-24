@@ -54,7 +54,7 @@ body {
   --dsw-alias-brand-primary-invert: var(--white);
   --dsw-alias-brand-text: var(--gray-900);
   --dsw-alias-state-business-primary: var(--gray-900);
-  --dsw-alias-state-business-tertiary: var(--gray-600);
+  --dsw-alias-state-business-tertiary: var(--viewer-user-tint, var(--gray-200));
   --dsw-alias-button-primary-fill: var(--gray-900);
   --dsw-alias-button-primary-hover: var(--black);
   --dsw-alias-button-contrast-fill: var(--gray-900);
@@ -91,22 +91,75 @@ body {
   box-shadow: 0 0 0 1px var(--gray-200);
 }
 
-/* 角色标签原本用蓝绿红三色区分，这里统一成灰阶，只留深灰/浅灰层级 */
-[class*='_tagUser_'],
-[class*='_tagContext_'] {
-  color: var(--gray-900);
-  background: var(--gray-100);
+/* 记录类型的低饱和色板。
+   看板主体仍是黑白灰，这里只给「谁说的、做了什么」这一层加一点信息量：
+   用户=墨黑，助手消息=灰青，工具=灰赭，子工具=浅赭，上下文整理=灰紫，
+   错误沿用看板的暗红。饱和度控制在 30% 上下，接近印刷专色而不是界面高亮。 */
+body {
+  --viewer-user: #1a1a1a;
+  --viewer-user-tint: #e5e5e5;
+  --viewer-message: #3f6f74;
+  --viewer-message-tint: #eef4f4;
+  --viewer-tool: #86603f;
+  --viewer-tool-tint: #f5f0ea;
+  --viewer-subtool: #a98a6d;
+  --viewer-subtool-tint: #f7f3ef;
+  --viewer-context: #6f6a85;
+  --viewer-context-tint: #f0eff5;
+  --viewer-error: #b43c3c;
+}
+
+/* 时间线色块：这一层最需要区分，按记录类型上色 */
+[class*='_span_'][data-timeline-span='user'] {
+  background: var(--viewer-user);
+}
+
+[class*='_span_'][data-timeline-span='context'] {
+  background: var(--viewer-context);
+}
+
+[class*='_span_'][data-timeline-span='message'] {
+  --trajectory-assistant-decoding-color: var(--viewer-message);
+  --trajectory-assistant-ttft-color: color-mix(in srgb, var(--viewer-message) 55%, #ffffff);
+  background: var(--viewer-message);
+}
+
+[class*='_span_'][data-timeline-span='tool'] {
+  background: var(--viewer-tool);
+}
+
+[class*='_span_'][data-timeline-span='subtool'] {
+  background: var(--viewer-subtool);
+}
+
+[class*='_span_'][data-error='true'] {
+  background: var(--viewer-error);
+}
+
+/* 记录类型标签与时间线同色系，浅底深字 */
+[class*='_tagUser_'] {
+  color: var(--viewer-user);
+  background: var(--viewer-user-tint);
 }
 
 [class*='_tagMessage_'] {
-  color: var(--gray-900);
-  background: var(--gray-200);
+  color: var(--viewer-message);
+  background: var(--viewer-message-tint);
 }
 
-[class*='_tagTool_'],
+[class*='_tagTool_'] {
+  color: var(--viewer-tool);
+  background: var(--viewer-tool-tint);
+}
+
 [class*='_tagSubtool_'] {
-  color: var(--gray-600);
-  background: var(--gray-100);
+  color: var(--viewer-subtool);
+  background: var(--viewer-subtool-tint);
+}
+
+[class*='_tagContext_'] {
+  color: var(--viewer-context);
+  background: var(--viewer-context-tint);
 }
 
 [class*='_tagSystem_'] {
@@ -114,45 +167,30 @@ body {
   background: transparent;
 }
 
-/* 时间线的色块与记录类型标签：原本用蓝/绿/琥珀/紫多色，这里压成灰阶，
-   只让真正的错误保留暗红，和看板的 blocked 行同色 */
-[class*='_span_'][data-timeline-span='user'] {
-  background: var(--gray-900);
-}
-
-[class*='_span_'][data-timeline-span='context'] {
-  background: var(--gray-600);
-}
-
-[class*='_span_'][data-timeline-span='message'] {
-  --trajectory-assistant-decoding-color: var(--gray-600);
-  --trajectory-assistant-ttft-color: var(--gray-400);
-  background: var(--gray-600);
-}
-
-[class*='_span_'][data-timeline-span='tool'],
-[class*='_span_'][data-timeline-span='subtool'] {
-  background: var(--gray-400);
-}
-
+/* 表格第二套标签组件用同样的配色，两处读起来一致 */
 [class*='assistantVioletBright'] {
-  color: var(--gray-900);
-  background: var(--gray-200);
+  color: var(--viewer-message);
+  background: var(--viewer-message-tint);
 }
 
 [class*='contextGreen'] {
-  color: var(--gray-600);
-  background: var(--gray-100);
+  color: var(--viewer-context);
+  background: var(--viewer-context-tint);
 }
 
-[class*='toolAmber'],
+[class*='toolAmber'] {
+  color: var(--viewer-tool);
+  background: var(--viewer-tool-tint);
+}
+
 [class*='subtoolAmber'] {
-  color: var(--gray-600);
-  background: var(--gray-100);
+  color: var(--viewer-subtool);
+  background: var(--viewer-subtool-tint);
 }
 
 [class*='kindTagIcon'] {
-  color: var(--gray-400);
+  color: inherit;
+  opacity: 0.7;
 }
 
 /* 表头小标题与看板一致：衬线、放大写间距 */

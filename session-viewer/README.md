@@ -34,7 +34,7 @@ cd ../server && npm start
 
 ## 样式
 
-页面配色与看板一致：`web/src/tokens.css` 放看板的灰阶与字体变量，`web/src/theme.css` 把组件库的 `--dsw-*` 主题变量映射过去（圆角归零、品牌色改深灰、状态色降饱和），再用少量 `[data-timeline-span]` 覆盖把时间线色块压成灰阶。加载顺序是组件库 CSS → tokens → theme → shell。
+页面主体配色与看板一致：`web/src/tokens.css` 放看板的灰阶与字体变量，`web/src/theme.css` 把组件库的 `--dsw-*` 主题变量映射过去（圆角归零、品牌色改深灰）。时间线需要区分记录类型，因此保留一组低饱和专色（用户墨黑、助手消息灰青、工具灰赭、子工具浅赭、上下文灰紫、错误暗红），标签用同色系浅底，页面顶部给出图例。加载顺序是组件库 CSS → tokens → theme → shell。
 
 ## 嵌入模式
 

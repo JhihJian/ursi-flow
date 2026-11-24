@@ -23,6 +23,29 @@ function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+const LEGEND = [
+  { kind: 'user', label: '用户' },
+  { kind: 'message', label: '助手消息' },
+  { kind: 'tool', label: '工具' },
+  { kind: 'subtool', label: '子工具' },
+  { kind: 'context', label: '上下文' },
+  { kind: 'error', label: '错误' },
+]
+
+/** 时间线色块的图例：颜色本身就表示记录类型，这里给出对照。 */
+function Legend() {
+  return (
+    <div className="viewer-legend" aria-label="时间线配色">
+      {LEGEND.map((item) => (
+        <span className="viewer-legend-item" key={item.kind}>
+          <span className={`viewer-swatch viewer-swatch-${item.kind}`} aria-hidden="true" />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function SessionShell() {
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
@@ -109,6 +132,8 @@ export function SessionShell() {
           </a>
         </header>
       )}
+
+      {parsed?.ok ? <Legend /> : null}
 
       <main className="viewer-main">
         {state.status === "idle" || state.status === "loading" ? (

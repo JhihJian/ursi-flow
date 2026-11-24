@@ -65,6 +65,54 @@ body {
   text-decoration: underline;
 }
 
+.viewer-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-md);
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 11px;
+  color: var(--gray-600);
+}
+
+.viewer-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.viewer-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+}
+
+.viewer-swatch-user {
+  background: var(--viewer-user);
+}
+
+.viewer-swatch-message {
+  background: var(--viewer-message);
+}
+
+.viewer-swatch-tool {
+  background: var(--viewer-tool);
+}
+
+.viewer-swatch-subtool {
+  background: var(--viewer-subtool);
+}
+
+.viewer-swatch-context {
+  background: var(--viewer-context);
+}
+
+.viewer-swatch-error {
+  background: var(--viewer-error);
+}
+
 .viewer-main {
   display: flex;
   flex: 1;
