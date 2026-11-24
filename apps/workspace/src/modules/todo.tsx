@@ -82,6 +82,8 @@ export function createTodoModule(): WorkspaceModule {
   return {
     id: 'todo',
     title: 'Todo',
+    // todo 自带统计栏与工具区，外壳不再重复一条标题行。
+    hideHeader: true,
     defaultSize: 520,
     minSize: 320,
     Panel: TodoPanel,

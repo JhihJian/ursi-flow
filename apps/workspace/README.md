@@ -27,7 +27,7 @@ cd todo-web/server && cargo run          # 或已有实例
 }
 ```
 
-外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。契约见 `packages/workspace-shell/src/contracts.ts`。
+外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。模块自带标题或工具条时可声明 `hideHeader: true`，外壳不再画标题行，折叠按钮移到分隔线中点。契约见 `packages/workspace-shell/src/contracts.ts`。
 
 ## 标题栏与状态栏
 

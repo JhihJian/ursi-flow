@@ -131,6 +131,35 @@
   padding: 0;
 }
 
+/* 模块自带标题时隐藏外壳标题行，折叠入口放在分隔线上 */
+.ws-separator .ws-separator-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  opacity: 0;
+  padding: 0 1px;
+  border: 1px solid var(--ws-line);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--ws-muted);
+  font-size: 11px;
+  line-height: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ws-separator:hover .ws-separator-pin,
+.ws-separator .ws-separator-pin:focus-visible {
+  opacity: 1;
+}
+
+.ws-separator .ws-separator-pin:hover {
+  border-color: var(--ws-ink);
+  color: var(--ws-ink);
+}
+
 .ws-rail {
   display: flex;
   flex-direction: column;

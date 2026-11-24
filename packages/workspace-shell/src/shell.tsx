@@ -39,9 +39,11 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
   const [lastWidth, setLastWidth] = useState(module.defaultSize ?? 360)
   const Rail = module.Rail ?? DefaultRail
   const Body = module.Panel
+  const collapse = () => panelRef.current?.collapse()
 
   return (
-    <Panel
+    <>
+      <Panel
       id={module.id}
       className={collapsed ? 'ws-panel ws-panel-collapsed' : 'ws-panel'}
       panelRef={panelRef}
@@ -59,6 +61,12 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
     >
       {collapsed ? (
         <Rail onExpand={() => panelRef.current?.resize(lastWidth)} title={module.title} />
+      ) : module.hideHeader ? (
+        <div className="ws-panel-body">
+          <div className="ws-panel-content">
+            <Body />
+          </div>
+        </div>
       ) : (
         <div className="ws-panel-body">
           <header className="ws-panel-head">
@@ -79,6 +87,20 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
         </div>
       )}
     </Panel>
+      <Separator className="ws-separator" title={`拖动调整 ${module.title} 宽度`}>
+        {module.hideHeader && !collapsed ? (
+          <button
+            type="button"
+            className="ws-separator-pin"
+            title={`折叠 ${module.title}`}
+            aria-label={`折叠 ${module.title}`}
+            onClick={collapse}
+          >
+            ‹
+          </button>
+        ) : null}
+      </Separator>
+    </>
   )
 }
 
@@ -229,7 +251,6 @@ function Shell({
           {modules.map((module) => (
             <ModuleColumn key={module.id} module={module} />
           ))}
-          <Separator className="ws-separator" />
           <WorkspaceRegion modules={modules} views={views} />
           <Separator className="ws-separator" />
           <ActionsPanel modules={modules} />

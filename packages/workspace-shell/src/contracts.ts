@@ -22,6 +22,8 @@ export interface WorkspaceModule {
   Rail?: ComponentType<RailProps>
   defaultSize?: number
   minSize?: number
+  /** 模块自身已有标题或工具条时隐藏外壳的标题行，折叠按钮改为右上角悬浮。 */
+  hideHeader?: boolean
   /** 该模块对外暴露的选中类型，供工作区区域匹配视图。 */
   selection?: {
     kind: string
