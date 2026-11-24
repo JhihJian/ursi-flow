@@ -62,7 +62,18 @@ export function listTasks(query: TaskQuery = {}): Promise<{ tasks: Task[] }> {
   if (query.status) params.set('status', query.status)
   if (query.period && query.period !== 'all') params.set('period', query.period)
   const suffix = params.size > 0 ? `?${params.toString()}` : ''
-  return request(`/tasks${suffix}`)
+  return request<{ tasks: Task[] }>(`/tasks${suffix}`).then((data) => ({
+    tasks: data.tasks.map(normalizeTask),
+  }))
+}
+
+/** 服务端省略空的可选字段，这里补齐成前端可直接使用的形状。 */
+function normalizeTask(task: Task): Task {
+  return {
+    ...task,
+    tags: task.tags ?? [],
+    artifacts: task.artifacts ?? [],
+  }
 }
 
 export function createTask(input: {
