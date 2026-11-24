@@ -19,8 +19,6 @@ export interface Task {
   artifacts: string[]
   content?: string | null
   project_id?: string | null
-  workspace?: string | null
-  session_id?: string | null
   parent_id?: string | null
   pre_id?: string | null
   due?: string | null
@@ -81,8 +79,6 @@ export interface TaskInput {
   status: TaskStatus
   tags: string[]
   result: string | null
-  workspace: string | null
-  sessionId: string | null
 }
 
 export interface TaskDraft extends TaskInput {

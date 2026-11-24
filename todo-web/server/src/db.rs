@@ -7,7 +7,7 @@ use std::time::Duration;
 use todo_core::{Creator, Priority, Project, Status, Task, TodoError};
 
 /// 待办库的列映射。实体字段由 `todo_core` 定义，这里只声明字段与库列的对应关系。
-pub const TASK_FIELDS: [&str; 22] = [
+pub const TASK_FIELDS: [&str; 20] = [
     "id",
     "title",
     "creator",
@@ -28,8 +28,6 @@ pub const TASK_FIELDS: [&str; 22] = [
     "content",
     "project_id",
     "updated_at",
-    "workspace",
-    "session_id",
 ];
 
 pub const PROJECT_FIELDS: [&str; 6] = [
@@ -99,8 +97,6 @@ pub fn read_task(row: &Row<'_>, columns: &Columns) -> rusqlite::Result<Task> {
         title: text(columns, row, "title")?.unwrap_or_default(),
         content: text(columns, row, "content")?,
         project_id: text(columns, row, "project_id")?,
-        workspace: text(columns, row, "workspace")?,
-        session_id: text(columns, row, "session_id")?,
         creator: parsed(columns, row, "creator")?.unwrap_or(Creator::Human),
         created_at: datetime(columns, row, "created_at")?.unwrap_or_else(Utc::now),
         priority: parsed(columns, row, "priority")?.unwrap_or(Priority::Medium),
@@ -269,8 +265,6 @@ fn task_values(task: &Task) -> Vec<(&'static str, Option<String>)> {
         ("finished_at", task.finished_at.map(datetime_text)),
         ("content", task.content.clone()),
         ("project_id", task.project_id.clone()),
-        ("workspace", task.workspace.clone()),
-        ("session_id", task.session_id.clone()),
         ("updated_at", task.updated_at.map(datetime_text)),
     ]
 }
@@ -360,17 +354,9 @@ fn json_text(values: &[String]) -> String {
     serde_json::to_string(values).unwrap_or_else(|_| "[]".into())
 }
 
-/// 看板新增的元信息列，旧库缺列时按需补上。
-const ADDED_TASK_COLUMNS: [&str; 2] = ["workspace", "session_id"];
-
-/// 供启动检查使用：库里连 `tasks` 表都没有时直接失败，缺的看板列会补上。
+/// 供启动检查使用：库里连 `tasks`、`projects` 表都没有时直接失败。
 pub fn ensure_database(conn: &Connection) -> Result<()> {
-    let columns = Columns::load(conn, "tasks", &TASK_FIELDS)?;
+    Columns::load(conn, "tasks", &TASK_FIELDS)?;
     Columns::load(conn, "projects", &PROJECT_FIELDS)?;
-    for field in ADDED_TASK_COLUMNS {
-        if !columns.has(field) {
-            conn.execute_batch(&format!("ALTER TABLE tasks ADD COLUMN {field} TEXT"))?;
-        }
-    }
     Ok(())
 }

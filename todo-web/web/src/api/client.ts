@@ -82,8 +82,6 @@ export function createTask(input: {
   priority: TaskDraft['priority']
   tags: string[]
   project_id: string | null
-  workspace: string | null
-  session_id: string | null
 }): Promise<{ id: string }> {
   return request('/tasks', { method: 'POST', body: JSON.stringify(input) })
 }
@@ -97,8 +95,6 @@ export function updateTask(
     tags: string[]
     project_id: string | null
     result: string | null
-    workspace: string | null
-    session_id: string | null
   }>,
 ): Promise<{ success: boolean }> {
   return request(`/tasks/${encodeURIComponent(id)}`, {

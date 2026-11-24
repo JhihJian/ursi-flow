@@ -79,8 +79,6 @@ function TodoWorkspaceView({ selection }: { selection: Selection }) {
     ['Status', task.status],
     ['Priority', task.priority],
     ['Tags', task.tags.length ? task.tags.map((tag) => `#${tag}`).join(' ') : '-'],
-    ['Workdir', task.workspace ?? '-'],
-    ['Session', task.session_id ?? '-'],
   ]
 
   return (
@@ -135,8 +133,6 @@ export function createTodoModule(): WorkspaceModule {
             priority: task.priority,
             tags: task.tags,
             note: task.result ?? '',
-            workspace: task.workspace ?? null,
-            sessionId: task.session_id ?? null,
             timeInfo: null,
           })
           await copyText(markdown)

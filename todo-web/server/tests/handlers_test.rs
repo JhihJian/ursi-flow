@@ -1,6 +1,5 @@
 use chrono::{Duration, Utc};
 use rusqlite::Connection;
-use todo_web_server::db::{self, Columns};
 use todo_web_server::handlers::{
     calculate_stats, create_project, create_task, daily_task_counts, delete_project, delete_task,
     fetch_projects, fetch_tasks, update_project, update_task, AppError,
@@ -42,9 +41,7 @@ fn setup() -> Connection {
             finished_at TEXT,
             content TEXT,
             project_id TEXT,
-            updated_at TEXT,
-            workspace TEXT,
-            session_id TEXT
+            updated_at TEXT
         );",
     )
     .unwrap();
@@ -113,8 +110,6 @@ fn update(_id: &str) -> UpdateTaskRequest {
         project_id: None,
         blocked_reason: None,
         result: None,
-        workspace: None,
-        session_id: None,
     }
 }
 
@@ -311,8 +306,6 @@ fn task_create_update_and_delete() {
             priority: Some(Priority::High),
             tags: Some(vec!["docs".into()]),
             project_id: Some("proj-a".into()),
-            workspace: Some("  wb-alpha  ".into()),
-            session_id: Some("sess-42".into()),
         },
     )
     .unwrap();
@@ -321,8 +314,6 @@ fn task_create_update_and_delete() {
     assert_eq!(task.status, Status::Pending);
     assert_eq!(task.priority, Priority::High);
     assert_eq!(task.tags, vec!["docs".to_string()]);
-    assert_eq!(task.workspace.as_deref(), Some("wb-alpha"));
-    assert_eq!(task.session_id.as_deref(), Some("sess-42"));
 
     update_task(
         &conn,
@@ -355,8 +346,6 @@ fn task_create_update_and_delete() {
     assert!(task.finished_at.is_some());
     assert_eq!(task.project_id.as_deref(), Some("proj-b"));
     assert_eq!(task.result.as_deref(), Some("shipped"));
-    // 省略字段不改，显式 null 清空
-    assert_eq!(task.workspace.as_deref(), Some("wb-alpha"));
 
     update_task(
         &conn,
@@ -388,8 +377,6 @@ fn status_changes_follow_core_state_machine() {
             priority: None,
             tags: None,
             project_id: Some("proj-a".into()),
-            workspace: None,
-            session_id: None,
         },
     )
     .unwrap();
@@ -490,8 +477,6 @@ fn null_clears_optional_fields_and_omitted_fields_keep_values() {
             priority: None,
             tags: None,
             project_id: None,
-            workspace: None,
-            session_id: None,
         },
     )
     .unwrap();
@@ -547,47 +532,6 @@ fn legacy_database_without_new_columns_still_works() {
     let projects = fetch_projects(&conn, false).unwrap();
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].task_count.in_progress, 1);
-}
-
-#[test]
-fn missing_metadata_columns_are_added_on_startup() {
-    let conn = setup_legacy();
-    insert_project(&conn, "proj-a", "Alpha");
-    insert_task(&conn, "t1", "proj-a", "pending", "medium");
-
-    // 旧库没有 workspace / session_id，启动检查时补列。
-    db::ensure_database(&conn).unwrap();
-    let columns = Columns::load(&conn, "tasks", &db::TASK_FIELDS).unwrap();
-    assert!(columns.has("workspace"));
-    assert!(columns.has("session_id"));
-
-    update_task(
-        &conn,
-        "t1",
-        &UpdateTaskRequest {
-            workspace: Some(Some("wb-beta".into())),
-            session_id: Some(Some("sess-7".into())),
-            ..update("t1")
-        },
-    )
-    .unwrap();
-    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
-    assert_eq!(task.workspace.as_deref(), Some("wb-beta"));
-    assert_eq!(task.session_id.as_deref(), Some("sess-7"));
-
-    update_task(
-        &conn,
-        "t1",
-        &UpdateTaskRequest {
-            workspace: Some(None),
-            session_id: Some(None),
-            ..update("t1")
-        },
-    )
-    .unwrap();
-    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
-    assert!(task.workspace.is_none());
-    assert!(task.session_id.is_none());
 }
 
 #[test]
@@ -661,8 +605,6 @@ fn invalid_input_and_missing_rows_are_reported() {
             priority: None,
             tags: None,
             project_id: Some("nope".into()),
-            workspace: None,
-            session_id: None,
         },
     )
     .unwrap_err();

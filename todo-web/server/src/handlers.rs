@@ -460,8 +460,6 @@ pub fn create_task(conn: &Connection, request: &CreateTaskRequest) -> ApiResult<
     task.priority = request.priority.clone().unwrap_or(Priority::Medium);
     task.tags = request.tags.clone().unwrap_or_default();
     task.project_id = request.project_id.clone();
-    task.workspace = optional_text(request.workspace.as_deref()).map(str::to_string);
-    task.session_id = optional_text(request.session_id.as_deref()).map(str::to_string);
     db::insert_task(conn, &task, &columns)?;
     Ok(task.id)
 }
@@ -500,12 +498,6 @@ pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> 
 
     if let Some(result) = &request.result {
         task.result = result.clone();
-    }
-    if let Some(workspace) = &request.workspace {
-        task.workspace = optional_text(workspace.as_deref()).map(str::to_string);
-    }
-    if let Some(session_id) = &request.session_id {
-        task.session_id = optional_text(session_id.as_deref()).map(str::to_string);
     }
     if let Some(blocked_reason) = &request.blocked_reason {
         task.blocked_reason = blocked_reason.clone();

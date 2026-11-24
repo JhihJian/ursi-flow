@@ -9,8 +9,6 @@ pub struct CreateTaskRequest {
     pub priority: Option<Priority>,
     pub tags: Option<Vec<String>>,
     pub project_id: Option<String>,
-    pub workspace: Option<String>,
-    pub session_id: Option<String>,
 }
 
 /// 省略字段表示不改，显式 `null` 表示清空。
@@ -26,10 +24,6 @@ pub struct UpdateTaskRequest {
     pub blocked_reason: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub result: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
-    pub workspace: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
-    pub session_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Deserialize)]

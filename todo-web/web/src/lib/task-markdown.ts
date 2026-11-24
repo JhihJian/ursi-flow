@@ -6,8 +6,6 @@ export interface TaskMarkdownInput {
   priority: Priority
   tags: string[]
   note: string
-  workspace: string | null
-  sessionId: string | null
   /** 面板上显示的时间信息，没有任务时传 null。 */
   timeInfo: string | null
 }
@@ -19,15 +17,11 @@ export function buildTaskMarkdown({
   priority,
   tags,
   note,
-  workspace,
-  sessionId,
   timeInfo,
 }: TaskMarkdownInput): string {
   const lines = [`# ${title.trim() || 'Untitled task'}`, '']
   lines.push(`- Status: ${status}`, `- Priority: ${priority}`)
   if (tags.length > 0) lines.push(`- Tags: ${tags.map((tag) => `#${tag}`).join(' ')}`)
-  if (workspace) lines.push(`- Workspace: ${workspace}`)
-  if (sessionId) lines.push(`- Session: ${sessionId}`)
   if (timeInfo) lines.push(`- Time: ${timeInfo}`)
   const body = note.trim()
   if (body) lines.push('', body)

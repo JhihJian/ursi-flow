@@ -36,8 +36,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'medium')
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
-  const [workspace, setWorkspace] = useState(task?.workspace ?? '')
-  const [sessionId, setSessionId] = useState(task?.session_id ?? '')
   const [note, setNote] = useState(task?.result ?? '')
   const [copied, setCopied] = useState(false)
   const [height, setHeight] = useState(readStoredHeight)
@@ -106,8 +104,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         .map((tag) => tag.trim())
         .filter(Boolean),
       note,
-      workspace: workspace.trim() || null,
-      sessionId: sessionId.trim() || null,
       timeInfo: task ? taskTimeInfo(task) : null,
     })
     try {
@@ -143,8 +139,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       status,
       tags: parsedTags,
       result: note.trim() ? note : null,
-      workspace: workspace.trim() || null,
-      sessionId: sessionId.trim() || null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
   }
 
@@ -234,26 +228,6 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
               placeholder="comma separated"
               value={tags}
               onChange={(event) => setTags(event.target.value)}
-            />
-          </label>
-          <label className="detail-inline-field">
-            <span className="detail-inline-label">workspace</span>
-            <input
-              className="detail-inline-input"
-              type="text"
-              placeholder="workspace"
-              value={workspace}
-              onChange={(event) => setWorkspace(event.target.value)}
-            />
-          </label>
-          <label className="detail-inline-field">
-            <span className="detail-inline-label">session</span>
-            <input
-              className="detail-inline-input"
-              type="text"
-              placeholder="session id"
-              value={sessionId}
-              onChange={(event) => setSessionId(event.target.value)}
             />
           </label>
           <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>

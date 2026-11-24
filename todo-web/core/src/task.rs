@@ -134,12 +134,6 @@ pub struct Task {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
-    /// 关联的工作区，自由字符串，可为空。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<String>,
-    /// 关联的会话 ID，自由字符串，可为空。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
     pub creator: Creator,
     pub created_at: DateTime<Utc>,
     pub priority: Priority,
@@ -177,8 +171,6 @@ impl Task {
             title: title.into(),
             content: None,
             project_id: None,
-            workspace: None,
-            session_id: None,
             creator: Creator::Human,
             created_at: Utc::now(),
             priority: Priority::Medium,
