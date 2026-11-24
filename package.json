@@ -8,6 +8,8 @@
   "workspaces": [
     "apps/fs-web/web",
     "apps/todo-web/web",
+    "apps/chat-web/web",
+    "apps/chat-web/server",
     "apps/shell-web",
     "packages/workspace-shell"
   ],

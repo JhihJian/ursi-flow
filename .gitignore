@@ -16,5 +16,6 @@ node_modules
 !/workbench/web/.env.example
 /apps/todo-web/server/target/
 /apps/todo-web/web/dist/
+/apps/chat-web/web/dist/
 /session-viewer/web/dist/
 /session-viewer/web/node_modules/
