@@ -5,7 +5,7 @@ depends-on:
   - ../executor-sdk/SPEC.md
   - ../executor-platform/server/SPEC.md
 references:
-  - docs/flow-spec.md
+  - ../flow-core/docs/flow-spec.md
   - ../docs/EXECUTOR-MCP.md
   - ../workbench/EXECUTOR-INTEGRATION.md
 ---

@@ -2,7 +2,7 @@
 parent: ../SPEC.md
 references:
   - ../docs/design/flow-runtime/FLOW-CORE.md
-  - ../flow-runtime/docs/flow-spec.md
+  - docs/flow-spec.md
 ---
 
 # Flow Core

@@ -16,7 +16,7 @@ Workbench 和 Flow Runtime 通过同一个 HTTP 平台执行固定修订。`exec
 
 1. 工作包直跑时，Workbench 将指令、固定修订和显式输入快照交给平台。启动 Flow 时，Workbench 把执行器引用交给 Runtime；独立控制台可提交同样的参数。Runtime 在委派 Agent 节点前持久化节点执行与新 `attemptId` 的关联。循环再次进入同一节点使用新 ID，同一次请求丢失回执时用原 ID 查回。
 2. 平台准备该次私有工作区，按冻结配置和原绑定启动 worker。worker 建立新会话，只提交一次任务，维护状态和归一化事件。调用方按原 ID 查询或取消。[ACP 执行契约](ACP-PROFILE.md)说明提交、终态和回收条件。
-3. 终态确认且受管写入方停止后，平台收集只读制品。Flow 节点接收本次 `outcomes` 和 `variables`，由适配器提供 `submit_flow_outcome` 并生成 `flow-outcome.json`。Runtime 按[节点结果契约](../../../flow-runtime/docs/flow-spec.md)复验后才选边。`unverified`、缺少结果或结果非法都不推进路由，也不触发换后端重跑。
+3. 终态确认且受管写入方停止后，平台收集只读制品。Flow 节点接收本次 `outcomes` 和 `variables`，由适配器提供 `submit_flow_outcome` 并生成 `flow-outcome.json`。Runtime 按[节点结果契约](../../../flow-core/docs/flow-spec.md)复验后才选边。`unverified`、缺少结果或结果非法都不推进路由，也不触发换后端重跑。
 4. 原服务角色可直接通过平台 API 按游标读取归一化事件页。事件页用于查看已采集的轨迹，终态与结果仍以尝试及制品接口为准。
 
 ## 部署与历史

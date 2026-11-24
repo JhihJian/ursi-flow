@@ -2,7 +2,7 @@
 references:
   - ARCHITECHTURE.md
   - workbench/README.md
-  - flow-runtime/docs/flow-spec.md
+  - flow-core/docs/flow-spec.md
 ---
 
 # ursi-flow

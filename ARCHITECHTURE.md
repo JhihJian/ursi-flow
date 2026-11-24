@@ -48,4 +48,4 @@
 | MCP 服务管理 | [独立模块与宿主边界](docs/design/ursi-mcp/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/ursi-mcp/EXECUTOR-DISCOVERY-DESIGN.md) |
 | 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) |
 
-相关入口：[根规格](SPEC.md) · [Flow 导读](flow-runtime/docs/flow-overview.md) · [Flow 文件规范](flow-runtime/docs/flow-spec.md) · [执行器 MCP 协议](docs/EXECUTOR-MCP.md) · [Workbench 执行器接入](workbench/EXECUTOR-INTEGRATION.md)。
+相关入口：[根规格](SPEC.md) · [Flow 导读](flow-core/docs/flow-overview.md) · [Flow 文件规范](flow-core/docs/flow-spec.md) · [执行器 MCP 协议](docs/EXECUTOR-MCP.md) · [Workbench 执行器接入](workbench/EXECUTOR-INTEGRATION.md)。

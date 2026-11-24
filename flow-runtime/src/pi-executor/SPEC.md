@@ -1,7 +1,7 @@
 ---
 parent: ../../SPEC.md
 references:
-  - ../../docs/flow-spec.md
+  - ../../../flow-core/docs/flow-spec.md
   - ../../../docs/design/executor-platform/ACP-PROFILE.md
   - ../../../docs/design/executor-platform/ACP-SCOPE.md
   - ../../../docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md

@@ -61,7 +61,7 @@
 ## 输入、Skill 和 Flow 制品
 
 - `list_inputs` 和 `read_input` 访问 `inputs/` 下的相对路径。冻结 Skill 的配套文件通过 `read_skill_file({skillId,path})` 读取；文件存在于快照中，完整性由内容摘要校验。有效 UTF-8 返回文本，二进制返回 Base64。
-- 普通生产会话成功时写非空最终文本到 `workspace/artifacts/answer.md`。Flow 节点通过作业文件的 `nodeContract` 固定本次 `outcomes` 和 `variables`，例如 `{"outcomes":["通过","退回"],"variables":["摘要"]}`。两个数组各最多 256 项，名称分别唯一；结果至少一项，变量名遵循 [Flow 规范](../../docs/flow-spec.md)。
+- 普通生产会话成功时写非空最终文本到 `workspace/artifacts/answer.md`。Flow 节点通过作业文件的 `nodeContract` 固定本次 `outcomes` 和 `variables`，例如 `{"outcomes":["通过","退回"],"variables":["摘要"]}`。两个数组各最多 256 项，名称分别唯一；结果至少一项，变量名遵循 [Flow 规范](../../../flow-core/docs/flow-spec.md)。
 - 节点用 `submit_flow_outcome` 提交一次结果，例如 `{"outcome":"通过","variables":{"摘要":"材料齐全"}}`。会话正常结束后写入 `workspace/artifacts/flow-outcome.json`，保留变量的 JSON 类型，缺省变量写为 `{}`。漏交、重复提交、非法结果、工具错误、截断或确认取消时不交付部分制品。
 
 | 边界 | 执行规则 |

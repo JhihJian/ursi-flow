@@ -2,6 +2,8 @@
 
 `ursi-flow-core` 是面向 Node.js 22.19+ 的 ESM / TypeScript SDK。它把一份 `FLOW.md` 转成可执行的待办，再按宿主提交的业务结果选边。执行 Agent、发起人工确认、保存快照和受理重试由宿主负责。
 
+Flow 的用途和整体方式见[Flow 概览](docs/flow-overview.md)，文件和包目录格式见[Flow 规范](docs/flow-spec.md)。
+
 ## 安装
 
 在仓库的 `flow-core/` 目录构建压缩包：
