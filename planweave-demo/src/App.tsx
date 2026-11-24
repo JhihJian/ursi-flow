@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleCheck, GitBranch, Moon, Network, Sun, X } from "lucide-react";
+import { Moon, Sun, X } from "lucide-react";
 import { assignees, executorOptions, project, readDemoProjection, taskTitles } from "./demo-data";
 import { browserProject, readGraph } from "./browser-project";
 import { Badge } from "./components/ui/badge";
@@ -8,6 +8,7 @@ import { createTranslator, type Language } from "./i18n";
 import type { TaskCanvasRenameHandler } from "./renameResult";
 import { CanvasMapView } from "./views/CanvasMapView";
 import { TodoView } from "./views/TodoView";
+import { WorkspaceChrome } from "./WorkspaceChrome";
 
 type View = "map" | "todo";
 type Preview = { canvasId: string; kind: "canvas" | "task" | "block" | "package"; id?: string };
@@ -133,29 +134,21 @@ export function App() {
     }
   }, [refreshGraph]);
 
-  return <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-app-shell text-text">
-    <header className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border/80 bg-app-topbar px-3 py-1 sm:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2"><Network className="size-4 shrink-0 text-text-muted" aria-hidden="true" /><span className="text-sm font-semibold">PlanWeave</span><span className="hidden truncate text-xs text-text-muted lg:inline">{project.name}</span></div>
-      <nav aria-label={t("workViews")} className="order-last flex w-full items-center gap-1 sm:order-none sm:w-auto">
-        {([["map", t("canvasMap"), GitBranch], ["todo", t("todo"), CircleCheck]] as const).map(([view, label, Icon]) =>
-          <Button key={view} asChild size="sm" variant={route.view === view ? "secondary" : "ghost"}>
-            <a href={viewPath(view)} aria-current={route.view === view ? "page" : undefined}><Icon className="size-4" aria-hidden="true" />{label}</a>
-          </Button>)}
-      </nav>
-      <div className="flex items-center gap-1"><Badge className="hidden sm:inline-flex" variant="outline">{t("sampleData")}</Badge>
+  return <div className="glass-surface flex h-dvh min-h-0 flex-col overflow-hidden text-text">
+    <WorkspaceChrome view={route.view} canvases={graph.canvases} items={data.items} previewCanvasId={route.preview?.canvasId}
+      onCanvasOpen={openCanvas} onTaskOpen={openTask} t={t}
+      titlebarActions={<>
         <Button size="sm" variant="ghost" aria-label={language === "en" ? "切换至简体中文" : "Switch to English"} onClick={() => setLanguage(language === "en" ? "zh-CN" : "en")}>{language === "en" ? "中文" : "EN"}</Button>
         <Button size="icon-sm" variant="ghost" title={dark ? t("lightTheme") : t("darkTheme")} aria-label={dark ? t("lightTheme") : t("darkTheme")}
           onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</Button>
-      </div>
-    </header>
-    {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-1 text-sm"><span>{error}</span><Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={() => setError(null)}><X /></Button></div>}
-    {feedback && <div role="status" className="pointer-events-none fixed bottom-4 left-4 z-30 rounded-md border bg-app-panel px-3 py-2 text-sm shadow-md">{feedback}</div>}
-    <main className={`min-h-0 flex-1 bg-app-canvas ${route.view === "todo" ? "p-4" : ""}`}>
+      </>}>
       {route.view === "todo" ? <TodoView t={t} assigneeIndex={assignees} todoGroups={data.todoGroups} executionPlan={data.executionPlan} handleBlockSelect={openBlock} />
         : <CanvasMapView dark={dark} executorOptions={executorOptions} packageExecutorNames={["reviewer"]} selectedProject={project} t={t}
             handleOpenBlockInspector={openBlock} handleRevealTaskCanvas={openPackage} handleRenameTaskCanvas={rename}
             onCanvasOpen={openCanvas} onTaskPanelSelect={openTask} onAgentPromptCopied={promptCopied} refreshProjectDerivedState={refreshGraph} setError={setError} />}
-    </main>
+    </WorkspaceChrome>
+    {error && <div role="alert" className="flex shrink-0 items-center justify-between gap-2 border-t border-destructive/30 bg-destructive/10 px-4 py-1 text-sm"><span>{error}</span><Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={() => setError(null)}><X /></Button></div>}
+    {feedback && <div role="status" className="pointer-events-none fixed bottom-4 left-4 z-30 rounded-md border bg-app-panel px-3 py-2 text-sm shadow-md">{feedback}</div>}
     {route.preview && <PreviewDialog preview={route.preview} graph={graph} items={data.items} t={t} onClose={closePreview} onOpen={openPreview} />}
   </div>;
 }

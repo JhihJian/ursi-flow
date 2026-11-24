@@ -103,7 +103,18 @@ const en = {
   "workViews": "Workspace views",
   "dependencies": "Dependencies",
   "status": "Status",
-  "tasks": "Tasks"
+  "tasks": "Tasks",
+  "projects": "Projects",
+  "componentPalette": "Components",
+  "nodeComponents": "Nodes",
+  "blockComponents": "Blocks",
+  "taskNode": "Task Node",
+  "implementationBlock": "Implementation Block",
+  "reviewBlock": "Review Block",
+  "expandSidebar": "Expand project sidebar",
+  "collapseSidebar": "Collapse project sidebar",
+  "expandComponents": "Expand components",
+  "collapseComponents": "Collapse components"
 };
 
 const zh: typeof en = {
@@ -211,7 +222,18 @@ const zh: typeof en = {
   "workViews": "工作区视图",
   "dependencies": "依赖",
   "status": "状态",
-  "tasks": "任务"
+  "tasks": "任务",
+  "projects": "项目",
+  "componentPalette": "组件",
+  "nodeComponents": "Node",
+  "blockComponents": "Block",
+  "taskNode": "Task Node",
+  "implementationBlock": "Implementation Block",
+  "reviewBlock": "Review Block",
+  "expandSidebar": "展开项目边栏",
+  "collapseSidebar": "收起项目边栏",
+  "expandComponents": "展开组件栏",
+  "collapseComponents": "收起组件栏"
 };
 
 export type Language = "en" | "zh-CN";

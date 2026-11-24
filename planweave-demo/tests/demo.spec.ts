@@ -34,7 +34,7 @@ test("map inspects dependencies and follows the blocked block link", async ({ pa
   await page.goto("/#/map");
   await expect(page.locator(".react-flow__minimap")).toBeVisible();
   await node(page, "verification").click({ position: { x: 35, y: 25 } });
-  await expect(page.locator("aside").getByText("missing-release-notes").first()).toBeVisible();
+  await expect(page.getByTestId("map-inspector").getByText("missing-release-notes").first()).toBeVisible();
   const edge = page.locator('.react-flow__edge[data-id="verification-depends_on-delivery"]');
   const point = await edge.locator(".react-flow__edge-path").evaluate((element: SVGPathElement) => {
     const point = element.getPointAtLength(element.getTotalLength() / 2);
@@ -43,7 +43,7 @@ test("map inspects dependencies and follows the blocked block link", async ({ pa
   });
   await page.mouse.move(point.x, point.y);
   await page.mouse.click(point.x, point.y);
-  await expect(page.locator("aside").getByText("Canvas dependency", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("map-inspector").getByText("Canvas dependency", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Open block", exact: true }).first().click();
   await expect(page.getByRole("dialog")).toHaveAccessibleName("Run the release smoke suite");
   await page.keyboard.press("Escape");
@@ -59,7 +59,7 @@ test("keyboard selects nodes and saves arrow-key movement", async ({ page }) => 
   const delivery = node(page, "delivery");
   const initial = await position(delivery);
   await delivery.press("Enter");
-  await expect(page.locator("aside").getByText("Delivery", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("map-inspector").getByText("Delivery", { exact: true }).first()).toBeVisible();
   await delivery.press("ArrowRight");
   await expect.poll(() => position(delivery)).not.toBe(initial);
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), layoutKey)).not.toBeNull();
@@ -145,17 +145,62 @@ test("narrow touchscreen layout and both themes run using only static assets", a
   await node(page, "delivery").tap({ position: { x: 20, y: 16 } });
   await expect(page.getByText("Execution policy", { exact: true })).toBeVisible();
   await node(page, "verification").tap({ position: { x: 20, y: 16 } });
-  await expect(page.locator("aside").getByText(longTitle, { exact: true }).first()).toBeVisible();
-  const aside = page.locator("aside [data-slot=scroll-area-viewport]");
+  await expect(page.getByTestId("map-inspector").getByText(longTitle, { exact: true }).first()).toBeVisible();
+  const aside = page.getByTestId("map-inspector").locator("[data-slot=scroll-area-viewport]");
   expect(await aside.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
   await page.screenshot({ path: testInfo.outputPath("map-narrow-dark.png"), animations: "disabled" });
-  await page.getByRole("link", { name: "Todo" }).tap();
+  const projects = page.getByTestId("project-sidebar");
+  await expect(projects).toBeHidden();
+  await page.getByRole("button", { name: "Expand project sidebar" }).tap();
+  await projects.getByRole("link", { name: "Todo" }).tap();
+  await expect(projects).toBeHidden();
   await expect(page.getByRole("heading", { name: "Canvas phases" })).toBeVisible();
+  await page.getByRole("button", { name: "Expand components" }).tap();
+  await expect(page.getByTestId("component-palette")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse components" }).tap();
+  await expect(page.getByTestId("component-palette")).toBeHidden();
   await page.getByRole("button", { name: "Use light theme" }).tap();
   await page.screenshot({ path: testInfo.outputPath("todo-narrow-light.png"), animations: "disabled" });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
   expect(unexpected).toEqual([]);
   await context.close();
+});
+
+test("desktop panes keep the upstream dimensions and fill the remaining space", async ({ page }) => {
+  const projects = page.getByTestId("project-sidebar");
+  const titlebar = page.getByTestId("workspace-titlebar");
+  const inspector = page.getByTestId("map-inspector");
+  const graph = page.locator(".react-flow");
+  const palette = page.getByTestId("component-palette");
+  const content = page.getByTestId("workspace-content");
+  for (const width of [1100, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/map");
+    await expect(graph).toBeVisible();
+    expect(await projects.boundingBox()).toMatchObject({ x: 0, y: 0, width: 280, height: 900 });
+    expect(await titlebar.boundingBox()).toMatchObject({ x: 280, y: 0, height: 44 });
+    expect(await graph.boundingBox()).toMatchObject({ x: 280, y: 44, width: width - 600, height: 856 });
+    expect(await inspector.boundingBox()).toMatchObject({ x: width - 320, y: 44, width: 320, height: 856 });
+    await expect(palette).toHaveCount(0);
+    await projects.getByRole("link", { name: "Todo" }).click();
+    await expect(palette).toBeVisible();
+    expect(await content.boundingBox()).toMatchObject({ x: 280, y: 44, width: width - 580 });
+    expect(await palette.boundingBox()).toMatchObject({ x: width - 300, y: 0, width: 300, height: 900 });
+    const todoViewport = page.getByTestId("todo-view").locator("[data-slot=scroll-area-viewport]");
+    expect(await todoViewport.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+  }
+  await page.getByRole("button", { name: "Collapse components" }).click();
+  await expect(palette).toBeHidden();
+  expect(await content.boundingBox()).toMatchObject({ x: 280, width: 1640 });
+  await page.getByRole("button", { name: "Expand components" }).click();
+  await expect(palette).toBeVisible();
+  await page.getByRole("button", { name: "Collapse project sidebar" }).click();
+  await expect(projects).toBeHidden();
+  expect(await content.boundingBox()).toMatchObject({ x: 0, width: 1620 });
+  await page.getByRole("button", { name: "Expand project sidebar" }).click();
+  await projects.getByRole("button", { name: "Tasks: Delivery" }).click();
+  await projects.getByRole("button", { name: /^Workspace experience/ }).click();
+  await expect(page.getByRole("dialog")).toHaveAccessibleName("Workspace experience");
 });
 
 test("desktop screenshots in both themes", async ({ page }, testInfo) => {
