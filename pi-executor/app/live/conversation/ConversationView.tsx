@@ -550,4 +550,3 @@ function NoticeShelf({ notices }: { notices: ConversationNotice[] }) {
     </div>
   );
 }
-
