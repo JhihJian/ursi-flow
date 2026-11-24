@@ -4,6 +4,7 @@ references:
   - README.md
   - server/HTTP.md
   - ../docs/design/todo-web/DASHBOARD.md
+  - ../docs/design/todo-web/EXECUTION-AND-EMBEDDING.md
 ---
 
 # SUMM-Todo 看板
