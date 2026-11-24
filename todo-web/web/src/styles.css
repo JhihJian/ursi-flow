@@ -266,7 +266,7 @@ button {
   overflow: hidden;
 }
 
-/* 折叠态只有一列：字母直立、自上而下排列。 */
+/* 折叠态只有一列：文字整体侧转，自上而下读。 */
 .collapsed-project {
   flex: 0 0 auto;
   /* 竖排时 margin-block 指向左右，这里要用物理方向让短名称垂直居中。 */
@@ -276,8 +276,8 @@ button {
   border: 0;
   background: none;
   cursor: pointer;
+  /* 默认 mixed：拉丁字母随行旋转，中日韩字符保持直立，符合竖排习惯。 */
   writing-mode: vertical-rl;
-  text-orientation: upright;
   text-align: start;
   white-space: nowrap;
   font-size: 12px;
