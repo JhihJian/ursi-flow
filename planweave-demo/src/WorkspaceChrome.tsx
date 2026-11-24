@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ChevronRightIcon, ComponentIcon, GitBranchIcon, ListTodoIcon, NetworkIcon,
   PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightCloseIcon, PanelRightOpenIcon, WorkflowIcon
@@ -10,7 +10,7 @@ import { project, taskTitles } from "./demo-data";
 import type { createTranslator } from "./i18n";
 import type { DesktopCanvasNodeViewModel, DesktopTodoItem } from "./model";
 
-type View = "map" | "todo";
+type View = "map" | "todo" | "graph";
 type Translator = ReturnType<typeof createTranslator>;
 
 const selectedStyle = "data-[variant=secondary]:border-state-selected/25 data-[variant=secondary]:bg-state-selected-surface data-[variant=secondary]:text-text-strong data-[variant=secondary]:shadow-sm";
@@ -41,7 +41,8 @@ type WorkspaceChromeProps = {
   view: View;
   canvases: DesktopCanvasNodeViewModel[];
   items: DesktopTodoItem[];
-  previewCanvasId?: string;
+  activeCanvasId: string;
+  selectedTaskId: string | null;
   titlebarActions: ReactNode;
   onCanvasOpen: (canvasId: string) => void;
   onTaskOpen: (canvasId: string, taskId: string) => void;
@@ -49,14 +50,19 @@ type WorkspaceChromeProps = {
   children: ReactNode;
 };
 
-export function WorkspaceChrome({ view, canvases, items, previewCanvasId, titlebarActions, onCanvasOpen, onTaskOpen, t, children }: WorkspaceChromeProps) {
+export function WorkspaceChrome({ view, canvases, items, activeCanvasId, selectedTaskId, titlebarActions, onCanvasOpen, onTaskOpen, t, children }: WorkspaceChromeProps) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"projects" | "components" | null>(null);
   const [projectExpanded, setProjectExpanded] = useState(true);
   const [expandedCanvases, setExpandedCanvases] = useState(() => new Set([project.activeCanvasId]));
   const closeMobile = () => setMobilePanel(null);
-  const activeCanvasId = previewCanvasId ?? project.activeCanvasId;
+  const showPalette = view !== "map";
+  useEffect(() => {
+    if (view !== "graph") return;
+    setProjectExpanded(true);
+    setExpandedCanvases((current) => current.has(activeCanvasId) ? current : new Set([...current, activeCanvasId]));
+  }, [activeCanvasId, selectedTaskId, view]);
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden" onKeyDown={(event) => { if (event.key === "Escape") closeMobile(); }}>
@@ -92,6 +98,7 @@ export function WorkspaceChrome({ view, canvases, items, previewCanvasId, titleb
                 return <li key={canvasId} className="min-w-0">
                   <div className="grid grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-1">
                     <Button variant={activeCanvasId === canvasId ? "secondary" : "ghost"}
+                      aria-current={view === "graph" && activeCanvasId === canvasId && !selectedTaskId ? "page" : undefined}
                       className={`h-8 min-w-0 justify-start gap-2 px-2 text-xs text-text-muted [&_svg]:size-4 ${selectedStyle}`}
                       onClick={() => { closeMobile(); onCanvasOpen(canvasId); }} title={title}>
                       <WorkflowIcon data-icon="inline-start" /><span className="flex-1 truncate text-left">{title}</span><Badge variant="outline">{tasks.length}</Badge>
@@ -104,8 +111,9 @@ export function WorkspaceChrome({ view, canvases, items, previewCanvasId, titleb
                   </div>
                   {expanded && <ul className="ml-3 flex flex-col gap-1 border-l border-border/60 pt-1 pl-3">
                     {tasks.map((taskId) => <li key={taskId}>
-                      <Button className="h-8 w-full min-w-0 justify-start gap-2 bg-surface-muted/60 px-2 text-xs"
-                        variant="ghost" onClick={() => { closeMobile(); onTaskOpen(canvasId, taskId); }} title={taskTitles[taskId]}>
+                      <Button className={`h-8 w-full min-w-0 justify-start gap-2 bg-surface-muted/60 px-2 text-xs ${selectedStyle}`}
+                        variant={activeCanvasId === canvasId && selectedTaskId === taskId ? "secondary" : "ghost"}
+                        aria-current={activeCanvasId === canvasId && selectedTaskId === taskId ? "location" : undefined} onClick={() => { closeMobile(); onTaskOpen(canvasId, taskId); }} title={taskTitles[taskId]}>
                         <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{taskTitles[taskId]}</span><Badge variant="outline">{taskId}</Badge>
                       </Button>
                     </li>)}
@@ -122,11 +130,11 @@ export function WorkspaceChrome({ view, canvases, items, previewCanvasId, titleb
           <div className="flex min-w-0 items-center gap-2">
             <span className="inline-flex min-[1100px]:hidden"><SidebarToggle expanded={false} side="left" t={t} onClick={() => setMobilePanel("projects")} /></span>
             {leftCollapsed && <span className="hidden min-[1100px]:inline-flex"><SidebarToggle expanded={false} side="left" t={t} onClick={() => setLeftCollapsed(false)} /></span>}
-            <span className="truncate text-sm font-medium min-[1100px]:hidden">{t(view === "map" ? "canvasMap" : "todo")}</span>
+            <span className="truncate text-sm font-medium min-[1100px]:hidden">{t(view === "map" ? "canvasMap" : view === "todo" ? "todo" : "canvas")}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {titlebarActions}
-            {view === "todo" && <>
+            {showPalette && <>
               <span className="inline-flex min-[1100px]:hidden"><SidebarToggle expanded={false} side="right" t={t} onClick={() => setMobilePanel("components")} /></span>
               {rightCollapsed && <span className="hidden min-[1100px]:inline-flex"><SidebarToggle expanded={false} side="right" t={t} onClick={() => setRightCollapsed(false)} /></span>}
             </>}
@@ -134,7 +142,7 @@ export function WorkspaceChrome({ view, canvases, items, previewCanvasId, titleb
         </header>
         <main data-testid="workspace-content" className={`min-h-0 flex-1 bg-app-canvas ${view === "todo" ? "p-4" : ""}`}>{children}</main>
       </section>
-      {view === "todo" && <aside id="component-palette" data-testid="component-palette" aria-label={t("componentPalette")}
+      {showPalette && <aside id="component-palette" data-testid="component-palette" aria-label={t("componentPalette")}
         className={`absolute inset-y-0 right-0 z-30 w-[min(300px,100vw)] shrink-0 flex-col overflow-hidden border-l border-border/80 bg-app-panel text-text min-[1100px]:static min-[1100px]:z-auto min-[1100px]:w-[300px] ${mobilePanel === "components" ? "flex" : "hidden"} ${rightCollapsed ? "min-[1100px]:hidden" : "min-[1100px]:flex"}`}>
         <header className="flex h-11 shrink-0 items-center justify-end border-b border-border/80 bg-app-topbar px-2">
           <span className="hidden min-[1100px]:inline-flex"><SidebarToggle expanded side="right" t={t} onClick={() => setRightCollapsed(true)} /></span>

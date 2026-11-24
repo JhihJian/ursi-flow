@@ -51,7 +51,8 @@ test("map inspects dependencies and follows the blocked block link", async ({ pa
   await map.locator(".react-flow__pane").click({ position: { x: 40, y: 50 } });
   await expect(page.getByText("No canvas selected", { exact: true })).toBeVisible();
   await node(page, "foundation").getByRole("button", { name: "Open canvas" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Publish shared design tokens");
+  await expect(page.getByTestId("task-graph").getByText("Publish shared design tokens")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("keyboard selects nodes and saves arrow-key movement", async ({ page }) => {
@@ -59,6 +60,7 @@ test("keyboard selects nodes and saves arrow-key movement", async ({ page }) => 
   const delivery = node(page, "delivery");
   const initial = await position(delivery);
   await delivery.press("Enter");
+  await expect(delivery).toHaveClass(/\bselected\b/);
   await expect(page.getByTestId("map-inspector").getByText("Delivery", { exact: true }).first()).toBeVisible();
   await delivery.press("ArrowRight");
   await expect.poll(() => position(delivery)).not.toBe(initial);
@@ -198,9 +200,57 @@ test("desktop panes keep the upstream dimensions and fill the remaining space", 
   await expect(projects).toBeHidden();
   expect(await content.boundingBox()).toMatchObject({ x: 0, width: 1620 });
   await page.getByRole("button", { name: "Expand project sidebar" }).click();
-  await projects.getByRole("button", { name: "Tasks: Delivery" }).click();
-  await projects.getByRole("button", { name: /^Workspace experience/ }).click();
-  await expect(page.getByRole("dialog")).toHaveAccessibleName("Workspace experience");
+  await expect(projects).toBeVisible();
+});
+
+test("project tree opens the canvas graph and centers the selected task", async ({ page }, testInfo) => {
+  await page.goto("/#/todo");
+  const sidebar = page.getByTestId("project-sidebar");
+  await sidebar.getByRole("button", { name: /^Delivery / }).click();
+  await expect(page).toHaveURL(/#\/graph\?canvas=delivery$/);
+  const graph = page.getByTestId("task-graph");
+  const task = (id: string) => graph.locator(`.react-flow__node[data-id="${id}"]`);
+  await expect(task("workspace")).toBeVisible();
+  await expect(graph.locator(".react-flow__edge")).toHaveCount(1);
+
+  const row = sidebar.getByRole("button", { name: /^Canvas navigation/ });
+  const target = task("navigation");
+  const offsetFromCenter = async () => {
+    const [surface, bounds] = await Promise.all([graph.boundingBox(), target.boundingBox()]);
+    if (!surface || !bounds) return Infinity;
+    return Math.max(Math.abs(bounds.x + bounds.width / 2 - surface.x - surface.width / 2),
+      Math.abs(bounds.y + bounds.height / 2 - surface.y - surface.height / 2));
+  };
+  await row.press("Enter");
+  await expect(target).toHaveClass(/\bselected\b/);
+  await expect(row).toHaveAttribute("aria-current", "location");
+  await expect.poll(offsetFromCenter).toBeLessThan(3);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const surface = (await graph.boundingBox())!;
+  await page.mouse.move(surface.x + surface.width / 2, surface.y + 70);
+  await page.mouse.down();
+  await page.mouse.move(surface.x + surface.width / 2 + 90, surface.y + 110, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(offsetFromCenter).toBeGreaterThan(50);
+  await row.click();
+  await expect.poll(offsetFromCenter).toBeLessThan(3);
+
+  await target.getByRole("button", { name: /^Refine canvas navigation/ }).click();
+  await expect(page.getByRole("dialog")).toHaveAccessibleName("Refine canvas navigation");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(target).toHaveClass(/\bselected\b/);
+  await page.screenshot({ path: testInfo.outputPath("task-graph-focused.png"), animations: "disabled" });
+
+  await sidebar.getByRole("button", { name: /^Project foundation/ }).click();
+  await expect(page).toHaveURL(/canvas=foundation&task=setup$/);
+  await expect(task("setup")).toHaveClass(/\bselected\b/);
+  await page.goBack();
+  await expect(target).toHaveClass(/\bselected\b/);
+  await expect.poll(offsetFromCenter).toBeLessThan(3);
+  await sidebar.getByRole("link", { name: "Release Workspace" }).click();
+  await expect(page).toHaveURL(/#\/map$/);
+  await expect(page.getByTestId("map-inspector")).toBeVisible();
 });
 
 test("desktop screenshots in both themes", async ({ page }, testInfo) => {

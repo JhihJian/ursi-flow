@@ -27,7 +27,7 @@ const rows: [DesktopTodoGroupName, string, string, string, string, string[]?][] 
   ["ready", "delivery", "workspace", "review", "Review workspace integration"],
   ["ready", "verification", "quality", "fixtures", "Prepare browser fixtures"],
   ["in_progress", "delivery", "workspace", "graph", "Connect the dependency graph"],
-  ["needs_changes", "delivery", "workspace", "navigation", "Refine canvas navigation"],
+  ["needs_changes", "delivery", "navigation", "refine", "Refine canvas navigation", ["delivery:workspace/graph"]],
   ["blocked", "verification", "quality", "smoke", "Run the release smoke suite", ["delivery:workspace/review"]],
   ["diverged", "release", "publish", "changelog", "Reconcile the release notes", ["verification:quality/smoke"]],
   ["implemented", "foundation", "setup", "shell", "Set up the application shell"],
@@ -35,7 +35,8 @@ const rows: [DesktopTodoGroupName, string, string, string, string, string[]?][] 
 ];
 
 export const taskTitles: Record<string, string> = {
-  setup: "Project foundation", workspace: "Workspace experience", quality: "Release verification", publish: "Publish release"
+  setup: "Project foundation", workspace: "Workspace experience", navigation: "Canvas navigation",
+  quality: "Release verification", publish: "Publish release"
 };
 
 export function readDemoProjection(graph: DesktopCanvasGraphViewModel) {
