@@ -9,6 +9,8 @@ describe('buildTaskMarkdown', () => {
       priority: 'high',
       tags: ['ops', 'release'],
       note: '## 内容\n\n- 一项',
+      workspace: 'wb-alpha',
+      sessionId: 'sess-42',
       timeInfo: 'Created: 2026/11/24',
     })
     expect(markdown).toBe(
@@ -18,6 +20,8 @@ describe('buildTaskMarkdown', () => {
         '- Status: in_progress',
         '- Priority: high',
         '- Tags: #ops #release',
+        '- Workspace: wb-alpha',
+        '- Session: sess-42',
         '- Time: Created: 2026/11/24',
         '',
         '## 内容',
@@ -36,6 +40,8 @@ describe('buildTaskMarkdown', () => {
         priority: 'low',
         tags: [],
         note: '   ',
+        workspace: null,
+        sessionId: null,
         timeInfo: null,
       }),
     ).toBe('# Untitled task\n\n- Status: pending\n- Priority: low\n')

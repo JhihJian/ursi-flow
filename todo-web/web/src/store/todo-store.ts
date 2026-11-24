@@ -216,6 +216,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         status: draft.status,
         tags: draft.tags,
         result: draft.result,
+        workspace: draft.workspace,
+        session_id: draft.sessionId,
       })
     } else {
       await api.createTask({
@@ -223,6 +225,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         priority: draft.priority,
         tags: draft.tags,
         project_id: get().selectedProjectId,
+        workspace: draft.workspace,
+        session_id: draft.sessionId,
       })
     }
     set({ detail: null })

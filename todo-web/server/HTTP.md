@@ -70,7 +70,14 @@
 任务创建：
 
 ```json
-{ "title": "必填", "priority": "high|medium|low", "tags": ["..."], "project_id": "可选" }
+{
+  "title": "必填",
+  "priority": "high|medium|low",
+  "tags": ["..."],
+  "project_id": "可选",
+  "workspace": "可选，关联工作区",
+  "session_id": "可选，关联会话 ID"
+}
 ```
 
 任务更新：
@@ -83,7 +90,9 @@
   "tags": ["..."],
   "project_id": "传 null 解除归属",
   "blocked_reason": "传 null 清空",
-  "result": "传 null 清空"
+  "result": "传 null 清空",
+  "workspace": "传 null 清空",
+  "session_id": "传 null 清空"
 }
 ```
 
@@ -102,6 +111,10 @@
 | `cancelled` | 无 | 终态 |
 
 同一状态重复提交是幂等的，不会改写开始和完成时间。其余迁移返回 `E_INVALID_TRANSITION`。字段编辑不触发状态机，只有 `status` 提交且与当前状态不同时才迁移。
+
+## 元信息字段
+
+`workspace` 与 `session_id` 是看板新增的自由字符串字段，可为空。服务端启动时检查 `tasks` 表，缺这两列会自动 `ALTER TABLE tasks ADD COLUMN ... TEXT`；旧库无需手工迁移。空字符串按未设置处理。
 
 ## 查询与统计
 

@@ -162,6 +162,8 @@ describe('task actions', () => {
       status: 'pending',
       tags: ['a'],
       result: null,
+      workspace: 'wb-a',
+      sessionId: 'sess-1',
     })
 
     expect(mocked.createTask).toHaveBeenCalledWith({
@@ -169,6 +171,8 @@ describe('task actions', () => {
       priority: 'medium',
       tags: ['a'],
       project_id: 'p1',
+      workspace: 'wb-a',
+      session_id: 'sess-1',
     })
     expect(useTodoStore.getState().detail).toBeNull()
   })
