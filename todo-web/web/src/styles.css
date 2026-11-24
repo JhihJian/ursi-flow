@@ -418,14 +418,35 @@ button {
   gap: var(--space-md);
 }
 
+.day-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.day-filter-label {
+  width: 36px;
+  flex: none;
+  font-size: 11px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 总宽固定，各天按数量占比分宽度，零数量仍保留 3px 可点区域。 */
 .day-bars {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 2px;
-  height: 14px;
+  width: 112px;
+  height: 12px;
 }
 
 .day-bar {
+  flex: 0 1 0;
+  min-width: 3px;
   height: 100%;
   padding: 0;
   border: 0;
@@ -441,13 +462,6 @@ button {
 .day-bar.is-active {
   background: var(--gray-900);
 }
-
-.day-filter-label {
-  font-size: 11px;
-  color: var(--gray-400);
-  font-variant-numeric: tabular-nums;
-}
-
 .status-targets {
   display: flex;
   flex-wrap: wrap;
