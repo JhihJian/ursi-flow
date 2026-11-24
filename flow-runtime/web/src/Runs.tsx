@@ -398,13 +398,16 @@ export function RunDetail({ source }: { source: Source }) {
                   <RefreshCw />
                   刷新
                 </Button>
-                {jobRow.executorRef && jobRow.status === 'unknown' && !jobRow.stopRequested && (
+                {((jobRow.executorRef && jobRow.status === 'unknown' && !jobRow.stopRequested) ||
+                  jobRow.status === 'waiting_input') && (
                   <Button variant="outline" disabled={busy} onClick={() => void control('resume')}>
                     <RefreshCw />
-                    核实并恢复
+                    {jobRow.status === 'waiting_input' ? '重新提问' : '核实并恢复'}
                   </Button>
                 )}
-                {(jobRow.status === 'running' || (jobRow.executorRef && jobRow.status === 'unknown')) && (
+                {(jobRow.status === 'running' ||
+                  jobRow.status === 'waiting_input' ||
+                  (jobRow.executorRef && jobRow.status === 'unknown')) && (
                   <Button variant="destructive" disabled={busy} onClick={() => setConfirm(true)}>
                     <CircleStop />
                     停止运行
