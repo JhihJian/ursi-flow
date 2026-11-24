@@ -38,6 +38,8 @@ npm start
 
 打开 `http://localhost:4180/sandboxes`。内置服务的交付文件包括 `dist/`、`server.mjs`、`workbench.mjs` 和 npm 清单。安装运行依赖后，使用 `node server.mjs` 启动。`PORT` 可调整监听端口。
 
+无 Gateway 环境时可用模拟数据预览：`npm run build && node preview-server.mjs`，打开 `http://127.0.0.1:14482/dist/`。服务静态托管 dist 并返回内置示例数据（实例、注册表、访问密钥、观测记录与分段 pcap），支持全部页面浏览与创建、停止、观测等写操作的模拟交互。
+
 ## 静态交付
 
 页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS 和脚本输出到 `dist/`。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。

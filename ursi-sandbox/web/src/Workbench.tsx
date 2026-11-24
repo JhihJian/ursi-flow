@@ -145,7 +145,7 @@ export function EndpointWorkbench({
     <section
       ref={stage}
       aria-label="端点工作台"
-      className="workbench-frame min-w-0 self-start overflow-hidden rounded-lg border border-line bg-surface"
+      className="workbench-frame min-w-0 self-start overflow-hidden border border-line bg-surface"
     >
       <Tabs
         value={view}

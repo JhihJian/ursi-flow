@@ -208,7 +208,7 @@ function InstanceLink({ row }: { row: Sandbox }) {
     <Link
       to={'/sandboxes/' + row.id}
       aria-label={'查看 ' + nameOf(row)}
-      className="group flex min-w-0 items-center gap-3 rounded-md font-medium text-txt hover:text-accent-2"
+      className="group flex min-w-0 items-center gap-3 font-medium text-txt hover:text-accent-2"
     >
       <span className="icon-tile size-8 shrink-0">
         <Box className="size-4" />
@@ -291,7 +291,7 @@ function List({ source }: { source: Source }) {
             )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-line bg-surface">
+          <div className="overflow-hidden border border-line bg-surface">
             <div className="hidden md:block">
               <Table aria-labelledby="instances" className="table-fixed">
                 <TableHeader>
@@ -406,7 +406,7 @@ function Logs({ source, id }: { source: Source; id: string }) {
         <pre
           tabIndex={0}
           aria-label="实例日志输出"
-          className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-elevated p-3 text-xs leading-5 text-txt2"
+          className="max-h-80 overflow-auto whitespace-pre-wrap break-all border border-line bg-elevated p-3 text-xs leading-5 text-txt2"
         >
           {state.value || '暂无日志'}
         </pre>
