@@ -2,7 +2,13 @@ import { elapsedMinutes, formatTime } from '@/lib/format'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 
-export function ActiveTasksPanel() {
+interface ActiveTasksPanelProps {
+  collapsed: boolean
+  onCollapse: () => void
+  onExpand: () => void
+}
+
+export function ActiveTasksPanel({ collapsed, onCollapse, onExpand }: ActiveTasksPanelProps) {
   const activeTasks = useTodoStore((state) => state.activeTasks)
   const activeLoading = useTodoStore((state) => state.activeLoading)
   const projects = useTodoStore((state) => state.projects)
@@ -11,12 +17,58 @@ export function ActiveTasksPanel() {
   const selectedId = useTodoStore((state) =>
     state.detail?.mode === 'view' ? state.detail.task.id : null,
   )
+  const selectedTask = useTodoStore((state) =>
+    state.detail?.mode === 'view' ? state.detail.task : null,
+  )
+
+  if (collapsed) {
+    const project = selectedTask
+      ? projects.find((candidate) => candidate.id === selectedTask.project_id)
+      : undefined
+    const meta = selectedTask
+      ? `${selectedTask.status}${project ? ` · ${project.name}` : ''}`
+      : `${activeTasks.length} active`
+    const summary = selectedTask ? `${selectedTask.title} · ${meta}` : meta
+
+    return (
+      <aside className="active-rail">
+        <button
+          type="button"
+          className="rail-toggle"
+          title="Expand activity panel"
+          aria-label="Expand activity panel"
+          onClick={onExpand}
+        >
+          «
+        </button>
+        <button
+          type="button"
+          className="active-rail-summary"
+          title={summary}
+          aria-label={`${summary}. Expand activity panel`}
+          onClick={onExpand}
+        >
+          <span className="active-rail-name">{selectedTask?.title ?? 'No task'}</span>
+          <span className="active-rail-meta">{meta}</span>
+        </button>
+      </aside>
+    )
+  }
 
   return (
     <div className="active-tasks-panel">
       <div className="active-tasks-header">
         <span className="active-tasks-title">Active</span>
         <span className="active-tasks-count">{activeTasks.length}</span>
+        <button
+          type="button"
+          className="rail-toggle active-collapse"
+          title="Collapse activity panel"
+          aria-label="Collapse activity panel"
+          onClick={onCollapse}
+        >
+          »
+        </button>
       </div>
       <ul className="active-tasks-list">
         {activeLoading && activeTasks.length === 0 ? (

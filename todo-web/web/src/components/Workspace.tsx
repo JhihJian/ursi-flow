@@ -8,12 +8,16 @@ import { TaskDetailSheet } from './TaskDetailSheet'
 import { TaskSection } from './TaskSection'
 
 const SIDEBAR_COLLAPSED_SIZE = 32
+const DETAIL_COLLAPSED_SIZE = 32
 
 export function Workspace() {
   const layout = useDefaultLayout({ id: 'todo-web.columns' })
   const sidebarRef = usePanelRef()
+  const detailRef = usePanelRef()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [detailCollapsed, setDetailCollapsed] = useState(false)
   const lastExpandedWidth = useRef(240)
+  const lastDetailWidth = useRef(320)
 
   const collapseSidebar = () => {
     const panel = sidebarRef.current
@@ -27,10 +31,24 @@ export function Workspace() {
     sidebarRef.current?.resize(lastExpandedWidth.current)
   }
 
+  const collapseDetail = () => {
+    const panel = detailRef.current
+    if (!panel) return
+    const { inPixels } = panel.getSize()
+    if (inPixels > DETAIL_COLLAPSED_SIZE) lastDetailWidth.current = inPixels
+    panel.collapse()
+  }
+
+  const expandDetail = () => {
+    detailRef.current?.resize(lastDetailWidth.current)
+  }
+
   useEffect(() => {
-    const panel = sidebarRef.current
-    if (panel) setSidebarCollapsed(panel.isCollapsed())
-  }, [sidebarRef])
+    const sidebar = sidebarRef.current
+    if (sidebar) setSidebarCollapsed(sidebar.isCollapsed())
+    const detail = detailRef.current
+    if (detail) setDetailCollapsed(detail.isCollapsed())
+  }, [sidebarRef, detailRef])
 
   return (
     <Group
@@ -70,13 +88,25 @@ export function Workspace() {
       <Separator className="separator" title="Drag to resize, double-click to reset" />
       <Panel
         id="detail"
-        className="panel panel-right"
+        className={cx('panel', 'panel-right', detailCollapsed && 'panel-right-collapsed')}
+        panelRef={detailRef}
         defaultSize={300}
-        minSize={240}
+        minSize={200}
         maxSize={480}
+        collapsible
+        collapsedSize={DETAIL_COLLAPSED_SIZE}
         groupResizeBehavior="preserve-pixel-size"
+        onResize={(size) => {
+          const collapsed = size.inPixels <= DETAIL_COLLAPSED_SIZE + 1
+          if (!collapsed) lastDetailWidth.current = size.inPixels
+          setDetailCollapsed(collapsed)
+        }}
       >
-        <ActiveTasksPanel />
+        <ActiveTasksPanel
+          collapsed={detailCollapsed}
+          onCollapse={collapseDetail}
+          onExpand={expandDetail}
+        />
       </Panel>
     </Group>
   )
