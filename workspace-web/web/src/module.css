@@ -1,0 +1,268 @@
+/* workspace-web 模块样式：全部限定在 .wsx-panel / .wsx-view 下，禁止全局选择器。 */
+
+.wsx-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--ws-mono, monospace);
+  font-size: 12px;
+  color: var(--ws-ink, #1a1a1a);
+}
+
+.wsx-workspace-bar {
+  display: flex;
+  padding: 8px;
+  border-bottom: 1px solid var(--ws-line, #e5e5e5);
+}
+
+.wsx-workspace-bar select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  background: transparent;
+  padding: 2px 4px;
+}
+
+.wsx-panel-error {
+  padding: 4px 8px;
+  color: #a00;
+  white-space: pre-wrap;
+}
+
+.wsx-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wsx-tree-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.wsx-tree-row--selected {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.wsx-tree-caret {
+  width: 12px;
+  flex: none;
+  color: var(--ws-dim, #666);
+}
+
+.wsx-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wsx-tree-name--file {
+  color: var(--ws-muted, #999);
+}
+
+.wsx-tree-loading {
+  color: var(--ws-muted, #999);
+}
+
+.wsx-diractions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--ws-line, #e5e5e5);
+}
+
+.wsx-diractions button {
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  background: transparent;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.wsx-diractions button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.wsx-diractions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wsx-diractions-form {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.wsx-diractions-form input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  padding: 1px 4px;
+}
+
+/* ---- 文件视图（外壳工作区区域） ---- */
+
+.wsx-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.wsx-view-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ws-line, #e5e5e5);
+  font-family: var(--ws-mono, monospace);
+  font-size: 12px;
+}
+
+.wsx-view-path {
+  color: var(--ws-muted, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsx-view-name {
+  font-family: var(--ws-serif, Georgia, serif);
+  font-size: 14px;
+}
+
+.wsx-view-dirty,
+.wsx-view-conflict {
+  color: #a00;
+  white-space: nowrap;
+}
+
+.wsx-view-conflict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wsx-view-bar button {
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  background: transparent;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.wsx-view-bar button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.wsx-view-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.wsx-view-empty,
+.wsx-view-error {
+  padding: 24px;
+  color: var(--ws-muted, #999);
+  font-family: var(--ws-mono, monospace);
+  font-size: 12px;
+}
+
+.wsx-view-error {
+  color: #a00;
+}
+
+/* 内联确认对话框 */
+.wsx-confirm {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  z-index: 10;
+}
+
+.wsx-confirm-text {
+  font-family: var(--ws-serif, Georgia, serif);
+  font-size: 13px;
+  max-width: 90%;
+}
+
+.wsx-confirm-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.wsx-confirm-buttons button {
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  background: #fff;
+  padding: 2px 12px;
+  cursor: pointer;
+}
+
+.wsx-confirm-buttons button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 行内操作 */
+.wsx-tree-row-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wsx-tree-row-delete {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ws-dim, #666);
+  cursor: pointer;
+  visibility: hidden;
+  margin-right: 4px;
+  padding: 0;
+}
+
+.wsx-tree-row:hover .wsx-tree-row-delete {
+  visibility: visible;
+}
+
+.wsx-tree-row-delete:hover {
+  color: #a00;
+}
+
+.wsx-tree-rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  border: 1px solid var(--ws-line, #e5e5e5);
+  padding: 0 4px;
+}

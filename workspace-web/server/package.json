@@ -1,0 +1,11 @@
+{
+  "name": "@ursi/workspace-web-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test test/"
+  },
+  "description": "workspace-web 服务端：本机目录 provider，无第三方依赖"
+}

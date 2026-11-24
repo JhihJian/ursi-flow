@@ -3,18 +3,37 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "strict": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client"],
+    "types": [
+      "vite/client",
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@todo/*": ["../../todo-web/web/src/*"],
-      "@/*": ["../../todo-web/web/src/*"]
-    }
+      "@todo/*": [
+        "../../todo-web/web/src/*"
+      ],
+      "@/*": [
+        "../../todo-web/web/src/*"
+      ],
+      "@workspace-web/*": [
+        "../../workspace-web/web/src/*"
+      ]
+    },
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts"
+  ]
 }
