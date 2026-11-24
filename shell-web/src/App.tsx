@@ -1,7 +1,7 @@
 import { WorkspaceShell, useWorkspace, type WorkspaceView } from '@ursi/workspace-shell'
-import { createTodoModule } from './modules/todo'
-import { createFsModule } from '@fs-web/module'
-import '@fs-web/module.css'
+import { createTodoModule } from '@ursi/todo-web/module'
+import { createFsModule } from '@ursi/fs-web/module'
+import '@ursi/fs-web/module.css'
 
 const modules = [createTodoModule(), createFsModule()]
 

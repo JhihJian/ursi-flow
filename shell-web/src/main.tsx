@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import '@todo/styles.css'
+import '@ursi/todo-web/styles.css'
 import './styles.css'
 
 const container = document.getElementById('root')

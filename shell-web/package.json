@@ -14,6 +14,8 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.14.28",
+    "@ursi/fs-web": "*",
+    "@ursi/todo-web": "*",
     "@ursi/workspace-shell": "*",
     "monaco-editor": "^0.58.0",
     "react": "^19.3.1",

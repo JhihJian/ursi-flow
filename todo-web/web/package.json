@@ -1,8 +1,12 @@
 {
-  "name": "@ursi-flow/todo-web",
+  "name": "@ursi/todo-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./module": "./src/module.tsx",
+    "./styles.css": "./src/styles.css"
+  },
   "engines": {
     "node": ">=24 <25"
   },

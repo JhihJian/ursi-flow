@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import type { CollapsedSummary, Selection, WorkspaceModule } from '@ursi/workspace-shell'
 import { useWorkspace } from '@ursi/workspace-shell'
-import TodoApp from '@todo/App'
-import { useTodoStore } from '@todo/store/todo-store'
-import { buildTaskMarkdown } from '@todo/lib/task-markdown'
-import { copyText } from '@todo/lib/clipboard'
+import TodoApp from './App'
+import { useTodoStore } from './store/todo-store'
+import { buildTaskMarkdown } from './lib/task-markdown'
+import { copyText } from './lib/clipboard'
+
+/** todo 模块对外暴露的接入代码：宿主只负责调用工厂登记，不实现模块逻辑。 */
 
 const KIND = 'todo.task'
 

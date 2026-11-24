@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./module": "./src/module.tsx",
+    "./module.css": "./src/module.css"
+  },
   "engines": {
     "node": ">=24 <25"
   },

@@ -19,14 +19,8 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@todo/*": [
-        "../todo-web/web/src/*"
-      ],
       "@/*": [
         "../todo-web/web/src/*"
-      ],
-      "@fs-web/*": [
-        "../fs-web/web/src/*"
       ]
     },
     "allowImportingTsExtensions": true

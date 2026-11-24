@@ -2,11 +2,14 @@ import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-/** 暂时直接引用 todo-web 的源码，等模块协议稳定后再拆成独立包。 */
+/** 
+ * 组合縫：todo-web 源码内部用 `@/` 引自身模块，宿主编译它时沿用同一别名。
+ * 模块入口由 npm workspace 包 exports 解析（@ursi/todo-web、@ursi/fs-web），不再逐一设别名。
+ */
 const todoSrc = fileURLToPath(new URL('../todo-web/web/src', import.meta.url))
+/** todo-web 的同源 API。 */
 const todoApi = process.env.TODO_WEB_API ?? 'http://127.0.0.1:8090'
-/** fs-web 模块源码与服务。 */
-const fsWebSrc = fileURLToPath(new URL('../fs-web/web/src', import.meta.url))
+/** fs-web 的同源 API。 */
 const fsApi = process.env.FS_WEB_API ?? 'http://127.0.0.1:8199'
 
 const proxy = {
@@ -18,11 +21,9 @@ const proxy = {
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // '@/' 是 todo-web 源码内部的别名；'@todo' 供工作区入口引用。
+    // `@/` 是 todo-web 源码内部的别名，宿主编译时保持一致解析。
     alias: [
       { find: /^@\//, replacement: `${todoSrc}/` },
-      { find: '@todo', replacement: todoSrc },
-      { find: '@fs-web', replacement: fsWebSrc },
     ],
     dedupe: ['react', 'react-dom'],
   },

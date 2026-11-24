@@ -1,12 +1,12 @@
 # 工作区入口
 
-把多个模块组合进一个工作区的独立入口。第一版只接入 todo 模块，工作区区域与右侧操作栏已按契约工作。
+把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/App.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。第一版接入 todo 与 fs 两个模块，工作区区域与右侧操作栏已按契约工作。
 
 ## 开发
 
 ```sh
 npm install
-npm run dev:workspace        # http://localhost:5191
+npm run dev:shell-web        # http://localhost:5191
 ```
 
 `vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖）。先启动 todo-web 服务：
@@ -28,6 +28,8 @@ cd todo-web/server && cargo run          # 或已有实例
 ```
 
 新模块的接入要求（契约、选中、折叠、样式作用域、副作用、交付物与检查清单）见 [`packages/workspace-shell/MODULE-CONTRACT.md`](../../packages/workspace-shell/MODULE-CONTRACT.md)。
+
+接入分三步：模块自己导出接入代码（如 `todo-web/web` 的 `src/module.tsx` 与 `fs-web/web` 的 `src/module.tsx`），宿主 `package.json` 声明对它的依赖（`@ursi/todo-web`、`@ursi/fs-web`），再在 `src/App.tsx` 的 `modules` 数组里调用模块工厂：
 
 外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。模块自带标题或工具条时可声明 `hideHeader: true`，外壳不再画标题行，折叠按钮移到分隔线中点。
 
@@ -52,6 +54,6 @@ cd todo-web/server && cargo run          # 或已有实例
 
 ## 当前限制
 
-- todo 仍整栏挂载（`shell-web/src/modules/todo.tsx`），内部的项目栏与任务栏还没拆成独立面板。
-- 用 `@todo` 别名直接编译 todo-web 源码，并复用其 `styles.css`；等模块协议稳定再抽成独立包。
+- todo 接入代码已归位到 `todo-web/web/src/module.tsx`，宿主只调用工厂；内部的项目栏与任务栏还没拆成独立面板。
+- 宿主仍保留 `@/` 别名以编译 todo-web 源码（其内部导入约定）；模块协议稳定后再按抽包清单彻底清理。
 - 没有鉴权与路由。

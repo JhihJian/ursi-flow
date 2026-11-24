@@ -79,7 +79,7 @@ fs-web/
 │   ├── src/server.ts         # node:http 路由 + workspace 清单 + 启动入口
 │   ├── HTTP.md               # HTTP 契约
 │   └── test/api.test.ts      # 真实 HTTP 链路测试（node:test）
-├── web/src/           # 前端模块（由 shell-web 经 @fs-web 别名引用，也提供独立预览入口）
+├── web/src/           # 前端模块（导出 @ursi/fs-web 的 ./module 接入入口，也提供独立预览）
 │   ├── api.ts          # HTTP 客户端 + FileKey（JSON segments）工具
 │   ├── tree-store.ts   # 树状态：目录缓存、展开序、增删改
 │   ├── git-store.ts    # git 快照：徽标映射、过期丢弃

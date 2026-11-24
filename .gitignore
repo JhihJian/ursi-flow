@@ -2,7 +2,8 @@ target/
 /data/
 /workbench/data/
 node_modules
-/apps/web/dist/
+/shell-web/dist/
+/fs-web/web/dist/
 /apps/web/.e2e-dist/
 /apps/web/public/portal-config.json
 /apps/web/test-results/
@@ -23,4 +24,3 @@ node_modules
 /todo-web/web/dist/
 /session-viewer/web/dist/
 /session-viewer/web/node_modules/
-/apps/workspace/dist/

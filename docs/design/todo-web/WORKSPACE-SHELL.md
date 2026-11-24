@@ -97,7 +97,7 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 - 设置这类不占栏的页面用 `views` 注册成 `{ kind, summary, Component }`，选中后占用工作区区域，模块栏不受影响。
 - todo 模块：`shell-web/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
 
-第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。`shell-web` 暂时用 `@todo` 别名直接编译 todo-web 的源码，并复用它的 `styles.css`；这是临时方案，抽包时按清单清理。
+第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。todo 接入代码已归位到 `todo-web/web/src/module.tsx`，并以 npm workspace 包（`@ursi/todo-web`）导出 `./module` 与 `./styles.css`，宿主 `shell-web` 声明包依赖并调用工厂；宿主仅保留 `@/` 别名以编译 todo 源码内部导入，这是组合縫而非临时方案。彻底抽包时按清单清理。
 
 ## 现在就在 todo-web 里做的三步
 
