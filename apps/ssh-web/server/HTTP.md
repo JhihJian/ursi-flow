@@ -53,12 +53,13 @@
 - 有 tmux 但无会话（exit 1）：`{"sessions": []}`。
 - SSH 失败（不可达、认证失败等）：502 `ssh_error`。
 
-### `GET /connections/{id}/terminal?tmux_session=<name>`
+### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
 
 WebSocket 升级请求，建立一条全新 SSH 连接并 attach：
 
 - 不带 `tmux_session`：执行 `tmux new -A -s ssh-main`（默认会话，不存在则新建）。
 - 带 `tmux_session`：执行 `tmux new -A -s <name>`。会话名服务端白名单校验（ASCII 字母数字下划线连字符，1–64），非法返回 400 `bad_request` 后拒绝升级。
+- `cols`/`rows`（可选）：PTY 初始尺寸，取自前端终端面板实际大小，2–500，缺省或非法回退 80×24。PTY 以该尺寸创建，避免终端闪排。
 - 远端无 tmux 时由远端侧一行启动命令回退普通 shell（终端内黄色提示），服务端不解析输出。
 
 **帧协议**：

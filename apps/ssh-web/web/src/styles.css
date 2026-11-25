@@ -242,7 +242,47 @@ button {
 }
 
 .terminal-surface {
+  position: relative;
   padding: var(--space-sm) var(--space-md);
+}
+
+/* 终端内搜索：浮在右上角，出版物风格。 */
+.terminal-search {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-md);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px var(--space-xs);
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.terminal-search input {
+  width: 160px;
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
+  background: transparent;
+}
+
+.terminal-search button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--gray-600);
+  padding: 2px 4px;
+}
+
+.terminal-search button:hover {
+  color: var(--black);
 }
 
 .terminal-surface .xterm {

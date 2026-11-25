@@ -47,9 +47,17 @@ export function listTmuxSessions(id: number): Promise<TmuxSessionsResponse> {
   return request(`/connections/${id}/tmux-sessions`)
 }
 
-/** 终端 WS 地址：tmuxSession 缺省为 ssh-main。 */
-export function terminalWsUrl(id: number, tmuxSession?: string): string {
+/** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */
+export function terminalWsUrl(
+  id: number,
+  tmuxSession: string | undefined,
+  cols: number,
+  rows: number,
+): string {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const name = tmuxSession ? `?tmux_session=${encodeURIComponent(tmuxSession)}` : ''
-  return `${protocol}://${window.location.host}/api/connections/${id}/terminal${name}`
+  const params = new URLSearchParams()
+  if (tmuxSession) params.set('tmux_session', tmuxSession)
+  params.set('cols', String(cols))
+  params.set('rows', String(rows))
+  return `${protocol}://${window.location.host}/api/connections/${id}/terminal?${params}`
 }

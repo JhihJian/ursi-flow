@@ -101,6 +101,20 @@ async fn load_connection(id: i64) -> AppResult<crate::db::Connection> {
 #[derive(Debug, Deserialize)]
 pub struct TerminalQuery {
     tmux_session: Option<String>,
+    /// 初始 PTY 尺寸，取自前端终端面板实际大小，避免 80×24 闪排。
+    cols: Option<u32>,
+    rows: Option<u32>,
+}
+
+/// 校验初始尺寸，缺省或非法时回退 80×24。
+fn initial_size(query: &TerminalQuery) -> (u32, u32) {
+    const MAX: u32 = 500;
+    match (query.cols, query.rows) {
+        (Some(cols), Some(rows)) if (2..=MAX).contains(&cols) && (2..=MAX).contains(&rows) => {
+            (cols, rows)
+        }
+        _ => (80, 24),
+    }
 }
 
 /// `GET /api/connections/{id}/terminal`：终端 WebSocket。
@@ -124,11 +138,14 @@ pub async fn get_terminal_ws(
         None => crate::session::DEFAULT_TMUX_SESSION.to_string(),
     };
 
+    let (cols, rows) = initial_size(&query);
     let (event_tx, event_rx) = mpsc::channel::<WsEvent>(EVENT_CAPACITY);
     let (input_tx, input_rx) = mpsc::channel::<ControlMessage>(INPUT_CAPACITY);
     tokio::spawn(crate::session::run_terminal(
         config,
         Some(tmux_session),
+        cols,
+        rows,
         input_rx,
         event_tx,
     ));

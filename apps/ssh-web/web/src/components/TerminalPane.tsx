@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { ContextMenu, type MenuState } from './ContextMenu'
@@ -75,6 +78,13 @@ interface Bridge {
   lastSize: { cols: number; rows: number }
 }
 
+/** openBridge 传出的 addon 引用，供搜索等外部交互直接使用。 */
+interface BridgeAddons {
+  fitAddon: FitAddon
+  searchAddon: SearchAddon
+  webglAddon?: WebglAddon
+}
+
 function sendChunked(socket: WebSocket, data: string) {
   for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
     const frame: ControlFrame = { type: 'input', data: data.slice(offset, offset + CHUNK_SIZE) }
@@ -91,14 +101,22 @@ function parseSize(width: number, height: number, lastSize: { cols: number; rows
   return { cols, rows }
 }
 
-/** 建立一条 WS↔xterm 桥；返回清理函数。 */
+/** 建立一条 WS↔xterm 桥；返回清理函数，onAddons 收集 addon 引用供外部接管。 */
 function openBridge(
   container: HTMLElement,
   target: TerminalTarget,
   light: boolean,
   onClosed: () => void,
+  onAddons?: (addons: BridgeAddons) => void,
 ): () => void {
-  const socket = new WebSocket(terminalWsUrl(target.connectionId, target.tmuxSession ?? undefined))
+  const socket = new WebSocket(
+    terminalWsUrl(
+      target.connectionId,
+      target.tmuxSession ?? undefined,
+      Math.max(2, Math.min(MAX_COLS, Math.floor((container.clientWidth || 800) / 9))),
+      Math.max(2, Math.min(MAX_ROWS, Math.floor((container.clientHeight || 480) / 17))),
+    ),
+  )
   socket.binaryType = 'arraybuffer'
 
   const terminal = new Terminal({
@@ -111,17 +129,35 @@ function openBridge(
     convertEol: false,
   })
   const fitAddon = new FitAddon()
+  const searchAddon = new SearchAddon()
+  terminal.loadAddon(fitAddon)
+  terminal.loadAddon(searchAddon)
   terminal.open(container)
   fitAddon.fit()
   const lastSize = { cols: 0, rows: 0 }
   parseSize(container.clientWidth || 800, container.clientHeight || 480, lastSize)
 
-  // WS 握手完成前不能 send（InvalidStateError），初始 PTY 尺寸在 onopen 时补发。
-  socket.onopen = () => {
-    if (lastSize.cols > 0) {
-      socket.send(JSON.stringify({ type: 'resize', cols: lastSize.cols, rows: lastSize.rows }))
-    }
+  // WebGL 渲染不可用（无 context、软件渲染黑名单等）时保持 DOM 渲染。
+  let webglAddon: WebglAddon | undefined
+  try {
+    webglAddon = new WebglAddon()
+    terminal.loadAddon(webglAddon)
+  } catch {
+    webglAddon = undefined
   }
+  // WebGL context 丢失时降级到 DOM 渲染，不中断会话。
+  webglAddon?.onContextLoss(() => {
+    webglAddon?.dispose()
+    webglAddon = undefined
+  })
+  onAddons?.({ fitAddon, searchAddon, webglAddon })
+
+  // 初始尺寸已随 WS URL 带给服务端，onopen 不再补发 resize；lastSize 只用于后续增量 resize 去重。
+  socket.onopen = () => {}
+
+  // 输出中的 URL 转为可点击链接（Ctrl/Cmd+点击打开，符合终端习惯）。
+  const webLinksAddon = new WebLinksAddon()
+  terminal.loadAddon(webLinksAddon)
 
   terminal.onData((data) => {
     if (socket.readyState !== WebSocket.OPEN) return
@@ -181,7 +217,12 @@ function openBridge(
   }
 }
 
-/** 右侧终端区：点会话即经 WS 建 SSH 并 attach；右键提供新建会话与亮暗色切换。 */
+/** 搜索条状态：打开时自动聚焦，关键词与高亮由 searchAddon 维护。 */
+interface SearchBoxState {
+  query: string
+}
+
+/** 右侧终端区：点会话即经 WS 建 SSH 并 attach；右键提供新建会话、搜索与亮暗色切换。 */
 export function TerminalPane() {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminal = useSshStore((state) => state.terminal)
@@ -189,15 +230,27 @@ export function TerminalPane() {
   const setEditor = useSshStore((state) => state.setEditor)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [ended, setEnded] = useState(false)
+  const [search, setSearch] = useState<SearchBoxState | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  const searchRef = useRef<SearchAddon | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container || !terminal) return
     setEnded(false)
+    setSearch(null)
+    searchRef.current = null
     let cleanup: (() => void) | null = null
     try {
-      cleanup = openBridge(container, terminal, terminalLight, () => setEnded(true))
+      cleanup = openBridge(
+        container,
+        terminal,
+        terminalLight,
+        () => setEnded(true),
+        (addons) => {
+          searchRef.current = addons.searchAddon
+        },
+      )
     } catch {
       // 建桥失败（如 WS URL 非法）不拖垮整棵 React 树。
       setEnded(true)
@@ -214,6 +267,7 @@ export function TerminalPane() {
     event.preventDefault()
     const items: MenuState['items'] = [
       { label: 'New session', onSelect: () => setEditor({ kind: 'new' }) },
+      { label: 'Search in terminal', onSelect: () => setSearch({ query: '' }) },
       {
         label: terminalLight ? 'Dark terminal' : 'Light terminal',
         onSelect: () => useSshStore.getState().toggleTerminalLight(),
@@ -221,6 +275,53 @@ export function TerminalPane() {
     ]
     setMenu({ x: event.clientX, y: event.clientY, items })
   }
+
+  const runSearch = (direction: 'next' | 'prev') => {
+    const addon = searchRef.current
+    if (!addon || !search?.query) return
+    const options: ISearchOptions = {}
+    if (direction === 'next') addon.findNext(search.query, options)
+    else addon.findPrevious(search.query, options)
+  }
+
+  const closeSearch = () => {
+    searchRef.current?.clearDecorations()
+    setSearch(null)
+    containerRef.current?.querySelector('textarea')?.focus()
+  }
+
+  const renderSearchBox = () =>
+    search && (
+      <div className="terminal-search">
+        <input
+          autoFocus
+          value={search.query}
+          placeholder="搜索终端内容"
+          onChange={(event) => {
+            setSearch({ query: event.target.value })
+            searchRef.current?.clearDecorations()
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              runSearch(event.shiftKey ? 'prev' : 'next')
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              closeSearch()
+            }
+          }}
+        />
+        <button type="button" title="上一个（Shift+Enter）" onClick={() => runSearch('prev')}>
+          ↑
+        </button>
+        <button type="button" title="下一个（Enter）" onClick={() => runSearch('next')}>
+          ↓
+        </button>
+        <button type="button" title="关闭（Esc）" onClick={closeSearch}>
+          ×
+        </button>
+      </div>
+    )
 
   if (!terminal) {
     return (
@@ -246,6 +347,7 @@ export function TerminalPane() {
       ref={containerRef}
       onContextMenu={openMenu}
     >
+      {renderSearchBox()}
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )

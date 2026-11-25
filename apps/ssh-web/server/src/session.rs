@@ -90,11 +90,13 @@ fn start_command(tmux_session: &str) -> String {
 pub async fn run_terminal(
     connection: ConnectionConfig,
     tmux_session: Option<String>,
+    cols: u32,
+    rows: u32,
     mut input_rx: mpsc::Receiver<ControlMessage>,
     event_tx: mpsc::Sender<WsEvent>,
 ) {
     if let Err(error) =
-        run_terminal_inner(&connection, tmux_session, &mut input_rx, &event_tx).await
+        run_terminal_inner(&connection, tmux_session, cols, rows, &mut input_rx, &event_tx).await
     {
         let _ = event_tx
             .send(WsEvent::Error {
@@ -107,6 +109,8 @@ pub async fn run_terminal(
 async fn run_terminal_inner(
     connection: &ConnectionConfig,
     tmux_session: Option<String>,
+    cols: u32,
+    rows: u32,
     input_rx: &mut mpsc::Receiver<ControlMessage>,
     event_tx: &mpsc::Sender<WsEvent>,
 ) -> anyhow::Result<()> {
@@ -115,10 +119,10 @@ async fn run_terminal_inner(
         .await
         .map_err(|_| anyhow::anyhow!("连接超时"))??;
 
-    // 初始 PTY 尺寸取默认值，前端打开终端后立即发 resize 纠正。
+    // 初始 PTY 尺寸由 WS 查询参数带入，与前端面板实际大小一致，无 80×24 闪排。
     let channel = handle.channel_open_session().await?;
     channel
-        .request_pty(false, "xterm-256color", 80, 24, 0, 0, &[])
+        .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
         .await?;
     let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
     channel.exec(false, start_command(&name).as_str()).await?;
