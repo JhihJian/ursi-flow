@@ -94,33 +94,32 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
       }}
     >
       <ModuleColumnProvider value={{ width, collapsed, resize, collapse, expand }}>
-        {collapsed ? (
+        {collapsed && !module.keepMounted ? (
           <ModuleRail module={module} onExpand={expand} />
-        ) : module.hideHeader ? (
-          <div className="ws-panel-body">
-            <div className="ws-panel-content">
-              <Body />
-            </div>
-          </div>
         ) : (
-          <div className="ws-panel-body">
-            <header className="ws-panel-head">
-              <span className="ws-panel-title">{module.title}</span>
-              <button
-                type="button"
-                className="ws-rail-toggle"
-                title={`折叠 ${module.title}`}
-                aria-label={`折叠 ${module.title}`}
-                onClick={collapse}
-              >
-                «
-              </button>
-            </header>
+          <div className={collapsed ? 'ws-panel-body ws-panel-body-hidden' : 'ws-panel-body'}>
+            {!module.hideHeader && (
+              <header className="ws-panel-head">
+                <span className="ws-panel-title">{module.title}</span>
+                <button
+                  type="button"
+                  className="ws-rail-toggle"
+                  title={`折叠 ${module.title}`}
+                  aria-label={`折叠 ${module.title}`}
+                  onClick={collapse}
+                >
+                  «
+                </button>
+              </header>
+            )}
             <div className="ws-panel-content">
               <Body />
             </div>
           </div>
         )}
+        {collapsed && module.keepMounted ? (
+          <ModuleRail module={module} onExpand={expand} />
+        ) : null}
       </ModuleColumnProvider>
     </Panel>
       <Separator className="ws-separator" title={`拖动调整 ${module.title} 宽度`}>

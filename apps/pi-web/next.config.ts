@@ -79,12 +79,19 @@ const nextConfig: NextConfig = {
     "192.168.*.*",
   ],
   async headers() {
+    // 嵌入白名单：默认只允许同源嵌入；shell-web 等宿主通过环境变量追加 origin。
+    const frameAncestors = (process.env.PI_WEB_ALLOWED_FRAME_ANCESTORS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const rootHeaders: Array<{ key: string; value: string }> = [
+      { key: "Cache-Control", value: "private, no-cache, max-age=0, must-revalidate" },
+      { key: "Content-Security-Policy", value: `frame-ancestors 'self'${frameAncestors.length ? ` ${frameAncestors.join(" ")}` : ""}` },
+    ];
     return [
       {
         source: "/",
-        headers: [
-          { key: "Cache-Control", value: "private, no-cache, max-age=0, must-revalidate" },
-        ],
+        headers: rootHeaders,
       },
       {
         source: "/sw.js",

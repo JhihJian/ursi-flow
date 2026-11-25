@@ -42,6 +42,7 @@ import { setupPushSubscription } from "@/lib/push-client";
 import { startPageVisibilityTracking } from "@/lib/page-debug";
 import type { DebugClientSession } from "@/lib/debug-types";
 import { getInitialNavigation, linkedSessionId, withTabOpen } from "@/lib/initial-navigation";
+import { isEmbedMode } from "@/lib/embed";
 import { clearTabOpenSession, getTabOpen, setTabOpenNewSession, setTabOpenSession } from "@/lib/tab-session";
 import { mergeCatalogRow } from "./session-catalog-helpers";
 import { clearDraft, getDraft, parkedNewSessionDraftKey, rekeyDraft } from "@/lib/draft-store";
@@ -1123,6 +1124,8 @@ export function AppShell() {
     body: string;
     tag?: string;
   }) => {
+    // 嵌入模式下浏览器通知不可用（iframe 权限受限），直接跳过。
+    if (isEmbedMode()) return;
     if (!("Notification" in window)) return;
 
     const fire = () => {

@@ -103,6 +103,11 @@
   min-height: 0;
 }
 
+/* keepMounted 模块折叠时隐藏内容但不卸载，iframe 等状态得以保留。 */
+.ws-panel-body-hidden {
+  display: none;
+}
+
 .ws-panel-head {
   display: flex;
   flex: none;

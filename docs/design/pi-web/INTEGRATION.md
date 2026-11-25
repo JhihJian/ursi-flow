@@ -58,3 +58,24 @@ git subtree pull --prefix=apps/pi-web pi-web main --squash
 ## 与 pi-executor 的关系
 
 `pi-executor` 已移除。两者此前是两套独立体系：`pi-executor` 的会话服务用独立状态目录且不加载技能与 MCP；`apps/pi-web` 直接读写 `~/.pi/agent/sessions`。迁移后统一由 `apps/pi-web` 提供浏览器侧 Pi agent 能力，Flow 运行轨迹的会话展示由 Flow Runtime 自行实现，不再依赖 `pi-executor`。
+
+## shell-web 嵌入
+
+`apps/pi-web` 以 iframe 嵌入 shell-web 工作区（`apps/shell-web/src/pi-web-panel/`），pi-web 自身做了三处定向调整，其余保持上游原样：
+
+1. **嵌入白名单**（`next.config.ts`）：主页面响应 `Content-Security-Policy: frame-ancestors 'self' ...`。默认只允许同源嵌入，宿主通过 `PI_WEB_ALLOWED_FRAME_ANCESTORS`（逗号分隔 origin）追加，例如 `PI_WEB_ALLOWED_FRAME_ANCESTORS=http://127.0.0.1:5191,http://192.168.1.135:5191`。
+2. **嵌入模式**（`lib/embed.ts` + `AppShell.tsx`）：iframe 地址带 `?embed=1` 时禁用浏览器通知（iframe 权限受限），其余功能不变。
+3. **外壳常驻**（`packages/workspace-shell`）：`WorkspaceModule` 新增 `keepMounted`，折叠时用 CSS 隐藏而非卸载 Panel，避免 iframe 重载丢失会话、终端与草稿。
+
+### 启动
+
+```bash
+# pi-web（局域网访问需 dev:lan，监听 0.0.0.0:30141）
+cd apps/pi-web && npm run dev:lan
+
+# shell-web（Vite 5191）
+npm run dev:shell-web
+```
+
+iframe 地址按当前窗口 hostname + 端口 30141 推导，`VITE_PI_WEB_URL` 可覆盖完整地址。pi-web 未启动时面板显示离线浮层与重试，每 5 秒探活。
+

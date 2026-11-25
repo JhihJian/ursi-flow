@@ -1,7 +1,9 @@
 import type { WorkspaceModule, WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
+import { createPiWebModule } from './pi-web-panel/module'
 import '@ursi/fs-web/module.css'
+import './pi-web-panel/module.css'
 
 /**
  * 组合根：整个应用唯一允许出现宿主胶水代码的地方。
@@ -49,6 +51,7 @@ export function buildRegistry(): ShellRegistry {
   const modules = [
     createTodoModule(),
     createFsModule({ apiBaseUrl: '/api/fs-web' }),
+    createPiWebModule(),
   ]
   const views: WorkspaceView[] = [
     { kind: SETTINGS.kind, summary: () => 'Settings', Component: SettingsView },
