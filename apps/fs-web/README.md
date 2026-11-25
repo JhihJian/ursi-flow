@@ -44,7 +44,7 @@ watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通�
 
 - 模块栏为二级侧边栏（参考 todo-web ProjectSidebar）：一级 144px 固定宽目录列表（名称 + 说明、点击切换、右键重命名/说明/移除，内联输入与内联确认，契约禁原生对话框）；二级为 git 摘要 + 虚拟化文件树。嵌入模式拖宽/折叠由外壳管理，模块内不嵌套可拖拽布局；standalone 预览页自带拖宽与折叠 rail（书脊式竖排）。
 - 点击文件发布 `workspace.file` 选中，编辑器由外壳工作区区域渲染，不塞进窄栏；树行组件自写 + `@tanstack/react-virtual` 虚拟化。
-- Monaco 经 `@monaco-editor/react` + `monaco-editor` 本地打包（`loader.config` 指向本地 monaco-editor 包 + vite worker 导入），`React.lazy` 分块不进首屏。
+- Monaco 经 `@monaco-editor/react` + `monaco-editor` 本地打包（`loader.config` 指向本地 monaco-editor 包 + vite worker 导入），`React.lazy` 分块不进首屏；`.md` 文件默认走 ProseMirror 所见即所得编辑器（todo-web 同款，markdown-it + prosemirror-markdown），顶栏可切 Monaco 源码，同样懒加载分块。
 - 编辑器草稿与展开状态存内存（页面刷新即丢，后续可评估 sessionStorage）；文件内容不缓存，`apiBaseUrl` 由宿主注入，缺省 `/api/fs-web`。
 - 保存语义：mtime 乐观锁，冲突返回 409，提供「覆盖保存」与「放弃修改」两条路；整体后写覆盖。
 - 破坏性操作（删除、移除目录）用内联确认；目录重命名后自动迁移展开状态与草稿 key。
@@ -97,7 +97,9 @@ fs-web/
 │   ├── tree.tsx        # 虚拟化文件树（行内重命名、悬浮删除）
 │   ├── dir-actions.tsx # 选中目录工具条（刷新/新建/重命名/删除）
 │   ├── file-editor.tsx # Monaco 封装（本地打包 + worker，React.lazy 懒加载）
-│   ├── file-view.tsx   # 外壳工作区区域的文件视图
+│   ├── markdown-editor.ts     # ProseMirror WYSIWYG 核心（解析/序列化/插件）
+│   ├── markdown-file-editor.tsx # Markdown 编辑器 React 封装（懒加载）
+│   ├── file-view.tsx   # 外壳工作区区域的文件视图（md/mode 分流 + 源码切换）
 │   ├── module.tsx      # createWorkspaceModule 模块工厂
 │   └── module.css      # 模块样式（全部 wsx- 前缀，限定容器内）
 └── SPEC.md

@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { keyName, keyToParent } from './api.ts'
 import { useEditorStore } from './editor-store.ts'
 import { useTreeStore } from './tree-store.ts'
 
 const FileEditor = lazy(() => import('./file-editor.tsx'))
+const MarkdownEditor = lazy(() => import('./markdown-file-editor.tsx'))
 
 interface FileViewProps {
   fileKey: string
@@ -16,6 +17,7 @@ export function FileView({ fileKey }: FileViewProps) {
   const save = useEditorStore((state) => state.save)
   const discard = useEditorStore((state) => state.discard)
   const api = useTreeStore((state) => state.api)
+  const [sourceMode, setSourceMode] = useState(false)
 
   if (!entry) {
     return <div className="wsx-view-empty">文件未加载</div>
@@ -27,6 +29,7 @@ export function FileView({ fileKey }: FileViewProps) {
     return <div className="wsx-view-error">读取失败：{entry.error}</div>
   }
 
+  const isMarkdown = keyName(fileKey).toLowerCase().endsWith('.md')
   const saveCurrent = (): void => {
     void save(api, fileKey)
   }
@@ -57,10 +60,23 @@ export function FileView({ fileKey }: FileViewProps) {
             保存
           </button>
         )}
+        {isMarkdown ? (
+          <button
+            type="button"
+            title={sourceMode ? '切换到所见即所得' : '切换到 Markdown 源码'}
+            onClick={() => setSourceMode((current) => !current)}
+          >
+            {sourceMode ? '预览' : '源码'}
+          </button>
+        ) : null}
       </div>
       <div className="wsx-view-editor">
         <Suspense fallback={<div className="wsx-view-empty">编辑器加载中…</div>}>
-          <FileEditor value={entry.draft} onChange={(value) => updateDraft(fileKey, value)} onSave={saveCurrent} pathLabel={keyName(fileKey)} />
+          {isMarkdown && !sourceMode ? (
+            <MarkdownEditor key={fileKey} value={entry.draft} onChange={(value) => updateDraft(fileKey, value)} />
+          ) : (
+            <FileEditor value={entry.draft} onChange={(value) => updateDraft(fileKey, value)} onSave={saveCurrent} pathLabel={keyName(fileKey)} />
+          )}
         </Suspense>
       </div>
     </div>

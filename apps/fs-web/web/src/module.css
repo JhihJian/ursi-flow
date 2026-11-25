@@ -412,6 +412,112 @@
   -ms-overflow-style: auto;
 }
 
+/* Markdown 所见即所得编辑器（todo-web 同款，换 fs-web 命名空间与变量） */
+.wsx-md-editor {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.wsx-md-editor .ProseMirror {
+  flex: 1;
+  min-height: 0;
+  padding: var(--wsx-space-md, 16px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  outline: none;
+  font-family: var(--wsx-mono, var(--ws-mono, "SF Mono", "Menlo", "Monaco", "Courier New", monospace));
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wsx-md-editor .ProseMirror > * + * {
+  margin-top: var(--wsx-space-sm, 8px);
+}
+
+.wsx-md-editor .ProseMirror h1,
+.wsx-md-editor .ProseMirror h2,
+.wsx-md-editor .ProseMirror h3,
+.wsx-md-editor .ProseMirror h4,
+.wsx-md-editor .ProseMirror h5,
+.wsx-md-editor .ProseMirror h6 {
+  font-family: var(--wsx-serif, var(--ws-serif, Georgia, "Times New Roman", serif));
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.wsx-md-editor .ProseMirror h1 {
+  font-size: 18px;
+}
+
+.wsx-md-editor .ProseMirror h2 {
+  font-size: 15px;
+}
+
+.wsx-md-editor .ProseMirror h3,
+.wsx-md-editor .ProseMirror h4,
+.wsx-md-editor .ProseMirror h5,
+.wsx-md-editor .ProseMirror h6 {
+  font-size: 13px;
+  color: var(--wsx-dim, var(--ws-dim, #666666));
+}
+
+.wsx-md-editor .ProseMirror ul,
+.wsx-md-editor .ProseMirror ol {
+  padding-left: var(--wsx-space-lg, 24px);
+}
+
+.wsx-md-editor .ProseMirror li > p {
+  margin: 0;
+}
+
+.wsx-md-editor .ProseMirror code {
+  padding: 1px 4px;
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+  font-family: var(--wsx-mono, monospace);
+  font-size: 12px;
+}
+
+.wsx-md-editor .ProseMirror pre {
+  padding: var(--wsx-space-sm, 8px);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+  overflow-x: auto;
+}
+
+.wsx-md-editor .ProseMirror pre code {
+  padding: 0;
+  background: none;
+}
+
+.wsx-md-editor .ProseMirror blockquote {
+  padding-left: var(--wsx-space-md, 16px);
+  border-left: 2px solid var(--wsx-muted, var(--ws-muted, #999999));
+  color: var(--wsx-dim, var(--ws-dim, #666666));
+}
+
+.wsx-md-editor .ProseMirror hr {
+  height: 1px;
+  margin: var(--wsx-space-md, 16px) 0;
+  border: 0;
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-md-editor .ProseMirror a {
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  text-decoration: underline;
+}
+
+.wsx-md-editor .ProseMirror img {
+  max-width: 100%;
+}
+
+.wsx-md-editor .ProseMirror-selectednode {
+  outline: 1px solid var(--wsx-black, #000000);
+}
+
 .wsx-view-empty,
 .wsx-view-error {
   padding: 24px;
