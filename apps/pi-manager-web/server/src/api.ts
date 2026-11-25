@@ -275,7 +275,10 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
         sendError(res, 404, 'not_found', `未知 API：${req.method} ${pathname}`)
         return true
       }
-      const home = await resolveRequestedHome(url.searchParams.get('home'))
+      // home 探测类路由自己解析参数，不参与统一校验。
+      const home = pathname.startsWith('/api/home/')
+        ? (url.searchParams.get('home') ?? '')
+        : await resolveRequestedHome(url.searchParams.get('home'))
       const isWrite = req.method !== 'GET' && req.method !== 'HEAD'
       if (isWrite && !isLoopback(req.socket.remoteAddress)) {
         sendError(res, 403, 'read_only', '写操作只能从本机发起')

@@ -73,4 +73,4 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 ## 模块结构
 
 - `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home/主题/页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（列表 + 详情 split view，已挂载分区保持状态）；`styles.css` 沿用 pi-web 的语义色变量与 dae-web 的间距刻度，亮暗两套主题。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home 与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

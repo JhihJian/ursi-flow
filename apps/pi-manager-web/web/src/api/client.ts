@@ -50,7 +50,18 @@ async function request<T>(method: string, path: string, home: string, body?: unk
 }
 
 export const api = {
-  homeDefaults: () => request<HomeDefaults>('GET', '/api/home/defaults', '~'),
+  homeDefaults: () => {
+    const url = new URL('/api/home/defaults', window.location.origin)
+    return fetch(url).then(async (res) => {
+      const text = await res.text()
+      const json = text ? (JSON.parse(text) as unknown) : null
+      if (!res.ok) {
+        const err = (json as { error?: { code?: string; message?: string } } | null)?.error
+        throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`)
+      }
+      return json as HomeDefaults
+    })
+  },
   homeCheck: (home: string) => request<HomeCheck>('GET', '/api/home/check', home),
   getGeneral: (home: string) => request<GeneralListing>('GET', '/api/general', home),
   putGeneralKey: (home: string, key: string, value: unknown, revision: string) =>
