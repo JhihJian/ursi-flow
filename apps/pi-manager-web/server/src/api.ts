@@ -2,6 +2,7 @@ import type http from 'node:http'
 import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
 import { HomeRegistry } from './homes.ts'
+import { startSessionTask, getTask, listTasks, cancelSessionTask, taskCapacity } from './session-task.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
@@ -289,6 +290,64 @@ route('PUT', '/api/auth/entries', async ({ home, body }) => {
 })
 
 // ---------------------------------------------------------------------------
+// session：用 pi SDK 在指定 home 下执行一次会话任务
+// ---------------------------------------------------------------------------
+
+/** 发起一次会话：立即返回 session id，后台执行，结果用 GET 查询。 */
+route('POST', '/api/session/prompt', async ({ home, body }) => {
+  const payload = await body<{
+    agent?: unknown
+    instruct?: unknown
+    cwd?: unknown
+    model?: unknown
+    thinkingLevel?: unknown
+  }>()
+  if (typeof payload.instruct !== 'string' || !payload.instruct.trim()) {
+    throw new HomeError('instruct 必填', 400, 'invalid_request')
+  }
+  const task = await startSessionTask({
+    home,
+    agent: typeof payload.agent === 'string' && payload.agent.trim() ? payload.agent.trim() : null,
+    instruct: payload.instruct,
+    cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
+    model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
+    thinkingLevel:
+      typeof payload.thinkingLevel === 'string' && payload.thinkingLevel.trim()
+        ? payload.thinkingLevel.trim()
+        : undefined,
+  })
+  return {
+    sessionId: task.sessionId,
+    sessionFile: task.sessionFile,
+    state: task.state,
+    agent: task.agent,
+    startedAt: task.startedAt,
+  }
+})
+
+route('GET', '/api/session/task', async ({ url }) => {
+  const sessionId = url.searchParams.get('sessionId')
+  if (!sessionId) throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  const task = getTask(sessionId)
+  if (!task) throw new HomeError(`没有这个会话任务：${sessionId}`, 404, 'task_not_found')
+  return { task, capacity: taskCapacity() }
+})
+
+route('GET', '/api/session/tasks', async ({ home }) => ({
+  tasks: listTasks(home),
+  capacity: taskCapacity(),
+}))
+
+route('POST', '/api/session/cancel', async ({ body }) => {
+  const payload = await body<{ sessionId?: unknown }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  await cancelSessionTask(payload.sessionId)
+  return { ok: true }
+})
+
+// ---------------------------------------------------------------------------
 // plugins（settings.json 的 packages 条目）
 // ---------------------------------------------------------------------------
 
@@ -326,7 +385,10 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
     if (!pathname.startsWith('/api/')) return false
 
     try {
-      const match = ROUTES.find((r) => r.method === req.method && pathname.startsWith(r.prefix))
+      // 同一方法的候选里取最长前缀：/api/session/tasks 不能被 /api/session/task 抢走。
+      const match = ROUTES.filter((r) => r.method === req.method && pathname.startsWith(r.prefix)).sort(
+        (a, b) => b.prefix.length - a.prefix.length,
+      )[0]
       if (!match) {
         sendError(res, 404, 'not_found', `未知 API：${req.method} ${pathname}`)
         return true

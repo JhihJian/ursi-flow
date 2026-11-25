@@ -519,3 +519,55 @@ test('homes：init 初始化默认配置，clone 复制配置但不带凭据', a
     rmSync(source, { recursive: true, force: true })
   }
 })
+
+// ---------------------------------------------------------------------------
+// session-task：一次性会话任务的参数校验与任务表
+// ---------------------------------------------------------------------------
+
+test('session-task：agent profile 解析（文件名与 name 都不区分大小写）', async () => {
+  const { resolveAgentProfile } = await import('./session-task.ts')
+  const dir = makeHome()
+  mkdirSync(join(dir, 'agents'), { recursive: true })
+  writeFileSync(join(dir, 'agents', 'Reviewer.md'), '---\nname: reviewer\ndescription: 评审\n---\n你是评审员。\n')
+  writeFileSync(join(dir, 'agents', 'other.md'), '---\nname: Other-Name\ndescription: 另一个\n---\n正文\n')
+
+  assert.equal(resolveAgentProfile(dir, 'reviewer').name, 'reviewer')
+  assert.equal(resolveAgentProfile(dir, 'REVIEWER').name, 'reviewer')
+  assert.equal(resolveAgentProfile(dir, 'other').name, 'Other-Name')
+  assert.equal(resolveAgentProfile(dir, 'other-name').name, 'Other-Name')
+  assert.throws(() => resolveAgentProfile(dir, 'nope'), /没有 agent profile/)
+})
+
+test('session-task：参数校验在加载 SDK 之前完成', async () => {
+  const { startSessionTask } = await import('./session-task.ts')
+  const dir = makeHome()
+  mkdirSync(join(dir, 'agents'), { recursive: true })
+  writeFileSync(join(dir, 'agents', 'a.md'), '---\nname: a\n---\nx\n')
+
+  const base = { home: dir, agent: null, instruct: 'hi' }
+  await assert.rejects(startSessionTask({ ...base, instruct: '   ' }), /instruct 不能为空/)
+  await assert.rejects(
+    startSessionTask({ ...base, thinkingLevel: 'ultrathought' }),
+    /thinkingLevel 只能是/,
+  )
+  await assert.rejects(startSessionTask({ ...base, model: 'no-slash' }), /provider\/modelId/)
+  await assert.rejects(startSessionTask({ ...base, agent: 'missing' }), /没有 agent profile/)
+  await assert.rejects(
+    startSessionTask({ ...base, cwd: '/definitely/not/a/real/dir' }),
+    /cwd 不存在/,
+  )
+})
+
+test('session-task：任务表按 home 过滤并倒序', async () => {
+  const { getTask, listTasks, taskCapacity } = await import('./session-task.ts')
+  assert.equal(getTask('missing-id'), null)
+  assert.ok(Array.isArray(listTasks()))
+  const capacity = taskCapacity()
+  assert.ok(capacity.limit >= 1)
+  assert.ok(capacity.running >= 0)
+})
+
+test('session-task：取消不存在的任务报 404 语义', async () => {
+  const { cancelSessionTask } = await import('./session-task.ts')
+  await assert.rejects(cancelSessionTask('nope'), /没有这个会话任务/)
+})
