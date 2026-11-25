@@ -689,7 +689,7 @@
   color: var(--wsx-dim, var(--ws-dim, #666666));
 }
 
-/* 第二行：完整路径，小字、悬停强调，点击复制。 */
+/* 第二行：完整路径，小字、悬停强调；仅选中态可点击复制。 */
 .wsx-wslist-path {
   flex: 1 1 100%;
   min-width: 0;
@@ -698,11 +698,15 @@
   white-space: nowrap;
   font-size: 10px;
   color: var(--wsx-muted, var(--ws-muted, #999999));
-  cursor: copy;
+  cursor: default;
 }
 
 .wsx-wslist-item:hover .wsx-wslist-path {
   color: var(--wsx-dim, var(--ws-dim, #666666));
+}
+
+.wsx-wslist-path--copyable {
+  cursor: copy;
 }
 
 .wsx-wslist-broken {

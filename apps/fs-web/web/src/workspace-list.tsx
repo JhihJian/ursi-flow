@@ -88,7 +88,8 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   const [flash, showFlash] = useFlash()
 
   const copyRoot = (event: React.MouseEvent): void => {
-    // 只处理路径按钮自己的点击，不让冒泡切换选中目录。
+    // 仅选中态提供复制；未选中时不拦截事件，让冒泡走条目的 onClick 切换选中。
+    if (!active) return
     event.stopPropagation()
     void copyText(workspace.root)
       .then(() => showFlash('已复制'))
@@ -161,8 +162,8 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
         {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
       </span>
       <span
-        className="wsx-wslist-path"
-        title={`${workspace.root}（点击复制）`}
+        className={'wsx-wslist-path' + (active ? ' wsx-wslist-path--copyable' : '')}
+        title={active ? `${workspace.root}（点击复制）` : workspace.root}
         onClick={copyRoot}
       >
         {workspace.root}
