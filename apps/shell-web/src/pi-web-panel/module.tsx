@@ -91,6 +91,8 @@ export function createPiWebModule(options: PiWebModuleOptions = {}): WorkspaceMo
     keepMounted: true,
     defaultSize: 560,
     minSize: 360,
+    /** iframe 内容需要更宽的可用空间。 */
+    maxSize: 1100,
     Panel: () => <PiWebPanel url={url} />,
     useCollapsedSummary: (): CollapsedSummary => ({
       title: 'pi-web',

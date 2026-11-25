@@ -22,7 +22,10 @@ export interface WorkspaceModule {
   /** 折叠态要展示的关键信息；缺省只显示模块标题。 */
   useCollapsedSummary?: () => CollapsedSummary
   defaultSize?: number
+  /** 栏宽下限，缺省 240px。 */
   minSize?: number
+  /** 栏宽上限，缺省 760px；iframe、编辑器这类需要宽内容的模块可调大。 */
+  maxSize?: number
   /** 折叠后的宽度，缺省 32px；模块用自己的内部最小宽度时按需覆盖。 */
   collapsedSize?: number
   /** 模块自身已有标题或工具条时隐藏外壳的标题行，折叠按钮改为右上角悬浮。 */

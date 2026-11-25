@@ -12,6 +12,7 @@ import { ModuleColumnProvider, useWorkspace, WorkspaceProvider } from './context
 import './shell.css'
 
 const DEFAULT_COLLAPSED_SIZE = 32
+const DEFAULT_MAX_SIZE = 760
 const ACTIONS_SIZE = 260
 
 /** 折叠态窄条：外壳按模块公布的关键信息排版，模块不参与渲染。 */
@@ -65,6 +66,7 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
   const [lastWidth, setLastWidth] = useState(module.defaultSize ?? 360)
   const Body = module.Panel
   const collapsedSize = module.collapsedSize ?? DEFAULT_COLLAPSED_SIZE
+  const maxSize = module.maxSize ?? DEFAULT_MAX_SIZE
 
   const collapse = () => panelRef.current?.collapse()
   const expand = () => panelRef.current?.resize(lastWidth)
@@ -80,7 +82,7 @@ function ModuleColumn({ module }: { module: WorkspaceModule }) {
       panelRef={panelRef}
       defaultSize={module.defaultSize ?? 360}
       minSize={module.minSize ?? 240}
-      maxSize={760}
+      maxSize={maxSize}
       collapsible
       collapsedSize={collapsedSize}
       groupResizeBehavior="preserve-pixel-size"

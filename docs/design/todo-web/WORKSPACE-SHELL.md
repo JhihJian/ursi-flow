@@ -30,6 +30,7 @@ interface PanelContribution {
   Rail?: React.ComponentType<{ onExpand: () => void }>  // 折叠态窄条，缺省用 title
   defaultSize?: number
   minSize?: number
+  maxSize?: number                   // 拖拽上限，缺省 760
   collapsible?: boolean
   keepMounted?: boolean               // 折叠时不卸载，保留内部状态
 }
