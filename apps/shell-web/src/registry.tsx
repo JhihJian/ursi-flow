@@ -18,11 +18,69 @@ export interface ShellRegistry {
 /** 设置页不占栏，注册成不占栏的视图，由标题栏按钮选中它。 */
 export const SETTINGS = { kind: 'app.settings', id: 'settings' } as const
 
+/** 注册信息页不占栏，同样由标题栏按钮选中。 */
+export const REGISTRY = { kind: 'app.registry', id: 'registry' } as const
+
+/** 模块在组合根登记时声明装配元数据，注册信息页展示这些内容。 */
+export interface ModuleRegistration {
+  moduleId: string
+  title: string
+  source: string
+  selectionKind?: string
+  actions: string[]
+}
+
+const REGISTRATIONS: ModuleRegistration[] = [
+  {
+    moduleId: 'todo',
+    title: 'Todo',
+    source: '@ursi/todo-web/module',
+    selectionKind: 'todo.task',
+    actions: ['Copy as Markdown'],
+  },
+  {
+    moduleId: 'fs-web',
+    title: '文件',
+    source: '@ursi/fs-web/module',
+    selectionKind: 'workspace.file',
+    actions: [],
+  },
+]
+
 function SettingsView() {
   return (
     <div className="app-settings">
       <h2 className="app-settings-title">Settings</h2>
       <p>全局设置占位：后续放服务地址、执行器修订、主题与快捷键。</p>
+    </div>
+  )
+}
+
+function RegistryView() {
+  return (
+    <div className="app-settings">
+      <h2 className="app-settings-title">Registry</h2>
+      <p>组合根登记的模块清单，栏序即数组顺序。</p>
+      {REGISTRATIONS.map((registration) => (
+        <div key={registration.moduleId} className="app-registry-item">
+          <div className="app-registry-head">
+            <span className="app-registry-title">{registration.title}</span>
+            <span className="app-registry-id">{registration.moduleId}</span>
+          </div>
+          <div className="app-registry-row">
+            <dt>source</dt>
+            <dd>{registration.source}</dd>
+          </div>
+          <div className="app-registry-row">
+            <dt>selection</dt>
+            <dd>{registration.selectionKind ?? '-'}</dd>
+          </div>
+          <div className="app-registry-row">
+            <dt>actions</dt>
+            <dd>{registration.actions.length ? registration.actions.join('、') : '-'}</dd>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -55,6 +113,7 @@ export function buildRegistry(): ShellRegistry {
   ]
   const views: WorkspaceView[] = [
     { kind: SETTINGS.kind, summary: () => 'Settings', Component: SettingsView },
+    { kind: REGISTRY.kind, summary: () => 'Registry', Component: RegistryView },
   ]
   if (import.meta.env.DEV) assertRegistry(modules, views)
   return { modules, views }

@@ -1,5 +1,5 @@
 import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
-import { buildRegistry, SETTINGS } from './registry'
+import { buildRegistry, SETTINGS, REGISTRY } from './registry'
 
 const { modules, views } = buildRegistry()
 
@@ -12,13 +12,27 @@ function SettingsButton() {
   )
 }
 
+function RegistryButton() {
+  const { select } = useWorkspace()
+  return (
+    <button type="button" className="ws-settings" onClick={() => select(REGISTRY)}>
+      Registry
+    </button>
+  )
+}
+
 export default function App() {
   return (
     <WorkspaceShell
       modules={modules}
       views={views}
       title="ursi workspace"
-      settings={<SettingsButton />}
+      settings={
+        <>
+          <RegistryButton />
+          <SettingsButton />
+        </>
+      }
       status="todo · 8090"
       storageKey="ursi.workspace"
     />

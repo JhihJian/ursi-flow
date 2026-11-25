@@ -83,3 +83,52 @@ body {
   color: #1a1a1a;
 }
 
+
+.app-registry-item {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.app-registry-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.app-registry-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  color: #1a1a1a;
+}
+
+.app-registry-id {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #999999;
+}
+
+.app-registry-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.app-registry-row dt {
+  width: 72px;
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #999999;
+}
+
+.app-registry-row dd {
+  margin: 0;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #1a1a1a;
+}
