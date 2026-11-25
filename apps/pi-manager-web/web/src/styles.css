@@ -117,16 +117,11 @@ textarea {
   white-space: nowrap;
   font-size: 12px;
   color: var(--gray-400);
+  user-select: text;
 }
 
 .home-bar-path.invalid {
   color: var(--danger);
-}
-
-.home-bar-actions {
-  display: flex;
-  flex: none;
-  gap: var(--space-sm);
 }
 
 /* ------------------------------------------------------------------ */
@@ -190,7 +185,29 @@ textarea {
   background: var(--gray-200);
 }
 
-/* pi home 预设列表 */
+/* 新增 pi home 的行内输入 */
+.preset-add {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--space-sm);
+}
+
+.preset-add .input {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 12px;
+}
+
+.preset-add-hint {
+  font-size: 10px;
+  color: var(--gray-400);
+}
+
+.preset-add-hint.error {
+  color: var(--danger);
+}
+
+/* pi home 列表 */
 .preset-list {
   list-style: none;
   display: flex;

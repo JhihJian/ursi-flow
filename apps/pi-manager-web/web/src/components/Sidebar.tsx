@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useAppStore } from '../store/app-store'
 import type { HomeSummary } from '../api/types'
 
@@ -35,7 +36,7 @@ function summaryLine(home: HomeSummary): string {
   return parts.join(' · ')
 }
 
-/** 左侧导航：已知 pi home 预设 + 配置分区。 */
+/** 左侧导航：已知 pi home 列表（含新增）+ 配置分区。 */
 export function Sidebar({
   active,
   onSelect,
@@ -48,38 +49,88 @@ export function Sidebar({
   const homePath = useAppStore((s) => s.homePath)
   const presets = useAppStore((s) => s.presets)
   const confirmHome = useAppStore((s) => s.confirmHome)
-  const addPreset = useAppStore((s) => s.addPreset)
+  const addHome = useAppStore((s) => s.addHome)
   const removePreset = useAppStore((s) => s.removePreset)
   const refreshHomes = useAppStore((s) => s.refreshHomes)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [addError, setAddError] = useState<string | null>(null)
 
-  // 只有当前 home 不在已知列表里时才需要登记（默认、env、同机其他用户已自动列出）。
-  const alreadyKnown = homes.some((h) => h.path === homePath)
-  const canRegister = Boolean(homePath) && !alreadyKnown
+  async function submitNew() {
+    const raw = draft.trim()
+    if (!raw) {
+      setAdding(false)
+      return
+    }
+    setAddError(null)
+    const failure = await addHome(raw)
+    if (failure) {
+      setAddError(failure)
+      return
+    }
+    setAdding(false)
+    setDraft('')
+  }
+
+  function cancelAdd() {
+    setAdding(false)
+    setDraft('')
+    setAddError(null)
+  }
 
   return (
     <nav className="config-sidebar" aria-label="pi home 与配置分区">
       <div className="config-sidebar-head">
-        <span className="config-sidebar-heading">Pi 预设</span>
-        {canRegister ? (
-          <button
-            type="button"
-            className="rail-toggle"
-            title={`把 ${homePath} 登记为预设`}
-            onClick={() => void addPreset(homePath)}
-          >
-            +
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="rail-toggle"
-            title="重新扫描已知 pi home"
-            onClick={() => void refreshHomes()}
-          >
-            ↻
-          </button>
-        )}
+        <span className="config-sidebar-heading">Pi home</span>
+        <button
+          type="button"
+          className="rail-toggle"
+          title="重新扫描已知 pi home"
+          onClick={() => void refreshHomes()}
+        >
+          ↻
+        </button>
+        <button
+          type="button"
+          className="rail-toggle"
+          title="新增 pi home"
+          aria-expanded={adding}
+          onClick={() => {
+            if (adding) cancelAdd()
+            else {
+              setDraft('')
+              setAddError(null)
+              setAdding(true)
+            }
+          }}
+        >
+          +
+        </button>
       </div>
+
+      {adding ? (
+        <div className="preset-add">
+          <input
+            className="input"
+            autoFocus
+            value={draft}
+            placeholder="如 ~/.pi/agent 或 /opt/pi/agent"
+            aria-label="新增 pi home 路径"
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setAddError(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submitNew()
+              if (e.key === 'Escape') cancelAdd()
+            }}
+          />
+          <div className={`preset-add-hint${addError ? ' error' : ''}`}>
+            {addError ?? '输入绝对路径或 ~/…；新增后立即切换'}
+          </div>
+        </div>
+      ) : null}
+
       <ul className="preset-list">
         {homes.map((home) => {
           const isCurrent = home.path === homePath
@@ -106,9 +157,9 @@ export function Sidebar({
                   <button
                     type="button"
                     className="preset-remove"
-                    title="从预设里移除（不删除目录）"
+                    title="从列表里移除（不删除目录）"
                     onClick={() => {
-                      if (window.confirm(`从预设列表移除 ${custom?.label ?? home.label}？目录本身不会删除。`)) {
+                      if (window.confirm(`从列表移除 ${custom?.label ?? home.label}？目录本身不会删除。`)) {
                         void removePreset(home.path)
                       }
                     }}

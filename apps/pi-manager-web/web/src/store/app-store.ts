@@ -66,6 +66,8 @@ interface AppState {
   initHome: () => Promise<void>
   setHomePath: (path: string) => void
   confirmHome: (path: string) => Promise<boolean>
+  /** 新增并切换到指定 home：成功返回 null，失败返回错误文本（不破坏当前视图）。 */
+  addHome: (raw: string) => Promise<string | null>
   refreshHomes: () => Promise<void>
   addPreset: (path: string, label?: string) => Promise<void>
   removePreset: (path: string) => Promise<void>
@@ -98,6 +100,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       else set({ homeError: '没有找到默认 pi home，请手动指定路径' })
     } catch (error) {
       set({ homeError: describeError(error) })
+    }
+  },
+
+  async addHome(raw) {
+    const trimmed = raw.trim()
+    if (!trimmed) return '请输入 pi home 路径'
+    try {
+      // 先校验再切换：无效路径不改动当前 home，只回报错误。
+      const check = await api.homeCheck(trimmed)
+      if (!get().homes.some((h) => h.path === check.home)) await get().addPreset(check.home)
+      await get().confirmHome(check.home)
+      return null
+    } catch (error) {
+      return describeError(error)
     }
   },
 
