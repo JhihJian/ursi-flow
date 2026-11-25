@@ -560,17 +560,89 @@
 }
 
 .wsx-wslist-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.wsx-wslist-desc {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  color: var(--wsx-muted, var(--ws-muted, #999999));
 }
 
 .wsx-wslist-broken {
   flex: none;
   color: var(--wsx-dim, #666666);
   font-weight: 700;
+}
+
+/* 折叠 rail：书脊式竖排当前目录名（todo-web 同款） */
+.wsx-wslist-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: var(--wsx-space-sm, 8px) 0;
+  overflow: hidden;
+}
+
+.wsx-rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wsx-muted, var(--ws-muted, #999999));
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wsx-rail-toggle:hover {
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-wslist-spine {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: auto 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* 书脊式：竖排后旋转 180°，文字从下往上读；中文直立 */
+  writing-mode: vertical-lr;
+  text-align: start;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: var(--wsx-serif, Georgia, serif);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+}
+
+.wsx-wslist-spine:hover {
+  color: var(--wsx-ink, #000000);
+  text-decoration: underline;
+}
+
+.wsx-wslist-input--area {
+  resize: none;
 }
 
 /* 二级列：git 摘要 + 文件树 */

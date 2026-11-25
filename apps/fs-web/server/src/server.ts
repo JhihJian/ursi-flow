@@ -47,7 +47,13 @@ async function probeWorkspace(config: WorkspaceConfig): Promise<WorkspaceRecord>
 
 /** 落盘快照只保留契约字段，不写内存探活产物。 */
 function cleanConfig(record: WorkspaceRecord): WorkspaceConfig {
-  return { id: record.id, label: record.label ?? record.id, provider: record.provider, root: record.root }
+  return {
+    id: record.id,
+    label: record.label ?? record.id,
+    description: record.description,
+    provider: record.provider,
+    root: record.root,
+  }
 }
 
 /** 跨重启稳定的 id：root realpath 的 sha256 前 16 个 hex 字符（64 位）。 */
@@ -139,6 +145,7 @@ export async function createServer(
     return {
       id: workspace.id,
       label: workspace.label ?? workspace.id,
+      description: workspace.description,
       provider: 'local',
       root: workspace.root,
       ready: workspace.ready !== false,
@@ -191,14 +198,25 @@ export async function createServer(
   /** 重命名只改显示名；id 与 root 不变，前端 FileKey 与草稿无需迁移。 */
   async function renameWorkspace(body: Record<string, unknown>): Promise<WorkspaceInfo> {
     const workspace = getWorkspace(body.workspaceId)
-    const label = body.label
-    if (typeof label !== 'string' || !label.trim()) {
-      throw new ProviderError('bad_request', 400, 'label 不能为空')
+    // 按键存在判断：传空字符串 description 表示清除说明；label 不允许空。
+    const hasLabel = typeof body.label === 'string'
+    const hasDescription = typeof body.description === 'string'
+    if (!hasLabel && !hasDescription) {
+      throw new ProviderError('bad_request', 400, 'label 与 description 至少提供一项')
     }
-    if (label.trim().length > 255) {
-      throw new ProviderError('bad_request', 400, 'label 超过 255 字符')
+    const label = hasLabel ? body.label.trim() : undefined
+    const description = hasDescription ? body.description.trim() : undefined
+    if (hasLabel && !label) {
+      throw new ProviderError('bad_request', 400, 'label 不能为空字符串')
     }
-    const renamed: WorkspaceRecord = { ...workspace, label: label.trim() }
+    if ((label && label.length > 255) || (description && description.length > 500)) {
+      throw new ProviderError('bad_request', 400, 'label 超过 255 字符或 description 超过 500 字符')
+    }
+    const renamed: WorkspaceRecord = {
+      ...workspace,
+      label: label ?? workspace.label,
+      description: hasDescription ? description || undefined : workspace.description,
+    }
     await persistNow(
       [...workspaces.values()].map((item) => cleanConfig(item.id === workspace.id ? renamed : item)),
     )

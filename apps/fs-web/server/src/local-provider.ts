@@ -269,6 +269,7 @@ export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConf
   return {
     id: item.id,
     label: typeof item.label === 'string' && item.label ? item.label : item.id,
+    description: typeof item.description === 'string' && item.description ? item.description : undefined,
     provider: 'local',
     root: item.root,
   }
@@ -278,7 +279,15 @@ export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConf
 export function loadWorkspaceConfig(env: NodeJS.ProcessEnv): WorkspaceConfig[] {
   const file = env.FS_WEB_CONFIG
   if (!file) {
-    return [{ id: 'default', label: 'default', provider: 'local', root: process.cwd() }]
+    return [
+      {
+        id: 'default',
+        label: '当前目录',
+        description: '启动 fs-web 时的工作目录，未手动添加目录时的默认入口',
+        provider: 'local',
+        root: process.cwd(),
+      },
+    ]
   }
   const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
   if (!Array.isArray(raw)) throw new Error(`${file} 应为 workspace 数组`)

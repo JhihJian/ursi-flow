@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | workspaces | GET | - | `WorkspaceInfo[]` |
 | workspaces-add | POST | `{ root, label? }` | `WorkspaceInfo`；非绝对路径/不存在/非目录报错，已记录返回 409 `exists` |
-| workspaces-rename | POST | `{ workspaceId, label }` | `WorkspaceInfo`；只改显示名，id 与 root 不变 |
+| workspaces-rename | POST | `{ workspaceId, label?, description? }` | `WorkspaceInfo`；至少一项，只改元数据，id 与 root 不变；传空字符串 description 表示清除说明 |
 | workspaces-remove | POST | `{ workspaceId }` | `{ ok: true }`；只从清单移除，不动文件系统，未就绪条目也可移除 |
 | list | POST | `{ workspaceId, path }` | `{ entries: EntryDto[] }`（目录优先、按名排序） |
 | read | POST | `{ workspaceId, path }` | `{ content, mtime, size }`（>2MB 或含 NUL 报错） |

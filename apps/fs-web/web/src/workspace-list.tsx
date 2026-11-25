@@ -9,13 +9,37 @@ type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => v
 function InlineInput({
   initial,
   placeholder,
+  multiline,
   onDone,
 }: {
   initial: string
   placeholder: string
+  multiline?: boolean
   onDone: (value: string) => void
 }) {
   const [value, setValue] = useState(initial)
+  const commit = () => onDone(value)
+  if (multiline) {
+    return (
+      <textarea
+        className="wsx-wslist-input wsx-wslist-input--area"
+        value={value}
+        placeholder={placeholder}
+        rows={2}
+        autoFocus
+        onFocus={(event) => event.target.select()}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            commit()
+          }
+          if (event.key === 'Escape') onDone(initial)
+        }}
+      />
+    )
+  }
   return (
     <input
       className="wsx-wslist-input"
@@ -24,20 +48,24 @@ function InlineInput({
       autoFocus
       onFocus={(event) => event.target.select()}
       onChange={(event) => setValue(event.target.value)}
-      onBlur={() => onDone(value)}
+      onBlur={commit}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') onDone(value)
+        if (event.key === 'Enter') commit()
         if (event.key === 'Escape') onDone(initial)
       }}
     />
   )
 }
 
+/** 说明统一「目录名 · 路径 · 说明」拼接，tooltip 与折叠态共用。 */
+function itemSummary(workspace: WorkspaceInfo): string {
+  return [workspace.label, workspace.root, workspace.description].filter(Boolean).join(' · ')
+}
+
 interface WorkspaceItemProps {
   workspace: WorkspaceInfo
   active: boolean
   openMenu: OpenMenu
-  /** 移除成功后的清理回调（关闭编辑器、清外壳选中），由持有上下文的父层提供。 */
   onRemove: (workspaceId: string, wasActive: boolean) => void
 }
 
@@ -45,10 +73,11 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   const selectWorkspace = useTreeStore((state) => state.selectWorkspace)
   const renameWorkspace = useTreeStore((state) => state.renameWorkspace)
   const removeWorkspace = useTreeStore((state) => state.removeWorkspace)
-  const [renaming, setRenaming] = useState(false)
+  const [editing, setEditing] = useState<'label' | 'description' | null>(null)
 
   const menuItems: MenuItem[] = [
-    { label: '重命名', onSelect: () => setRenaming(true) },
+    { label: '重命名', onSelect: () => setEditing('label') },
+    { label: '编辑说明', onSelect: () => setEditing('description') },
     {
       label: '移除',
       danger: true,
@@ -72,16 +101,22 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
     },
   ]
 
-  if (renaming) {
+  if (editing) {
+    const isLabel = editing === 'label'
     return (
       <li className="wsx-wslist-item wsx-wslist-item--editing" data-wsx-ws-id={workspace.id}>
         <InlineInput
-          initial={workspace.label}
-          placeholder="显示名称"
+          initial={isLabel ? workspace.label : workspace.description ?? ''}
+          placeholder={isLabel ? '显示名称' : '一句话说明（可留空清除）'}
+          multiline={!isLabel}
           onDone={(value) => {
-            setRenaming(false)
-            const name = value.trim()
-            if (name && name !== workspace.label) void renameWorkspace(workspace.id, name)
+            setEditing(null)
+            const text = value.trim()
+            if (isLabel) {
+              if (text && text !== workspace.label) void renameWorkspace(workspace.id, { label: text })
+            } else if (text !== (workspace.description ?? '')) {
+              void renameWorkspace(workspace.id, { description: text })
+            }
           }}
         />
       </li>
@@ -92,7 +127,7 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
     <li
       data-wsx-ws-id={workspace.id}
       className={'wsx-wslist-item' + (active ? ' wsx-wslist-item--active' : '') + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
-      title={workspace.error ? `${workspace.root}（${workspace.error}）` : workspace.root}
+      title={itemSummary(workspace) + (workspace.error ? `（${workspace.error}）` : '')}
       onClick={() => selectWorkspace(workspace.id)}
       onContextMenu={(event) => {
         event.preventDefault()
@@ -101,19 +136,48 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
       }}
     >
       <span className="wsx-wslist-name">{workspace.label}</span>
+      {workspace.description ? <span className="wsx-wslist-desc">{workspace.description}</span> : null}
       {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
     </li>
   )
 }
 
-/** 一级侧栏：记录的目录列表。头部为内联添加表单，行右键重命名/移除。 */
-export function WorkspaceList({ onRemove }: { onRemove: (workspaceId: string, wasActive: boolean) => void }) {
+interface WorkspaceListProps {
+  onRemove: (workspaceId: string, wasActive: boolean) => void
+  /** 折叠 rail 由宿主（standalone 可拖宽布局）控制；缺省不渲染。 */
+  collapsed?: boolean
+  onExpand?: () => void
+}
+
+/** 一级侧栏：记录的目录列表。头部为内联添加表单，行右键重命名/说明/移除。 */
+export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListProps) {
   const workspaces = useTreeStore((state) => state.workspaces)
   const activeWorkspaceId = useTreeStore((state) => state.activeWorkspaceId)
   const addWorkspace = useTreeStore((state) => state.addWorkspace)
   const [adding, setAdding] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
+
+  if (collapsed) {
+    // 折叠 rail：书脊式竖排当前目录名（todo-web 同款），点击展开。
+    return (
+      <div className="wsx-wslist-collapsed">
+        <button type="button" className="wsx-rail-toggle" title="展开目录列表" aria-label="展开目录列表" onClick={onExpand}>
+          »
+        </button>
+        <button
+          type="button"
+          className="wsx-wslist-spine"
+          title={active ? itemSummary(active) : '未选择目录'}
+          aria-label={active ? `${itemSummary(active)}。展开目录列表` : '展开目录列表'}
+          onClick={onExpand}
+        >
+          {active?.label ?? '未选择'}
+        </button>
+      </div>
+    )
+  }
 
   return (
     <aside

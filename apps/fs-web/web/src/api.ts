@@ -89,8 +89,12 @@ export class WorkspaceApi {
     return this.post('workspaces-add', { root })
   }
 
-  renameWorkspace(workspaceId: string, label: string): Promise<WorkspaceInfo> {
-    return this.post('workspaces-rename', { workspaceId, label })
+  /** label 与 description 至少一项；都传则同时更新。 */
+  renameWorkspace(
+    workspaceId: string,
+    fields: { label?: string; description?: string },
+  ): Promise<WorkspaceInfo> {
+    return this.post('workspaces-rename', { workspaceId, ...fields })
   }
 
   removeWorkspace(workspaceId: string): Promise<{ ok: true }> {

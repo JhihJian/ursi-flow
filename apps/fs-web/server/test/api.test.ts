@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { promises as fs } from 'node:fs'
+import { promises as fs } from "node:fs"
 import os from 'node:os'
 import path from 'node:path'
 import { createServer } from '../src/server.ts'
@@ -482,6 +482,56 @@ test('workspaces-rename 改显示名且 FileKey 稳定（id 不变）', wrap(asy
   assert.equal(s3.status, 400)
   expectError(s3.json, 'bad_request')
 }))
+
+test('workspaces-rename 可单独设置/清除 description', wrap(async (ctx) => {
+  const { status, json } = await post('workspaces-rename', {
+    workspaceId: 't',
+    description: '测试目录，用于 api.test',
+  })
+  assert.equal(status, 200)
+  assert.equal((json as WorkspaceJson).description, '测试目录，用于 api.test')
+  // 只传 description 时 label 不变。
+  assert.equal((json as WorkspaceJson).label, 'test')
+
+  // 传空字符串清除说明（description 字段从响应中消失）。
+  const cleared = await post('workspaces-rename', { workspaceId: 't', description: '' })
+  assert.equal(cleared.status, 200)
+  assert.equal((cleared.json as WorkspaceJson).description, undefined)
+
+  // 两者都不传报 400。
+  const empty = await post('workspaces-rename', { workspaceId: 't' })
+  assert.equal(empty.status, 400)
+  expectError(empty.json, 'bad_request')
+
+  // 说明落盘验证：用固定状态文件路径的独立实例验证，不用 wrap 的无状态实例。
+}))
+
+test('workspaces-rename description 落盘验证', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-desc-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-descroot-'))
+  const stateFile = path.join(dir, 'nested', 'workspaces.json')
+  const server = await createServer([{ id: 't', label: 'test', provider: 'local', root }], {
+    stateFile,
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (typeof address !== 'object' || !address) throw new Error('no address')
+  const baseUrl = `http://127.0.0.1:${address.port}/api/fs-web`
+  try {
+    const res = await fetch(`${baseUrl}/workspaces-rename`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId: 't', description: '落盘验证' }),
+    })
+    assert.equal(res.status, 200)
+    const raw = await fs.readFile(stateFile, 'utf8')
+    assert.match(raw, /落盘验证/)
+  } finally {
+    server.close()
+    await fs.rm(dir, { recursive: true, force: true })
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
 
 test('workspaces-remove 从清单移除且不动文件系统', wrap(async (ctx) => {
   const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-extra-'))

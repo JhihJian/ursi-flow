@@ -69,13 +69,15 @@ button {
 .wsx-app-side {
   display: flex;
   flex-direction: column;
-  /* 二级侧边栏需要容纳一级目录列 + 文件树 */
-  flex: 0 0 420px;
-  min-width: 320px;
-  max-width: 560px;
+  /* react-resizable-panels 控制实际宽度，这里只提供弹性上下文 */
+  min-width: 0;
   height: 100%;
   min-height: 0;
-  border-right: 1px solid var(--wsx-line);
+  overflow: hidden;
+}
+
+.wsx-app-side--collapsed {
+  padding: 0;
 }
 
 .wsx-app-main {
@@ -83,4 +85,17 @@ button {
   min-width: 0;
   height: 100%;
   min-height: 0;
+}
+
+/* 分隔条：拖宽、双击无特殊行为，仅拖拽 */
+.wsx-separator {
+  flex: none;
+  width: 6px;
+  cursor: col-resize;
+  background: none;
+  border-left: 1px solid var(--wsx-line, #e5e5e5);
+}
+
+.wsx-separator:hover {
+  background: var(--wsx-line, #e5e5e5);
 }

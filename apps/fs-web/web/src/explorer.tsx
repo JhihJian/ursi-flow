@@ -25,13 +25,23 @@ export interface FileExplorerProps {
   onFileDeleted: (key: string) => void
   /** 移除 workspace 后的清理：关闭编辑器、清外壳选中与 git 快照。 */
   onWorkspaceRemoved: (workspaceId: string, wasActive: boolean) => void
+  /** 一级列表折叠态（由宿主布局控制，嵌入模式不用）。 */
+  listCollapsed?: boolean
+  onExpandList?: () => void
 }
 
 /**
  * 二级侧边栏布局：一级为记录的目录列表（WorkspaceList），
  * 二级为当前目录的 git 摘要与文件树。
  */
-export function FileExplorer({ api, onOpenFile, onFileDeleted, onWorkspaceRemoved }: FileExplorerProps) {
+export function FileExplorer({
+  api,
+  onOpenFile,
+  onFileDeleted,
+  onWorkspaceRemoved,
+  listCollapsed,
+  onExpandList,
+}: FileExplorerProps) {
   const injectedApi = useTreeStore((state) => state.api)
   const workspaceError = useTreeStore((state) => state.workspaceError)
   const lastError = useTreeStore((state) => state.lastError)
@@ -51,7 +61,11 @@ export function FileExplorer({ api, onOpenFile, onFileDeleted, onWorkspaceRemove
 
   return (
     <div className="wsx-explorer">
-      <WorkspaceList onRemove={onWorkspaceRemoved} />
+      <WorkspaceList
+        onRemove={onWorkspaceRemoved}
+        collapsed={listCollapsed}
+        onExpand={onExpandList}
+      />
       <div className="wsx-tree-pane">
         {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
         {lastError ? (

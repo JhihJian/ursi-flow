@@ -8,6 +8,8 @@ export interface WorkspaceConfig {
   id: string
   /** 展示名，缺省同 id。 */
   label?: string
+  /** 一句话说明（这是什么目录），可选。 */
+  description?: string
   provider: 'local'
   /** 本机绝对路径；先 realpath 再作为前缀。 */
   root: string
@@ -16,6 +18,8 @@ export interface WorkspaceConfig {
 export interface WorkspaceInfo {
   id: string
   label: string
+  /** 一句话说明；无说明时不返回。 */
+  description?: string
   provider: 'local'
   /** 目录绝对路径（运行时添加的条目为 realpath）。 */
   root: string

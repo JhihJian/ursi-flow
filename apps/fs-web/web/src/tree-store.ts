@@ -29,8 +29,8 @@ interface TreeState {
   selectWorkspace: (id: string | null) => void
   /** 运行时添加目录；成功后刷新清单并选中新 workspace。 */
   addWorkspace: (root: string) => Promise<string | null>
-  /** 改显示名；id 与 root 不变，FileKey 与展开状态无需迁移。 */
-  renameWorkspace: (id: string, label: string) => Promise<void>
+  /** 改显示名/说明；id 与 root 不变，FileKey 与展开状态无需迁移。 */
+  renameWorkspace: (id: string, fields: { label?: string; description?: string }) => Promise<void>
   /** 从清单移除；返回被移除时是否是当前激活项（调用方负责清理编辑器与外壳选中）。 */
   removeWorkspace: (id: string) => Promise<boolean>
   toggleDir: (key: string) => Promise<void>
@@ -146,9 +146,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
   },
 
-  renameWorkspace: async (id, label) => {
+  renameWorkspace: async (id, fields) => {
     try {
-      const workspace = await get().api.renameWorkspace(id, label)
+      const workspace = await get().api.renameWorkspace(id, fields)
       set((current) => ({
         workspaces: current.workspaces.map((item) => (item.id === id ? workspace : item)),
       }))

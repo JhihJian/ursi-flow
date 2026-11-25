@@ -42,7 +42,7 @@ watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通�
 
 ### 前端：二级侧边栏
 
-- 模块栏为二级侧边栏（参考 todo-web ProjectSidebar）：一级 144px 固定宽目录列表，点击切换、右键重命名/移除（内联输入与内联确认，契约禁原生对话框）；二级为 git 摘要 + 虚拟化文件树。
+- 模块栏为二级侧边栏（参考 todo-web ProjectSidebar）：一级 144px 固定宽目录列表（名称 + 说明、点击切换、右键重命名/说明/移除，内联输入与内联确认，契约禁原生对话框）；二级为 git 摘要 + 虚拟化文件树。嵌入模式拖宽/折叠由外壳管理，模块内不嵌套可拖拽布局；standalone 预览页自带拖宽与折叠 rail（书脊式竖排）。
 - 点击文件发布 `workspace.file` 选中，编辑器由外壳工作区区域渲染，不塞进窄栏；树行组件自写 + `@tanstack/react-virtual` 虚拟化。
 - Monaco 经 `@monaco-editor/react` + `monaco-editor` 本地打包（`loader.config` 指向本地 monaco-editor 包 + vite worker 导入），`React.lazy` 分块不进首屏。
 - 编辑器草稿与展开状态存内存（页面刷新即丢，后续可评估 sessionStorage）；文件内容不缓存，`apiBaseUrl` 由宿主注入，缺省 `/api/fs-web`。
