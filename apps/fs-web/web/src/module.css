@@ -148,6 +148,106 @@
   text-overflow: ellipsis;
 }
 
+/* 分支/变更 chip 打开弹层时的高亮 */
+.wsx-git-chip--open {
+  border-color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  color: var(--wsx-ink, #1a1a1a);
+}
+
+/* git 弹出层：分支树与变更文件树，定位在 chip 下方 */
+.wsx-git-popover {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--wsx-ink, #1a1a1a);
+  background: #fff;
+}
+
+.wsx-git-popover-heading {
+  flex: none;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wsx-git-popover-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0;
+}
+
+.wsx-git-popover-empty {
+  padding: 6px 8px;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 11px;
+}
+
+.wsx-git-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 24px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wsx-git-popover-row:hover {
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-git-popover-row--static {
+  cursor: default;
+}
+
+.wsx-git-popover-row--static:hover {
+  background: none;
+}
+
+.wsx-git-popover-row--current {
+  background: color-mix(in srgb, var(--wsx-ink, #1a1a1a) 8%, transparent);
+}
+
+.wsx-git-popover-caret {
+  width: 10px;
+  flex: none;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-size: 9px;
+}
+
+.wsx-git-popover-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wsx-ink, #1a1a1a);
+}
+
+.wsx-git-popover-name--dim {
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+}
+
+.wsx-git-popover-meta {
+  flex: none;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
 /* 推送/拉取按钮组：靠右贴齐摘要条尾部 */
 .wsx-git-sync {
   display: inline-flex;

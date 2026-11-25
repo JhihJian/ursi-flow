@@ -381,6 +381,13 @@ export async function createServer(
         send(res, 200, await provider.gitStatus(workspace))
         return
       }
+      case 'git-branches': {
+        if (typeof provider.gitBranches !== 'function') {
+          throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 分支')
+        }
+        send(res, 200, await provider.gitBranches(workspace))
+        return
+      }
       case 'git-push': {
         if (typeof provider.gitPush !== 'function') {
           throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 同步')

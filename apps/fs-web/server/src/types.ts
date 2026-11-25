@@ -54,6 +54,30 @@ export interface GitStatusDto {
   deletions: number
 }
 
+/** 分支树节点：目录节点聚合同名前缀（feature/xxx），叶子是分支。 */
+export interface GitBranchNodeDto {
+  name: string
+  /** 目录节点为 'dir'，分支叶子为 'branch'。 */
+  kind: 'dir' | 'branch'
+  /** 仅分支叶子：短 hash。 */
+  hash?: string
+  /** 仅本地分支叶子：是否当前分支。 */
+  current?: boolean
+  /** 仅分支叶子：跟踪的上游。 */
+  upstream?: string
+  children?: GitBranchNodeDto[]
+}
+
+export interface GitBranchesDto {
+  isRepo: boolean
+  /** 当前分支（detached 为 null）。 */
+  branch: string | null
+  /** 本地分支树；非仓库为空数组。 */
+  locals: GitBranchNodeDto[]
+  /** 远端分支树（按远端名分组，origin 是顶层目录）。 */
+  remotes: GitBranchNodeDto[]
+}
+
 export interface EntryDto {
   name: string
   type: 'dir' | 'file'

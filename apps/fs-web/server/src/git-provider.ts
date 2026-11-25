@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
-import type { GitChangeDto, GitStatusDto, WorkspaceConfig } from './types.ts'
+import type { GitBranchNodeDto, GitBranchesDto, GitChangeDto, GitStatusDto, WorkspaceConfig } from './types.ts'
 import { ProviderError } from './local-provider.ts'
 
 interface RunResult {
@@ -286,4 +286,118 @@ export async function gitPullOf(workspace: WorkspaceConfig): Promise<{ ok: true 
   await trackedBranchOf(workspace)
   await runGitSync(workspace.root, ['pull', '--ff-only'])
   return { ok: true }
+}
+
+/** for-each-ref 一行 → 解析结果。 */
+interface BranchRef {
+  /** refs/heads/... 或 refs/remotes/... 去掉前缀后的短名。 */
+  shortName: string
+  hash: string
+  upstream: string
+  current: boolean
+}
+
+/** 把扁平短名列表按 "/" 组装成树；同名前缀合并为 dir 节点，同层按目录优先、名称排序。 */
+function buildBranchTree(refs: BranchRef[]): GitBranchNodeDto[] {
+  interface DirNode extends GitBranchNodeDto {
+    kind: 'dir'
+    children: GitBranchNodeDto[]
+  }
+  const roots: GitBranchNodeDto[] = []
+  // key = 目录完整路径（'/' 连接），值 = 该目录节点
+  const dirIndex = new Map<string, DirNode>()
+
+  const ensureDir = (dirPath: string): DirNode => {
+    const existing = dirIndex.get(dirPath)
+    if (existing) return existing
+    const slash = dirPath.lastIndexOf('/')
+    const name = slash === -1 ? dirPath : dirPath.slice(slash + 1)
+    const parentPath = slash === -1 ? '' : dirPath.slice(0, slash)
+    const node: DirNode = { name, kind: 'dir', children: [] }
+    dirIndex.set(dirPath, node)
+    const siblings = parentPath === '' ? roots : ensureDir(parentPath).children
+    siblings.push(node)
+    return node
+  }
+
+  for (const ref of refs) {
+    const slash = ref.shortName.lastIndexOf('/')
+    if (slash === -1) {
+      roots.push({
+        name: ref.shortName,
+        kind: 'branch',
+        hash: ref.hash,
+        current: ref.current,
+        upstream: ref.upstream || undefined,
+      })
+      continue
+    }
+    const parentPath = ref.shortName.slice(0, slash)
+    const leafName = ref.shortName.slice(slash + 1)
+    ensureDir(parentPath).children.push({
+      name: leafName,
+      kind: 'branch',
+      hash: ref.hash,
+      current: ref.current,
+      upstream: ref.upstream || undefined,
+    })
+  }
+
+  const sortTree = (nodes: GitBranchNodeDto[]): GitBranchNodeDto[] => {
+    nodes.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    for (const node of nodes) {
+      if (node.kind === 'dir' && node.children) sortTree(node.children)
+    }
+    return nodes
+  }
+  return sortTree(roots)
+}
+
+/** 分支与远端分支树：一次 for-each-ref 读本地 + 远端 ref。 */
+export async function gitBranchesOf(workspace: WorkspaceConfig): Promise<GitBranchesDto> {
+  let statusOut: string
+  let refsOut: string
+  try {
+    statusOut = (await runGit(workspace.root, ['status', '--porcelain=v1', '-z', '--branch'])).stdout
+    refsOut = (
+      await runGit(workspace.root, [
+        'for-each-ref',
+        '--format=%(refname)|%(objectname:short)|%(upstream:short)|%(HEAD)',
+        'refs/heads',
+        'refs/remotes',
+      ])
+    ).stdout
+  } catch (error) {
+    if (error instanceof ProviderError && /fatal|not a git repository/i.test(error.message)) {
+      return { isRepo: false, branch: null, locals: [], remotes: [] }
+    }
+    throw error
+  }
+
+  const branchLine = splitRecords(statusOut).branchLine
+  const { branch } = parseBranchLine(branchLine)
+
+  const locals: BranchRef[] = []
+  const remotes: BranchRef[] = []
+  for (const line of refsOut.split('\n')) {
+    if (!line) continue
+    const [refname, hash = '', upstream = '', headFlag = ''] = line.split('|')
+    if (!refname) continue
+    const ref: BranchRef = {
+      shortName: refname.replace(/^refs\/(heads|remotes)\//, ''),
+      hash,
+      upstream,
+      current: headFlag.trim() === '*',
+    }
+    if (refname.startsWith('refs/heads/')) locals.push(ref)
+    else if (refname.startsWith('refs/remotes/')) {
+      // 裸的远端 HEAD（如 origin/HEAD）不是分支，跳过
+      if (!/(^|\/)HEAD$/.test(ref.shortName)) remotes.push(ref)
+    }
+  }
+
+  return { isRepo: true, branch, locals: buildBranchTree(locals), remotes: buildBranchTree(remotes) }
 }

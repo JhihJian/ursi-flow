@@ -1,6 +1,6 @@
-import type { ApiError, EntryDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
+import type { ApiError, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
 
-export type { ApiError, EntryDto, GitStatusDto, WorkspaceInfo }
+export type { ApiError, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo }
 export type { GitChangeDto } from '../../server/src/types.ts'
 
 /** 统一错误：code 与服务端 ApiError 对齐，组件按 code 分支。 */
@@ -92,6 +92,11 @@ export class WorkspaceApi {
   /** 拉取并快进当前分支；分叉或冲突时抛错。 */
   gitPull(workspaceId: string): Promise<{ ok: true }> {
     return this.post('git-pull', { workspaceId })
+  }
+
+  /** 分支与远端分支树。 */
+  gitBranches(workspaceId: string): Promise<GitBranchesDto> {
+    return this.post('git-branches', { workspaceId })
   }
 
   /** 运行时添加目录：服务端 realpath 探活后返回完整 WorkspaceInfo。 */

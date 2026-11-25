@@ -429,6 +429,45 @@ test('git-status 返回 ahead/behind 计数', wrap(async (ctx) => {
   })
 }))
 
+test('git-branches 返回本地与远端分支树', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await withUpstream(ctx, async (bare) => {
+    // 建一个带斜杠的本地分支
+    await git(ctx.root, ['branch', 'feature/x'])
+    await git(ctx.root, ['fetch', 'origin'])
+    const { status, json } = await post('git-branches', { workspaceId: 't' })
+    assert.equal(status, 200)
+    const body = json as {
+      isRepo: boolean
+      branch: string | null
+      locals: Array<{ name: string; kind: string; current?: boolean; children?: unknown[] }>
+      remotes: Array<{ name: string; kind: string; children?: Array<{ name: string }> }>
+    }
+    assert.equal(body.isRepo, true)
+    assert.equal(body.branch, 'main')
+    // 本地：main（当前）+ feature/ 目录（含 x）
+    assert.deepEqual(body.locals.map((n) => `${n.kind}:${n.name}`), ['dir:feature', 'branch:main'])
+    const feature = body.locals.find((n) => n.name === 'feature')
+    assert.deepEqual((feature?.children ?? []).map((n) => `${n.kind}:${n.name}`), ['branch:x'])
+    assert.equal(body.locals.find((n) => n.name === 'main')?.current, true)
+    // 远端：origin 目录下 main
+    assert.deepEqual(body.remotes.map((n) => n.name), ['origin'])
+    assert.deepEqual((body.remotes[0]?.children ?? []).map((n) => n.name), ['main'])
+  })
+}))
+
+test('git-branches 非 git 目录降级为空树', wrap(async () => {
+  const { status, json } = await post('git-branches', { workspaceId: 't' })
+  assert.equal(status, 200)
+  const body = json as { isRepo: boolean; locals: unknown[]; remotes: unknown[] }
+  assert.equal(body.isRepo, false)
+  assert.deepEqual(body.locals, [])
+  assert.deepEqual(body.remotes, [])
+}))
+
 test('git-push 把本地提交推到 upstream', wrap(async (ctx) => {
   await initRepo(ctx.root)
   await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')

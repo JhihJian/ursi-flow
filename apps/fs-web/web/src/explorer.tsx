@@ -76,7 +76,7 @@ export function FileExplorer({
         ) : null}
         {activeWorkspaceId ? (
           <>
-            <GitBar />
+            <GitBar onOpenFile={onOpenFile} />
             <FileTree
               onOpenFile={onOpenFile}
               onFileDeleted={onFileDeleted}

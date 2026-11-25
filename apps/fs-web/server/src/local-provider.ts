@@ -1,7 +1,7 @@
 import { promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { EntryDto, WorkspaceConfig } from './types.ts'
-import { gitPullOf, gitPushOf, gitStatusOf } from './git-provider.ts'
+import { gitBranchesOf, gitPullOf, gitPushOf, gitStatusOf } from './git-provider.ts'
 
 /**
  * 统一目录抽象。第一版只实现 local；SSH（无 watch 能力）与虚拟目录后续接入。
@@ -30,6 +30,8 @@ export interface WorkspaceProvider {
   gitPush?(workspace: WorkspaceConfig): Promise<{ ok: true }>
   /** 拉取并快进当前分支；仅 local 实现。 */
   gitPull?(workspace: WorkspaceConfig): Promise<{ ok: true }>
+  /** 分支与远端分支树；仅 local 实现。 */
+  gitBranches?(workspace: WorkspaceConfig): Promise<import('./types.ts').GitBranchesDto>
 }
 
 /** provider 层错误：code 进 ApiError，层上不碰 HTTP。 */
@@ -262,6 +264,9 @@ export function createLocalProvider(): WorkspaceProvider {
     },
     async gitPull(workspace) {
       return gitPullOf(workspace)
+    },
+    async gitBranches(workspace) {
+      return gitBranchesOf(workspace)
     },
   }
   return provider
