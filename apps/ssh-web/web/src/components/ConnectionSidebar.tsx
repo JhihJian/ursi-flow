@@ -60,9 +60,7 @@ export function ConnectionSidebar() {
             onContextMenu={(event) => openContextMenu(event, connection)}
           >
             <span className="name">{connection.name}</span>
-            <span className="meta">
-              {connection.username}@{connection.host}:{connection.port}
-            </span>
+            <span className="meta">{connection.command}</span>
           </li>
         ))}
         {connections.length === 0 ? <li className="empty-state">右键新建连接</li> : null}

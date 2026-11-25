@@ -397,6 +397,10 @@ button {
   flex: 0 0 120px;
 }
 
+.form-grow {
+  flex: 3 1 320px;
+}
+
 .form-label {
   font-size: 11px;
   color: var(--gray-400);

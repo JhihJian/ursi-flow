@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `server/`：Rust 服务（axum + russh + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表与 WebSocket 终端桥；WS 握手即建全新 SSH 并 attach 远端 tmux，服务端不维护会话状态。接口契约见 [server/HTTP.md](server/HTTP.md)。
+- `server/`：Rust 服务（axum + portable-pty + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表与 WebSocket 终端桥；WS 握手即在本地 PTY 中启动系统 `ssh -tt` 子进程并 attach 远端 tmux，服务端不维护会话状态，认证、跳板、`~/.ssh/config` 全部交给 OpenSSH 自身。接口契约见 [server/HTTP.md](server/HTTP.md)。
 - `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。
 
 ## 运行

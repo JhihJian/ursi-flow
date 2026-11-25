@@ -93,7 +93,7 @@ pub async fn get_tmux_sessions(
     Ok(Json(crate::models::TmuxSessionsResponse { sessions }))
 }
 
-async fn load_connection(id: i64) -> AppResult<crate::db::Connection> {
+async fn load_connection(id: i64) -> AppResult<crate::models::Connection> {
     let db = app_state().db.lock().await;
     db::get_connection(&db, id)?.ok_or_else(|| not_found(format!("连接 {id} 不存在")))
 }
@@ -119,9 +119,9 @@ fn initial_size(query: &TerminalQuery) -> (u32, u32) {
 
 /// `GET /api/connections/{id}/terminal`：终端 WebSocket。
 ///
-/// 升级即建 SSH：连接、认证、开 PTY 并执行 tmux 启动命令（无 tmux 回退普通 shell）。
-/// 认证失败、主机不可达等错误以 `{"type":"error"}` 文本帧下发后关闭 WS。
-/// WS 关闭即断 SSH；远端 tmux 会话不受影响。
+/// 升级即启动 ssh 子进程（本地 PTY），执行 tmux 启动命令（无 tmux 回退普通 shell）。
+/// 认证失败、主机不可达等错误由 OpenSSH 原样输出到终端，并以 `{"type":"closed"}`
+/// 文本帧收尾。WS 关闭即终止子进程；远端 tmux 会话不受影响。
 pub async fn get_terminal_ws(
     Path(id): Path<i64>,
     Query(query): Query<TerminalQuery>,
@@ -137,8 +137,8 @@ pub async fn get_terminal_ws(
         }
         None => crate::session::DEFAULT_TMUX_SESSION.to_string(),
     };
-
     let (cols, rows) = initial_size(&query);
+
     let (event_tx, event_rx) = mpsc::channel::<WsEvent>(EVENT_CAPACITY);
     let (input_tx, input_rx) = mpsc::channel::<ControlMessage>(INPUT_CAPACITY);
     tokio::spawn(crate::session::run_terminal(

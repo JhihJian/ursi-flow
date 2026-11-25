@@ -1,19 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { AuthType, ConnectionInput } from '../api/types'
+import type { ConnectionInput } from '../api/types'
 import { useSshStore } from '../store/ssh-store'
 
-const EMPTY_FORM: ConnectionInput = {
-  name: '',
-  host: '',
-  port: 22,
-  username: '',
-  auth_type: 'password',
-  password: '',
-  key_path: '',
-  key_passphrase: '',
-}
+const EMPTY_FORM: ConnectionInput = { name: '', command: '' }
 
-/** 底部连接编辑表单。编辑已有连接时 password 留空表示保持原密码。 */
+/** 底部连接编辑表单：只有名称和 ssh 命令两个字段，认证细节交给 ssh 自身（config、agent、密钥）。 */
 export function ConnectionEditorSheet() {
   const editor = useSshStore((state) => state.editor)
   const setEditor = useSshStore((state) => state.setEditor)
@@ -27,21 +18,11 @@ export function ConnectionEditorSheet() {
 
   useEffect(() => {
     if (!editor) return
-    if (editor.kind === 'edit') {
-      const c = editor.connection
-      setForm({
-        name: c.name,
-        host: c.host,
-        port: c.port,
-        username: c.username,
-        auth_type: c.auth_type,
-        password: '',
-        key_path: c.key_path ?? '',
-        key_passphrase: c.key_passphrase ?? '',
-      })
-    } else {
-      setForm(EMPTY_FORM)
-    }
+    setForm(
+      editor.kind === 'edit'
+        ? { name: editor.connection.name, command: editor.connection.command }
+        : EMPTY_FORM,
+    )
   }, [editor])
 
   if (!editor) return null
@@ -49,20 +30,19 @@ export function ConnectionEditorSheet() {
   const patch = (changes: Partial<ConnectionInput>) => setForm((form) => ({ ...form, ...changes }))
 
   const submit = async () => {
-    if (!form.name.trim() || !form.host.trim() || !form.username.trim()) {
-      setNotice('名称、主机、用户名为必填项。')
+    const name = form.name.trim()
+    const command = form.command.trim()
+    if (!name || !command) {
+      setNotice('名称和 ssh 命令为必填项。')
+      return
+    }
+    if (!command.split(/\s+/)[0].startsWith('ssh')) {
+      setNotice('命令需要以 ssh 开头，例如 ssh -p 2222 user@host。')
       return
     }
     setSaving(true)
     try {
-      const target = editor
-      await saveConnection(target, {
-        ...form,
-        port: Number(form.port) || 22,
-        name: form.name.trim(),
-        host: form.host.trim(),
-        username: form.username.trim(),
-      })
+      await saveConnection(editor, { name, command })
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error))
     } finally {
@@ -94,78 +74,21 @@ export function ConnectionEditorSheet() {
               autoFocus
             />
           </label>
-          <label className="form-group">
-            <span className="form-label">Host</span>
+          <label className="form-group form-grow">
+            <span className="form-label">SSH command（完整 ssh 命令，支持 config 别名、-p、-i、-J 等）</span>
             <input
               className="form-input"
-              value={form.host}
-              onChange={(event) => patch({ host: event.target.value })}
+              placeholder="ssh user@host"
+              value={form.command}
+              onChange={(event) => patch({ command: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void submit()
+                }
+              }}
             />
           </label>
-          <label className="form-group form-narrow">
-            <span className="form-label">Port</span>
-            <input
-              className="form-input"
-              type="number"
-              min={1}
-              max={65535}
-              value={form.port}
-              onChange={(event) => patch({ port: Number(event.target.value) })}
-            />
-          </label>
-          <label className="form-group">
-            <span className="form-label">Username</span>
-            <input
-              className="form-input"
-              value={form.username}
-              onChange={(event) => patch({ username: event.target.value })}
-            />
-          </label>
-        </div>
-        <div className="form-row">
-          <label className="form-group form-narrow">
-            <span className="form-label">Auth type</span>
-            <select
-              className="form-select"
-              value={form.auth_type}
-              onChange={(event) => patch({ auth_type: event.target.value as AuthType })}
-            >
-              <option value="password">password</option>
-              <option value="key">key</option>
-            </select>
-          </label>
-          {form.auth_type === 'password' ? (
-            <label className="form-group">
-              <span className="form-label">{editing ? 'Password（留空保持不变）' : 'Password'}</span>
-              <input
-                className="form-input"
-                type="password"
-                value={form.password}
-                onChange={(event) => patch({ password: event.target.value })}
-              />
-            </label>
-          ) : (
-            <>
-              <label className="form-group">
-                <span className="form-label">Key path（本机私钥绝对路径）</span>
-                <input
-                  className="form-input"
-                  placeholder="/home/user/.ssh/id_ed25519"
-                  value={form.key_path}
-                  onChange={(event) => patch({ key_path: event.target.value })}
-                />
-              </label>
-              <label className="form-group">
-                <span className="form-label">Key passphrase（无口令则留空）</span>
-                <input
-                  className="form-input"
-                  type="password"
-                  value={form.key_passphrase}
-                  onChange={(event) => patch({ key_passphrase: event.target.value })}
-                />
-              </label>
-            </>
-          )}
         </div>
       </div>
     </div>

@@ -1,0 +1,9 @@
+# 本机全局 cargo 配置的代理（127.0.0.1:7897）不可用，这里改用 rsproxy 镜像。
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

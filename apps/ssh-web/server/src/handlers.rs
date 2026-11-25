@@ -1,86 +1,50 @@
-use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::extract::Path;
 use axum::Json;
 
-use crate::app::{app_state, bad_request, not_found, AppResult};
+use crate::app::{app_state, bad_request, not_found, AppError, AppResult};
 use crate::db;
 use crate::models::{
     Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse, SuccessResponse,
     UpdateConnectionRequest,
 };
 
-/// `GET /api/connections`：连接列表。响应不包含密码与私钥口令。
+/// `GET /api/connections`：连接列表。
 pub async fn get_connections() -> AppResult<Json<ConnectionsResponse>> {
     let db = app_state().db.lock().await;
     let connections = db::list_connections(&db)?;
     Ok(Json(ConnectionsResponse { connections }))
 }
 
-/// `POST /api/connections`：新建连接。
+/// `POST /api/connections`：新建连接（名称 + ssh 命令）。
 pub async fn post_connection(
-    State(_): State<()>,
     Json(request): Json<CreateConnectionRequest>,
-) -> AppResult<Json<CreateResponse>> {
-    request.validate().map_err(bad_request)?;
-    let name = request.name.trim().to_string();
+) -> AppResult<Response> {
+    let (name, command) = request.validate().map_err(bad_request)?;
     let db = app_state().db.lock().await;
     if db::get_connection_by_name(&db, &name)?.is_some() {
-        return Err(crate::app::AppError::Conflict(format!(
-            "连接名已存在：{name}"
-        )));
+        return Err(AppError::Conflict(format!("连接名已存在：{name}")));
     }
-    let fields = db::NewConnection {
-        name: &name,
-        host: request.host.trim(),
-        port: request.resolved_port(),
-        username: request.username.trim(),
-        auth_type: request.auth_type,
-        password: request.resolved_password(),
-        key_path: request.resolved_key_path(),
-        key_passphrase: request.resolved_key_passphrase(),
-    };
-    let id = db::insert_connection(&db, &fields)?;
-    Ok(Json(CreateResponse { id }))
+    let id = db::insert_connection(&db, &name, &command)?;
+    Ok((StatusCode::CREATED, Json(CreateResponse { id })).into_response())
 }
 
-/// `PUT /api/connections/{id}`：更新连接。
-/// password 省略/null/空串表示保持不变，其余字段可任意更新。
+/// `PUT /api/connections/{id}`：更新连接。省略字段表示不改。
 pub async fn put_connection(
-    State(_): State<()>,
     Path(id): Path<i64>,
     Json(request): Json<UpdateConnectionRequest>,
 ) -> AppResult<Json<SuccessResponse>> {
-    if request.name.as_deref().map(str::trim) == Some("") {
+    let name = request.name.as_deref().map(str::trim);
+    if name == Some("") {
         return Err(bad_request("name 不能为空"));
     }
-    if let Some(port) = request.port {
-        if !(1..=65535).contains(&port) {
-            return Err(bad_request(format!("port 超出范围：{port}")));
-        }
-    }
-    let (password_keep, password) = match &request.password {
-        None | Some(None) => (true, None),
-        Some(Some(value)) => {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                (true, None)
-            } else {
-                (false, Some(trimmed.to_string()))
-            }
-        }
+    let command = match &request.command {
+        Some(value) => Some(crate::models::validate_ssh_command(value).map_err(bad_request)?),
+        None => None,
     };
     let db = app_state().db.lock().await;
-    let update = db::ConnectionUpdate {
-        name: request.name.as_deref(),
-        host: request.host.as_deref(),
-        port: request.port,
-        username: request.username.as_deref(),
-        auth_type: request.auth_type,
-        password_keep,
-        password: password.as_deref(),
-        key_path: request.key_path.as_ref().map(|s| s.as_deref()),
-        key_passphrase: request.key_passphrase.as_ref().map(|s| s.as_deref()),
-    };
-    let updated = db::update_connection(&db, id, &update)?;
+    let updated = db::update_connection(&db, id, name, command.as_deref())?;
     if !updated {
         return Err(not_found(format!("连接 {id} 不存在")));
     }
@@ -97,7 +61,7 @@ pub async fn delete_connection(Path(id): Path<i64>) -> AppResult<Json<SuccessRes
     Ok(Json(SuccessResponse { success: true }))
 }
 
-/// `GET /api/connections/{id}`：单条连接（不含密码），预留给编辑表单刷新。
+/// `GET /api/connections/{id}`：单条连接，预留给编辑表单回填。
 pub async fn get_connection(Path(id): Path<i64>) -> AppResult<Json<Connection>> {
     let db = app_state().db.lock().await;
     let connection =

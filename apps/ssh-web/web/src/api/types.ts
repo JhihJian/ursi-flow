@@ -1,28 +1,16 @@
-export type AuthType = 'password' | 'key'
-
+/** 一条 SSH 连接配置：名称 + ssh 命令。 */
 export interface Connection {
   id: number
   name: string
-  host: string
-  port: number
-  username: string
-  auth_type: AuthType
-  key_path: string | null
-  key_passphrase: string | null
+  command: string
   created_at: string
   updated_at: string
 }
 
-/** 编辑表单提交值；password 空串表示保持原密码。 */
+/** 连接表单提交值。 */
 export interface ConnectionInput {
   name: string
-  host: string
-  port: number
-  username: string
-  auth_type: AuthType
-  password: string
-  key_path: string
-  key_passphrase: string
+  command: string
 }
 
 /** 远端一条 tmux 会话。 */
