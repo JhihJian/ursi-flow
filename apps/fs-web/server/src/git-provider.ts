@@ -68,17 +68,27 @@ function splitRecords(output: string): { fields: string[]; branchLine: string | 
   return { fields: parts, branchLine }
 }
 
-/** `## main...origin/main [ahead 1]` / `## HEAD (no branch)` / `## No commits yet on main`。 */
-export function parseBranchLine(line: string | null): { branch: string | null; upstream?: string } {
-  if (!line) return { branch: null }
+/** `## main...origin/main [ahead 1, behind 2]` / `## HEAD (no branch)` / `## No commits yet on main`。 */
+export function parseBranchLine(line: string | null): {
+  branch: string | null
+  upstream?: string
+  ahead: number
+  behind: number
+} {
+  if (!line) return { branch: null, ahead: 0, behind: 0 }
   const body = line.slice(3)
-  if (body === 'HEAD (no branch)') return { branch: null }
+  if (body === 'HEAD (no branch)') return { branch: null, ahead: 0, behind: 0 }
   const noCommits = body.match(/^No commits yet on (.+)$/)
-  if (noCommits) return { branch: noCommits[1] ?? null }
-  const tracked = body.match(/^(?!No commits)([^\s.]+)\.\.\.([^\s]+)(?: \[[^\]]*\])?$/)
-  if (tracked) return { branch: tracked[1] ?? null, upstream: tracked[2] }
-  const plain = body.match(/^[^\s]+/)
-  return { branch: plain ? (plain[0] ?? null) : null }
+  if (noCommits) return { branch: noCommits[1] ?? null, ahead: 0, behind: 0 }
+  const tracked = body.match(/^(?!No commits)([^\s.]+)\.\.\.([^\s]+)(?: \[([^\]]*)\])?$/)
+  if (tracked) {
+    const counts = tracked[3] ?? ''
+    const ahead = Number(counts.match(/ahead (\d+)/)?.[1] ?? 0)
+    const behind = Number(counts.match(/behind (\d+)/)?.[1] ?? 0)
+    return { branch: tracked[1] ?? null, upstream: tracked[2], ahead, behind }
+  }
+  const plain = body.match(/^\S+/)
+  return { branch: plain ? (plain[0] ?? null) : null, ahead: 0, behind: 0 }
 }
 
 /**
@@ -112,13 +122,16 @@ export function parseChanges(fields: string[]): GitChangeDto[] {
 export interface ParsedStatus {
   branch: string | null
   upstream?: string
+  ahead: number
+  behind: number
   changes: GitChangeDto[]
   additions: number
   deletions: number
 }
 
 export function parseStatus(branchLine: string | null, fields: string[], numstat: string): ParsedStatus {
-  const { branch, upstream } = parseBranchLine(branchLine)
+  const parsed = parseBranchLine(branchLine)
+  const { branch, upstream, ahead, behind } = parsed
   // numstat 口径为 diff HEAD（暂存 + 未暂存相对 HEAD）；untracked 不在其中，
   // 二进制行为 "-\t-\t"，不计行数。status 与 numstat 非原子，按近似快照理解。
   let additions = 0
@@ -130,7 +143,15 @@ export function parseStatus(branchLine: string | null, fields: string[], numstat
     additions += match[1] === '-' ? 0 : Number(match[1])
     deletions += match[2] === '-' ? 0 : Number(match[2])
   }
-  return { branch, upstream, changes: parseChanges(fields), additions, deletions }
+  return {
+    branch,
+    upstream,
+    ahead,
+    behind,
+    changes: parseChanges(fields),
+    additions,
+    deletions,
+  }
 }
 
 /** workspace root 是仓库子目录时，过滤出 root 之内并映射为相对 root 的路径。 */
@@ -180,8 +201,62 @@ export async function gitStatusOf(workspace: WorkspaceConfig): Promise<GitStatus
     root: toplevel,
     branch: parsed.branch,
     upstream: parsed.upstream,
+    ahead: parsed.ahead,
+    behind: parsed.behind,
     changes: mapChangesToWorkspace(path.resolve(workspace.root), toplevel, parsed.changes),
     additions: parsed.additions,
     deletions: parsed.deletions,
   }
+}
+
+const GIT_SYNC_TIMEOUT_MS = 60_000
+
+/**
+ * 与上游同步：push / pull --ff-only。改动不可自动合并时 pull 拒绝（错误信息带冲突文件名）。
+ * 与只读 status 不同，这两个命令会写仓库，与用户终端的并发操作由 git 自身的锁保护；
+ * 失败不重试不回滚，错误原样返给前端展示。
+ */
+async function runGitSync(cwd: string, args: string[]): Promise<void> {
+  const fullArgs = ['-c', 'core.quotepath=false', ...args]
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      fullArgs,
+      { cwd, timeout: GIT_SYNC_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER, encoding: 'utf8' },
+      (error, _stdout, stderr) => {
+        if (!error) {
+          resolve()
+          return
+        }
+        const firstLine = (stderr || error.message).split('\n').find(Boolean) ?? 'git 执行失败'
+        const reason =
+          error.killed || (error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+            ? 'git 同步超时'
+            : firstLine
+        reject(new ProviderError('git_unavailable', 503, reason))
+      },
+    )
+  })
+}
+
+/** 前置校验：当前分支有名字且有 upstream，否则给出明确错误。 */
+async function trackedBranchOf(workspace: WorkspaceConfig): Promise<void> {
+  const status = await runGit(workspace.root, ['status', '--porcelain=v1', '-z', '--branch'])
+  const { branch, upstream } = parseBranchLine(splitRecords(status.stdout).branchLine)
+  if (!branch) throw new ProviderError('git_unavailable', 503, 'detached HEAD 无法同步')
+  if (!upstream) throw new ProviderError('git_unavailable', 503, '当前分支没有上游，无法同步')
+}
+
+/** 推送当前分支到 upstream。 */
+export async function gitPushOf(workspace: WorkspaceConfig): Promise<{ ok: true }> {
+  await trackedBranchOf(workspace)
+  await runGitSync(workspace.root, ['push'])
+  return { ok: true }
+}
+
+/** 拉取并快进当前分支；有冲突或需合并时拒绝，不产生合并提交。 */
+export async function gitPullOf(workspace: WorkspaceConfig): Promise<{ ok: true }> {
+  await trackedBranchOf(workspace)
+  await runGitSync(workspace.root, ['pull', '--ff-only'])
+  return { ok: true }
 }

@@ -84,6 +84,16 @@ export class WorkspaceApi {
     return this.post('git-status', { workspaceId })
   }
 
+  /** 推送当前分支到 upstream。 */
+  gitPush(workspaceId: string): Promise<{ ok: true }> {
+    return this.post('git-push', { workspaceId })
+  }
+
+  /** 拉取并快进当前分支；分叉或冲突时抛错。 */
+  gitPull(workspaceId: string): Promise<{ ok: true }> {
+    return this.post('git-pull', { workspaceId })
+  }
+
   /** 运行时添加目录：服务端 realpath 探活后返回完整 WorkspaceInfo。 */
   addWorkspace(root: string): Promise<WorkspaceInfo> {
     return this.post('workspaces-add', { root })

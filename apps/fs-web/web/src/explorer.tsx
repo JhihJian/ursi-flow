@@ -5,6 +5,7 @@ import { injectEditorApi, useEditorStore, registerGitSaveListener } from './edit
 import { registerEditorApiInjector, useTreeStore, registerGitRefresh } from './tree-store.ts'
 import { useGitStore } from './git-store.ts'
 import { GitBar } from './git-bar.tsx'
+import { GitSyncStatus } from './git-sync-status.tsx'
 import { FileTree } from './tree.tsx'
 import { DirActions } from './dir-actions.tsx'
 import { WorkspaceList } from './workspace-list.tsx'
@@ -86,6 +87,7 @@ export function FileExplorer({
               creating={creating}
               onCreatingDone={() => setCreating(false)}
             />
+            <GitSyncStatus />
           </>
         ) : (
           <div className="wsx-explorer-empty">从左侧选择目录，或用左侧「+」添加</div>

@@ -45,6 +45,10 @@ export interface GitStatusDto {
   /** 当前分支；detached HEAD 为 null；无提交仓库给出分支名。 */
   branch: string | null
   upstream?: string
+  /** 领先上游的提交数；无 upstream 或无跟踪关系时为 0。 */
+  ahead: number
+  /** 落后上游的提交数；无 upstream 或无跟踪关系时为 0。 */
+  behind: number
   changes: GitChangeDto[]
   additions: number
   deletions: number

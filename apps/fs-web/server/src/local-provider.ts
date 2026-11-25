@@ -1,7 +1,7 @@
 import { promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { EntryDto, WorkspaceConfig } from './types.ts'
-import { gitStatusOf } from './git-provider.ts'
+import { gitPullOf, gitPushOf, gitStatusOf } from './git-provider.ts'
 
 /**
  * 统一目录抽象。第一版只实现 local；SSH（无 watch 能力）与虚拟目录后续接入。
@@ -26,6 +26,10 @@ export interface WorkspaceProvider {
   delete(workspace: WorkspaceConfig, segments: string[]): Promise<void>
   /** 只读 git 状态快照；仅 local 实现。 */
   gitStatus?(workspace: WorkspaceConfig): Promise<import('./types.ts').GitStatusDto>
+  /** 推送当前分支到 upstream；仅 local 实现。 */
+  gitPush?(workspace: WorkspaceConfig): Promise<{ ok: true }>
+  /** 拉取并快进当前分支；仅 local 实现。 */
+  gitPull?(workspace: WorkspaceConfig): Promise<{ ok: true }>
 }
 
 /** provider 层错误：code 进 ApiError，层上不碰 HTTP。 */
@@ -249,9 +253,15 @@ export function createLocalProvider(): WorkspaceProvider {
       }
     },
 
-    // 可选能力：git 只读状态快照（阶段 1.5）。SSH provider 不承诺此能力。
+    // 可选能力：git 只读状态快照（阶段 1.5）与上游同步。SSH provider 不承诺这些能力。
     async gitStatus(workspace) {
       return gitStatusOf(workspace)
+    },
+    async gitPush(workspace) {
+      return gitPushOf(workspace)
+    },
+    async gitPull(workspace) {
+      return gitPullOf(workspace)
     },
   }
   return provider

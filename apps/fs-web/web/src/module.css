@@ -148,6 +148,81 @@
   text-overflow: ellipsis;
 }
 
+/* 推送/拉取按钮组：靠右贴齐摘要条尾部 */
+.wsx-git-sync {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.wsx-git-sync-btn {
+  font-variant-numeric: tabular-nums;
+}
+
+.wsx-git-sync-btn:disabled {
+  border-color: var(--wsx-line, var(--ws-line, #e5e5e5));
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 同步状态条：进行中显示不定态进度条与耗时；失败时显示错误，点击关闭 */
+.wsx-git-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--wsx-dim, var(--ws-muted, #999999));
+  text-align: left;
+}
+
+button.wsx-git-sync-status {
+  cursor: pointer;
+}
+
+.wsx-git-sync-status--error {
+  border-color: #a00;
+  color: #a00;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsx-git-sync-label {
+  flex: none;
+}
+
+.wsx-git-sync-progress {
+  flex: 1;
+  height: 3px;
+  min-width: 40px;
+  background:
+    linear-gradient(90deg, var(--wsx-dim, var(--ws-muted, #999999)) 0%, var(--wsx-line, var(--ws-line, #e5e5e5)) 100%)
+    no-repeat;
+  background-size: 30% 100%;
+  animation: wsx-git-sync-sweep 1.2s linear infinite;
+}
+
+@keyframes wsx-git-sync-sweep {
+  from {
+    background-position: -30% 0;
+  }
+  to {
+    background-position: 130% 0;
+  }
+}
+
+.wsx-git-sync-elapsed {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- 文件树：对齐 todo-web project-item 行风格 ---- */
 
 .wsx-tree {

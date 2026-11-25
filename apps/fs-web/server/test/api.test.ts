@@ -357,6 +357,137 @@ test('git-status workspace 为仓库子目录时过滤并映射路径', wrap(asy
   }
 }))
 
+/** 建「本地仓库 + 裸 origin + 跟踪关系」的完整上游环境，返回裸仓库路径。 */
+async function withUpstream(ctx: { root: string }, fn: (bare: string) => Promise<void>): Promise<void> {
+  const bare = path.join(os.tmpdir(), `wsx-bare-${Date.now()}-${Math.random().toString(36).slice(2)}.git`)
+  await git(ctx.root, ['clone', '--quiet', '--bare', '.', bare])
+  try {
+    await git(ctx.root, ['remote', 'add', 'origin', bare])
+    await git(ctx.root, ['fetch', 'origin'])
+    await git(ctx.root, ['branch', '--set-upstream-to=origin/main', 'main'])
+    await fn(bare)
+  } finally {
+    await fs.rm(bare, { recursive: true, force: true })
+  }
+}
+
+test('git-status 返回 ahead/behind 计数', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await withUpstream(ctx, async (bare) => {
+    // 本地领先 1：追加一个提交
+    await fs.writeFile(path.join(ctx.root, 'a.txt'), 'a\n')
+    await git(ctx.root, ['add', '.'])
+    await git(ctx.root, ['commit', '-m', 'ahead'])
+    // 远端领先 1：用临时 clone 推一个本地没有的提交，再 fetch
+    const clone = path.join(os.tmpdir(), `wsx-clone-${Date.now()}.wt`)
+    await git(ctx.root, ['clone', '--quiet', bare, clone])
+    try {
+      await git(clone, ['config', 'user.email', 't@example.com'])
+      await git(clone, ['config', 'user.name', 't'])
+      await fs.writeFile(path.join(clone, 'b.txt'), 'b\n')
+      await git(clone, ['add', '.'])
+      await git(clone, ['commit', '-m', 'behind'])
+      await git(clone, ['push', '--quiet', 'origin', 'main:main'])
+      await git(ctx.root, ['fetch', 'origin'])
+    } finally {
+      await fs.rm(clone, { recursive: true, force: true })
+    }
+    const { json } = await post('git-status', { workspaceId: 't' })
+    const body = json as GitStatusJson
+    assert.equal(body.ahead, 1)
+    assert.equal(body.behind, 1)
+  })
+}))
+
+test('git-push 把本地提交推到 upstream', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await withUpstream(ctx, async () => {
+    await fs.writeFile(path.join(ctx.root, 'a.txt'), 'a\n')
+    await git(ctx.root, ['add', '.'])
+    await git(ctx.root, ['commit', '-m', 'ahead'])
+    const { status, json } = await post('git-push', { workspaceId: 't' })
+    assert.equal(status, 200)
+    assert.deepEqual(json, { ok: true })
+    const { json: after } = await post('git-status', { workspaceId: 't' })
+    assert.equal((after as GitStatusJson).ahead, 0)
+  })
+}))
+
+test('git-pull 快进远端新提交', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await withUpstream(ctx, async (bare) => {
+    const clone = path.join(os.tmpdir(), `wsx-clone-${Date.now()}.wt`)
+    await git(ctx.root, ['clone', '--quiet', bare, clone])
+    try {
+      await git(clone, ['config', 'user.email', 't@example.com'])
+      await git(clone, ['config', 'user.name', 't'])
+      await fs.writeFile(path.join(clone, 'b.txt'), 'b\n')
+      await git(clone, ['add', '.'])
+      await git(clone, ['commit', '-m', 'remote'])
+      await git(clone, ['push', '--quiet', 'origin', 'main:main'])
+    } finally {
+      await fs.rm(clone, { recursive: true, force: true })
+    }
+    const { status, json } = await post('git-pull', { workspaceId: 't' })
+    assert.equal(status, 200)
+    assert.deepEqual(json, { ok: true })
+    await fs.access(path.join(ctx.root, 'b.txt')) // pull 后远端文件应落地，不存在时抛错
+    const { json: after } = await post('git-status', { workspaceId: 't' })
+    assert.equal((after as GitStatusJson).behind, 0)
+  })
+}))
+
+test('git-pull 遇分叉历史拒绝快进且不产生合并', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await withUpstream(ctx, async (bare) => {
+    // 本地追加提交
+    await fs.writeFile(path.join(ctx.root, 'local.txt'), 'local\n')
+    await git(ctx.root, ['add', '.'])
+    await git(ctx.root, ['commit', '-m', 'local'])
+    // 远端从同一基点分叉
+    const clone = path.join(os.tmpdir(), `wsx-clone-${Date.now()}.wt`)
+    await git(ctx.root, ['clone', '--quiet', bare, clone])
+    try {
+      await git(clone, ['config', 'user.email', 't@example.com'])
+      await git(clone, ['config', 'user.name', 't'])
+      await fs.writeFile(path.join(clone, 'remote.txt'), 'remote\n')
+      await git(clone, ['add', '.'])
+      await git(clone, ['commit', '-m', 'remote'])
+      await git(clone, ['push', '--quiet', 'origin', 'main:main'])
+    } finally {
+      await fs.rm(clone, { recursive: true, force: true })
+    }
+    const { status, json } = await post('git-pull', { workspaceId: 't' })
+    assert.equal(status, 503)
+    expectError(json, 'git_unavailable')
+    // 拉取失败后仓库仍在原提交，无 merge 进行中
+    const head = await git(ctx.root, ['rev-parse', '--abbrev-ref', 'HEAD'])
+    assert.equal(head.trim(), 'main')
+  })
+}))
+
+test('git-push 无 upstream 时明确报错', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  const { status, json } = await post('git-push', { workspaceId: 't' })
+  assert.equal(status, 503)
+  expectError(json, 'git_unavailable')
+}))
+
 test('git-status 检出 upstream 时返回上游分支', wrap(async (ctx) => {
   await initRepo(ctx.root)
   await fs.writeFile(path.join(ctx.root, 'f.txt'), 'f\n')

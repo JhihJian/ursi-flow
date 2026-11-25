@@ -381,6 +381,20 @@ export async function createServer(
         send(res, 200, await provider.gitStatus(workspace))
         return
       }
+      case 'git-push': {
+        if (typeof provider.gitPush !== 'function') {
+          throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 同步')
+        }
+        send(res, 200, await provider.gitPush(workspace))
+        return
+      }
+      case 'git-pull': {
+        if (typeof provider.gitPull !== 'function') {
+          throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 同步')
+        }
+        send(res, 200, await provider.gitPull(workspace))
+        return
+      }
       case 'mkdir': {
         send(res, 200, await provider.mkdir(workspace, segments))
         return

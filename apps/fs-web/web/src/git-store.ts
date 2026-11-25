@@ -11,14 +11,28 @@ export function badgeCodeOf(change: GitChangeDto): string {
   return change.index !== ' ' ? change.index : change.worktree
 }
 
+export interface GitSyncState {
+  /** 进行中的同步方向；null 表示空闲。 */
+  phase: 'push' | 'pull' | null
+  /** 本次同步的开始时间（毫秒），用于状态栏耗时显示。 */
+  startedAt: number
+  /** 上一次同步失败的错误；成功后清空。 */
+  error: string | null
+}
+
 export interface GitState {
   /** 非 null 表示已确认为仓库；null 表示尚未加载或非仓库。 */
   snapshot: (GitStatusDto & { isRepo: true }) | null
   loading: boolean
   error: string | null
+  /** push/pull 进行中状态与上次错误。 */
+  sync: GitSyncState
   refresh: (api: WorkspaceApi, workspaceId: string) => Promise<void>
+  /** 推送/拉取当前分支；失败时记录错误不抛出，结束或失败后都刷新快照。 */
+  syncUpstream: (api: WorkspaceApi, workspaceId: string, phase: 'push' | 'pull') => Promise<void>
   reset: () => void
   clearError: () => void
+  clearSyncError: () => void
 }
 
 let requestSeq = 0
@@ -27,6 +41,7 @@ export const useGitStore = create<GitState>((set, get) => ({
   snapshot: null,
   loading: false,
   error: null,
+  sync: { phase: null, startedAt: 0, error: null },
 
   refresh: async (api, workspaceId) => {
     const seq = ++requestSeq
@@ -45,13 +60,32 @@ export const useGitStore = create<GitState>((set, get) => ({
     }
   },
 
+  syncUpstream: async (api, workspaceId, phase) => {
+    if (get().sync.phase) return // 同步进行中，忽略重复点击
+    set({ sync: { phase, startedAt: Date.now(), error: null } })
+    try {
+      if (phase === 'push') await api.gitPush(workspaceId)
+      else await api.gitPull(workspaceId)
+    } catch (error) {
+      const message = error instanceof ApiClientError || error instanceof Error ? error.message : String(error)
+      set({ sync: { phase: null, startedAt: 0, error: message } })
+    }
+    if (get().sync.phase === phase) set({ sync: { phase: null, startedAt: 0, error: null } })
+    // 成功或失败都重取快照，ahead/behind 立即归零或更新
+    await get().refresh(api, workspaceId)
+  },
+
   reset: () => {
     requestSeq++
-    set({ snapshot: null, loading: false, error: null })
+    set({ snapshot: null, loading: false, error: null, sync: { phase: null, startedAt: 0, error: null } })
   },
 
   clearError: () => {
     if (get().error) set({ error: null })
+  },
+
+  clearSyncError: () => {
+    if (get().sync.error) set({ sync: { ...get().sync, error: null } })
   },
 }))
 
