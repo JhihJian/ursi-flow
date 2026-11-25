@@ -25,13 +25,16 @@ export interface ConnectionInput {
   key_passphrase: string
 }
 
-export interface SessionInfo {
-  id: string
-  connection_id: number
-  connection_name: string
-  host: string
-  username: string
-  attached: boolean
+/** 远端一条 tmux 会话。 */
+export interface TmuxSession {
+  name: string
+  attached: number
+  created: number
+}
+
+/** tmux-sessions 响应：sessions 为 null 表示远端没有 tmux。 */
+export interface TmuxSessionsResponse {
+  sessions: TmuxSession[] | null
 }
 
 /** WS 控制帧（前端 → 服务端）。 */

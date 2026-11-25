@@ -59,12 +59,6 @@ pub struct UpdateConnectionRequest {
     pub key_passphrase: Option<Option<String>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ConnectRequest {
-    pub cols: Option<u32>,
-    pub rows: Option<u32>,
-}
-
 fn double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -88,14 +82,18 @@ pub struct ConnectionsResponse {
     pub connections: Vec<Connection>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ConnectResponse {
-    pub session: crate::session::SessionInfo,
+/// 远端一条 tmux 会话：名称、attach 的客户端数、创建时间（unix 秒）。
+#[derive(Debug, Clone, Serialize)]
+pub struct TmuxSession {
+    pub name: String,
+    pub attached: u64,
+    pub created: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub struct SessionsResponse {
-    pub sessions: Vec<crate::session::SessionInfo>,
+pub struct TmuxSessionsResponse {
+    /// None 表示远端没有 tmux（已回退普通 shell）。
+    pub sessions: Option<Vec<TmuxSession>>,
 }
 
 /// 创建时的最终字段视图：请求值合并默认值后做统一校验。

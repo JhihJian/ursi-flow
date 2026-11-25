@@ -130,11 +130,17 @@ button {
   pointer-events: none;
 }
 
-.separator:hover::before {
+.separator:hover::before,
+.separator[data-separator="hover"]::before,
+.separator[data-separator="focus"]::before,
+.separator[data-separator="active"]::before {
   background: var(--gray-900);
 }
 
-.separator:hover::after {
+.separator:hover::after,
+.separator[data-separator="hover"]::after,
+.separator[data-separator="focus"]::after,
+.separator[data-separator="active"]::after {
   opacity: 1;
   color: var(--gray-900);
 }
@@ -283,9 +289,13 @@ button {
 
 /* Connection editor sheet: docks at the bottom and rises */
 .connection-sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 50;
   display: flex;
-  flex: none;
   flex-direction: column;
+  max-height: 100%;
+  overflow-y: auto;
   border-top: 1px solid var(--gray-900);
   background: var(--white);
   animation: detail-sheet-rise 200ms ease-out;
@@ -455,4 +465,43 @@ button {
   .connection-sheet {
     animation: none;
   }
+}
+
+/* Session sidebar（二级面板） */
+.panel-sessions {
+  padding: var(--space-md);
+}
+
+.session-note {
+  padding: var(--space-sm) var(--space-xs);
+  font-size: 11px;
+  color: var(--gray-600);
+  line-height: 1.6;
+}
+
+.session-note.session-error {
+  color: var(--danger);
+}
+
+.session-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--gray-200);
+}
+
+.session-new .form-input {
+  width: 100%;
+}
+
+.session-new-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.session-new-actions .btn {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
 }

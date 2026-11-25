@@ -3,7 +3,7 @@ import { ContextMenu, type MenuState } from './ContextMenu'
 import { useSshStore } from '../store/ssh-store'
 import type { Connection } from '../api/types'
 
-/** 左侧连接列表：点击连接即建立 SSH 会话，右键打开新建/编辑/删除菜单。 */
+/** 一级侧栏：SSH 连接管理。点击只选中连接（联动二级会话列表），不建连。 */
 export function ConnectionSidebar() {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const connections = useSshStore((state) => state.connections)
@@ -41,7 +41,7 @@ export function ConnectionSidebar() {
   return (
     <div className="sidebar" onContextMenu={(event) => openContextMenu(event, null)}>
       <div className="sidebar-head">
-        <div className="sidebar-title">Connections</div>
+        <div className="sidebar-title">SSH</div>
         <button
           type="button"
           className="rail-toggle"

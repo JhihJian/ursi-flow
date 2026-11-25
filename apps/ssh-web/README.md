@@ -1,10 +1,10 @@
 # ssh-web
 
-浏览器 SSH 终端：管理 SSH 连接配置，点击连接即在浏览器中获得远端 PTY 终端。
+浏览器 SSH 终端：两级面板管理 SSH 连接与远端 tmux 会话，点会话即接入远端 PTY 终端；会话持久化由远端 tmux 承担。
 
 ## 组成
 
-- `server/`：Rust 服务（axum + russh + rusqlite）。托管静态页面、连接配置 CRUD 与 WebSocket 终端桥。远端有 tmux 时自动接入固定会话 `ssh-main`，断开保活、重连恢复。接口契约见 [server/HTTP.md](server/HTTP.md)。
+- `server/`：Rust 服务（axum + russh + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表与 WebSocket 终端桥；WS 握手即建全新 SSH 并 attach 远端 tmux，服务端不维护会话状态。接口契约见 [server/HTTP.md](server/HTTP.md)。
 - `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。
 
 ## 运行

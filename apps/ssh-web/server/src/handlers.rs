@@ -87,27 +87,12 @@ pub async fn put_connection(
     Ok(Json(SuccessResponse { success: true }))
 }
 
-/// `DELETE /api/connections/{id}`：删除连接。活跃会话不受影响。
+/// `DELETE /api/connections/{id}`：删除连接。远端 tmux 会话不受影响。
 pub async fn delete_connection(Path(id): Path<i64>) -> AppResult<Json<SuccessResponse>> {
     let db = app_state().db.lock().await;
     let deleted = db::delete_connection(&db, id)?;
     if !deleted {
         return Err(not_found(format!("连接 {id} 不存在")));
-    }
-    Ok(Json(SuccessResponse { success: true }))
-}
-
-/// `GET /api/sessions`：活跃会话列表。
-pub async fn get_sessions() -> AppResult<Json<crate::models::SessionsResponse>> {
-    let sessions = app_state().registry.list().await;
-    Ok(Json(crate::models::SessionsResponse { sessions }))
-}
-
-/// `DELETE /api/sessions/{id}`：关闭会话并断开 SSH。
-pub async fn delete_session(Path(id): Path<String>) -> AppResult<Json<SuccessResponse>> {
-    let closed = app_state().registry.close(&id).await;
-    if !closed {
-        return Err(not_found(format!("会话 {id} 不存在")));
     }
     Ok(Json(SuccessResponse { success: true }))
 }

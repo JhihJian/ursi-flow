@@ -1,27 +1,40 @@
 import { create } from 'zustand'
 import * as api from '../api/client'
-import type { Connection, ConnectionInput, SessionInfo } from '../api/types'
+import type { Connection, ConnectionInput, TmuxSession } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
+
+/** 终端目标：attach 哪个 tmux 会话（null = 默认 ssh-main）。 */
+export interface TerminalTarget {
+  connectionId: number
+  tmuxSession: string | null
+}
 
 interface SshStoreState {
   connections: Connection[]
   activeId: number | null
-  activeSession: SessionInfo | null
-  connecting: boolean
+  /** 当前终端目标；null 表示未打开终端（显示占位）。 */
+  terminal: TerminalTarget | null
+  /** terminal 存在即视为 connecting，WS 首帧或 error 后由 TerminalPane 呈现实际状态。 */
+  /** tmux 会话列表；null 表示远端无 tmux 或查询失败（看 notice）。 */
+  tmuxSessions: TmuxSession[] | null
+  tmuxLoading: boolean
   editor: EditorTarget | null
   notice: string | null
   /** 终端面板亮色（白底）主题，跨刷新保留。 */
   terminalLight: boolean
 
   loadConnections: () => Promise<void>
+  /** 选中连接：只切换选中并刷新 tmux 会话列表，不建连。 */
   selectConnection: (id: number) => Promise<void>
-  /** 关闭当前会话并重连同一连接。 */
-  reconnectActive: () => Promise<void>
+  /** 打开终端：attach 指定 tmux 会话（null = 默认 ssh-main）。 */
+  openTerminal: (tmuxSession: string | null) => void
+  /** 关闭终端（断开 WS；远端 tmux 会话保留）。 */
+  closeTerminal: () => void
+  refreshTmuxSessions: () => Promise<void>
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
   removeConnection: (id: number) => Promise<void>
   setEditor: (editor: EditorTarget | null) => void
-  setActiveSession: (session: SessionInfo | null) => void
   setNotice: (message: string | null) => void
   toggleTerminalLight: () => void
 }
@@ -45,8 +58,9 @@ function initialTerminalLight(): boolean {
 export const useSshStore = create<SshStoreState>((set, get) => ({
   connections: [],
   activeId: null,
-  activeSession: null,
-  connecting: false,
+  terminal: null,
+  tmuxSessions: null,
+  tmuxLoading: false,
   editor: null,
   notice: null,
   terminalLight: initialTerminalLight(),
@@ -57,38 +71,27 @@ export const useSshStore = create<SshStoreState>((set, get) => ({
   },
 
   selectConnection: async (id) => {
-    if (get().activeId === id && get().activeSession) return
-    const connection = get().connections.find((item) => item.id === id)
-    if (!connection) return
-    // 切换连接时先断开当前会话，保证一个终端只接一个会话。
-    const current = get().activeSession
-    if (current) {
-      api.closeSession(current.id).catch(() => {})
-      set({ activeSession: null })
-    }
-    set({ connecting: true, activeId: id, activeSession: null, notice: null })
-    try {
-      const { session } = await api.connectConnection(id)
-      set({ activeSession: session, connecting: false })
-    } catch (error) {
-      set({ activeId: id, activeSession: null, connecting: false, notice: toMessage(error) })
-    }
+    set({ activeId: id, terminal: null, tmuxSessions: null })
+    await get().refreshTmuxSessions()
   },
 
-  reconnectActive: async () => {
+  openTerminal: (tmuxSession) => {
     const id = get().activeId
     if (id === null) return
-    const current = get().activeSession
-    if (current) {
-      api.closeSession(current.id).catch(() => {})
-      set({ activeSession: null })
-    }
-    set({ connecting: true, notice: null })
+    set({ terminal: { connectionId: id, tmuxSession }, notice: null })
+  },
+
+  closeTerminal: () => set({ terminal: null }),
+
+  refreshTmuxSessions: async () => {
+    const id = get().activeId
+    if (id === null) return
+    set({ tmuxLoading: true })
     try {
-      const { session } = await api.connectConnection(id)
-      set({ activeSession: session, connecting: false })
+      const { sessions } = await api.listTmuxSessions(id)
+      set({ tmuxSessions: sessions, tmuxLoading: false })
     } catch (error) {
-      set({ connecting: false, notice: toMessage(error) })
+      set({ notice: toMessage(error), tmuxLoading: false })
     }
   },
 
@@ -106,12 +109,11 @@ export const useSshStore = create<SshStoreState>((set, get) => ({
 
   removeConnection: async (id) => {
     await api.deleteConnection(id)
-    if (get().activeId === id) set({ activeId: null, activeSession: null })
+    if (get().activeId === id) set({ activeId: null, terminal: null, tmuxSessions: null })
     await get().loadConnections()
   },
 
   setEditor: (editor) => set({ editor }),
-  setActiveSession: (session) => set({ activeSession: session }),
   setNotice: (message) => set({ notice: message }),
   toggleTerminalLight: () =>
     set((state) => {

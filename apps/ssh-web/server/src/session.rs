@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,21 +5,33 @@ use bytes::Bytes;
 use russh::client::{self, Handler};
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh::{ChannelMsg, ChannelReadHalf, ChannelWriteHalf, Disconnect};
-use serde::Serialize;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::mpsc;
 
 use crate::db::Connection as ConnectionConfig;
-use crate::models::AuthType;
+use crate::models::{AuthType, TmuxSession};
 
 /// 连接超时：主机不可达时不能无限等待。
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// WS 输入事件通道容量：读方向靠 SSH 流控窗口反压，这里只缓冲少量事件。
-pub const WS_INPUT_CAPACITY: usize = 32;
+/// SSH 输出转发通道容量：读方向靠 SSH 流控窗口反压，这里只缓冲少量事件。
+pub const EVENT_CAPACITY: usize = 32;
+/// WS 输入通道容量。
+pub const INPUT_CAPACITY: usize = 32;
 /// 单条 WS 输入消息的 JSON 字节上限，超出视为恶意或异常客户端。
-const WS_TEXT_LIMIT: usize = 64 * 1024;
+pub const WS_TEXT_LIMIT_BYTES: usize = 64 * 1024;
 /// PTY 尺寸上限，与前端一致。
 const MAX_COLS: u32 = 500;
 const MAX_ROWS: u32 = 500;
+/// 默认 tmux 会话名：远端有 tmux 时 attach 的固定会话。
+pub const DEFAULT_TMUX_SESSION: &str = "ssh-main";
+
+/// tmux 会话名白名单：ASCII 字母数字下划线连字符，1-64 字符。
+/// 拒绝一切其他字符，杜绝拼进远端命令的注入面。
+pub fn valid_tmux_session(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
 
 #[derive(Debug)]
 struct ClientHandler;
@@ -45,17 +56,6 @@ fn client_config() -> Arc<client::Config> {
     })
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SessionInfo {
-    pub id: String,
-    pub connection_id: i64,
-    pub connection_name: String,
-    pub host: String,
-    pub username: String,
-    /// WS 已接入后为 true。建立与接入之间会话处于待接入状态。
-    pub attached: bool,
-}
-
 /// 泵任务发给 WS 任务的事件。Data 走 binary 帧，其余转 JSON 文本帧。
 #[derive(Debug)]
 pub enum WsEvent {
@@ -74,315 +74,71 @@ pub enum ControlMessage {
     Resize { cols: u32, rows: u32 },
 }
 
-pub struct Attach {
-    pub input_rx: mpsc::Receiver<ControlMessage>,
-    pub event_tx: mpsc::Sender<WsEvent>,
+/// 远端启动命令：tmux 可用则 attach 指定会话（不存在则创建），
+/// 否则回退普通 shell 并在终端里打一行提示。
+/// 会话名已过白名单，单引号内拼接安全。保持 POSIX sh 兼容。
+fn start_command(tmux_session: &str) -> String {
+    format!(
+        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec $SHELL; }}",
+        name = tmux_session
+    )
 }
 
-/// 会话任务的控制通道。oneshot::send 需要所有权，
-/// 所以放 std::sync::Mutex 里，用完即取走。
-struct SessionControl {
-    close_tx: Option<oneshot::Sender<()>>,
-    attach_tx: Option<oneshot::Sender<Attach>>,
-}
-
-/// 会话建立结果：SSH 连接、认证与 shell 就绪后发给 connect 调用方。
-type ReadySignal = oneshot::Sender<Result<(), String>>;
-
-/// 会话任务的通道集合：WS 接入、主动关闭与建立结果。
-struct SessionPipes {
-    attach_rx: oneshot::Receiver<Attach>,
-    close_rx: oneshot::Receiver<()>,
-    ready_tx: Option<ReadySignal>,
-}
-
-/// 注册表里的一条会话：元信息与控制通道。任务自行结束，句柄不保留。
-struct SessionEntry {
-    info: std::sync::Mutex<SessionInfo>,
-    control: std::sync::Mutex<SessionControl>,
-}
-
-/// 会话注册表。会话随服务进程存活，重启即失。
-#[derive(Default)]
-pub struct SessionRegistry {
-    sessions: Mutex<HashMap<String, SessionEntry>>,
-}
-
-impl SessionRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 发起 SSH 连接并注册会话，返回后即可通过 `/api/sessions/{id}/ws` 接入。
-    /// 失败时返回面向用户的错误消息。
-    pub async fn connect(
-        &self,
-        config: &ConnectionConfig,
-        cols: u32,
-        rows: u32,
-    ) -> Result<SessionInfo, String> {
-        let id = new_session_id();
-        let (close_tx, close_rx) = oneshot::channel();
-        let (attach_tx, attach_rx) = oneshot::channel();
-        let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
-        let info = SessionInfo {
-            id: id.clone(),
-            connection_id: config.id,
-            connection_name: config.name.clone(),
-            host: config.host.clone(),
-            username: config.username.clone(),
-            attached: false,
-        };
-
-        let task_config = client_config();
-        let task_connection = config.clone();
-        let task_id = id.clone();
-        let pipes = SessionPipes {
-            attach_rx,
-            close_rx,
-            ready_tx: Some(ready_tx),
-        };
-        tokio::spawn(run_session(
-            task_config,
-            task_connection,
-            task_id,
-            cols,
-            rows,
-            pipes,
-        ));
-
-        self.sessions.lock().await.insert(
-            id.clone(),
-            SessionEntry {
-                info: std::sync::Mutex::new(info.clone()),
-                control: std::sync::Mutex::new(SessionControl {
-                    close_tx: Some(close_tx),
-                    attach_tx: Some(attach_tx),
-                }),
-            },
-        );
-
-        // 等 SSH 建立+认证完成再返回，失败原因直接给调用方。
-        match ready_rx.await {
-            Ok(Ok(())) => Ok(info),
-            Ok(Err(message)) => {
-                self.remove(&id).await;
-                Err(message)
-            }
-            Err(_) => {
-                self.remove(&id).await;
-                Err("会话任务异常退出".into())
-            }
-        }
-    }
-
-    pub async fn list(&self) -> Vec<SessionInfo> {
-        let sessions = self.sessions.lock().await;
-        let mut infos: Vec<SessionInfo> = sessions
-            .values()
-            .map(|entry| entry.info.lock().expect("会话信息锁").clone())
-            .collect();
-        infos.sort_by(|a, b| a.id.cmp(&b.id));
-        infos
-    }
-
-    pub async fn get(&self, id: &str) -> Option<SessionInfo> {
-        self.sessions
-            .lock()
-            .await
-            .get(id)
-            .map(|entry| entry.info.lock().expect("会话信息锁").clone())
-    }
-
-    /// WS 接入：把泵任务的两端交给会话任务。会话可能已失败退出，
-    /// 此时接入失败返回 false。
-    pub async fn attach(&self, id: &str, attach: Attach) -> bool {
-        let sessions = self.sessions.lock().await;
-        let Some(entry) = sessions.get(id) else {
-            return false;
-        };
-        let attach_tx = entry.control.lock().expect("会话控制锁").attach_tx.take();
-        match attach_tx {
-            Some(attach_tx) => {
-                if attach_tx.send(attach).is_ok() {
-                    entry.info.lock().expect("会话信息锁").attached = true;
-                    true
-                } else {
-                    false
-                }
-            }
-            None => false,
-        }
-    }
-
-    /// 主动关闭：通知会话任务退出并从注册表移除。
-    pub async fn close(&self, id: &str) -> bool {
-        let entry = self.sessions.lock().await.remove(id);
-        match entry {
-            Some(entry) => {
-                let close_tx = entry.control.lock().expect("会话控制锁").close_tx.take();
-                if let Some(close_tx) = close_tx {
-                    let _ = close_tx.send(());
-                }
-                true
-            }
-            None => false,
-        }
-    }
-
-    /// 会话任务结束后清理注册项。
-    pub async fn remove(&self, id: &str) {
-        self.sessions.lock().await.remove(id);
-    }
-}
-
-/// 会话 ID：时间戳加进程内计数，避免引入 uuid 依赖。
-fn new_session_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("s-{time:032x}-{count:016x}")
-}
-
-/// 会话主任务：建立 SSH 连接与 shell，等待 WS 接入，然后驱动泵任务；
-/// 任何一步失败都会把错误发给接入方（或打印后退出），结束时断开 SSH。
-/// 会话主任务：建立 SSH 连接与 shell，等待 WS 接入，然后驱动数据泵；
-/// 结束时从注册表移除自己并断开 SSH。
-async fn run_session(
-    config: Arc<client::Config>,
+/// 终端任务：连接、认证、开 PTY、执行启动命令、泵数据。
+/// 建立或运行失败经 event_tx 发 Error；正常退出发 Closed。
+/// 随调用方（WS 循环）取消而结束，SSH 连接随任务 drop 断开。
+pub async fn run_terminal(
     connection: ConnectionConfig,
-    id: String,
-    cols: u32,
-    rows: u32,
-    pipes: SessionPipes,
+    tmux_session: Option<String>,
+    mut input_rx: mpsc::Receiver<ControlMessage>,
+    event_tx: mpsc::Sender<WsEvent>,
 ) {
-    let registry_id = id.clone();
-    if let Err(error) = run_session_inner(&config, &connection, &id, cols, rows, pipes).await {
-        println!("会话 {id} 异常结束：{error:#}");
+    if let Err(error) =
+        run_terminal_inner(&connection, tmux_session, &mut input_rx, &event_tx).await
+    {
+        let _ = event_tx
+            .send(WsEvent::Error {
+                message: format!("{error:#}"),
+            })
+            .await;
     }
-    crate::app::app_state().registry.remove(&registry_id).await;
 }
 
-async fn run_session_inner(
-    config: &Arc<client::Config>,
+async fn run_terminal_inner(
     connection: &ConnectionConfig,
-    id: &str,
-    cols: u32,
-    rows: u32,
-    mut pipes: SessionPipes,
+    tmux_session: Option<String>,
+    input_rx: &mut mpsc::Receiver<ControlMessage>,
+    event_tx: &mpsc::Sender<WsEvent>,
 ) -> anyhow::Result<()> {
-    let result = run_session_connected(config, connection, id, cols, rows, &mut pipes).await;
-    // connect 调用方还在等待时（建立失败或 shell 就绪前被取消），把原因转告。
-    if let Some(ready_tx) = pipes.ready_tx.take() {
-        let message = match &result {
-            // shell 就绪后 ready_tx 已消费，仍持有说明是被主动取消。
-            Ok(_) => "会话已取消".to_string(),
-            Err(error) => format!("{error:#}"),
-        };
-        let _ = ready_tx.send(Err(message));
-    }
-    result
-}
+    let config = client_config();
+    let handle = tokio::time::timeout(CONNECT_TIMEOUT, connect_and_auth(&config, connection))
+        .await
+        .map_err(|_| anyhow::anyhow!("连接超时"))??;
 
-/// 连接、认证、开 shell、等接入、泵数据。返回 Ok 时的消息描述结束原因。
-async fn run_session_connected(
-    config: &Arc<client::Config>,
-    connection: &ConnectionConfig,
-    id: &str,
-    cols: u32,
-    rows: u32,
-    pipes: &mut SessionPipes,
-) -> anyhow::Result<()> {
-    // 建立连接，期间随时可能被注册表关闭。
-    let handle = tokio::select! {
-        result = tokio::time::timeout(CONNECT_TIMEOUT, connect_and_auth(config, connection)) => {
-            result.context_("连接超时")??
-        }
-        _ = &mut pipes.close_rx => return Ok(()),
-    };
-
-    // 开 PTY 并启动持久化入口命令：
-    //   有 tmux → attach 到固定会话 ssh-main（断开后保活，重连恢复屏幕）；
-    //   无 tmux → 回退普通 shell，并在终端里打一行提示。
-    // 整条逻辑在远端一行命令内完成，服务端不做输出解析。
+    // 初始 PTY 尺寸取默认值，前端打开终端后立即发 resize 纠正。
     let channel = handle.channel_open_session().await?;
     channel
-        .request_pty(
-            false,
-            "xterm-256color",
-            cols.min(MAX_COLS),
-            rows.min(MAX_ROWS),
-            0,
-            0,
-            &[],
-        )
+        .request_pty(false, "xterm-256color", 80, 24, 0, 0, &[])
         .await?;
-    channel.exec(false, START_COMMAND).await?;
-    run_attached(handle, channel, connection, id, pipes).await
-}
+    let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
+    channel.exec(false, start_command(&name).as_str()).await?;
 
-/// 远端启动命令：tmux 可用则 attach 固定会话，否则回退普通 shell。
-/// 注意保持 POSIX sh 兼容（远端不一定是 bash）。
-const START_COMMAND: &str = r"command -v tmux >/dev/null 2>&1 && tmux new -A -s ssh-main || { printf '\033[33m[ssh-web] 远端无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec $SHELL; }";
-
-/// 通道就绪后：通知 connect 成功、等 WS 接入、驱动数据泵、收尾。
-async fn run_attached(
-    handle: client::Handle<ClientHandler>,
-    channel: russh::Channel<client::Msg>,
-    connection: &ConnectionConfig,
-    id: &str,
-    pipes: &mut SessionPipes,
-) -> anyhow::Result<()> {
-    // 启动就绪，通知 connect 调用方成功。
-    if let Some(ready_tx) = pipes.ready_tx.take() {
-        let _ = ready_tx.send(Ok(()));
-    }
     let (mut read_half, write_half) = channel.split();
-
-    // 等 WS 接入，期间可能被主动关闭。
-    let attach = tokio::select! {
-        attach = &mut pipes.attach_rx => attach.context_("WS 接入前会话被关闭")?,
-        _ = &mut pipes.close_rx => return Ok(()),
-    };
-    let Attach {
-        mut input_rx,
-        event_tx,
-    } = attach;
-
-    println!("会话 {id} 已接入 {}", connection.name);
-    let result = pump(
-        &mut read_half,
-        &write_half,
-        &mut input_rx,
-        &event_tx,
-        &mut pipes.close_rx,
-    )
-    .await;
-    // 事件通道随 WS 泵任务一起结束；断开 SSH。
+    let result = pump(&mut read_half, &write_half, input_rx, event_tx).await;
+    // 事件通道随 WS 循环一起结束；断开 SSH（远端 tmux client 退出，tmux 会话保留）。
     let _ = handle
         .disconnect(Disconnect::ByApplication, "session closed", "en")
         .await;
     match result {
         Ok(message) => {
-            println!("会话 {id} 结束：{message}");
             let _ = event_tx.send(WsEvent::Closed { message }).await;
+            Ok(())
         }
-        Err(error) => {
-            let _ = event_tx
-                .send(WsEvent::Error {
-                    message: format!("{error:#}"),
-                })
-                .await;
-            return Err(error);
-        }
+        Err(error) => Err(error),
     }
-    Ok(())
 }
 
+/// 连接并认证，失败原因面向用户。
 async fn connect_and_auth(
     config: &Arc<client::Config>,
     connection: &ConnectionConfig,
@@ -420,18 +176,17 @@ async fn connect_and_auth(
     Ok(handle)
 }
 
-/// 数据泵：WS 与 SSH 之间的双向转发。
+/// 数据泵：SSH 与 WS 之间的双向转发。
 ///
 /// - SSH → WS：`ChannelMsg::Data`/`ExtendedData` 原样转 binary 帧，
 ///   不做 String 转换，避免 UTF-8 跨 chunk 截断。
 /// - WS → SSH：input 文本直接 `data_bytes` 写入；resize 调 `window_change`。
-/// - 三路任一退出即整体退出：WS 关闭、SSH 关闭或注册表关闭。
+/// - 两路任一退出即整体退出：WS 关闭（event_tx 发送失败）或 SSH 关闭。
 async fn pump(
     read_half: &mut ChannelReadHalf,
     write_half: &ChannelWriteHalf<client::Msg>,
     input_rx: &mut mpsc::Receiver<ControlMessage>,
     event_tx: &mpsc::Sender<WsEvent>,
-    close_rx: &mut oneshot::Receiver<()>,
 ) -> anyhow::Result<String> {
     loop {
         tokio::select! {
@@ -461,10 +216,71 @@ async fn pump(
                     None => return Ok("WS 输入通道已关闭".into()),
                 }
             }
-            _ = &mut *close_rx => {
-                return Ok("会话已手动关闭".into());
-            }
         }
+    }
+}
+
+/// 在远端执行一条命令，收集 stdout 与退出码后断开。
+async fn exec_collect(
+    connection: &ConnectionConfig,
+    command: &str,
+) -> anyhow::Result<(String, Option<u32>)> {
+    let config = client_config();
+    let handle = tokio::time::timeout(CONNECT_TIMEOUT, connect_and_auth(&config, connection))
+        .await
+        .map_err(|_| anyhow::anyhow!("连接超时"))??;
+    let mut channel = handle.channel_open_session().await?;
+    channel.exec(false, command).await?;
+    let mut out = Vec::new();
+    let mut exit_code = None;
+    loop {
+        match channel.wait().await {
+            Some(ChannelMsg::Data { data }) => out.extend_from_slice(&data),
+            // stderr 丢弃：错误用退出码表达。
+            Some(ChannelMsg::ExtendedData { .. }) => {}
+            Some(ChannelMsg::ExitStatus { exit_status }) => exit_code = Some(exit_status),
+            Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => {}
+            Some(_) => {}
+            None => break,
+        }
+    }
+    let _ = handle
+        .disconnect(Disconnect::ByApplication, "done", "en")
+        .await;
+    Ok((String::from_utf8_lossy(&out).into_owned(), exit_code))
+}
+
+/// 列出远端 tmux 会话。远端没有 tmux 时返回 None（前端据此展示回退提示）。
+/// tmux 无会话（exit 1）是正常空态。
+pub async fn list_tmux_sessions(
+    connection: &ConnectionConfig,
+) -> anyhow::Result<Option<Vec<TmuxSession>>> {
+    let (out, code) = exec_collect(
+        connection,
+        // tmux 的 -F 格式串不解析 \t 转义（输出字面反斜杠），用竖线做字段分隔。
+        // 竖线不在会话名白名单里，不会冲突。
+        "tmux ls -F '#{session_name}|#{session_attached}|#{session_created}' 2>/dev/null",
+    )
+    .await?;
+    match code {
+        Some(0) => {
+            let sessions = out
+                .lines()
+                .filter_map(|line| {
+                    let mut parts = line.splitn(3, '|');
+                    Some(TmuxSession {
+                        name: parts.next()?.to_string(),
+                        attached: parts.next()?.parse().unwrap_or(0),
+                        created: parts.next()?.parse().unwrap_or(0),
+                    })
+                })
+                .collect();
+            Ok(Some(sessions))
+        }
+        Some(1) => Ok(Some(Vec::new())),
+        // 127 = tmux 不存在。
+        Some(127) => Ok(None),
+        code => anyhow::bail!("tmux ls 异常退出：{code:?}"),
     }
 }
 
@@ -484,6 +300,3 @@ impl<T> Context_<T> for Option<T> {
         self.ok_or_else(|| anyhow::anyhow!("{message}"))
     }
 }
-
-/// WS 消息长度上限的公开常量，供 WS 接入检查使用。
-pub const WS_TEXT_LIMIT_BYTES: usize = WS_TEXT_LIMIT;

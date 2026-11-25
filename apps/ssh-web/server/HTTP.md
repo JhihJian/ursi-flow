@@ -35,37 +35,33 @@
 
 ### `DELETE /connections/{id}`
 
-删除连接。同时终止该连接的全部活跃会话。返回 `{"success": true}`。
+删除连接。返回 `{"success": true}`。
 
-## 会话
+## tmux 会话
 
-### `POST /connections/{id}/connect`
+服务端不维护会话注册表：WS 握手即建立一条全新 SSH 连接并 attach 到远端 tmux，会话的创建、列表、保活全部由远端 tmux 承担。
 
-建立 SSH 会话（同步等待连接、认证与终端启动就绪后返回）。远端启动命令为 `tmux new -A -s ssh-main`（无 tmux 时远端侧回退普通 shell），断开后 tmux 会话保活，重连自动恢复。
+### `GET /connections/{id}/tmux-sessions`
 
-请求体可选：`{"cols": 80, "rows": 24}`（PTY 初始尺寸，1–500，默认 80×24）。
-
-成功返回：
+实时执行远端 `tmux ls` 并解析。返回：
 
 ```json
-{"session": {"id": "s-...", "connection_id": 1, "connection_name": "spike", "host": "127.0.0.1", "username": "spike", "attached": false}}
+{"sessions": [{"name": "ssh-main", "attached": 1, "created": 1700000000}]}
 ```
 
-失败返回 502 `ssh_error`，如 `认证失败：spike`、`Connection refused (os error 111)`、`连接超时`，此时不会产生会话。
+- 远端无 tmux（`tmux` 不存在或 exit 127）：`{"sessions": null}`。
+- 有 tmux 但无会话（exit 1）：`{"sessions": []}`。
+- SSH 失败（不可达、认证失败等）：502 `ssh_error`。
 
-### `GET /sessions`
+### `GET /connections/{id}/terminal?tmux_session=<name>`
 
-列出活跃会话，响应结构同上 `session` 对象，外层为 `{"sessions": [...]}`。
+WebSocket 升级请求，建立一条全新 SSH 连接并 attach：
 
-### `DELETE /sessions/{id}`
+- 不带 `tmux_session`：执行 `tmux new -A -s ssh-main`（默认会话，不存在则新建）。
+- 带 `tmux_session`：执行 `tmux new -A -s <name>`。会话名服务端白名单校验（ASCII 字母数字下划线连字符，1–64），非法返回 400 `bad_request` 后拒绝升级。
+- 远端无 tmux 时由远端侧一行启动命令回退普通 shell（终端内黄色提示），服务端不解析输出。
 
-主动关闭会话并断开 SSH。返回 `{"success": true}`。
-
-### `GET /sessions/{id}/ws`
-
-接入会话终端（WebSocket 升级请求）。同一会话同一时间只接受一个 WS；接入前会话已在注册表中，接入后即进入数据泵。
-
-**帧协议**（与 ursi-sandbox TerminalSurface 一致）：
+**帧协议**：
 
 - 客户端 → 服务端：文本帧 JSON
   - `{"type":"input","data":"..."}`：写入 PTY，单帧最长 64KiB，超长丢弃。
@@ -73,9 +69,9 @@
   - 其他类型与非法 JSON 忽略。
 - 服务端 → 客户端：
   - 二进制帧：终端原始字节流。
-  - 文本帧 JSON 事件：`{"type":"error","message":"..."}`（泵异常）与 `{"type":"closed","message":"远端退出，exit code 0"}`（远端退出；tmux 模式下指 tmux 会话结束）。发送后服务端关闭 WS 并销毁服务端会话（tmux 会话不受影响）。
+  - 文本帧 JSON 事件：`{"type":"error","message":"..."}`（SSH 失败，如 `认证失败：spike`）与 `{"type":"closed","message":"远端退出，exit code 0"}`（tmux 会话结束或普通 shell 退出）。发送后服务端关闭 WS 并断开 SSH；远端 tmux 会话不受影响，重连即恢复。
 
-WS 断开（无论谁先关）都会销毁会话并断开 SSH。会话不持久化，服务重启即全部失效。
+WS 断开即断开 SSH，服务端无任何会话状态；持久性完全由远端 tmux 承担。
 
 ### `GET /health`
 

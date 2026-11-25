@@ -4,7 +4,7 @@ mod handlers;
 mod models;
 mod session;
 
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::Router;
 use std::path::PathBuf;
 use tower_http::services::{ServeDir, ServeFile};
@@ -39,10 +39,11 @@ async fn main() -> anyhow::Result<()> {
                 .put(handlers::put_connection)
                 .delete(handlers::delete_connection),
         )
-        .route("/api/connections/{id}/connect", post(app::post_connect))
-        .route("/api/sessions", get(handlers::get_sessions))
-        .route("/api/sessions/{id}", delete(handlers::delete_session))
-        .route("/api/sessions/{id}/ws", get(app::get_session_ws))
+        .route(
+            "/api/connections/{id}/tmux-sessions",
+            get(app::get_tmux_sessions),
+        )
+        .route("/api/connections/{id}/terminal", get(app::get_terminal_ws))
         .fallback_service(ServeDir::new(static_dir()).fallback(ServeFile::new(index)));
 
     let port = std::env::var("PORT")

@@ -1,4 +1,4 @@
-import type { Connection, ConnectionInput, SessionInfo } from './types'
+import type { Connection, ConnectionInput, TmuxSessionsResponse } from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -42,17 +42,14 @@ export function deleteConnection(id: number): Promise<{ success: boolean }> {
   return request(`/connections/${id}`, { method: 'DELETE' })
 }
 
-export function connectConnection(id: number, cols?: number, rows?: number): Promise<{ session: SessionInfo }> {
-  return request(`/connections/${id}/connect`, {
-    method: 'POST',
-    body: JSON.stringify({ cols, rows }),
-  })
+/** 列出远端 tmux 会话；sessions 为 null 表示远端没有 tmux。 */
+export function listTmuxSessions(id: number): Promise<TmuxSessionsResponse> {
+  return request(`/connections/${id}/tmux-sessions`)
 }
 
-export function listSessions(): Promise<{ sessions: SessionInfo[] }> {
-  return request('/sessions')
-}
-
-export function closeSession(id: string): Promise<{ success: boolean }> {
-  return request(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+/** 终端 WS 地址：tmuxSession 缺省为 ssh-main。 */
+export function terminalWsUrl(id: number, tmuxSession?: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const name = tmuxSession ? `?tmux_session=${encodeURIComponent(tmuxSession)}` : ''
+  return `${protocol}://${window.location.host}/api/connections/${id}/terminal${name}`
 }

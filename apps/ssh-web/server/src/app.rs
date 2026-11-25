@@ -1,36 +1,30 @@
 use std::sync::OnceLock;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use rusqlite::Connection;
+use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::db;
-use crate::models::ConnectRequest;
 use crate::session::{
-    Attach, ControlMessage, SessionRegistry, WsEvent, WS_INPUT_CAPACITY, WS_TEXT_LIMIT_BYTES,
+    valid_tmux_session, ControlMessage, WsEvent, EVENT_CAPACITY, INPUT_CAPACITY,
+    WS_TEXT_LIMIT_BYTES,
 };
 
-/// 全局共享状态：连接库 + 会话注册表。
+/// 全局共享状态：连接库。会话状态完全由远端 tmux 承担，服务端无状态。
 pub struct AppState {
     pub db: Mutex<Connection>,
-    pub registry: SessionRegistry,
 }
 
 static APP: OnceLock<AppState> = OnceLock::new();
 
 /// 初始化全局状态，重复初始化视为程序错误。
 pub fn init_app(db: Connection) {
-    if APP
-        .set(AppState {
-            db: Mutex::new(db),
-            registry: SessionRegistry::new(),
-        })
-        .is_err()
-    {
+    if APP.set(AppState { db: Mutex::new(db) }).is_err() {
         panic!("app state 重复初始化");
     }
 }
@@ -88,52 +82,56 @@ pub fn not_found(message: impl Into<String>) -> AppError {
     AppError::NotFound(message.into())
 }
 
-/// `POST /api/connections/{id}/connect`：建立 SSH 会话。
-pub async fn post_connect(
-    State(_): State<()>,
+/// `GET /api/connections/{id}/tmux-sessions`：列出远端 tmux 会话。
+pub async fn get_tmux_sessions(
     Path(id): Path<i64>,
-    Json(request): Json<ConnectRequest>,
-) -> AppResult<Json<crate::models::ConnectResponse>> {
-    let config = {
-        let db = app_state().db.lock().await;
-        db::get_connection(&db, id)?.ok_or_else(|| not_found(format!("连接 {id} 不存在")))?
-    };
-    let cols = request.cols.unwrap_or(80).clamp(1, 500);
-    let rows = request.rows.unwrap_or(24).clamp(1, 500);
-    let info = app_state()
-        .registry
-        .connect(&config, cols, rows)
+) -> AppResult<Json<crate::models::TmuxSessionsResponse>> {
+    let config = load_connection(id).await?;
+    let sessions = crate::session::list_tmux_sessions(&config)
         .await
-        .map_err(AppError::Ssh)?;
-    Ok(Json(crate::models::ConnectResponse { session: info }))
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(crate::models::TmuxSessionsResponse { sessions }))
 }
 
-/// `GET /api/sessions/{id}/ws`：接入会话的终端 WebSocket。
-///
-/// 接入后先创建配对通道再交给会话任务，随后循环：
-/// - SSH 数据（binary）原样转发为 WS binary 帧；
-/// - input/resize 控制消息交给会话任务写入 SSH；
-/// - 会话任务退出后关闭 WS。
-pub async fn get_session_ws(Path(id): Path<String>, ws: WebSocketUpgrade) -> AppResult<Response> {
-    let state = app_state();
-    let info = state
-        .registry
-        .get(&id)
-        .await
-        .ok_or_else(|| not_found(format!("会话 {id} 不存在")))?;
-    if info.attached {
-        return Err(bad_request(format!("会话 {id} 已有终端接入")));
-    }
+async fn load_connection(id: i64) -> AppResult<crate::db::Connection> {
+    let db = app_state().db.lock().await;
+    db::get_connection(&db, id)?.ok_or_else(|| not_found(format!("连接 {id} 不存在")))
+}
 
-    let (event_tx, event_rx) = mpsc::channel::<WsEvent>(WS_INPUT_CAPACITY);
-    let (input_tx, input_rx) = mpsc::channel::<ControlMessage>(WS_INPUT_CAPACITY);
-    let attached = state
-        .registry
-        .attach(&id, Attach { input_rx, event_tx })
-        .await;
-    if !attached {
-        return Err(AppError::Conflict(format!("会话 {id} 已结束，无法接入")));
-    }
+#[derive(Debug, Deserialize)]
+pub struct TerminalQuery {
+    tmux_session: Option<String>,
+}
+
+/// `GET /api/connections/{id}/terminal`：终端 WebSocket。
+///
+/// 升级即建 SSH：连接、认证、开 PTY 并执行 tmux 启动命令（无 tmux 回退普通 shell）。
+/// 认证失败、主机不可达等错误以 `{"type":"error"}` 文本帧下发后关闭 WS。
+/// WS 关闭即断 SSH；远端 tmux 会话不受影响。
+pub async fn get_terminal_ws(
+    Path(id): Path<i64>,
+    Query(query): Query<TerminalQuery>,
+    ws: WebSocketUpgrade,
+) -> AppResult<Response> {
+    let config = load_connection(id).await?;
+    let tmux_session = match &query.tmux_session {
+        Some(name) => {
+            if !valid_tmux_session(name) {
+                return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+            }
+            name.clone()
+        }
+        None => crate::session::DEFAULT_TMUX_SESSION.to_string(),
+    };
+
+    let (event_tx, event_rx) = mpsc::channel::<WsEvent>(EVENT_CAPACITY);
+    let (input_tx, input_rx) = mpsc::channel::<ControlMessage>(INPUT_CAPACITY);
+    tokio::spawn(crate::session::run_terminal(
+        config,
+        Some(tmux_session),
+        input_rx,
+        event_tx,
+    ));
 
     Ok(ws.on_upgrade(move |socket| run_ws_socket(socket, event_rx, input_tx)))
 }
@@ -159,6 +157,7 @@ async fn run_ws_socket(
                         }))
                         .unwrap_or_default();
                         let _ = socket.send(Message::Text(text.into())).await;
+                        break;
                     }
                     Some(WsEvent::Closed { message }) => {
                         let text = serde_json::to_string(&serde_json::json!({
