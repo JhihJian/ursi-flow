@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { ProcessCommandExecutor } from "../executor-adapters/local-pi/process-command.ts";
 import { ExecutorUnconfirmed } from "ursi-flow-runtime";
 import type {
 	CommandOutput,
@@ -26,11 +27,19 @@ export class PlatformExecutor implements FlowExecutor {
 	private readonly client: PlatformClient;
 	private readonly ref: ExecutorRef;
 	private readonly file: string;
+	private readonly commands = new ProcessCommandExecutor();
+	private readonly packageRoot?: string;
 
-	constructor(config: PlatformConfig, ref: ExecutorRef, dir: string) {
+	constructor(
+		config: PlatformConfig,
+		ref: ExecutorRef,
+		dir: string,
+		options: { packageRoot?: string } = {},
+	) {
 		this.client = new PlatformClient(config);
 		this.ref = ref;
 		this.file = join(dir, "attempts.json");
+		this.packageRoot = options.packageRoot;
 	}
 
 	async prompt(agentName: string, instruct: Instruct): Promise<ExecutorReply> {
@@ -88,8 +97,27 @@ export class PlatformExecutor implements FlowExecutor {
 		}
 	}
 
-	async command(_invocation: CommandInvocation): Promise<CommandOutput> {
-		throw new Error("平台执行器只负责独立的 Agent 节点，不支持命令节点");
+	/** 命令节点不属于平台执行器契约，仍在 daemon 侧以当前用户权限运行。 */
+	async command(invocation: CommandInvocation): Promise<CommandOutput> {
+		const result = await this.commands.execute({
+			...invocation.request,
+			...(this.packageRoot && invocation.request.args
+				? { args: invocation.request.args.map((arg) => this.packagePath(arg)) }
+				: {}),
+			...(invocation.request.cwd === undefined && invocation.cwd !== undefined
+				? { cwd: invocation.cwd }
+				: {}),
+		});
+		return {
+			exitCode: result.exitCode,
+			stdout: result.stdout,
+			stderr: result.stderr,
+		};
+	}
+
+	private packagePath(arg: string): string {
+		if (!/^scripts\/[^\0]+$/.test(arg) || arg.includes("..")) return arg;
+		return join(this.packageRoot as string, arg);
 	}
 
 	/** 停止时取消所有未完成尝试。 */

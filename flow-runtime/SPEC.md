@@ -51,5 +51,7 @@ references:
 
 #### 验收
 
-- 只执行 `新建Agent` 与 `confirm`。并行、`复用Agent`、`执行自定义命令`、`执行Flow`、Profile 与包内资料引用在启动前被拒绝，`start` 抛 `invalid` 且不创建运行目录。
+- 执行四种动作：`新建Agent`、`confirm`、`执行自定义命令`、并行开始点。`复用Agent`、`执行Flow`、Profile、节点级执行器在解析期被拒绝，`start` 抛 `invalid` 且不创建运行目录。
+- 命令步骤执行已渲染的 `request`；`output: "variables"` 时用 `readCommandVariables` 解析 stdout 的 `{"variables": {...}}` 信封，退出码非 0 仍按 `已执行` 路由，退出码与输出写入日志。
+- 并行步骤并发执行全部分支命令，按分支提交 `{outcome: "已执行", variables?}`；校验分支结果、合并分支写入的全局变量、拒绝同名写入，然后生成汇合命令步骤。
 - 引擎不读取模型配置、不启动子进程、不接触网络；替换执行器即可换掉模型与运行环境。

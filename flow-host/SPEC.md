@@ -80,9 +80,11 @@ Flow Host 通过独立执行器 SDK 为 MCP 客户端提供整条 Flow 的 stdio
 - adapter 将 `<URSI_EXECUTOR_ROOT>/<attemptId>/workspace` 作为 cwd，并使用其中的 `artifacts/`；调用 inspect/cancel 前确认真实目录、拒绝符号链接、验证当前用户所有权以及 daemon job 的 ID、Flow、revision、cwd 和任务身份。
 - stdio 生命周期遵循 MCP `initialize`、`notifications/initialized`、`tools/list`、`tools/call`，每个请求一行 JSON，每个响应一行 JSON；解析错误、协议错误和 stdin 关闭都能干净处理。
 
-### 宿主侧的推进能力
+### 推进与历史都来自引擎
 
 #### 验收
 
-- 宿主当前仍能执行命令节点、并行分支与 `执行Flow` 子流程，并保存 `facts.json` 运行事实；这部分能力尚未进入 Flow Core 与引擎。
-- 这些能力只作为过渡存在：同一类推进逻辑不得在宿主与引擎里各实现一遍，收敛方向见[精简运行时设计](../docs/design/flow-runtime/RUNTIME.md)。
+- daemon 与 CLI 都通过 [Flow Runtime](../flow-runtime/SPEC.md) 的引擎推进：Agent 节点交给执行器会话，命令节点交给子进程，并行分支并发执行。宿主不再保留第二套协调器。
+- 运行状态由引擎快照推导，`job.json` 只保存受理意图。`run.history` 把过程日志投影成 `runs`、`nodeRuns`、`routeDecisions`、`parallelRounds`、`recoveries`，供 Workbench 与 CLI 读取。
+- 平台执行器按 `stepId` 保存 `attemptId`，`unverified` 时 Run 为 `unknown`，`run.resume` 只查询并核实原尝试；确认取消后才记停止事实。
+- 命令参数中独立的 `scripts/...` 按包根定位，其他参数原样传递；命令进程的工作目录是本次运行的工作目录。

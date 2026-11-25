@@ -58,7 +58,9 @@ process.once("message", async (message: JobMessage) => {
 			throw Error("平台执行器暂不支持人工确认节点");
 		const engine = new FlowEngine({
 			executor: job.executorRef
-				? new PlatformExecutor(platform!, job.executorRef, dir)
+				? new PlatformExecutor(platform!, job.executorRef, dir, {
+						packageRoot: resolve(path, ".."),
+					})
 				: localExecutor(provider!, dir, resolve(path, "..")),
 			store: new FileLogStore(store),
 		});
