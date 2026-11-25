@@ -143,12 +143,6 @@ function ProfileDetail({
 
   const { name, description, extraKeys, body } = splitProfileText(detail.content)
 
-  async function save(payload: ProfilePayload) {
-    void payload
-    return false
-  }
-  void save
-
   return (
     <ProfileEditor
       file={file}
