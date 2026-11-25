@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `server/`：Rust 服务（axum + russh + rusqlite）。托管静态页面、连接配置 CRUD 与 WebSocket 终端桥。接口契约见 [server/HTTP.md](server/HTTP.md)。
+- `server/`：Rust 服务（axum + russh + rusqlite）。托管静态页面、连接配置 CRUD 与 WebSocket 终端桥。远端有 tmux 时自动接入固定会话 `ssh-main`，断开保活、重连恢复。接口契约见 [server/HTTP.md](server/HTTP.md)。
 - `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。
 
 ## 运行

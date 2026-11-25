@@ -41,7 +41,7 @@
 
 ### `POST /connections/{id}/connect`
 
-建立 SSH 会话（同步等待连接、认证与 shell 就绪后返回）。
+建立 SSH 会话（同步等待连接、认证与终端启动就绪后返回）。远端启动命令为 `tmux new -A -s ssh-main`（无 tmux 时远端侧回退普通 shell），断开后 tmux 会话保活，重连自动恢复。
 
 请求体可选：`{"cols": 80, "rows": 24}`（PTY 初始尺寸，1–500，默认 80×24）。
 
@@ -73,7 +73,7 @@
   - 其他类型与非法 JSON 忽略。
 - 服务端 → 客户端：
   - 二进制帧：终端原始字节流。
-  - 文本帧 JSON 事件：`{"type":"error","message":"..."}`（泵异常）与 `{"type":"closed","message":"远端退出，exit code 0"}`（远端正常退出）。发送后服务端关闭 WS 并销毁会话。
+  - 文本帧 JSON 事件：`{"type":"error","message":"..."}`（泵异常）与 `{"type":"closed","message":"远端退出，exit code 0"}`（远端退出；tmux 模式下指 tmux 会话结束）。发送后服务端关闭 WS 并销毁服务端会话（tmux 会话不受影响）。
 
 WS 断开（无论谁先关）都会销毁会话并断开 SSH。会话不持久化，服务重启即全部失效。
 

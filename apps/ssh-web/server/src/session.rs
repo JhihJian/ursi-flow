@@ -305,7 +305,10 @@ async fn run_session_connected(
         _ = &mut pipes.close_rx => return Ok(()),
     };
 
-    // 开 PTY + shell。
+    // 开 PTY 并启动持久化入口命令：
+    //   有 tmux → attach 到固定会话 ssh-main（断开后保活，重连恢复屏幕）；
+    //   无 tmux → 回退普通 shell，并在终端里打一行提示。
+    // 整条逻辑在远端一行命令内完成，服务端不做输出解析。
     let channel = handle.channel_open_session().await?;
     channel
         .request_pty(
@@ -318,9 +321,23 @@ async fn run_session_connected(
             &[],
         )
         .await?;
-    channel.request_shell(false).await?;
+    channel.exec(false, START_COMMAND).await?;
+    run_attached(handle, channel, connection, id, pipes).await
+}
 
-    // shell 就绪，通知 connect 调用方成功。
+/// 远端启动命令：tmux 可用则 attach 固定会话，否则回退普通 shell。
+/// 注意保持 POSIX sh 兼容（远端不一定是 bash）。
+const START_COMMAND: &str = r"command -v tmux >/dev/null 2>&1 && tmux new -A -s ssh-main || { printf '\033[33m[ssh-web] 远端无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec $SHELL; }";
+
+/// 通道就绪后：通知 connect 成功、等 WS 接入、驱动数据泵、收尾。
+async fn run_attached(
+    handle: client::Handle<ClientHandler>,
+    channel: russh::Channel<client::Msg>,
+    connection: &ConnectionConfig,
+    id: &str,
+    pipes: &mut SessionPipes,
+) -> anyhow::Result<()> {
+    // 启动就绪，通知 connect 调用方成功。
     if let Some(ready_tx) = pipes.ready_tx.take() {
         let _ = ready_tx.send(Ok(()));
     }
