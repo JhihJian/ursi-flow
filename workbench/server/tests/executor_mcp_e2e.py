@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """真实 Workbench HTTP → stdio MCP → 外置 flowd 验收。构建后从仓库根目录运行：
 
-    (cd flow-runtime && npm run build)
-    cargo build --locked --manifest-path flow-runtime/client/Cargo.toml
+    (cd flow-host && npm run build)
+    cargo build --locked --manifest-path flow-host/client/Cargo.toml
     cargo build --locked --manifest-path workbench/Cargo.toml -p ursi-server
     python3 workbench/server/tests/executor_mcp_e2e.py
 """
@@ -320,8 +320,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     for name, default in [('server', 'workbench/target/debug/ursi-server'),
                           ('cli', 'flow-runtime/client/target/debug/ursi-flow'),
-                          ('daemon', 'flow-runtime/dist/machine/daemon.js'),
-                          ('adapter-bin', 'flow-runtime/dist/integrations/mcp/stdio.js')]:
+                          ('daemon', 'flow-host/dist/machine/daemon.js'),
+                          ('adapter-bin', 'flow-host/dist/integrations/mcp/stdio.js')]:
         parser.add_argument('--' + name, type=Path, default=ROOT / default)
     BINS = parser.parse_args()
     BINS.server = BINS.server.resolve(strict=True)

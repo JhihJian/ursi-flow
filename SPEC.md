@@ -10,7 +10,7 @@ references:
 
 ## 功能意图
 
-ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。工作台与 Runtime 使用各自的凭证消费同一修订。
+ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。[Flow Runtime](flow-runtime/SPEC.md) 是只做推进的库：引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。[Flow Host](flow-host/SPEC.md) 提供 daemon、CLI、MCP adapter 与执行器调用。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。工作台与 Runtime 使用各自的凭证消费同一修订。
 
 独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），只读写文件不运行会话，与 Pi Web 和 CLI 互补。
 
@@ -73,10 +73,9 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 
 #### 验收
 
-- 独立控制台只取 `flow-runtime/web` 即可构建并发布静态包，用同源 `/api/v1` 接口完成建包、校验、运行、查看证据、停止与配置修改。
+- 独立 CLI 直连 Flow Host 的 daemon，可列出和读取包、创建、校验、发布、启动与停止运行、修改运行配置，并查询节点结果与路由记录。
 - 启动运行必须先确定工作目录：daemon 运行配置里保存工作区根目录，未指定目录的运行在 `<工作区根目录>/<Run ID>` 新建目录执行；工作区未配置时拒绝启动并提示去配置。
-- 控制台请求的形状与工作台的 Flow 接口一致，嵌入工作台时不需要改写页面逻辑；Runtime 未启动时显示错误，不退回演示数据。
-- 运行详情按固定修订画流转图并标出当前节点，节点执行记录直接展示 Pi SDK 会话轨迹；轨迹来自 Runtime 按节点执行保存的会话切片，命令节点与旧运行降级为命令证据或说明。路由记录把节点开始、节点结束与路由判定按时间排成一条序列，可逐条查看入参、提交结果与去向。
+- 含确认节点的运行挂起后，用 `run respond` 提交一个结果名继续；`run trajectory` 按节点执行读取 Pi 会话切片。daemon 未启动时 CLI 报连接错误，不退回演示数据。
 
 ### 在受信工作区执行与查询
 

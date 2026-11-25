@@ -70,4 +70,4 @@ cargo run --locked -p ursi-server
 
 收到 `SIGINT`（Ctrl-C）或 `SIGTERM` 后，Server 停止 HTTP 服务。若启用了 Flow，还会等待自己的 daemon 退出。启用 Flow 时若已有 `runtime.sock`，Server 拒绝启动，不接管已有 socket 或进程。先核实原实例是否仍在运行，仅在确认它已退出后清理残留 socket。
 
-要从 CLI 检查 Flow 数据，可按[客户端说明](../../flow-runtime/client/README.md)安装 `ursi-flow`，将 CLI 的 `URSI_FLOW_HOME` 设为上述 `flow-runtime/` 子目录的绝对路径。daemon 在线时运行 `ursi-flow flow list` 即可。
+要从 CLI 检查 Flow 数据，可按[客户端说明](../../flow-host/client/README.md)安装 `ursi-flow`，将 CLI 的 `URSI_FLOW_HOME` 设为上述 `flow-runtime/` 子目录的绝对路径。daemon 在线时运行 `ursi-flow flow list` 即可。

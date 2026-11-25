@@ -3,7 +3,7 @@ parent: ../../SPEC.md
 depends-on:
   - ../flow/SPEC.md
   - ../transport/SPEC.md
-  - ../../../../flow-runtime/client/SPEC.md
+  - ../../../../flow-host/client/SPEC.md
 references:
   - ../../../../docs/design/workbench/SERVER-FLOW.md
   - ../../README.md

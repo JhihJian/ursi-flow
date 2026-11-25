@@ -50,6 +50,6 @@ console.assert(done.current === null);
 
 两个接口均同步返回 `{ context }`，非法提交抛出错误并保留原快照。把快照作为只读值保存，只用最新快照受理提交。SDK 不会跟踪旧快照是否已用过，并发时需由宿主保证同一版本只被接受一次。
 
-首版支持单文档、单一待办、分支、循环、普通 `新建Agent` 和 `confirm`。复用 Agent、专用执行器、Agent Profile、包内资料、命令、子 Flow 和并行由 [Flow Runtime](../flow-runtime/README.md) 提供。`ursi-flow-core/runtime` 是 Runtime 使用的共享规则入口，SDK 调用方从 `ursi-flow-core` 导入。
+首版支持单文档、单一待办、分支、循环、普通 `新建Agent` 和 `confirm`。复用 Agent、专用执行器、Agent Profile、包内资料、命令、子 Flow 和并行由 [Flow Runtime](../flow-runtime/README.md) 与 [Flow Host](../flow-host/README.md) 提供。`ursi-flow-core/runtime` 是 Runtime 使用的共享规则入口，SDK 调用方从 `ursi-flow-core` 导入。
 
 在 `flow-core/` 运行 `npm test` 可验证流程推进和跨进程交接，`npm run test:pack` 检查仓库外的离线安装。
