@@ -58,29 +58,17 @@ export function App() {
   }, [section])
 
   if (homeChecking && !homePath) return <Loading label="探测默认 pi home" />
-  if (!homePath) {
-    return (
-      <>
-        <HomeBar />
-        <main className="app-main">
-          <EmptyState title="没有设置 pi home" hint={homeError ?? '点击右上角「切换 home」输入绝对路径。'} />
-        </main>
-      </>
-    )
-  }
-  if (homeValid === false) {
-    return (
-      <>
-        <HomeBar />
-        <main className="app-main">
-          <EmptyState
-            title="该路径不是有效的 pi home"
-            hint={`${homePath} 下没有 settings.json。确认目录后重新切换。`}
-          />
-        </main>
-      </>
-    )
-  }
+
+  // 没有可用 home 时仍保留侧边栏：用户要从同一个 Pi home 列表里挑一个或新增。
+  const blocked =
+    !homePath
+      ? { title: '没有设置 pi home', hint: homeError ?? '在左侧 Pi home 列表点「+」输入绝对路径。' }
+      : homeValid === false
+        ? {
+            title: '该路径不是有效的 pi home',
+            hint: `${homePath} 下没有 settings.json。在左侧列表选另一个，或用「+」新增。`,
+          }
+        : null
 
   return (
     <>
@@ -88,14 +76,18 @@ export function App() {
       <div className="app-main">
         <Sidebar active={section} onSelect={setSection} />
         <main className="config-detail" key={homePath}>
-          {SECTIONS.map(({ id }) => {
-            if (!mounted.has(id)) return null
-            return (
-              <div key={id} hidden={id !== section} style={id !== section ? { display: 'none' } : undefined}>
-                <SectionContent id={id} home={homePath} />
-              </div>
-            )
-          })}
+          {blocked ? (
+            <EmptyState title={blocked.title} hint={blocked.hint} />
+          ) : (
+            SECTIONS.map(({ id }) => {
+              if (!mounted.has(id)) return null
+              return (
+                <div key={id} hidden={id !== section} style={id !== section ? { display: 'none' } : undefined}>
+                  <SectionContent id={id} home={homePath} />
+                </div>
+              )
+            })
+          )}
         </main>
       </div>
       <footer className="status-footer">

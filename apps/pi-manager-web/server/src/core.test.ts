@@ -8,7 +8,7 @@ import { readSnapshotSync, writeSnapshot, ConflictError } from './rw.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { toggleDisableModelInvocation, readDisableModelInvocation } from './skills.ts'
 import { readMcp, maskSecret } from './mcp-file.ts'
-import { readModels, readAuth, setAuthApiKey } from './models-auth.ts'
+import { readModels, readAuth, mergeAuth } from './models-auth.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
 
@@ -196,17 +196,83 @@ test('models：JSONC 读入、apiKey 遮蔽、模型计数', () => {
   assert.equal((p.entry.apiKey as string).includes('abcdefgh1234'), false)
 })
 
-test('auth：设置与读取，密钥不回传', async () => {
+test('auth：写入 api_key 条目，密钥不回传', async () => {
   const dir = makeHome()
-  const revision = await setAuthApiKey(dir, '', 'zenmux', 'sk-secret-9999')
+  const revision = await mergeAuth(dir, '', {
+    zenmux: { type: 'api_key', key: 'sk-secret-9999' },
+  })
   assert.ok(revision)
   const listing = readAuth(dir)
   assert.equal(listing.entries.length, 1)
   assert.equal(listing.entries[0].provider, 'zenmux')
   assert.equal(listing.entries[0].type, 'api_key')
-  assert.ok(listing.entries[0].masked!.startsWith('•••'))
+  assert.deepEqual(listing.entries[0].maskedFields, ['key'])
+  assert.ok((listing.entries[0].entry.key as string).startsWith('•••'))
   const raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
-  assert.equal(raw.zenmux.api_key, 'sk-secret-9999')
+  assert.deepEqual(raw.zenmux, { type: 'api_key', key: 'sk-secret-9999' })
+})
+
+test('auth：合并写回保留原文，改值写新值，null 删除条目', async () => {
+  const dir = makeHome()
+  await mergeAuth(dir, '', {
+    p1: { type: 'api_key', key: 'sk-keep-1111', env: { REGION: 'eu' } },
+    p2: { type: 'oauth', access: 'acc-2222-token', refresh: 'ref-3333-token', expires: 1790000000000 },
+  })
+  let listing = readAuth(dir)
+  const p1 = listing.entries.find((e) => e.provider === 'p1')!
+  const p2 = listing.entries.find((e) => e.provider === 'p2')!
+  assert.deepEqual(p1.maskedFields.sort(), ['key'])
+  assert.deepEqual(p2.maskedFields.sort(), ['access', 'refresh'])
+  assert.equal(p2.expires, 1790000000000)
+
+  // 原样提交掩码 + 改 env → key 还原，env 更新
+  const submitted1 = JSON.parse(JSON.stringify(p1.entry)) as Record<string, unknown>
+  ;(submitted1.env as Record<string, string>).REGION = 'us'
+  await mergeAuth(dir, listing.revision, { p1: submitted1 })
+  let raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p1.key, 'sk-keep-1111')
+  assert.equal(raw.p1.env.REGION, 'us')
+
+  // oauth 原样提交掩码 + 改 expires → access/refresh 还原
+  listing = readAuth(dir)
+  const p2entry = listing.entries.find((e) => e.provider === 'p2')!
+  const submitted2 = JSON.parse(JSON.stringify(p2entry.entry)) as Record<string, unknown>
+  submitted2.expires = 1800000000000
+  await mergeAuth(dir, listing.revision, { p2: submitted2 })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p2.access, 'acc-2222-token')
+  assert.equal(raw.p2.refresh, 'ref-3333-token')
+  assert.equal(raw.p2.expires, 1800000000000)
+
+  // 改成新 key
+  listing = readAuth(dir)
+  const p1entry = listing.entries.find((e) => e.provider === 'p1')!.entry
+  await mergeAuth(dir, listing.revision, { p1: { ...p1entry, key: 'sk-new-4444' } })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p1.key, 'sk-new-4444')
+
+  // null 删除
+  listing = readAuth(dir)
+  await mergeAuth(dir, listing.revision, { p2: null })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p2, undefined)
+  assert.ok(raw.p1)
+})
+
+test('auth：revision 不匹配时拒绝写入；!command 形式不遮蔽', async () => {
+  const dir = makeHome()
+  await mergeAuth(dir, '', { p1: { type: 'api_key', key: 'sk-a-5555' } })
+  const listing = readAuth(dir)
+  await assert.rejects(mergeAuth(dir, 'stale-revision', { p1: null }), /已被其他进程修改/)
+  const withCommand = await mergeAuth(dir, listing.revision, {
+    p2: { type: 'api_key', key: '!security find-generic-password -ws p2' },
+  })
+  assert.ok(withCommand)
+  const after = readAuth(dir)
+  const p2 = after.entries.find((e) => e.provider === 'p2')!
+  assert.equal(p2.keyCommand, '!security find-generic-password -ws p2')
+  assert.deepEqual(p2.maskedFields, [])
+  assert.equal(p2.entry.key, '!security find-generic-password -ws p2')
 })
 
 // ---------------------------------------------------------------------------
@@ -342,32 +408,114 @@ test('home 解析：~ 展开为当前用户主目录', async () => {
   }
 })
 
-test('homes：发现默认 home 并合并登记的预设', async () => {
-  const { discoverHomes, displayLabel } = await import('./homes.ts')
+test('homes：清单播种默认 home，可新增、改名、移除', async () => {
+  const { HomeRegistry, displayLabel } = await import('./homes.ts')
   const { homedir } = await import('node:os')
-  const base = join(homedir(), '.pi-manager-homes-test')
-  mkdirSync(base, { recursive: true })
-  writeFileSync(join(base, 'settings.json'), '{"packages":["a","b"]}')
-  mkdirSync(join(base, 'skills', 'one'), { recursive: true })
-  writeFileSync(join(base, 'skills', 'one', 'SKILL.md'), '---\nname: one\n---\n')
-  writeFileSync(join(base, 'mcp.json'), '{"mcpServers":{"s1":{}}}')
+  const stateFile = join(mkdtempSync(join(tmpdir(), 'pi-registry-')), 'homes.json')
+  const dir = mkdtempSync(join(tmpdir(), 'pi-home-a-'))
+  writeFileSync(join(dir, 'settings.json'), '{"packages":["a","b"]}')
+  mkdirSync(join(dir, 'skills', 'one'), { recursive: true })
+  writeFileSync(join(dir, 'skills', 'one', 'SKILL.md'), '---\nname: one\n---\n')
+  writeFileSync(join(dir, 'mcp.json'), '{"mcpServers":{"s1":{}}}')
   try {
-    const homes = discoverHomes([base, '~/nonexistent-preset-xyz'])
-    const found = homes.find((h) => h.path === base)
-    assert.ok(found, '登记的预设应出现在列表里')
-    assert.equal(found.valid, true)
-    assert.deepEqual(found.sources, ['manual'])
-    assert.equal(found.skills, 1)
-    assert.equal(found.packages, 2)
-    assert.equal(found.mcpServers, 1)
-    // 失效预设仍然列出，标记 invalid
-    const missing = homes.find((h) => h.path.endsWith('nonexistent-preset-xyz'))
-    assert.ok(missing)
-    assert.equal(missing.valid, false)
-    // 默认 home 排在最前
-    assert.ok(homes.some((h) => h.sources.includes('default')))
+    const registry = new HomeRegistry(stateFile)
+    // 播种：默认 home 在清单里
+    const seeded = registry.list()
+    assert.ok(seeded.some((h) => h.sources.includes('default') && h.listed))
+
+    // 登记已有目录（adopt）
+    const added = await registry.add({ mode: 'adopt', path: dir, name: '我的配置' })
+    assert.equal(added.name, '我的配置')
+    assert.equal(added.listed, true)
+    assert.equal(added.valid, true)
+    assert.equal(added.skills, 1)
+    assert.equal(added.packages, 2)
+    assert.equal(added.mcpServers, 1)
+    // 清单落盘
+    const persisted = JSON.parse(readFileSync(stateFile, 'utf8')) as Array<{ name: string; path: string }>
+    assert.ok(persisted.some((e) => e.name === '我的配置' && e.path === dir))
+
+    // 重复登记拒绝
+    await assert.rejects(registry.add({ mode: 'adopt', path: dir }), /已在清单中/)
+
+    // 改名与说明
+    const renamed = await registry.update(added.id, { name: '改过的名字', description: '一句话' })
+    assert.equal(renamed.name, '改过的名字')
+    assert.equal(renamed.description, '一句话')
+    await assert.rejects(registry.update(added.id, { name: '  ' }), /name 不能为空/)
+
+    // 移除只动清单
+    await registry.remove(added.id)
+    assert.equal(registry.list().some((h) => h.path === dir), false)
+    assert.ok(existsSync(join(dir, 'settings.json')), '移除不该删文件')
+
+    // 新实例从状态文件恢复
+    const reloaded = new HomeRegistry(stateFile)
+    assert.equal(reloaded.list().some((h) => h.path === dir), false)
+
     assert.equal(displayLabel(join(homedir(), '.pi', 'agent')), '~/.pi/agent')
   } finally {
-    rmSync(base, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('homes：init 初始化默认配置，clone 复制配置但不带凭据', async () => {
+  const { HomeRegistry } = await import('./homes.ts')
+  const stateFile = join(mkdtempSync(join(tmpdir(), 'pi-registry-')), 'homes.json')
+  const registry = new HomeRegistry(stateFile)
+  const source = mkdtempSync(join(tmpdir(), 'pi-src-'))
+  const targetInit = join(mkdtempSync(join(tmpdir(), 'pi-tgt-')), 'fresh')
+  const targetClone = join(mkdtempSync(join(tmpdir(), 'pi-tgt-')), 'cloned')
+  try {
+    // 来源 home 准备配置
+    writeFileSync(join(source, 'settings.json'), '{"defaultThinkingLevel":"high"}')
+    writeFileSync(join(source, 'models.json'), '{"providers":{}}')
+    writeFileSync(join(source, 'mcp.json'), '{"mcpServers":{}}')
+    writeFileSync(join(source, 'auth.json'), '{"p":{"type":"api_key","key":"sk-secret"}}')
+    mkdirSync(join(source, 'skills', 's1'), { recursive: true })
+    writeFileSync(join(source, 'skills', 's1', 'SKILL.md'), '---\nname: s1\n---\nbody')
+    mkdirSync(join(source, 'agents'), { recursive: true })
+    writeFileSync(join(source, 'agents', 'a1.md'), '---\nname: a1\n---\n')
+    mkdirSync(join(source, 'sessions'), { recursive: true })
+    writeFileSync(join(source, 'sessions', 'x.jsonl'), '{}')
+
+    // init：建目录 + 默认骨架
+    const created = await registry.add({ mode: 'init', path: targetInit, name: '新配置' })
+    assert.equal(created.valid, true)
+    assert.equal(created.name, '新配置')
+    assert.equal(readFileSync(join(targetInit, 'settings.json'), 'utf8').trim(), '{}')
+    assert.ok(existsSync(join(targetInit, 'skills')))
+    assert.ok(existsSync(join(targetInit, 'agents')))
+    assert.equal(existsSync(join(targetInit, 'auth.json')), false)
+
+    // 非空目录不能初始化
+    await assert.rejects(
+      registry.add({ mode: 'init', path: targetInit }),
+      /目录非空/,
+    )
+    // 只建最后一级：上级目录缺失时明确报错，不静默生成目录链
+    await assert.rejects(
+      registry.add({ mode: 'init', path: join(targetInit, 'no-such-parent', 'deep') }),
+      /上级目录不存在/,
+    )
+
+    // clone：复制配置，跳过 auth.json 与 sessions
+    const cloned = await registry.add({ mode: 'clone', path: targetClone, from: source, name: '克隆' })
+    assert.equal(cloned.valid, true)
+    assert.equal(
+      JSON.parse(readFileSync(join(targetClone, 'settings.json'), 'utf8')).defaultThinkingLevel,
+      'high',
+    )
+    assert.ok(existsSync(join(targetClone, 'skills', 's1', 'SKILL.md')))
+    assert.ok(existsSync(join(targetClone, 'agents', 'a1.md')))
+    assert.equal(existsSync(join(targetClone, 'auth.json')), false, '凭据默认不复制')
+    assert.equal(existsSync(join(targetClone, 'sessions')), false, '运行态目录不复制')
+
+    // includeAuth 显式开启才复制凭据
+    const targetClone2 = join(mkdtempSync(join(tmpdir(), 'pi-tgt-')), 'withauth')
+    await registry.add({ mode: 'clone', path: targetClone2, from: source, includeAuth: true })
+    assert.ok(existsSync(join(targetClone2, 'auth.json')))
+  } finally {
+    rmSync(source, { recursive: true, force: true })
   }
 })

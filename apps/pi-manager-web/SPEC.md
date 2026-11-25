@@ -16,9 +16,12 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- 首次打开自动探测默认 pi home；顶栏显示当前路径，「切换 home」输入绝对路径后即时校验。
-- 左侧「Pi 预设」分组列出所有已知 pi home：默认位置（`~/.pi/agent`）、`PI_CODING_AGENT_DIR` 指定的位置、同机其他用户的 `/home/*/.pi/agent`，以及用户自己登记的预设。每条显示短名、来源标记与内容摘要（skill / agent / mcp / 插件数量）。
-- 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效目录标红并说明缺失项。「+」把当前路径登记为预设（存 localStorage），已登记的预设可「×」移除，目录本身不受影响。
+- 首次打开自动探测默认 pi home；顶栏只显示当前路径，切换与新增统一在左侧「Pi home」列表完成。
+- 左侧「Pi home」分组列出 pi home 清单与自动发现项：清单由服务端持有并原子落盘（`$XDG_STATE_HOME/pi-manager-web/homes.json`，`PI_MANAGER_STATE` 可覆盖），首次启动用默认位置（`~/.pi/agent`）与 `PI_CODING_AGENT_DIR` 播种；`/home/*/.pi/agent` 等未登记项作为只读候选列出，标来源「本机」并带「+」一键登记。条目 id 取 realpath 的 sha256 前 16 位，跨重启稳定。
+- 每条显示自定义名称、完整路径与内容摘要（skill / agent / mcp / 插件数量）；悬停出现重命名、编辑说明、从清单移除三个操作，移除有内联确认且只动清单不删文件。
+- 分组标题右侧「+」展开新增面板，三选一：**初始化**（新建目录，生成 `settings.json` 与空的 `skills/`、`agents/`）、**复制**（从另一份 home 复制 `settings.json`/`models.json`/`mcp.json` 与 `skills`、`agents`、`prompts`、`themes` 目录，默认不带 `auth.json` 凭据，也不带 sessions/npm 等运行态）、**登记**（目录必须已是 pi home）。可同时指定显示名称，留空取目录名。
+- 新增只创建最后一级目录：上级目录不存在时报错，不静默生成目录链；目标已存在且非空返回 409。
+- 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效条目标红并说明缺失项。当前 home 失效时侧边栏仍可用，内容区提示从列表另选或新增。「↻」重新扫描。
 - 目录缺 `settings.json`（realpath 校验）时明确提示"不是有效的 pi home"，分区不加载；路径错误不写脏数据。
 - 切换 home 后整个内容区强制重挂载，所有分区状态重置；选中的 home 持久化在 localStorage，下次打开自动恢复。
 - 服务端不持有全局 home 状态，每个请求携带 `?home=` 参数并逐次 realpath 校验。
@@ -60,9 +63,11 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- 「凭据」分区列出 `auth.json` 条目（provider、oauth 或 api_key 类型），api_key 显示掩码（末 4 位）。
-- 设置/覆盖 API key 只在提交瞬间经请求体传输，页面不回显明文；删除条目有确认。
-- OAuth 凭据只读展示；凭据原文任何接口都不返回。
+- 「凭据」分区按 `auth.json` 条目列出 provider、类型（api_key / oauth / 未知）与凭据摘要；oauth 显示过期时间并标注是否已过期，`!command` 形式的 key 标注为从命令取密钥。
+- 选中条目后以 JSON 编辑完整条目并保存：`key`/`access`/`refresh` 回显为掩码（末 4 位），原样保存即保留磁盘原文，改成新值则写新值；api_key 的 `env` 等其余字段可直接改。
+- 新增条目按 api_key 或 oauth 模板创建；删除条目有确认。合并写回只改提交的 provider，其余条目原样保留，原文件备份 `auth.json.bak-manager`，写入模式 0600。
+- 乐观锁：`auth.json` 被 pi CLI 等进程改过后写入返回 409，原文件不变。
+- 凭据原文任何接口都不返回，只在提交瞬间经请求体传输。
 
 ### 安全边界
 
@@ -74,5 +79,5 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 发现已知 pi home 并生成轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
 - `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
