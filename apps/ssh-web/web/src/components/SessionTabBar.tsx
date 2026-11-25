@@ -2,7 +2,6 @@ import { useSshStore } from '../ssh-context'
 
 /** 顶部标签栏：每个打开的 tmux 会话一个标签，点击激活，中键或 × 关闭；"+" 新建会话。 */
 export function SessionTabBar() {
-  const connections = useSshStore((state) => state.connections)
   const terminals = useSshStore((state) => state.terminals)
   const activeTerminalKey = useSshStore((state) => state.activeTerminalKey)
   const activeId = useSshStore((state) => state.activeId)
@@ -10,13 +9,7 @@ export function SessionTabBar() {
   const closeTerminal = useSshStore((state) => state.closeTerminal)
   const openSessionForm = useSshStore((state) => state.openSessionForm)
 
-  if (terminals.length === 0) return null
-
-  const labelOf = (connectionId: number, tmuxSession: string | null): string => {
-    const session = tmuxSession ?? 'main'
-    const connection = connections.find((item) => item.id === connectionId)
-    return connection ? `${session} · ${connection.name}` : session
-  }
+  const labelOf = (tmuxSession: string | null): string => tmuxSession ?? 'main'
 
   return (
     <div className="ssh-tabbar" role="tablist">
@@ -26,7 +19,7 @@ export function SessionTabBar() {
             key={tab.key}
             role="tab"
             aria-selected={tab.key === activeTerminalKey}
-            title={labelOf(tab.connectionId, tab.tmuxSession)}
+            title={labelOf(tab.tmuxSession)}
             className={
               tab.key === activeTerminalKey
                 ? `ssh-tab active state-${tab.state}`
@@ -37,7 +30,7 @@ export function SessionTabBar() {
               if (event.button === 1) closeTerminal(tab.key)
             }}
           >
-            <span className="ssh-tab-label">{labelOf(tab.connectionId, tab.tmuxSession)}</span>
+            <span className="ssh-tab-label">{labelOf(tab.tmuxSession)}</span>
             <button
               type="button"
               className="ssh-tab-close"
@@ -51,6 +44,7 @@ export function SessionTabBar() {
             </button>
           </div>
         ))}
+        {terminals.length === 0 ? <div className="ssh-tabbar-empty">无会话</div> : null}
       </div>
       <button
         type="button"

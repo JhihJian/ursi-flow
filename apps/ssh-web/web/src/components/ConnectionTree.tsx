@@ -2,22 +2,22 @@ import { useState, type MouseEvent } from 'react'
 import { ContextMenu, type MenuState } from './ContextMenu'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
 import type { Connection } from '../api/types'
+import type { SessionsState } from '../store/ssh-store'
 
-/** 一级侧栏树：连接为父节点，选中的连接展开 tmux 会话子级；点会话即在标签栏打开。 */
+/** 一级侧栏树：连接为父节点，默认全部展开并各自加载 tmux 会话子级；点会话即在标签栏打开。 */
 export function ConnectionTree() {
   const container = useSshContainer()
   const { store } = useSshController()
   const [menu, setMenu] = useState<MenuState | null>(null)
-  /** 展开的连接集合：点击连接名即选中并展开。 */
-  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
+  /** 用户手动收起的连接集合：默认全部展开，只有点 chevron 才收起。 */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set())
   /** 删除确认：记住待删连接，在侧栏底部内联确认，不用 window.prompt。 */
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
   const [confirmName, setConfirmName] = useState('')
   const connections = useSshStore((state) => state.connections)
   const activeId = useSshStore((state) => state.activeId)
-  const tmuxSessions = useSshStore((state) => state.tmuxSessions)
-  const tmuxLoading = useSshStore((state) => state.tmuxLoading)
   const notice = useSshStore((state) => state.notice)
+  const sessionsByConnection = useSshStore((state) => state.sessionsByConnection)
   const terminals = useSshStore((state) => state.terminals)
   const selectConnection = useSshStore((state) => state.selectConnection)
   const openTerminal = useSshStore((state) => state.openTerminal)
@@ -58,8 +58,8 @@ export function ConnectionTree() {
     setMenu(toMenuState(event, items))
   }
 
-  const toggleExpand = (id: number): void => {
-    setExpanded((current) => {
+  const toggleCollapse = (id: number): void => {
+    setCollapsed((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -67,10 +67,22 @@ export function ConnectionTree() {
     })
   }
 
-  const selectAndExpand = (id: number): void => {
-    setExpanded((current) => (current.has(id) ? current : new Set(current).add(id)))
+  const selectConnectionRow = (id: number): void => {
+    setCollapsed((current) => {
+      if (!current.has(id)) return current
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
     void selectConnection(id)
   }
+
+  const isOpen = (connectionId: number, tmuxSession: string | null): boolean =>
+    terminals.some(
+      (tab) =>
+        tab.connectionId === connectionId &&
+        (tab.tmuxSession ?? 'main') === (tmuxSession ?? 'main'),
+    )
 
   const submitDelete = () => {
     if (!pendingDelete) return
@@ -85,41 +97,35 @@ export function ConnectionTree() {
     })
   }
 
-  const renderSessionChildren = (connection: Connection) => {
-    if (tmuxLoading) return <li className="ssh-tree-note">查询中…</li>
-    if (tmuxSessions === null) {
-      return (
-        <li className={notice ? 'ssh-tree-note ssh-error-note' : 'ssh-tree-note'}>
-          {notice ?? '远端无 tmux，连接后将回退普通 shell，断开即结束。'}
-        </li>
-      )
+  const renderSessionChildren = (connectionId: number, state: SessionsState | undefined) => {
+    if (!state || state.loading) return <li className="ssh-tree-note">查询中…</li>
+    if (state.error !== null) {
+      return <li className="ssh-tree-note ssh-error-note">{state.error}</li>
+    }
+    if (state.sessions === null) {
+      return <li className="ssh-tree-note">远端无 tmux，连接后将回退普通 shell，断开即结束。</li>
     }
     return (
       <>
-        <SessionRow
-          key="main"
+        <SessionChildRow
+          rowKey="::default"
           label="main"
           meta="默认会话 ssh-main"
-          open={terminals.some(
-            (tab) => tab.connectionId === connection.id && tab.tmuxSession === null,
-          )}
-          onClick={() => openTerminal(connection.id, null)}
+          open={isOpen(connectionId, null)}
+          onClick={() => openTerminal(connectionId, null)}
         />
-        {tmuxSessions.map((session) => (
-          <SessionRow
+        {state.sessions.map((session) => (
+          <SessionChildRow
             key={session.name}
+            rowKey={session.name}
             label={session.name}
             meta={new Date(session.created * 1000).toLocaleString()}
             attached={session.attached}
-            open={terminals.some(
-              (tab) =>
-                tab.connectionId === connection.id &&
-                (tab.tmuxSession ?? 'main') === session.name,
-            )}
-            onClick={() => openTerminal(connection.id, session.name)}
+            open={isOpen(connectionId, session.name)}
+            onClick={() => openTerminal(connectionId, session.name)}
           />
         ))}
-        {tmuxSessions.length === 0 ? <li className="ssh-tree-note">远端暂无 tmux 会话</li> : null}
+        {state.sessions.length === 0 ? <li className="ssh-tree-note">远端暂无 tmux 会话</li> : null}
       </>
     )
   }
@@ -128,17 +134,17 @@ export function ConnectionTree() {
     <div className="ssh-tree" onContextMenu={(event) => openContextMenu(event, null)}>
       <div className="ssh-sidebar-head">
         <div className="ssh-sidebar-title">SSH</div>
-        {activeId !== null ? (
-          <button
-            type="button"
-            className="ssh-mini-btn"
-            title="刷新 tmux 会话列表"
-            aria-label="刷新 tmux 会话列表"
-            onClick={() => void refreshTmuxSessions()}
-          >
-            ↻
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="ssh-mini-btn"
+          title="刷新会话列表"
+          aria-label="刷新会话列表"
+          onClick={() => {
+            connections.forEach((connection) => void refreshTmuxSessions(connection.id))
+          }}
+        >
+          ↻
+        </button>
         <button
           type="button"
           className="ssh-mini-btn"
@@ -150,36 +156,40 @@ export function ConnectionTree() {
       </div>
       <ul className="ssh-item-list">
         {connections.map((connection) => {
+          const expanded = !collapsed.has(connection.id)
           const selected = connection.id === activeId
-          const hasChildren = selected && expanded.has(connection.id)
           return (
             <li key={connection.id} className="ssh-tree-node">
               <div
-                className={selected ? 'ssh-tree-row active' : 'ssh-tree-row'}
-                onClick={() => selectAndExpand(connection.id)}
+                className={selected ? 'ssh-tree-row parent active' : 'ssh-tree-row parent'}
+                onClick={() => selectConnectionRow(connection.id)}
                 onContextMenu={(event) => openContextMenu(event, connection)}
                 title={connection.command}
               >
                 <button
                   type="button"
-                  className={hasChildren ? 'ssh-tree-chevron open' : 'ssh-tree-chevron'}
-                  aria-label={hasChildren ? '收起' : '展开'}
+                  className={expanded ? 'ssh-tree-chevron open' : 'ssh-tree-chevron'}
+                  aria-label={expanded ? '收起' : '展开'}
                   onClick={(event) => {
                     event.stopPropagation()
-                    if (!selected) selectAndExpand(connection.id)
-                    else toggleExpand(connection.id)
+                    toggleCollapse(connection.id)
                   }}
                 >
                   ▸
                 </button>
                 <span className="ssh-tree-label">{connection.name}</span>
               </div>
-              {hasChildren ? <ul className="ssh-tree-children">{renderSessionChildren(connection)}</ul> : null}
+              {expanded ? (
+                <ul className="ssh-tree-children">
+                  {renderSessionChildren(connection.id, sessionsByConnection[connection.id])}
+                </ul>
+              ) : null}
             </li>
           )
         })}
         {connections.length === 0 ? <li className="ssh-empty">右键新建连接</li> : null}
       </ul>
+      {notice && !pendingDelete ? <div className="ssh-tree-note ssh-error-note">{notice}</div> : null}
       {pendingDelete ? (
         <div className="ssh-confirm">
           <div className="ssh-confirm-text">
@@ -220,28 +230,38 @@ export function ConnectionTree() {
   )
 }
 
-/** 会话子行：open 状态标 ●（已有标签），attached 数用于远端客户端提示。 */
-function SessionRow({
+/** 会话子行：label 与标签栏内容一致；attached > 0 时在 meta 标 ●（远端有客户端）。 */
+function SessionChildRow({
+  rowKey,
   label,
   meta,
-  open,
   attached,
+  open,
   onClick,
 }: {
+  rowKey: string
   label: string
   meta: string
-  open: boolean
   attached?: number
+  open: boolean
   onClick: () => void
 }) {
+  const attachedNote =
+    attached !== undefined && attached > 0
+      ? `${attached} client${attached === 1 ? '' : 's'} attached`
+      : undefined
   return (
-    <li className={open ? 'ssh-tree-row child active' : 'ssh-tree-row child'} onClick={onClick}>
+    <li
+      key={rowKey}
+      className={open ? 'ssh-tree-row child active' : 'ssh-tree-row child'}
+      onClick={onClick}
+      title={attachedNote}
+    >
       <span className="ssh-tree-label">
         {label}
-        {open ? ' ●' : attached && attached > 0 ? ' ○' : ''}
+        {open ? ' ●' : ''}
       </span>
       <span className="ssh-tree-meta">{meta}</span>
     </li>
   )
 }
-

@@ -30,6 +30,13 @@ export function terminalKey(connectionId: number, tmuxSession: string | null): s
   return `${connectionId}/${tmuxSession ?? 'main'}`
 }
 
+/** 单个连接的 tmux 会话列表状态：sessions 为 null 表示远端无 tmux，error 为查询失败原因。 */
+export interface SessionsState {
+  loading: boolean
+  sessions: TmuxSession[] | null
+  error: string | null
+}
+
 export interface SshStoreDeps {
   api: SshApi
   /** 亮暗主题的 localStorage 键；嵌入工作区时带模块前缀注入。 */
@@ -46,16 +53,15 @@ export interface SshStoreState {
   activeTerminalKey: string | null
   /** 新建 tmux 会话表单是否展开（提交目标为 activeId）。 */
   sessionFormOpen: boolean
-  /** tmux 会话列表；null 表示远端无 tmux 或查询失败（看 notice）。 */
-  tmuxSessions: TmuxSession[] | null
-  tmuxLoading: boolean
+  /** 每个连接各自的 tmux 会话列表（树默认全展开，需要逐连接的数据）。 */
+  sessionsByConnection: Record<number, SessionsState>
   editor: EditorTarget | null
   notice: string | null
   /** 终端面板亮色（白底）主题，跨刷新保留。 */
   terminalLight: boolean
 
   loadConnections: () => Promise<void>
-  /** 选中连接：切换树选中并刷新 tmux 会话列表，不影响已打开的标签。 */
+  /** 选中连接：切换树选中并刷新该连接的 tmux 会话列表，不影响已打开的标签。 */
   selectConnection: (id: number) => Promise<void>
   /** 打开（或激活）一个终端标签：attach 指定 tmux 会话（null = 默认 ssh-main）。 */
   openTerminal: (connectionId: number, tmuxSession: string | null) => void
@@ -67,7 +73,8 @@ export interface SshStoreState {
   setTerminalState: (key: string, state: TerminalState) => void
   openSessionForm: () => void
   closeSessionForm: () => void
-  refreshTmuxSessions: () => Promise<void>
+  /** 刷新指定连接（缺省为当前选中连接）的 tmux 会话列表。 */
+  refreshTmuxSessions: (id?: number) => Promise<void>
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
   removeConnection: (id: number) => Promise<void>
   setEditor: (editor: EditorTarget | null) => void
@@ -114,8 +121,7 @@ export function createSshStore(
     terminals: [],
     activeTerminalKey: null,
     sessionFormOpen: false,
-    tmuxSessions: null,
-    tmuxLoading: false,
+    sessionsByConnection: {},
     editor: null,
     notice: null,
     terminalLight: readLight(),
@@ -123,11 +129,13 @@ export function createSshStore(
     loadConnections: async () => {
       const { connections } = await api.listConnections()
       set({ connections })
+      // 树默认全部展开：逐连接并行拉取会话列表，失败不影响其他连接。
+      await Promise.allSettled(connections.map((connection) => get().refreshTmuxSessions(connection.id)))
     },
 
     selectConnection: async (id) => {
-      if (get().activeId !== id) set({ activeId: id, tmuxSessions: null, tmuxLoading: false })
-      await get().refreshTmuxSessions()
+      if (get().activeId !== id) set({ activeId: id })
+      await get().refreshTmuxSessions(id)
     },
 
     openTerminal: (connectionId, tmuxSession) => {
@@ -167,15 +175,38 @@ export function createSshStore(
     openSessionForm: () => set({ sessionFormOpen: true }),
     closeSessionForm: () => set({ sessionFormOpen: false }),
 
-    refreshTmuxSessions: async () => {
-      const id = get().activeId
-      if (id === null) return
-      set({ tmuxLoading: true })
+    refreshTmuxSessions: async (id) => {
+      const target = id ?? get().activeId
+      if (target === null || target === undefined) return
+      set((current) => ({
+        sessionsByConnection: {
+          ...current.sessionsByConnection,
+          [target]: {
+            loading: true,
+            sessions: current.sessionsByConnection[target]?.sessions ?? null,
+            error: null,
+          },
+        },
+      }))
       try {
-        const { sessions } = await api.listTmuxSessions(id)
-        set({ tmuxSessions: sessions, tmuxLoading: false })
+        const { sessions } = await api.listTmuxSessions(target)
+        set((current) => ({
+          sessionsByConnection: {
+            ...current.sessionsByConnection,
+            [target]: { loading: false, sessions, error: null },
+          },
+        }))
       } catch (error) {
-        set({ notice: toMessage(error), tmuxLoading: false })
+        set((current) => ({
+          sessionsByConnection: {
+            ...current.sessionsByConnection,
+            [target]: {
+              loading: false,
+              sessions: current.sessionsByConnection[target]?.sessions ?? null,
+              error: toMessage(error),
+            },
+          },
+        }))
       }
     },
 
@@ -199,8 +230,11 @@ export function createSshStore(
         terminals: terminals.filter((tab) => !closed.has(tab.key)),
         activeTerminalKey: nextActiveKey(terminals, closed, activeTerminalKey),
         activeId: get().activeId === id ? null : get().activeId,
-        tmuxSessions: get().activeId === id ? null : get().tmuxSessions,
-        tmuxLoading: get().activeId === id ? false : get().tmuxLoading,
+      })
+      set((current) => {
+        const sessionsByConnection = { ...current.sessionsByConnection }
+        delete sessionsByConnection[id]
+        return { sessionsByConnection }
       })
       await get().loadConnections()
     },
