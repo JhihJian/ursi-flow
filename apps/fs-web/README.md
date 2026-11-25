@@ -15,7 +15,7 @@
 
 ### 后端：Node 原生 http + Node 类型剥离（.ts 直跑）
 
-Node 24 原生运行 TypeScript（`--experimental-strip-types` 已默认，仅做类型剥离）。服务不引入 Web 框架，用 `node:http` 直写路由，与 pi-executor/session-service 形态一致，无依赖。
+Node 24 原生运行 TypeScript（`--experimental-strip-types` 已默认，仅做类型剥离）。服务不引入 Web 框架，用 `node:http` 直写路由，无依赖。
 
 ### 统一目录抽象：能力声明式 Provider
 
@@ -51,7 +51,7 @@ watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通�
 
 ### Git 状态：只读快照
 
-资源管理器的主要浏览对象是 Git 仓库，最高频的问题是「仓库现在什么状态、刚改了哪些文件」。Git 视图定位只读：分支、变更文件、增删行数、树内徽标；暂存、提交、推送属 CLI / agent 工作流，永不进入本模块。行级 diff 查看是再下一阶段，契约形态参考 `pi-executor/lib/git-types.ts` 的 `GitFileDiffResponse`（per-file 只读 patch）。
+资源管理器的主要浏览对象是 Git 仓库，最高频的问题是「仓库现在什么状态、刚改了哪些文件」。Git 视图定位只读：分支、变更文件、增删行数、树内徽标；暂存、提交、推送属 CLI / agent 工作流，永不进入本模块。行级 diff 查看是再下一阶段，契约形态采用 `GitFileDiffResponse`（per-file 只读 patch：`supported`、`status`、`patch`）。
 
 服务端 `git-provider.ts` 用 `execFile` 只跑三条只读命令，零依赖：
 

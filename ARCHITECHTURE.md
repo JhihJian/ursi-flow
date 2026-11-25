@@ -11,8 +11,6 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，russh 建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
-| [Pi Web 前端](pi-executor/SPEC.md) | 独立静态前端。首页连接会话服务，按权限观察或继续 Pi 会话。 |
-| [Pi SDK 会话服务](pi-executor/session-service/SPEC.md) | 独立 HTTP 服务，持有 Pi 会话运行实例与 JSONL 历史，提供提交、停止和只读订阅。 |
 | [Flow Core](flow-core/SPEC.md) | 独立 SDK，从 `FLOW.md` 或当前 JSON 快照和回执生成待办。解析、变量和路由规则供 Runtime 复用。 |
 | [Flow Runtime](flow-runtime/SPEC.md) | 校验并执行 `FLOW.md` 包，以节点结果决定下一步。`ursi-flowd` 持有流程修订、运行配置、Run 和节点历史，可由独立控制台或 CLI 操作。 |
 | [执行器 MCP SDK](executor-sdk/SPEC.md) | Node.js MCP 服务端库，供独立的整条 Flow MCP 适配器等服务使用。SDK 负责协议发现和校验，运行状态由使用它的服务持有。 |
@@ -41,7 +39,6 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | 会话查看工作台 | [模块结构、解析与嵌入](docs/design/session-viewer/SESSION-VIEWER.md) |
 | 工作项与文件包 | [工作清单与包来源](docs/design/workbench/WORK-LIST-DESIGN.md) · [版本化工作包生成器](docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md) · [工作包和配置包编辑台](docs/design/workbench/PATCH-STUDIO.md) |
 | 执行器 | [平台拆分与调用边界](docs/design/executor-platform/OVERVIEW.md) · [执行器协议统一为 ACP 的提案](docs/design/executor-platform/ACP-BACKEND.md) · [ACP 执行契约](docs/design/executor-platform/ACP-PROFILE.md) · [ACP 基线与首版范围](docs/design/executor-platform/ACP-SCOPE.md) · [平台部署](executor-platform/server/README.md) · [定义与尝试](docs/design/workbench/EXECUTOR-DESIGN.md) · [Flow 执行器](docs/design/workbench/FLOW-EXECUTOR-DESIGN.md) · [Agent 执行器](docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md) · [Runtime MCP 适配器](docs/design/flow-runtime/MCP-ADAPTER.md) |
-| Pi 会话 | [前端部署](pi-executor/README.md) · [会话 API 与服务部署](pi-executor/session-service/README.md) |
 | Flow Core | [Flow Core SDK 设计](docs/design/flow-runtime/FLOW-CORE.md) |
 | Flow 能力 | [Agent 装配](docs/design/flow-runtime/ability/agent-assembly.md) · [Agent 生命周期](docs/design/flow-runtime/ability/agent-harness.md) · [Agent 会话复用](docs/design/flow-runtime/ability/agent-continuity.md) · [运行时工具](docs/design/flow-runtime/ability/runtime-tools.md) · [命令执行](docs/design/flow-runtime/ability/command-execution.md) · [子 Flow](docs/design/flow-runtime/ability/child-flow.md) · [并行执行](docs/design/flow-runtime/ability/parallel-execution.md) · [用户确认门禁](docs/design/flow-runtime/ability/user-confirmation.md)（[实现改动](docs/design/flow-runtime/ability/user-confirmation-impl.md)）· [节点级执行器选择](docs/design/flow-runtime/NODE-EXECUTORS.md) |
 | MCP 服务管理 | [独立模块与宿主边界](docs/design/mcp-web/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/mcp-web/EXECUTOR-DISCOVERY-DESIGN.md) |
