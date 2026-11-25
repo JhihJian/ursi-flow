@@ -1,20 +1,5 @@
 import type { Connection, ConnectionInput, TmuxSessionsResponse } from './types'
 
-/** 虚拟本机连接：与服务端约定一致，id 0、不入库、不可改删。 */
-export const LOCAL_CONNECTION_ID = 0
-export const LOCAL_CONNECTION_NAME = '本机'
-
-function localConnection(): Connection {
-  return {
-    id: LOCAL_CONNECTION_ID,
-    name: LOCAL_CONNECTION_NAME,
-    command: '登录 shell',
-    kind: 'local',
-    created_at: '',
-    updated_at: '',
-  }
-}
-
 export interface SshApiOptions {
   /** API 前缀。缺省 `/api`（独立入口的同源代理）；嵌入工作区时由宿主注入 `/api/ssh-web`。 */
   baseUrl?: string
@@ -54,14 +39,8 @@ export class SshApi {
     return fetch(`${this.baseUrl}/health`).then((response) => response.text())
   }
 
-  async listConnections(): Promise<{ connections: Connection[] }> {
-    const { connections } = await this.request<{ connections: Connection[] }>('/connections')
-    // 防御旧版服务端不播种本机连接的情况，前端补齐虚拟本机到首项。
-    return {
-      connections: connections.some((connection) => connection.name === LOCAL_CONNECTION_NAME)
-        ? connections
-        : [localConnection(), ...connections.filter((c) => c.id !== LOCAL_CONNECTION_ID)],
-    }
+  listConnections(): Promise<{ connections: Connection[] }> {
+    return this.request('/connections')
   }
 
   createConnection(input: ConnectionInput): Promise<{ id: number }> {

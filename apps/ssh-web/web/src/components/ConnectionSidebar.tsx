@@ -1,7 +1,6 @@
 import { useState, type MouseEvent } from 'react'
 import { ContextMenu, type MenuState } from './ContextMenu'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
-import { LOCAL_CONNECTION_ID } from '../api/client'
 import type { Connection } from '../api/types'
 
 /** 一级侧栏：SSH 连接管理。点击只选中连接（联动下方会话列表），不建连。 */
@@ -33,8 +32,7 @@ export function ConnectionSidebar() {
     const items: MenuState['items'] = [
       { label: 'New connection', onSelect: () => setEditor({ kind: 'new' }) },
     ]
-    // 本机连接是固定入口，不提供编辑与删除。
-    if (connection && connection.id !== LOCAL_CONNECTION_ID) {
+    if (connection) {
       items.push(
         { label: 'Edit', onSelect: () => setEditor({ kind: 'edit', connection }) },
         {

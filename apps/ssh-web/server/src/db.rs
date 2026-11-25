@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection as Db, Row};
 use std::path::PathBuf;
 
-use crate::models::{local_connection, Connection, ConnectionKind, LOCAL_CONNECTION_ID};
+use crate::models::Connection;
 
 /// 数据根目录，默认 `~/.ursi`，可用 `URSI_DATA_DIR` 指向其它位置。
 pub fn data_root() -> PathBuf {
@@ -62,7 +62,6 @@ fn row_to_connection(row: &Row) -> rusqlite::Result<Connection> {
         id: row.get("id")?,
         name: row.get("name")?,
         command: row.get("command")?,
-        kind: ConnectionKind::Ssh,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -70,43 +69,27 @@ fn row_to_connection(row: &Row) -> rusqlite::Result<Connection> {
 
 const CONNECTION_COLUMNS: &str = "id, name, command, created_at, updated_at";
 
-/// 连接列表：首项固定为虚拟本机连接（id 0，不入库），后面是按名称排序的用户连接。
-/// 用户若手动建了同名的本机连接，则不重复出现。
 pub fn list_connections(conn: &Db) -> Result<Vec<Connection>> {
     let sql = format!("SELECT {CONNECTION_COLUMNS} FROM connections ORDER BY name COLLATE NOCASE");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_connection)?;
-    let mut connections: Vec<Connection> = rows.collect::<Result<Vec<_>, _>>()?;
-    let has_local_entry = connections
-        .iter()
-        .any(|connection| connection.name == local_connection().name);
-    if !has_local_entry {
-        connections.insert(0, local_connection());
-    }
-    Ok(connections)
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-/// 取连接：id 0 为虚拟本机连接，其余查库。
-pub fn get_connection(conn: &Db, id: i64) -> Result<Option<Connection>> {
-    if id == LOCAL_CONNECTION_ID {
-        return Ok(Some(local_connection()));
-    }
-    let sql = format!("SELECT {CONNECTION_COLUMNS} FROM connections WHERE id = ?1");
+pub fn get_connection_by_name(conn: &Db, name: &str) -> Result<Option<Connection>> {
+    let sql = format!("SELECT {CONNECTION_COLUMNS} FROM connections WHERE name = ?1");
     let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query_map(params![id], row_to_connection)?;
+    let mut rows = stmt.query_map(params![name], row_to_connection)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
         None => Ok(None),
     }
 }
 
-pub fn get_connection_by_name(conn: &Db, name: &str) -> Result<Option<Connection>> {
-    if name == local_connection().name {
-        return Ok(Some(local_connection()));
-    }
-    let sql = format!("SELECT {CONNECTION_COLUMNS} FROM connections WHERE name = ?1");
+pub fn get_connection(conn: &Db, id: i64) -> Result<Option<Connection>> {
+    let sql = format!("SELECT {CONNECTION_COLUMNS} FROM connections WHERE id = ?1");
     let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query_map(params![name], row_to_connection)?;
+    let mut rows = stmt.query_map(params![id], row_to_connection)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
         None => Ok(None),
