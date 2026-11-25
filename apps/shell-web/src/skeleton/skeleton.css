@@ -1,0 +1,178 @@
+/* 骨架预览样式：只给示例模块使用，真实模块各有自己的样式作用域。 */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ---- 侧边栏占位内容 ---- */
+
+.sk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  height: 100%;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sk-row {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font-family: var(--ws-mono);
+  font-size: 12px;
+  text-align: left;
+  color: var(--ws-dim);
+  cursor: pointer;
+}
+
+.sk-row:hover {
+  background: #f2f2f2;
+  color: var(--ws-ink);
+}
+
+.sk-row-active {
+  background: #ececec;
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+
+.sk-shared {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--ws-dim);
+}
+
+.sk-hint {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.sk-shared-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sk-shared-count {
+  font-family: var(--ws-mono);
+  font-size: 15px;
+  color: var(--ws-ink);
+}
+
+.sk-button {
+  padding: 4px 10px;
+  border: 1px solid var(--ws-ink);
+  background: #fff;
+  font: inherit;
+  font-family: var(--ws-mono);
+  font-size: 12px;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+
+.sk-button:hover {
+  background: #ececec;
+}
+
+/* ---- 工作区占位块 ---- */
+
+.sk-workspace {
+  height: 100%;
+  min-width: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+.sk-workspace-grid {
+  display: grid;
+  gap: 16px;
+  height: 100%;
+  min-width: 0;
+}
+
+.sk-workspace-grid[data-panes='1'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sk-workspace-grid[data-panes='2'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sk-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  border: 1px dashed #cccccc;
+  background-color: #fbfbfb;
+  /* 斜纹底纹：一眼看出这是占位内容 */
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.03) 0,
+    rgba(0, 0, 0, 0.03) 1px,
+    transparent 1px,
+    transparent 8px
+  );
+}
+
+.sk-block-label {
+  font-family: var(--ws-serif);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  color: var(--ws-dim);
+  text-align: center;
+  padding: 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.sk-block-size {
+  font-family: var(--ws-mono);
+  font-size: 11px;
+  color: #b0b0b0;
+}
+
+/* ---- 宿主页面 ---- */
+
+.sk-host-page {
+  height: 100%;
+  padding: 20px 24px;
+  overflow-y: auto;
+  font-family: var(--ws-mono);
+  font-size: 12px;
+  color: var(--ws-dim);
+}
+
+.sk-host-title {
+  margin: 0 0 12px;
+  font-family: var(--ws-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--ws-ink);
+}
+
+.sk-host-list {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 2;
+}

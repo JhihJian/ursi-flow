@@ -45,5 +45,14 @@ export default defineConfig({
   },
   server: { host: '0.0.0.0', port: 5191, strictPort: true, proxy },
   preview: { host: '0.0.0.0', port: 4191, strictPort: true, proxy },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    // 两个页面入口：真实工作台与不依赖后端的骨架预览。
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        skeleton: fileURLToPath(new URL('./skeleton.html', import.meta.url)),
+      },
+    },
+  },
 })
