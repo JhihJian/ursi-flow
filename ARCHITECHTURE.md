@@ -9,7 +9,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | [工作区外壳](packages/workspace-shell/SPEC.md) | 多栏骨架与全局选中：模块声明栏与操作，外壳负责布局、折叠、选中分派，不含领域逻辑。独立入口在 `shell-web`，todo 与 fs 两个模块以 npm workspace 包（`@ursi/todo-web`、`@ursi/fs-web`）接入，组合关系见 `shell-web/package.json` 与各模块的 `src/module.tsx`。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
 | [SUMM-Todo 看板](apps/todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，服务端启动系统 OpenSSH 子进程（`ssh -tt`）建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite，可按 [工作区接入设计](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) 作为一栏接入 shell-web。 |
-| [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API（dae 只监听 loopback 且拒绝外部 Origin），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并在本机侧编排配置的校验、写入与热加载。 |
+| [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API 并注入 Bearer token（dae 只监听 loopback、拒绝外部 Origin、启用 api.secret），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并按配置源编排校验与写入。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web](docs/design/pi-web/INTEGRATION.md) | 上游 pi coding agent 的完整 Web UI，以 git subtree 从 fork `JhihJian/pi-web` 接入 `apps/pi-web`，内容不改造。进程内驱动 AgentSession，与 CLI 共享 `~/.pi/agent`，浏览器里完整使用 Pi agent。 |
@@ -23,7 +23,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 
 - **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的 Workbench 或 Flow。
 - **连上主机。** SSH 终端由自己的 Rust 服务托管页面并提供同源 API 与 WS 桥，读写 `~/.ursi/ssh/ssh.db`，同样不依赖 ursi-flow 的其他模块。它也以 `@ursi/ssh-web/module` 接入 [工作区外壳](packages/workspace-shell/SPEC.md) 成为独立一栏，服务与数据归属不变。
-- **看清出站路由。** dae 路由观察台由零依赖 Node 服务托管页面，按 dae native API 读取本机代理状态，不持有自己的数据；连接与流记录留在 dae 进程内存，重启即丢。配置写入由本服务编排：dae 负责校验与热加载，文件以本机 sudo 落盘，不改 dae 的 api 认证模型。
+- **看清出站路由。** dae 路由观察台由零依赖 Node 服务托管页面，按 dae native API 读取本机代理状态，不持有自己的数据；连接与流记录留在 dae 进程内存，重启即丢。配置采用 dae 的 managed layout，写入由 dae 自己完成，本服务只注入 token、编排校验与等待热加载。
 - **管理 Flow。** Workbench 的可选 `/api/v1` 通过 Rust `FlowClient` 连接 daemon 的 Unix socket。[CLI](flow-runtime/client/SPEC.md) 直连 daemon，[独立控制台](flow-runtime/web/SPEC.md) 通过自己的同源桥接入。连接同一 daemon 的三个入口共享运行历史。
 - **执行一次工作。** Workbench 和 Flow Runtime 各自用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。Flow Runtime 校验节点提交的结果后选择后续路径。
 - **浏览器使用 Pi agent。** `apps/pi-web` 是完整的 Pi Web UI，进程内启动 AgentSession，与 CLI 共享 `~/.pi/agent` 的模型、会话、技能和 MCP 配置，浏览器里完整使用 Pi agent 能力。该入口独立于执行器平台和 Flow 的 ACP 链路。

@@ -37,7 +37,6 @@ import {
   applyConfig,
   checkConfig,
   getConfig,
-  restoreConfig,
   type ConfigCheckResult,
   type ConfigDiagnostic,
   type ConfigSnapshot,
@@ -86,6 +85,8 @@ interface DaeState {
   traceError: string | null
 
   config: ConfigSnapshot | null
+  /** 当前编辑的配置源相对路径，如 config.d/routing.dae。 */
+  configSourcePath: string | null
   configDraft: string
   configDirty: boolean
   configDiagnostics: ConfigDiagnostic[]
@@ -107,11 +108,11 @@ interface DaeState {
   appendLog: (record: LogRecord) => void
   clearLogs: () => void
   loadConfig: () => Promise<void>
+  selectConfigSource: (sourcePath: string) => void
   setConfigDraft: (text: string) => void
   resetConfigDraft: () => void
   checkDraft: () => Promise<void>
-  saveDraft: (content: string) => Promise<boolean>
-  revertToBackup: (name: string) => Promise<void>
+  saveDraft: () => Promise<boolean>
 }
 
 const MAX_LOGS = 500
@@ -160,6 +161,7 @@ export const useDaeStore = create<DaeState>((set, get) => ({
   traceError: null,
 
   config: null,
+  configSourcePath: null,
   configDraft: '',
   configDirty: false,
   configDiagnostics: [],
@@ -351,9 +353,14 @@ export const useDaeStore = create<DaeState>((set, get) => ({
     set({ configBusy: true })
     try {
       const snapshot = await getConfig()
+      const current =
+        snapshot.sources.find((item) => item.path === get().configSourcePath) ??
+        snapshot.sources.find((item) => item.writable) ??
+        snapshot.sources[0]
       set({
         config: snapshot,
-        configDraft: snapshot.content,
+        configSourcePath: current?.path ?? null,
+        configDraft: current?.content ?? '',
         configDirty: false,
         configDiagnostics: [],
         configCheckedAt: null,
@@ -366,27 +373,47 @@ export const useDaeStore = create<DaeState>((set, get) => ({
     }
   },
 
-  setConfigDraft: (text) =>
-    set((state) => ({
-      configDraft: text,
-      configDirty: state.config ? text !== state.config.content : false,
-      configNotice: null,
-    })),
-
-  resetConfigDraft: () =>
-    set((state) => ({
-      configDraft: state.config?.content ?? '',
+  selectConfigSource: (sourcePath) => {
+    const source = get().config?.sources.find((item) => item.path === sourcePath)
+    if (!source) return
+    set({
+      configSourcePath: sourcePath,
+      configDraft: source.content,
       configDirty: false,
       configDiagnostics: [],
       configCheckedAt: null,
       configNotice: null,
-    })),
+    })
+  },
+
+  setConfigDraft: (text) =>
+    set((state) => {
+      const source = state.config?.sources.find((item) => item.path === state.configSourcePath)
+      return {
+        configDraft: text,
+        configDirty: source ? text !== source.content : false,
+        configNotice: null,
+      }
+    }),
+
+  resetConfigDraft: () =>
+    set((state) => {
+      const source = state.config?.sources.find((item) => item.path === state.configSourcePath)
+      return {
+        configDraft: source?.content ?? '',
+        configDirty: false,
+        configDiagnostics: [],
+        configCheckedAt: null,
+        configNotice: null,
+      }
+    }),
 
   checkDraft: async () => {
+    const { configSourcePath, configDraft } = get()
+    if (!configSourcePath) return
     set({ configBusy: true, configNotice: null })
     try {
-      const { configDraft } = get()
-      const result: ConfigCheckResult = await checkConfig(configDraft)
+      const result: ConfigCheckResult = await checkConfig(configSourcePath, configDraft)
       set({
         configDiagnostics: result.diagnostics,
         configCheckedAt: result.validated_at,
@@ -404,50 +431,31 @@ export const useDaeStore = create<DaeState>((set, get) => ({
     }
   },
 
-  saveDraft: async (content) => {
+  saveDraft: async () => {
+    const state = get()
+    const sourcePath = state.configSourcePath
+    const source = state.config?.sources.find((item) => item.path === sourcePath)
+    if (!source || !sourcePath) return false
     set({ configBusy: true, configNotice: null })
     try {
-      const snapshot = get().config
-      const result = await applyConfig(content, snapshot?.sha256 ?? null)
-      const refreshed = await getConfig()
+      const result = await applyConfig(sourcePath, state.configDraft, source.content_sha256)
+      const snapshot = await getConfig()
+      const refreshed = snapshot.sources.find((item) => item.path === sourcePath)
       set({
-        config: refreshed,
-        configDraft: refreshed.content,
+        config: snapshot,
+        configDraft: refreshed?.content ?? state.configDraft,
         configDirty: false,
         configDiagnostics: [],
         configCheckedAt: null,
         configNotice: {
           kind: 'ok',
-          message: `已生效，generation ${result.generationId ?? '-'}，备份 ${result.backup}`,
+          message: `已生效，generation ${result.generationId ?? '-'}`,
         },
       })
       return true
     } catch (error) {
       set({ configNotice: { kind: 'error', message: errorMessage(error) } })
       return false
-    } finally {
-      set({ configBusy: false })
-    }
-  },
-
-  revertToBackup: async (name) => {
-    set({ configBusy: true, configNotice: null })
-    try {
-      const result = await restoreConfig(name)
-      const refreshed = await getConfig()
-      set({
-        config: refreshed,
-        configDraft: refreshed.content,
-        configDirty: false,
-        configDiagnostics: [],
-        configCheckedAt: null,
-        configNotice: {
-          kind: 'ok',
-          message: `已回滚到 ${result.backup}，generation ${result.generationId ?? '-'}`,
-        },
-      })
-    } catch (error) {
-      set({ configNotice: { kind: 'error', message: errorMessage(error) } })
     } finally {
       set({ configBusy: false })
     }

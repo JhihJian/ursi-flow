@@ -1,22 +1,27 @@
-/** 本服务控制面（/console/*）：dae 配置文件的读取、校验、保存与回滚。 */
+/** 本服务控制面（/console/*）：dae 配置源列表、按源校验与保存。 */
 
-export interface ConfigBackup {
-  name: string
+export interface ConfigSource {
+  id: string
+  path: string
+  kind: string
+  content_sha256: string
   bytes: number
-  created_at: string
+  content: string
+  line_count: number
+  writable: boolean
+  read_only_reason?: string
+  loaded_at: string
 }
 
 export interface ConfigSnapshot {
+  generation_id: string
+  revision: string
+  sources: ConfigSource[]
+  secrets_redacted: boolean
+  writable: boolean
+  layout: string
+  layout_reason: string
   file: string
-  sourcePath: string | null
-  content: string
-  sha256: string | null
-  apiWritable: boolean
-  apiReason: string | null
-  secretsRedacted: boolean
-  canWrite: boolean
-  writeReason: string | null
-  backups: ConfigBackup[]
 }
 
 export interface ConfigDiagnostic {
@@ -36,10 +41,9 @@ export interface ConfigCheckResult {
 
 export interface ConfigApplyResult {
   ok: boolean
-  operationId: string | null
-  backup: string
+  operationId: string
   generationId: string | null
-  rolledBack: boolean
+  sourcePath: string
 }
 
 export class ConsoleError extends Error {
@@ -71,17 +75,20 @@ export function getConfig(): Promise<ConfigSnapshot> {
   return request('/config')
 }
 
-export function checkConfig(content: string): Promise<ConfigCheckResult> {
-  return request('/config/check', { method: 'POST', body: JSON.stringify({ content }) })
-}
-
-export function applyConfig(content: string, expectedSha256: string | null): Promise<ConfigApplyResult> {
-  return request('/config/apply', {
+export function checkConfig(sourcePath: string, content: string): Promise<ConfigCheckResult> {
+  return request('/config/check', {
     method: 'POST',
-    body: JSON.stringify({ content, expectedSha256 }),
+    body: JSON.stringify({ sourcePath, content }),
   })
 }
 
-export function restoreConfig(backup: string): Promise<ConfigApplyResult> {
-  return request('/config/restore', { method: 'POST', body: JSON.stringify({ backup }) })
+export function applyConfig(
+  sourcePath: string,
+  content: string,
+  expectedSha256: string,
+): Promise<ConfigApplyResult> {
+  return request('/config/apply', {
+    method: 'POST',
+    body: JSON.stringify({ sourcePath, content, expectedSha256 }),
+  })
 }

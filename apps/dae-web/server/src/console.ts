@@ -1,12 +1,13 @@
 import type http from 'node:http'
-import type { ConfigStore } from './daemon-config.ts'
+import { ConfigError, type ConfigService } from './daemon-config.ts'
 import { readBody, sendError, sendJson } from './http-util.ts'
 
 /**
- * /console/* 是本服务自己的控制面，与 dae 的 /api/v1 分开：
- * 配置文件的读取、校验、保存与回滚由本服务编排。
+ * /console/* 是本服务对配置页的封装：
+ * 读取所有配置源、按源校验、按源保存并等待 dae 应用。
+ * 真正的写入与热加载由 dae 完成，这里只负责 token 注入后的编排。
  */
-export function createConsoleHandler(store: ConfigStore) {
+export function createConsoleHandler(config: ConfigService) {
   const bodyLimit = 256 * 1024
 
   return async function handleConsole(
@@ -18,48 +19,53 @@ export function createConsoleHandler(store: ConfigStore) {
 
     try {
       if (url.pathname === '/console/config' && (method === 'GET' || method === 'HEAD')) {
-        sendJson(res, 200, await store.snapshot())
+        sendJson(res, 200, await config.readSnapshot())
         return
       }
 
       if (url.pathname === '/console/config/check' && method === 'POST') {
-        const body = JSON.parse(await readBody(req, bodyLimit)) as { content?: string }
-        if (typeof body.content !== 'string') {
-          sendError(res, 400, 'invalid_request', 'content 必须是字符串')
+        const body = JSON.parse(await readBody(req, bodyLimit)) as {
+          sourcePath?: string
+          content?: string
+        }
+        if (typeof body.sourcePath !== 'string' || typeof body.content !== 'string') {
+          sendError(res, 400, 'invalid_request', 'sourcePath 与 content 必须是字符串')
           return
         }
-        sendJson(res, 200, await store.check(body.content))
+        sendJson(res, 200, await config.check(body.sourcePath, body.content))
         return
       }
 
       if (url.pathname === '/console/config/apply' && method === 'POST') {
         const body = JSON.parse(await readBody(req, bodyLimit)) as {
+          sourcePath?: string
           content?: string
-          expectedSha256?: string | null
+          expectedSha256?: string
         }
-        if (typeof body.content !== 'string') {
-          sendError(res, 400, 'invalid_request', 'content 必须是字符串')
+        if (
+          typeof body.sourcePath !== 'string' ||
+          typeof body.content !== 'string' ||
+          typeof body.expectedSha256 !== 'string'
+        ) {
+          sendError(res, 400, 'invalid_request', 'sourcePath、content 与 expectedSha256 必须是字符串')
           return
         }
-        const result = await store.apply(body.content, body.expectedSha256 ?? null)
-        sendJson(res, 200, { ok: true, ...result })
-        return
-      }
-
-      if (url.pathname === '/console/config/restore' && method === 'POST') {
-        const body = JSON.parse(await readBody(req, bodyLimit)) as { backup?: string }
-        if (typeof body.backup !== 'string') {
-          sendError(res, 400, 'invalid_request', 'backup 必须是字符串')
-          return
-        }
-        const result = await store.restore(body.backup)
-        sendJson(res, 200, { ok: true, ...result })
+        sendJson(res, 200, await config.apply(body.sourcePath, body.content, body.expectedSha256))
         return
       }
 
       sendError(res, 404, 'resource_not_found', '资源不存在')
     } catch (error) {
-      sendError(res, 400, 'config_operation_failed', error instanceof Error ? error.message : String(error))
+      if (error instanceof ConfigError) {
+        sendError(res, error.status, 'config_operation_failed', error.message)
+        return
+      }
+      sendError(
+        res,
+        502,
+        'config_operation_failed',
+        error instanceof Error ? error.message : String(error),
+      )
     }
   }
 }

@@ -9,17 +9,32 @@
 
 ## 前置条件
 
-dae 已安装并运行，且配置里打开了 native API：
+dae 已安装并运行，且配置里打开了 native API 与配置写入。配置采用 dae 的 managed layout：`/etc/dae/config.dae` 只含一个 include 块，内容在 `/etc/dae/config.d/`，API 段在 `/etc/dae/api.dae`：
 
 ```
+# /etc/dae/config.dae
+include {
+    config.d/*.dae
+    api.dae
+}
+
+# /etc/dae/api.dae（0600，隐藏源，API 不可写）
 api {
     enabled: true
     listen: '127.0.0.1:9527'
-    allow_anonymous_loopback: true
+    secret: '<token>'
+    config_write: true
 }
 ```
 
-api 段属于重启生效项，改完执行 `systemctl restart dae`。
+api 段属于重启生效项，改完执行 `systemctl restart dae`。服务端需要同一个 token：
+
+```sh
+printf 'DAE_API_TOKEN=<token>\n' > ~/.config/dae-web/env
+chmod 600 ~/.config/dae-web/env
+```
+
+`systemd` 单元用 `EnvironmentFile=-%h/.config/dae-web/env` 加载；也可以把 token 写进 `~/.local/state/dae-web/api-token`（0600）让服务端按默认路径读取。
 
 ## 开发
 
@@ -52,4 +67,4 @@ cd ../.. && node server/src/server.ts
 
 概览、活跃连接、流历史、流量规则与 DNS 规则、DNS 解析日志与缓存、运行日志，以及选中条目后的路由回溯。dae 的记录只在进程内存中，本服务不落盘。
 
-配置分区可以编辑 `DAE_CONFIG_PATH` 指向的文件：先由 dae 做 `full` 校验，再备份、以 sudo 写入、触发热加载，热加载失败自动回滚。配置的读取与写入只对本机开放，局域网只看到观测分区。文件属主是 root，运行用户需要它的免密 sudo 权限。
+配置分区按配置源编辑 `config.d/*.dae`：先由 dae 做 `full` 校验，再 `PUT` 到 dae，由 dae 写文件（生成 `.bak`）并热加载。`config.dae` 是只读入口，`api.dae` 是隐藏源。配置的读取与写入只对本机开放，局域网只看到观测分区。token 只在服务端，浏览器不接触。

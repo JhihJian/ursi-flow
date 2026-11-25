@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { formatBytes, formatDateTime } from '@/lib/format'
 import { cx } from '@/lib/ui'
 import { useDaeStore } from '@/store/dae-store'
@@ -11,21 +11,21 @@ function lineNumbers(text: string): string {
 
 export function ConfigSection() {
   const config = useDaeStore((state) => state.config)
+  const sourcePath = useDaeStore((state) => state.configSourcePath)
   const draft = useDaeStore((state) => state.configDraft)
   const dirty = useDaeStore((state) => state.configDirty)
   const diagnostics = useDaeStore((state) => state.configDiagnostics)
   const notice = useDaeStore((state) => state.configNotice)
   const busy = useDaeStore((state) => state.configBusy)
   const loadConfig = useDaeStore((state) => state.loadConfig)
+  const selectSource = useDaeStore((state) => state.selectConfigSource)
   const setDraft = useDaeStore((state) => state.setConfigDraft)
   const resetDraft = useDaeStore((state) => state.resetConfigDraft)
   const checkDraft = useDaeStore((state) => state.checkDraft)
   const saveDraft = useDaeStore((state) => state.saveDraft)
-  const revertToBackup = useDaeStore((state) => state.revertToBackup)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLPreElement>(null)
-  const [backupChoice, setBackupChoice] = useState('')
 
   useEffect(() => {
     if (!config) void loadConfig()
@@ -38,37 +38,39 @@ export function ConfigSection() {
     gutter.scrollTop = textarea.scrollTop
   }
 
-  const handleSave = async () => {
-    if (!window.confirm('校验通过后会写入配置文件并热加载 dae。继续？')) return
-    await saveDraft(draft)
-  }
+  const source = config?.sources.find((item) => item.path === sourcePath) ?? null
 
-  const handleRevert = async () => {
-    if (!backupChoice) return
-    if (!window.confirm(`用备份 ${backupChoice} 覆盖当前配置并热加载？`)) return
-    await revertToBackup(backupChoice)
+  const handleSave = async () => {
+    if (!window.confirm(`校验通过后写入 ${sourcePath} 并热加载 dae。继续？`)) return
+    await saveDraft()
   }
 
   if (!config) {
-    return (
-      <p className="empty-state">
-        {notice?.message ?? '正在读取 dae 配置文件…'}
-      </p>
-    )
+    return <p className="empty-state">{notice?.message ?? '正在读取 dae 配置…'}</p>
   }
 
   return (
     <div className="config">
       <div className="toolbar">
-        <span className="config-path">{config.file}</span>
-        <span className={cx('config-flag', config.canWrite ? 'is-ok' : 'is-warn')}>
-          {config.canWrite ? '可写' : `只读：${config.writeReason ?? '未知原因'}`}
+        <select
+          className="control-select"
+          value={sourcePath ?? ''}
+          onChange={(event) => selectSource(event.target.value)}
+        >
+          {config.sources.map((item) => (
+            <option key={item.path} value={item.path}>
+              {item.path}
+              {item.writable ? '' : '（只读）'}
+            </option>
+          ))}
+        </select>
+        <span className={cx('config-flag', config.writable ? 'is-ok' : 'is-warn')}>
+          {config.writable ? 'dae 允许写配置' : `dae 不允许写配置：${config.layout_reason || '未知原因'}`}
         </span>
-        <span className="config-flag">
-          {config.apiWritable
-            ? 'dae config_write 已启用'
-            : `dae API 未开放写配置（${config.apiReason ?? 'writes_disabled'}）`}
-        </span>
+        <span className="config-flag">layout {config.layout}</span>
+        {source && !source.writable ? (
+          <span className="config-flag is-warn">该文件只读：{source.read_only_reason ?? '未知原因'}</span>
+        ) : null}
         {dirty ? <span className="config-dirty">未保存</span> : null}
         <div className="config-actions">
           <button type="button" className="btn btn-sm" onClick={() => void checkDraft()} disabled={busy}>
@@ -78,7 +80,7 @@ export function ConfigSection() {
             type="button"
             className="btn btn-sm"
             onClick={() => void handleSave()}
-            disabled={busy || !dirty || !config.canWrite}
+            disabled={busy || !dirty || !source?.writable}
           >
             保存并热加载
           </button>
@@ -101,6 +103,7 @@ export function ConfigSection() {
           className="config-text"
           value={draft}
           spellCheck={false}
+          readOnly={!source?.writable}
           onChange={(event) => setDraft(event.target.value)}
           onScroll={syncScroll}
         />
@@ -121,61 +124,45 @@ export function ConfigSection() {
 
       <div className="config-backups">
         <div className="block-head">
-          <h3 className="block-title">备份</h3>
-          <span className="block-meta">保存前自动备份，保留最近 20 份</span>
+          <h3 className="block-title">配置源</h3>
+          <span className="block-meta">generation {config.generation_id}</span>
         </div>
-        {config.backups.length === 0 ? (
-          <p className="empty-state">还没有备份。第一次保存时会生成。</p>
-        ) : (
-          <>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>文件</th>
-                  <th className="col-num">大小</th>
-                  <th>时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {config.backups.map((backup) => (
-                  <tr key={backup.name}>
-                    <td>{backup.name}</td>
-                    <td className="col-num">{formatBytes(backup.bytes)}</td>
-                    <td className="dim">{formatDateTime(backup.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="toolbar config-restore">
-              <select
-                className="control-select"
-                value={backupChoice}
-                onChange={(event) => setBackupChoice(event.target.value)}
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>文件</th>
+              <th>类型</th>
+              <th className="col-num">行数</th>
+              <th className="col-num">大小</th>
+              <th>加载时间</th>
+              <th>写权限</th>
+            </tr>
+          </thead>
+          <tbody>
+            {config.sources.map((item) => (
+              <tr
+                key={item.path}
+                className={cx(item.path === sourcePath && 'is-selected')}
+                onClick={() => selectSource(item.path)}
               >
-                <option value="">选择要回滚的备份</option>
-                {config.backups.map((backup) => (
-                  <option key={backup.name} value={backup.name}>
-                    {backup.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
-                onClick={() => void handleRevert()}
-                disabled={busy || !backupChoice}
-              >
-                回滚并热加载
-              </button>
-            </div>
-          </>
-        )}
+                <td>{item.path}</td>
+                <td className="dim">{item.kind}</td>
+                <td className="col-num">{item.line_count}</td>
+                <td className="col-num">{formatBytes(item.bytes)}</td>
+                <td className="dim">{formatDateTime(item.loaded_at)}</td>
+                <td className={item.writable ? 'is-ok' : 'dim'}>
+                  {item.writable ? '可写' : (item.read_only_reason ?? '只读')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <p className="footnote">
-        保存流程：dae 的 full 校验 → 备份当前文件 → 以 sudo 写入 {config.file} → 触发热加载。
-        热加载失败会自动写回备份并再次加载。dae 自带的写配置接口要求同时开启 api.config_write 与
-        api.secret，设了 secret 后整个 API 都要 Bearer token，因此这里改用本机 sudo 落盘，不改 dae 的认证模型。
+        保存流程：dae 的 full 校验 → PUT /api/v1/config/sources/{source?.id ?? '{id}'} →
+        dae 写文件、生成 .bak 并热加载，本服务等待操作到 succeeded。
+        `config.dae` 是入口文件（`entry_source`），只含 include 块；`api.dae` 是隐藏源，改动需手动编辑并重启 dae。
       </p>
     </div>
   )

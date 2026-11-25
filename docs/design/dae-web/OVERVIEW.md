@@ -43,23 +43,24 @@
 - 日志分区不用轮询，由 SSE 推送；轮询定时器对该分区不做事，避免无意义请求。
 - 轮询后用最新快照同步已选中条目，面板不会停在旧数值上。
 
-## 配置写入
+## 认证与配置写入
 
-dae 的配置写入接口存在，但被两个开关同时门控：`api.config_write` 为真且 `api.secret` 非空（`config/api.go` 的校验规则要求 config_write 必须配 secret）。一旦设了 secret，`AnonymousLoopbackActive` 不再成立，整个 API 都要 Bearer token，现有匿名回环形态作废，本服务与其它本机脚本都要带 token。
+dae 的 `api.config_write` 要求 `api.secret` 非空，设了 secret 之后 `AnonymousLoopbackActive` 失效，整个 API 都要 Bearer token。本机按这个模型配置，token 只存在服务端（`EnvironmentFile` 0600 或 token 文件），转发时由服务端注入，浏览器拿不到。
 
-因此写配置不走 dae 的写接口，改由本服务编排，dae 只做它不可替代的两件事：
+配置写入完全交给 dae，前提是配置采用 managed layout：`config.dae` 只是一个 include 块，内容按 section 拆到 `config.d/*.dae`，API 段单独放 `api.dae`。dae 才能把某个模块文件判为可写（`sourceWritable` 只允许 `config.d/*.dae`），入口文件与 `api.dae` 保持只读。
 
-1. `POST /api/v1/config/validate`（`mode: full`）是唯一的权威校验，语法与语义都由 dae 判断，本服务不自己解析配置语法。
-2. `POST /api/v1/operations/reload` 是唯一让新配置生效的方式，热加载不断已有连接。
+页面上的保存链路：
 
-文件写入由服务端以 `sudo -n tee` 完成，写前备份、reload 失败自动回滚并再加载一次。这样 dae 的认证模型不变，写权限仍然收敛在「本机 + sudo」这一层，而不是「任何能连 9527 的进程」。
+1. `POST /api/v1/config/validate`（`mode: full`）做权威校验，本服务不自己解析 dae 的配置语法。
+2. `PUT /api/v1/config/sources/{id}`，带 `If-Match: "<content_sha256>"` 与幂等键。
+3. dae 写文件、生成 `.bak`、触发热加载，返回 202 与操作 id；本服务轮询到 `succeeded` 再刷新页面。
 
-边界取舍：
+做法上的取舍：
 
-- 只对回环来源开放。配置里可能有节点凭据，局域网不该看到原文。
-- 保存带 `expectedSha256`，与 dae 上报的 `content_sha256` 不一致直接拒绝，避免用旧快照覆盖别处的改动。
-- dae 报告 `secrets_redacted` 时禁止保存，否则会把掩码写回文件。
-- 只编辑主配置源，`include` 引入的文件不在页面内处理。
+- 不自己写文件、不自己备份：dae 已经在同目录维护 `.bak`，两套备份只会互相打架。
+- 保存带 `expectedSha256`，与 dae 上报值不一致直接 409，避免用旧快照覆盖别处的改动。
+- `config.dae` 与 `api.dae` 不在页面里可写：前者是入口、后者是隐藏源，改它们需要手动编辑并重启 dae。
+- 配置页只对回环来源开放，配置内容含节点凭据，局域网只给观测视图。
 
 ## 写操作
 
