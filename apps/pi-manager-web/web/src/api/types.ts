@@ -20,21 +20,22 @@ export interface GeneralListing {
   unmanagedKeys: string[]
 }
 
-export type SkillScope = 'user' | 'user-agents' | 'project'
-
 export interface SkillItem {
+  /** 相对 skills/ 的目录路径（嵌套目录用 / 分隔）。 */
   relDir: string
-  scope: SkillScope
   name: string
   description: string
-  disabled: boolean
   disableModelInvocation: boolean
+  /** SKILL.md 相对 home 的路径。 */
+  filePath: string
+  revision: string
+  bytes: number
 }
 
 export interface SkillsListing {
-  items: SkillItem[]
-  /** 读取失败的目录（相对 home 的路径 + 原因）。 */
-  errors: Array<{ dir: string; message: string }>
+  skills: SkillItem[]
+  /** 读取失败时的警告。 */
+  warnings: string[]
 }
 
 export interface AgentProfileSummary {

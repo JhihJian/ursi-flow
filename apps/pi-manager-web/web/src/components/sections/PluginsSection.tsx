@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { PackageEntryView, PluginsListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { Badge, EmptyState, ErrorBanner, Loading, Notice } from '../ui'
+import { EmptyState, ErrorBanner, Loading } from '../ui'
 
 /**
  * 插件（settings.json 的 packages 条目 + npm/ 安装目录核对）。
@@ -46,89 +46,92 @@ export function PluginsSection({ home }: { home: string }) {
   }
 
   return (
-    <div className="split-view">
-      <div className="split-list" role="listbox" aria-label="插件条目">
-        {listing.packages.map((entry) => (
-          <button
-            key={entry.index}
-            type="button"
-            className="list-item"
-            role="option"
-            aria-current={entry.index === selected}
-            onClick={() => setSelected(entry.index)}
-          >
-            <span className="list-item-main">
-              <div className="list-item-title">{entry.source || '（无 source）'}</div>
-              <div className="list-item-sub">
-                {entry.installedDir ? `npm/${entry.installedDir}` : '（npm/ 未检测到安装目录）'}
-              </div>
-            </span>
-            <span className="list-item-badges">
-              {entry.disabled ? <Badge tone="danger">disabled</Badge> : <Badge tone="ok">on</Badge>}
-              {entry.hasFilters ? <Badge tone="warn">filters</Badge> : null}
-            </span>
-          </button>
-        ))}
-        {listing.packages.length === 0 ? (
-          <EmptyState title="settings.json 没有 packages 条目" hint="用 pi CLI 安装插件后这里会出现。" />
-        ) : null}
-      </div>
+    <section className="section">
+      <header className="section-head">
+        <h1 className="section-title">插件</h1>
+        <span className="section-desc">settings.json packages · 禁用不卸载，npm/ 保持原样</span>
+      </header>
+      {listing.packages.length > 0 ? (
+        <table className="item-table">
+          <thead>
+            <tr>
+              <th className="col-state">State</th>
+              <th>Package</th>
+              <th className="col-size">Filters</th>
+            </tr>
+          </thead>
+          <tbody>
+            {listing.packages.map((entry) => (
+              <tr
+                key={entry.index}
+                className={entry.index === selected ? 'is-selected' : undefined}
+                title={entry.installedDir ? `npm/${entry.installedDir}` : 'npm/ 未检测到安装目录'}
+                onClick={() => setSelected(entry.index)}
+              >
+                <td className="col-state">
+                  <span className={`state-mark${entry.disabled ? ' off' : ''}`}>
+                    {entry.disabled ? '×' : '✓'}
+                  </span>
+                </td>
+                <td>
+                  <div className="cell-title">{entry.source || '（无 source）'}</div>
+                  <div className="cell-sub">
+                    {entry.kind === 'plain' ? 'string 形式（启用）' : 'object 形式'}
+                    {entry.autoload ? ' · autoload' : ''}
+                  </div>
+                </td>
+                <td className="col-size">{entry.hasFilters ? 'yes' : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <EmptyState title="settings.json 没有 packages 条目" hint="用 pi CLI 安装插件后这里会出现。" />
+      )}
+      <p className="mono-dim">安装、升级与清理用 pi CLI 完成；这里只切换启用状态与移除条目。</p>
 
-      <div className="split-detail">
-        <div className="split-detail-inner">
-          {selectedEntry ? (
-            <section className="settings-section" key={selectedEntry.index}>
-              <header className="settings-section-header">
-                <h2 className="settings-section-title">{selectedEntry.source}</h2>
-                <p className="settings-section-description">
-                  条目 #{selectedEntry.index} · {selectedEntry.kind === 'plain' ? 'string 形式（启用）' : 'object 形式'}
-                  {selectedEntry.autoload ? ' · autoload' : ''}
-                </p>
-              </header>
-              <div className="settings-section-body">
-                <div className="kv-grid">
-                  <span className="kv-key">安装目录</span>
-                  <span className="kv-value">{selectedEntry.installedDir ?? '未检测到（可能未安装或来源非 npm 包名）'}</span>
-                </div>
-                {selectedEntry.hasFilters ? (
-                  <Notice tone="warn">
-                    该条目带资源过滤列表（extensions/skills/prompts/themes 非空）。禁用会永久丢失过滤信息，
-                    服务端会拒绝；请直接编辑 settings.json。
-                  </Notice>
-                ) : null}
-                <div className="field-row">
-                  {selectedEntry.disabled ? (
-                    <button type="button" className="btn primary" onClick={() => void mutate(selectedEntry, 'enable')}>
-                      启用
-                    </button>
-                  ) : (
-                    <button type="button" className="btn" onClick={() => void mutate(selectedEntry, 'disable')}>
-                      禁用
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="btn danger"
-                    onClick={() => {
-                      if (window.confirm(`从 settings.json 移除 ${selectedEntry.source}？npm/ 目录不会删除。`)) {
-                        void mutate(selectedEntry, 'remove')
-                      }
-                    }}
-                  >
-                    移除条目
-                  </button>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <EmptyState title="选择左侧插件条目" />
-          )}
-          <Notice>
-            禁用不卸载：npm/ 目录保持原样，pi 下次会话不再加载。安装、升级与清理用 pi CLI 完成。
-          </Notice>
+      {selectedEntry ? (
+        <div className="detail-sheet" key={selectedEntry.index}>
+          <div className="detail-grip" aria-hidden />
+          <div className="detail-body">
+            <div className="detail-head">
+              <h2 className="detail-title">{selectedEntry.source}</h2>
+              <span className="detail-meta">
+                条目 #{selectedEntry.index} · {selectedEntry.installedDir ? `npm/${selectedEntry.installedDir}` : '未检测到安装目录'}
+              </span>
+            </div>
+            {selectedEntry.hasFilters ? (
+              <p className="section-warn">
+                该条目带资源过滤列表（extensions/skills/prompts/themes 非空）。禁用会永久丢失过滤信息，
+                服务端会拒绝；请直接编辑 settings.json。
+              </p>
+            ) : null}
+            <div className="field-row">
+              {selectedEntry.disabled ? (
+                <button type="button" className="btn btn-primary" onClick={() => void mutate(selectedEntry, 'enable')}>
+                  启用
+                </button>
+              ) : (
+                <button type="button" className="btn" onClick={() => void mutate(selectedEntry, 'disable')}>
+                  禁用
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`从 settings.json 移除 ${selectedEntry.source}？npm/ 目录不会删除。`)) {
+                    void mutate(selectedEntry, 'remove')
+                  }
+                }}
+              >
+                移除条目
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </section>
   )
 }
 

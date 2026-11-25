@@ -24,36 +24,6 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   )
 }
 
-export function Notice({
-  tone = 'info',
-  children,
-}: {
-  tone?: 'info' | 'warn' | 'danger' | 'ok'
-  children: ReactNode
-}) {
-  return <div className={tone === 'info' ? 'notice' : `notice ${tone}`}>{children}</div>
-}
-
-export function SectionCard({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description?: string
-  children: ReactNode
-}) {
-  return (
-    <section className="settings-section">
-      <header className="settings-section-header">
-        <h2 className="settings-section-title">{title}</h2>
-        {description ? <p className="settings-section-description">{description}</p> : null}
-      </header>
-      <div className="settings-section-body">{children}</div>
-    </section>
-  )
-}
-
 export function Field({
   label,
   hint,
@@ -95,14 +65,4 @@ export function Switch({
       <span className="switch-label">{label}</span>
     </button>
   )
-}
-
-export function Badge({
-  tone,
-  children,
-}: {
-  tone?: 'ok' | 'warn' | 'danger' | 'accent'
-  children: ReactNode
-}) {
-  return <span className={tone ? `badge ${tone}` : 'badge'}>{children}</span>
 }

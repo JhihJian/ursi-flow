@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { GeneralListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { ErrorBanner, Field, Loading, Notice, SectionCard } from '../ui'
+import { ErrorBanner, Field, Loading } from '../ui'
 
 /**
  * 常规：settings.json 的受管 key（默认模型/思考级别/默认工具/codemode）。
@@ -47,11 +47,13 @@ export function GeneralSection({ home }: { home: string }) {
   }
 
   return (
-    <div className="settings-form-narrow">
-      <SectionCard
-        title="settings.json 受管项"
-        description={`只编辑此处列出的 key；文件里其余 ${listing.unmanagedKeys.length} 个 key 不会被改动。写入后其他进程若修改过文件会被拒绝（乐观锁）。`}
-      >
+    <section className="section">
+      <header className="section-head">
+        <h1 className="section-title">常规</h1>
+        <span className="section-desc">settings.json 受管 key · 其余 {listing.unmanagedKeys.length} 个 key 不会改动</span>
+      </header>
+      <div className="settings-form-narrow">
+        <div className="stack">
         <Field
           label="默认模型"
           hint="provider/modelId，如 anthropic/claude-sonnet-4-5。留空表示未设置。"
@@ -126,13 +128,13 @@ export function GeneralSection({ home }: { home: string }) {
             }
           />
         </div>
-      </SectionCard>
-
-      <Notice>
-        本页只覆盖 settings.json；凭据在「凭据」分区，插件条目在「插件」分区，
-        内置 subagent 开关在「Subagent」分区。
-      </Notice>
-    </div>
+        </div>
+        <p className="mono-dim">
+          本页只覆盖 settings.json；凭据在「凭据」分区，插件条目在「插件」分区，
+          内置 subagent 开关在「Subagent」分区。
+        </p>
+      </div>
+    </section>
   )
 }
 

@@ -6,10 +6,7 @@ import { ApiError, api } from '../api/client'
  * 分区数据由各 Section 组件自行拉取（写后回读），不进 store。
  */
 
-export type ThemeMode = 'dark' | 'light'
-
 const HOME_KEY = 'pi-manager.home'
-const THEME_KEY = 'pi-manager.theme'
 
 function loadHome(): string {
   try {
@@ -19,16 +16,6 @@ function loadHome(): string {
   }
 }
 
-function loadTheme(): ThemeMode {
-  try {
-    const saved = localStorage.getItem(THEME_KEY)
-    if (saved === 'light' || saved === 'dark') return saved
-  } catch {
-    /* ignore */
-  }
-  return 'dark'
-}
-
 export type FooterKind = 'idle' | 'busy' | 'ok' | 'error'
 
 interface AppState {
@@ -36,13 +23,11 @@ interface AppState {
   homeValid: boolean | null
   homeChecking: boolean
   homeError: string | null
-  theme: ThemeMode
   footer: { kind: FooterKind; message: string }
 
   initHome: () => Promise<void>
   setHomePath: (path: string) => void
   confirmHome: (path: string) => Promise<boolean>
-  toggleTheme: () => void
   setFooter: (kind: FooterKind, message: string) => void
   clearFooter: () => void
   /** 包装写操作：footer 显示忙碌/成功/失败，返回是否成功。 */
@@ -54,7 +39,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   homeValid: null,
   homeChecking: false,
   homeError: null,
-  theme: loadTheme(),
   footer: { kind: 'idle', message: '' },
 
   async initHome() {
@@ -95,16 +79,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ homeChecking: false, homeValid: false, homeError: describeError(error) })
       return false
     }
-  },
-
-  toggleTheme() {
-    const next = get().theme === 'dark' ? 'light' : 'dark'
-    try {
-      localStorage.setItem(THEME_KEY, next)
-    } catch {
-      /* ignore */
-    }
-    set({ theme: next })
   },
 
   setFooter(kind, message) {

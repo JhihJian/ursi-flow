@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { McpListing, McpServerView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { Badge, EmptyState, ErrorBanner, Loading, Notice } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
 /**
  * MCP（mcp.json）：server 列表 + JSON 详情编辑，合并写回语义同 models。
@@ -48,70 +48,75 @@ export function McpSection({ home }: { home: string }) {
   }
 
   return (
-    <div className="split-view">
-      <div className="split-list" role="listbox" aria-label="MCP server">
-        {listing.servers.map((server) => (
-          <button
-            key={server.name}
-            type="button"
-            className="list-item"
-            role="option"
-            aria-current={server.name === selected && !creating}
-            onClick={() => {
-              setCreating(false)
-              setSelected(server.name)
-            }}
-          >
-            <span className="list-item-main">
-              <div className="list-item-title">{server.name}</div>
-              <div className="list-item-sub">{describeTransport(server)}</div>
-            </span>
-            <span className="list-item-badges">
-              {server.maskedFields.length > 0 ? <Badge tone="warn">masked</Badge> : null}
-            </span>
-          </button>
-        ))}
-        {listing.servers.length === 0 ? (
-          <EmptyState title="mcp.json 没有 server" hint="下方按钮新增。" />
-        ) : null}
-        <div style={{ marginTop: 'auto', paddingTop: 'var(--space-3)' }}>
-          <button type="button" className="btn" onClick={() => setCreating(true)}>
+    <section className="section">
+      <header className="section-head">
+        <h1 className="section-title">MCP</h1>
+        <div className="field-row">
+          {!listing.exists ? <span className="section-desc">mcp.json 尚不存在，保存后创建</span> : null}
+          <button type="button" className="btn small" onClick={() => setCreating(true)}>
             新增 server
           </button>
         </div>
-      </div>
+      </header>
+      {listing.servers.length > 0 ? (
+        <table className="item-table">
+          <thead>
+            <tr>
+              <th className="col-state">Mask</th>
+              <th>Server</th>
+              <th className="col-size">Transport</th>
+            </tr>
+          </thead>
+          <tbody>
+            {listing.servers.map((server) => (
+              <tr
+                key={server.name}
+                className={server.name === selected && !creating ? 'is-selected' : undefined}
+                onClick={() => {
+                  setCreating(false)
+                  setSelected(server.name)
+                }}
+              >
+                <td className="col-state">
+                  <span className={`state-mark${server.maskedFields.length > 0 ? ' off' : ''}`}>
+                    {server.maskedFields.length > 0 ? `${server.maskedFields.length}` : '—'}
+                  </span>
+                </td>
+                <td>
+                  <div className="cell-title">{server.name}</div>
+                  <div className="cell-sub">{server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : ''}</div>
+                </td>
+                <td className="col-size">{describeTransport(server)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <EmptyState title="mcp.json 没有 server" hint="点击右上角「新增 server」。" />
+      )}
+      <p className="mono-dim">
+        本页只管理全局 mcp.json；项目级 .pi/mcp.json 请直接编辑项目文件。
+        运行状态与工具发现由 pi 会话负责，管理台不 spawn 任何 server。
+      </p>
 
-      <div className="split-detail">
-        <div className="split-detail-inner">
-          {!listing.exists ? (
-            <Notice>mcp.json 尚不存在，保存后创建。</Notice>
-          ) : null}
-          {creating ? (
-            <ServerEditor
-              key="__new__"
-              server={{ name: '', entry: { command: '', args: [] }, maskedFields: [], varRefs: [], commandValues: [] }}
-              isNew
-              onSave={(name, entry) => saveOne(name, entry, `新增 server ${name}`)}
-              onCancel={() => setCreating(false)}
-            />
-          ) : selectedServer ? (
-            <ServerEditor
-              key={selectedServer.name}
-              server={selectedServer}
-              isNew={false}
-              onSave={(name, entry) => saveOne(name, entry, `保存 server ${name}`)}
-              onDelete={() => saveOne(selectedServer.name, null, `删除 server ${selectedServer.name}`)}
-            />
-          ) : (
-            <EmptyState title="选择或新增 server" />
-          )}
-          <Notice>
-            本页只管理全局 mcp.json；项目级 .pi/mcp.json 请直接编辑项目文件。
-            运行状态与工具发现由 pi 会话负责，管理台不 spawn 任何 server。
-          </Notice>
-        </div>
-      </div>
-    </div>
+      {creating ? (
+        <ServerEditor
+          key="__new__"
+          server={{ name: '', entry: { command: '', args: [] }, maskedFields: [], varRefs: [], commandValues: [] }}
+          isNew
+          onSave={(name, entry) => saveOne(name, entry, `新增 server ${name}`)}
+          onCancel={() => setCreating(false)}
+        />
+      ) : selectedServer ? (
+        <ServerEditor
+          key={selectedServer.name}
+          server={selectedServer}
+          isNew={false}
+          onSave={(name, entry) => saveOne(name, entry, `保存 server ${name}`)}
+          onDelete={() => saveOne(selectedServer.name, null, `删除 server ${selectedServer.name}`)}
+        />
+      ) : null}
+    </section>
   )
 }
 
@@ -162,67 +167,65 @@ function ServerEditor({
   }
 
   return (
-    <section className="settings-section">
-      <header className="settings-section-header">
-        <h2 className="settings-section-title">{isNew ? '新增 server' : server.name}</h2>
-        <p className="settings-section-description">
-          stdio：command/args/env；http：url/headers。env 与 headers 的字面量密钥显示为掩码。
-        </p>
-      </header>
-      <div className="settings-section-body">
-        {server.varRefs.length > 0 ? (
-          <Notice>值引用了环境变量：{server.varRefs.join('、')}。引用原样保留，不展开。</Notice>
-        ) : null}
-        {server.commandValues.length > 0 ? (
-          <Notice tone="warn">
-            !command 动态值：{server.commandValues.join('、')}。管理台不执行命令，仅在会话连接时由 pi 处理。
-          </Notice>
-        ) : null}
-        <label className="field">
-          <span className="field-label">server 名</span>
-          <input
-            className="input"
-            value={name}
-            readOnly={!isNew}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="如 fs-web"
-            style={{ maxWidth: 260 }}
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">条目 JSON</span>
-          <textarea
-            className="textarea code"
-            value={text}
-            spellCheck={false}
-            onChange={(e) => setText(e.target.value)}
-          />
-          {jsonError ? (
-            <span className="field-hint" style={{ color: 'var(--danger)' }}>{jsonError}</span>
+    <div className="detail-sheet">
+      <div className="detail-grip" aria-hidden />
+      <div className="detail-body">
+        <div className="detail-head">
+          <h2 className="detail-title">{isNew ? '新增 server' : server.name}</h2>
+          <span className="detail-meta">stdio：command/args/env · http：url/headers · 密钥字段显示掩码</span>
+        </div>
+        <div className="detail-form">
+          {server.varRefs.length > 0 ? (
+            <p className="detail-hint">值引用了环境变量：{server.varRefs.join('、')}。引用原样保留，不展开。</p>
           ) : null}
-        </label>
-        <div className="field-row">
-          <button type="button" className="btn primary" disabled={!nameValid} onClick={() => void commit()}>
-            保存
-          </button>
-          {onDelete ? (
-            <button
-              type="button"
-              className="btn danger"
-              onClick={() => {
-                if (window.confirm(`删除 server ${server.name}？`)) void onDelete()
-              }}
-            >
-              删除
+          {server.commandValues.length > 0 ? (
+            <p className="section-warn">
+              !command 动态值：{server.commandValues.join('、')}。管理台不执行命令，仅在会话连接时由 pi 处理。
+            </p>
+          ) : null}
+          <div className="detail-grid">
+            <Field label="server 名">
+              <input
+                className="input"
+                value={name}
+                readOnly={!isNew}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如 fs-web"
+              />
+            </Field>
+          </div>
+          <Field label="条目 JSON">
+            <textarea
+              className="textarea code"
+              value={text}
+              spellCheck={false}
+              onChange={(e) => setText(e.target.value)}
+            />
+            {jsonError ? <span className="field-hint">{jsonError}</span> : null}
+          </Field>
+          <div className="field-row">
+            <button type="button" className="btn btn-primary" disabled={!nameValid} onClick={() => void commit()}>
+              保存
             </button>
-          ) : null}
-          {onCancel ? (
-            <button type="button" className="btn" onClick={onCancel}>
-              取消
-            </button>
-          ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`删除 server ${server.name}？`)) void onDelete()
+                }}
+              >
+                删除
+              </button>
+            ) : null}
+            {onCancel ? (
+              <button type="button" className="btn" onClick={onCancel}>
+                取消
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { AgentsListing, AgentsSettingsView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { Badge, EmptyState, ErrorBanner, Field, Loading, Notice, SectionCard } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
 /**
  * Subagent：agents/ 目录的 profile 列表 + 内置 agent 开关（agents/settings.json）。
@@ -42,65 +42,67 @@ export function AgentsSection({ home }: { home: string }) {
   const selectedProfile = listing.profiles.find((p) => p.file === selected) ?? null
 
   return (
-    <div className="split-view">
-      <div className="split-list" role="listbox" aria-label="subagent profile">
-        {listing.profiles.map((profile) => (
-          <button
-            key={profile.file}
-            type="button"
-            className="list-item"
-            role="option"
-            aria-current={profile.file === selected && !creating}
-            onClick={() => {
-              setCreating(false)
-              setSelected(profile.file)
-            }}
-          >
-            <span className="list-item-main">
-              <div className="list-item-title">{profile.name}</div>
-              <div className="list-item-sub">{profile.description || '（无描述）'}</div>
-            </span>
-            {profile.extraKeys.length > 0 ? (
-              <span className="list-item-badges">
-                <Badge>{profile.extraKeys.length} 扩展键</Badge>
-              </span>
-            ) : null}
-          </button>
-        ))}
-        {listing.profiles.length === 0 ? (
-          <EmptyState title="agents/ 目录没有 profile" hint="下方按钮新增。" />
-        ) : null}
-        <div style={{ marginTop: 'auto', paddingTop: 'var(--space-3)' }}>
-          <button type="button" className="btn" onClick={() => setCreating(true)}>
-            新增 profile
-          </button>
-        </div>
-      </div>
+    <section className="section">
+      <header className="section-head">
+        <h1 className="section-title">Subagent</h1>
+        <button type="button" className="btn small" onClick={() => setCreating(true)}>
+          新增 profile
+        </button>
+      </header>
+      {listing.profiles.length > 0 ? (
+        <table className="item-table">
+          <thead>
+            <tr>
+              <th className="col-state">Ext</th>
+              <th>Profile</th>
+              <th className="col-size">File</th>
+            </tr>
+          </thead>
+          <tbody>
+            {listing.profiles.map((profile) => (
+              <tr
+                key={profile.file}
+                className={profile.file === selected && !creating ? 'is-selected' : undefined}
+                title={profile.description}
+                onClick={() => {
+                  setCreating(false)
+                  setSelected(profile.file)
+                }}
+              >
+                <td className="col-state">
+                  <span className="state-mark">{profile.extraKeys.length || '—'}</span>
+                </td>
+                <td>
+                  <div className="cell-title">{profile.name}</div>
+                  <div className="cell-sub">{profile.description || '（无描述）'}</div>
+                </td>
+                <td className="col-size">{profile.file}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <EmptyState title="agents/ 目录没有 profile" hint="点击右上角「新增 profile」。" />
+      )}
 
-      <div className="split-detail">
-        <div className="split-detail-inner">
-          {creating ? (
-            <ProfileEditor
-              key="__new__"
-              file=""
-              initial={null}
-              onSave={async (file, payload) => {
-                const ok = await runWrite(`新增 profile ${payload.name}`, async () => {
-                  await api.putAgentProfile(home, { file, ...payload, revision: '' })
-                  await reload()
-                })
-                return ok
-              }}
-            />
-          ) : selectedProfile ? (
-            <ProfileDetail key={selectedProfile.file} home={home} file={selectedProfile.file} onSaved={reload} />
-          ) : (
-            <EmptyState title="选择或新增 profile" />
-          )}
-          <BuiltInCard settings={listing.settings} onSaved={reload} />
-        </div>
-      </div>
-    </div>
+      {creating ? (
+        <ProfileEditor
+          key="__new__"
+          file=""
+          initial={null}
+          onSave={async (file, payload) => {
+            const ok = await runWrite(`新增 profile ${payload.name}`, async () => {
+              await api.putAgentProfile(home, { file, ...payload, revision: '' })
+              await reload()
+            })
+            return ok
+          }}
+        />
+      ) : selectedProfile ? (
+        <ProfileDetail key={selectedProfile.file} home={home} file={selectedProfile.file} onSaved={reload} />
+      ) : null}
+      <BuiltInCard settings={listing.settings} onSaved={reload} />
+    </section>
   )
 }
 
@@ -192,67 +194,69 @@ function ProfileEditor({
     .filter(Boolean)
 
   return (
-    <section className="settings-section">
-      <header className="settings-section-header">
-        <h2 className="settings-section-title">{file ? file : '新增 profile'}</h2>
-        <p className="settings-section-description">
-          保存为 agents/&lt;name&gt;.md；frontmatter 之外的扩展 key 原样保留（如 model、tools）。
-        </p>
-      </header>
-      <div className="settings-section-body">
-        <Field label="name（也是文件名，小写字母数字与 -）">
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="如 code-reviewer"
-            style={{ maxWidth: 260 }}
-          />
-        </Field>
-        <Field label="description（何时使用该 agent）">
-          <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
-        <Field label="扩展 frontmatter key" hint="每行一条，如 model: claude-sonnet-4-5；留空则没有。">
-          <textarea
-            className="textarea"
-            value={extraText}
-            onChange={(e) => setExtraText(e.target.value)}
-            style={{ minHeight: 64 }}
-          />
-        </Field>
-        <Field label="系统提示词正文">
-          <textarea
-            className="textarea code"
-            value={body}
-            spellCheck={false}
-            onChange={(e) => setBody(e.target.value)}
-          />
-        </Field>
-        <div className="field-row">
-          <button
-            type="button"
-            className="btn primary"
-            disabled={!nameValid || !name.trim()}
-            onClick={() =>
-              void onSave(file, { name, description, extraKeys, body }, revision ?? '')
-            }
-          >
-            保存
-          </button>
-          {onDelete && file ? (
+    <div className="detail-sheet">
+      <div className="detail-grip" aria-hidden />
+      <div className="detail-body">
+        <div className="detail-head">
+          <h2 className="detail-title">{file ? file : '新增 profile'}</h2>
+          <span className="detail-meta">保存为 agents/&lt;name&gt;.md；扩展 frontmatter key 原样保留</span>
+        </div>
+        <div className="detail-form">
+          <div className="detail-grid">
+            <Field label="name（文件名，小写字母数字与 -）">
+              <input
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如 code-reviewer"
+              />
+            </Field>
+            <Field label="description（何时使用该 agent）">
+              <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="扩展 frontmatter key" hint="每行一条，如 model: claude-sonnet-4-5；留空则没有。">
+            <textarea
+              className="textarea"
+              value={extraText}
+              onChange={(e) => setExtraText(e.target.value)}
+              style={{ minHeight: 64 }}
+            />
+          </Field>
+          <Field label="系统提示词正文">
+            <textarea
+              className="textarea code"
+              value={body}
+              spellCheck={false}
+              onChange={(e) => setBody(e.target.value)}
+            />
+          </Field>
+          <div className="field-row">
             <button
               type="button"
-              className="btn danger"
-              onClick={() => {
-                if (window.confirm(`删除 profile ${file}？`)) void onDelete()
-              }}
+              className="btn btn-primary"
+              disabled={!nameValid || !name.trim()}
+              onClick={() =>
+                void onSave(file, { name, description, extraKeys, body }, revision ?? '')
+              }
             >
-              删除
+              保存
             </button>
-          ) : null}
+            {onDelete && file ? (
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`删除 profile ${file}？`)) void onDelete()
+                }}
+              >
+                删除
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -284,59 +288,64 @@ function BuiltInCard({
   }
 
   return (
-    <SectionCard
-      title="内置 agent"
-      description="写到 agents/settings.json（不是主 settings.json）；禁用列表里出现过的内置 agent 不再加载。"
-    >
-      <div className="row-between">
-        <span className="field-label">启用内置 agent</span>
-        <button
-          type="button"
-          className="switch"
-          aria-pressed={settings.builtInEnabled}
-          onClick={async () => {
-            await useAppStore.getState().runWrite('切换内置 agent', async () => {
-              await api.putAgentsSettings(home, {
-                builtInEnabled: !settings.builtInEnabled,
-                disabledBuiltIns: settings.disabledBuiltIns,
-                maxConcurrent: settings.maxConcurrent,
-                revision: settings.revision,
-              })
-              await onSaved()
-            })
-          }}
-        >
-          <span className="switch-track" aria-hidden />
-        </button>
+    <div className="detail-sheet">
+      <div className="detail-grip" aria-hidden />
+      <div className="detail-body">
+        <div className="detail-head">
+          <h2 className="detail-title">内置 agent</h2>
+          <span className="detail-meta">agents/settings.json · 禁用列表里的内置 agent 不再加载</span>
+        </div>
+        <div className="detail-form">
+          <div className="row-between">
+            <button
+              type="button"
+              className="switch"
+              aria-pressed={settings.builtInEnabled}
+              onClick={async () => {
+                await useAppStore.getState().runWrite('切换内置 agent', async () => {
+                  await api.putAgentsSettings(home, {
+                    builtInEnabled: !settings.builtInEnabled,
+                    disabledBuiltIns: settings.disabledBuiltIns,
+                    maxConcurrent: settings.maxConcurrent,
+                    revision: settings.revision,
+                  })
+                  await onSaved()
+                })
+              }}
+            >
+              <span className="switch-track" aria-hidden />
+              <span className="switch-label">启用内置 agent</span>
+            </button>
+            {!settings.exists ? <span className="detail-hint">文件尚不存在，保存后创建</span> : null}
+          </div>
+          <div className="detail-grid">
+            <Field label="禁用的内置 agent" hint="逗号分隔，如 Explore, compaction；留空全部启用。">
+              <input
+                className="input"
+                value={disabledText}
+                onChange={(e) => setDisabledText(e.target.value)}
+                placeholder="Explore, compaction"
+              />
+            </Field>
+            <Field label="maxConcurrent" hint="并发上限；留空由 pi 决定。">
+              <input
+                className="input"
+                value={maxConcurrent}
+                inputMode="numeric"
+                onChange={(e) => setMaxConcurrent(e.target.value)}
+                placeholder="如 4"
+              />
+            </Field>
+          </div>
+          <div className="field-row">
+            <button type="button" className="btn btn-primary" onClick={() => void save()}>
+              保存设置
+            </button>
+            <span className="detail-hint">profile 与内置开关都是全局 agents/；项目级 .pi/agents/ 本页不编辑。</span>
+          </div>
+        </div>
       </div>
-      <Field label="禁用的内置 agent" hint="逗号分隔的名字，如 Explore, compaction。留空表示全部启用。">
-        <input
-          className="input"
-          value={disabledText}
-          onChange={(e) => setDisabledText(e.target.value)}
-          placeholder="Explore, compaction"
-        />
-      </Field>
-      <Field label="maxConcurrent" hint="单个会话内 subagent 的并发上限；留空表示由 pi 决定。">
-        <input
-          className="input"
-          value={maxConcurrent}
-          inputMode="numeric"
-          onChange={(e) => setMaxConcurrent(e.target.value)}
-          placeholder="如 4"
-          style={{ maxWidth: 120 }}
-        />
-      </Field>
-      <div className="field-row">
-        <button type="button" className="btn primary" onClick={() => void save()}>
-          保存设置
-        </button>
-        {!settings.exists ? <span className="mono-dim">agents/settings.json 尚不存在，保存后创建。</span> : null}
-      </div>
-      <Notice>
-        profile 与内置开关都是全局 agents/ 目录；项目级 .pi/agents/ 本页不编辑。
-      </Notice>
-    </SectionCard>
+    </div>
   )
 }
 
