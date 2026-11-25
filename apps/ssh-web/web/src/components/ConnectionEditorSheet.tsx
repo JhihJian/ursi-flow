@@ -147,15 +147,16 @@ export function ConnectionEditorSheet() {
           ) : (
             <>
               <label className="form-group">
-                <span className="form-label">Key path（服务器上的绝对路径）</span>
+                <span className="form-label">Key path（本机私钥绝对路径）</span>
                 <input
                   className="form-input"
+                  placeholder="/home/user/.ssh/id_ed25519"
                   value={form.key_path}
                   onChange={(event) => patch({ key_path: event.target.value })}
                 />
               </label>
               <label className="form-group">
-                <span className="form-label">Key passphrase</span>
+                <span className="form-label">Key passphrase（无口令则留空）</span>
                 <input
                   className="form-input"
                   type="password"

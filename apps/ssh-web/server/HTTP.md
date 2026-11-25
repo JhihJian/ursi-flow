@@ -20,7 +20,7 @@
 
 ### `POST /connections`
 
-创建连接。必填：`name`（唯一，重复返回 409 `conflict`）、`host`、`username`；可选：`port`（默认 22）、`auth_type`（`password` | `key`，默认 `password`）、`password`、`key_path`、`key_passphrase`。密码认证必须提供 `password`，否则 400。
+创建连接。必填：`name`（唯一，重复返回 409 `conflict`）、`host`、`username`；可选：`port`（默认 22）、`auth_type`（`password` | `key`，默认 `password`）、`password`、`key_path`（ssh-web 所在机器上的私钥绝对路径）、`key_passphrase`。密码认证必须提供 `password`，密钥认证必须提供 `key_path`，否则 400。
 
 返回 `{"id": 1}`，状态 201。
 

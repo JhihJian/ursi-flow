@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import { ContextMenu, type MenuState } from './ContextMenu'
 import type { ControlFrame, EventFrame, SessionInfo } from '../api/types'
 import { useSshStore } from '../store/ssh-store'
 
@@ -14,7 +15,7 @@ const MAX_COLS = 500
 const MAX_ROWS = 500
 
 /** xterm 暗色主题：面板底色 #141414，出版物风格低饱和配色。 */
-const TERMINAL_THEME = {
+const TERMINAL_THEME_DARK = {
   background: '#141414',
   foreground: '#e6e6e6',
   cursor: '#e6e6e6',
@@ -36,6 +37,31 @@ const TERMINAL_THEME = {
   brightMagenta: '#b47ad4',
   brightCyan: '#6ac0c0',
   brightWhite: '#e6e6e6',
+}
+
+/** xterm 亮色主题：白底黑字，与出版物风格一致。 */
+const TERMINAL_THEME_LIGHT = {
+  background: '#ffffff',
+  foreground: '#1a1a1a',
+  cursor: '#1a1a1a',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#c9c9c9',
+  black: '#1a1a1a',
+  red: '#b43c3c',
+  green: '#3c6e34',
+  yellow: '#8a6d1e',
+  blue: '#2e4d8a',
+  magenta: '#6e2e8a',
+  cyan: '#2e6e6e',
+  white: '#cccccc',
+  brightBlack: '#666666',
+  brightRed: '#d46a6a',
+  brightGreen: '#5a9a4a',
+  brightYellow: '#b49a3c',
+  brightBlue: '#5a7ab4',
+  brightMagenta: '#9a5ab4',
+  brightCyan: '#4a9a9a',
+  brightWhite: '#ffffff',
 }
 
 interface Bridge {
@@ -63,7 +89,11 @@ function parseSize(width: number, height: number, lastSize: { cols: number; rows
 }
 
 /** 建立一条 WS↔xterm 桥；返回清理函数。 */
-function openBridge(container: HTMLElement, session: SessionInfo): () => void {
+function openBridge(
+  container: HTMLElement,
+  session: SessionInfo,
+  light: boolean,
+): () => void {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const socket = new WebSocket(
     `${protocol}://${window.location.host}/api/sessions/${encodeURIComponent(session.id)}/ws`,
@@ -75,7 +105,7 @@ function openBridge(container: HTMLElement, session: SessionInfo): () => void {
     fontSize: 14,
     lineHeight: 1.2,
     cursorBlink: true,
-    theme: TERMINAL_THEME,
+    theme: light ? TERMINAL_THEME_LIGHT : TERMINAL_THEME_DARK,
     scrollback: 5000,
     convertEol: false,
   })
@@ -133,30 +163,69 @@ function openBridge(container: HTMLElement, session: SessionInfo): () => void {
   }
 }
 
-/** 右侧终端区：选中连接后经桥接展示远端 PTY。 */
+/** 右侧终端区：选中连接后经桥接展示远端 PTY；右键提供重连与亮暗色切换。 */
 export function TerminalPane() {
   const containerRef = useRef<HTMLDivElement>(null)
   const activeSession = useSshStore((state) => state.activeSession)
   const connecting = useSshStore((state) => state.connecting)
+  const terminalLight = useSshStore((state) => state.terminalLight)
+  const reconnectActive = useSshStore((state) => state.reconnectActive)
+  const setEditor = useSshStore((state) => state.setEditor)
+  const [menu, setMenu] = useState<MenuState | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     if (!activeSession) return
-    const cleanup = openBridge(container, activeSession)
+    const cleanup = openBridge(container, activeSession, terminalLight)
     cleanupRef.current = cleanup
     return () => {
       cleanupRef.current = null
       cleanup()
     }
-  }, [activeSession])
+  }, [activeSession, terminalLight])
+
+  const openMenu = (event: MouseEvent) => {
+    event.preventDefault()
+    const items: MenuState['items'] = [
+      { label: 'New connection', onSelect: () => setEditor({ kind: 'new' }) },
+    ]
+    if (activeSession && !connecting) {
+      items.push({ label: 'Reconnect', onSelect: () => void reconnectActive() })
+    }
+    items.push({
+      label: terminalLight ? 'Dark terminal' : 'Light terminal',
+      onSelect: () => useSshStore.getState().toggleTerminalLight(),
+    })
+    setMenu({ x: event.clientX, y: event.clientY, items })
+  }
 
   if (connecting) {
-    return <div className="terminal-pane terminal-placeholder">connecting…</div>
+    return (
+      <div className="terminal-pane terminal-placeholder" onContextMenu={openMenu}>
+        connecting…
+        <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      </div>
+    )
   }
   if (!activeSession) {
-    return <div className="terminal-pane terminal-placeholder">选择或新建一个连接开始会话</div>
+    return (
+      <div className="terminal-pane terminal-placeholder" onContextMenu={openMenu}>
+        选择或新建一个连接开始会话
+        <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      </div>
+    )
   }
-  return <div className="terminal-pane terminal-surface" ref={containerRef} />
+  return (
+    <div
+      className={
+        terminalLight ? 'terminal-pane terminal-surface light' : 'terminal-pane terminal-surface'
+      }
+      ref={containerRef}
+      onContextMenu={openMenu}
+    >
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+    </div>
+  )
 }

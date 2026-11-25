@@ -243,6 +243,16 @@ button {
   height: 100%;
 }
 
+/* 亮色终端：面板背景随主题切白，xterm 自身 theme 由 JS 设置。 */
+.terminal-surface.light {
+  background: var(--white);
+}
+
+.terminal-surface.light .xterm-viewport,
+.terminal-surface.light .xterm-screen {
+  background: var(--white);
+}
+
 .ssh-notice {
   position: absolute;
   top: var(--space-md);
