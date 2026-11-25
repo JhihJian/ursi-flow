@@ -28,7 +28,7 @@
 | `machine/runs.ts` | Job 新增状态`waiting_input`：`child.on("message")`扩展接收 awaiting 标记，close 推导优先采纳（现有逻辑会把干净退出判为`unknown`）；新增`respond`：校验 Job 处于`waiting_input`，应答写入 job.json 后以应答模式重启 worker；`resume`放行本地`waiting_input` |
 | `machine/daemon.ts` | `dispatch`新增操作`run.respond {id, nodeRunId, result}` |
 
-应答写入 job.json（daemon 域），facts.json 仍只由 worker 内的 RunStore 写入，维持既有所有权边界。重复 respond 由 Job 状态机天然拒绝，daemon 串行队列内不再额外加锁。
+应答只经 daemon 校验后交给 worker 内的引擎，等待事实与应答记录都在过程日志里；daemon 不直接写运行事实。重复 respond 因快照已离开等待状态而拒绝，daemon 串行队列内不再额外加锁。
 
 ## 控制台
 
