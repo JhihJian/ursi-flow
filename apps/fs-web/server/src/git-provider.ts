@@ -154,6 +154,27 @@ export function parseStatus(branchLine: string | null, fields: string[], numstat
   }
 }
 
+/** numstat 单行 → { path, additions, deletions }；rename 格式为 "n\tm\told => new" 或 "n\tm\tprefix{old => new}"。 */
+export function parseNumstatLine(line: string): { path: string; additions: number; deletions: number } | null {
+  const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/)
+  if (!match) return null
+  const raw = match[3] ?? ''
+  // 去掉 rename 的 "old => new" 包装，取新路径；普通路径原样
+  let path: string
+  const brace = raw.match(/^([^{}]*)\{(.*) => (.*)\}(.*)$/)
+  if (brace) {
+    path = `${brace[1] ?? ''}${brace[3] ?? ''}${brace[4] ?? ''}`
+  } else {
+    const arrow = raw.match(/^(.*) => (.*)$/)
+    path = arrow ? (arrow[2] ?? '') : raw
+  }
+  return {
+    path,
+    additions: match[1] === '-' ? 0 : Number(match[1]),
+    deletions: match[2] === '-' ? 0 : Number(match[2]),
+  }
+}
+
 /** workspace root 是仓库子目录时，过滤出 root 之内并映射为相对 root 的路径。 */
 function mapChangesToWorkspace(
   workspaceRoot: string,
@@ -181,15 +202,21 @@ export async function gitStatusOf(workspace: WorkspaceConfig): Promise<GitStatus
   } catch (error) {
     // root 不是仓库：rev-parse 128 / status 128，按非仓库降级而非错误。
     if (error instanceof ProviderError && /fatal|not a git repository/i.test(error.message)) {
-      return { isRepo: false, root: null, branch: null, changes: [], additions: 0, deletions: 0 }
+      return { isRepo: false, root: null, branch: null, ahead: 0, behind: 0, changes: [], additions: 0, deletions: 0 }
     }
     throw error
   }
 
   const { fields, branchLine } = splitRecords(statusOut)
+  // 行数口径与变更列表一致：只统计 workspace root 之内的文件。
+  // 传 pathspec（相对 toplevel）让 git 自己过滤，避免全仓库行数混进来。
+  const rootAbs = path.resolve(workspace.root)
+  // pathspec 用绝对路径：git 接受仓库内绝对路径，且与 cwd 无关（cwd 是 root 或 root 子目录均可）。
+  // workspace 就是仓库根时用 '.'（绝对路径 equals toplevel 时 git 也接受，但 '.' 最稳）。
+  const pathspec = rootAbs === toplevel ? '.' : rootAbs
   let numstat = ''
   try {
-    numstat = (await runGit(workspace.root, ['diff', 'HEAD', '--numstat'])).stdout
+    numstat = (await runGit(workspace.root, ['diff', 'HEAD', '--numstat', '--', pathspec])).stdout
   } catch (error) {
     // 无 HEAD（空仓库）时 diff 报 fatal，行数置 0。
     if (!(error instanceof ProviderError)) throw error
@@ -203,7 +230,7 @@ export async function gitStatusOf(workspace: WorkspaceConfig): Promise<GitStatus
     upstream: parsed.upstream,
     ahead: parsed.ahead,
     behind: parsed.behind,
-    changes: mapChangesToWorkspace(path.resolve(workspace.root), toplevel, parsed.changes),
+    changes: mapChangesToWorkspace(rootAbs, toplevel, parsed.changes),
     additions: parsed.additions,
     deletions: parsed.deletions,
   }

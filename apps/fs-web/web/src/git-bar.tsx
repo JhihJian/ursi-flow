@@ -52,9 +52,9 @@ export function GitBar() {
         type="button"
         className="wsx-git-chip"
         onClick={retry}
-        title={`+${snapshot.additions}/-${snapshot.deletions}，点击刷新`}
+        title={`${dirty} 个文件有改动，共新增 ${snapshot.additions} 行、删除 ${snapshot.deletions} 行（相对上次提交），点击刷新`}
       >
-        {dirty} 变更 +{snapshot.additions}/-{snapshot.deletions}
+        {dirty} 文件改动 +{snapshot.additions}/-{snapshot.deletions}
       </button>
       <span className="wsx-git-sync">
         <button

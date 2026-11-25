@@ -328,6 +328,33 @@ test('git-status 空仓库（无 HEAD）分支可读且行数置 0', wrap(async 
   assert.equal(body.deletions, 0)
 }))
 
+test('git-status 子目录 workspace 的行数只统计 workspace 内', wrap(async (ctx) => {
+  await initRepo(ctx.root)
+  await fs.mkdir(path.join(ctx.root, 'sub'))
+  await fs.writeFile(path.join(ctx.root, 'sub', 'a.txt'), 'a\n')
+  await fs.writeFile(path.join(ctx.root, 'outside.txt'), 'o\n')
+  await git(ctx.root, ['add', '.'])
+  await git(ctx.root, ['commit', '-m', 'init'])
+  await fs.writeFile(path.join(ctx.root, 'sub', 'a.txt'), 'a2\nb\n') // 内 +1
+  await fs.writeFile(path.join(ctx.root, 'outside.txt'), 'o2\nx\ny\n') // 外 +2
+
+  const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'local', root: path.join(ctx.root, 'sub') }])
+  await new Promise<void>((resolve) => sub.listen(0, '127.0.0.1', resolve))
+  try {
+    const res = await fetch(`http://127.0.0.1:${(sub.address() as import('node:net').AddressInfo).port}/api/fs-web/git-status`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId: 'sub' }),
+    })
+    const body = (await res.json()) as GitStatusJson
+    assert.equal(res.status, 200)
+    assert.equal(body.additions, 2) // a.txt 改 1 行为 2 行：+2/-1；不含 workspace 外 outside.txt 的 +2/-1
+    assert.equal(body.deletions, 1)
+  } finally {
+    sub.close()
+  }
+}))
+
 test('git-status workspace 为仓库子目录时过滤并映射路径', wrap(async (ctx) => {
   await initRepo(ctx.root)
   await fs.mkdir(path.join(ctx.root, 'sub'))
