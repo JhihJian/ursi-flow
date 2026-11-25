@@ -6,6 +6,7 @@ import type {
 	Instruct,
 } from "ursi-flow-runtime";
 import { ProcessCommandExecutor } from "../executor-adapters/local-pi/process-command.ts";
+import { join } from "node:path";
 import type { AgentHarness } from "./harness.ts";
 import { renderAgentPrompt } from "./prompt.ts";
 import { allowedVariablesOf, RuntimeOutcomeBridge } from "./tools/bridge.ts";
@@ -14,9 +15,12 @@ import { allowedVariablesOf, RuntimeOutcomeBridge } from "./tools/bridge.ts";
 export class LocalExecutor implements FlowExecutor {
 	private readonly harness: AgentHarness;
 	private readonly commands = new ProcessCommandExecutor();
+	/** Flow 包根目录：命令参数里的 scripts/ 相对它定位。 */
+	private readonly packageRoot?: string;
 
-	constructor(harness: AgentHarness) {
+	constructor(harness: AgentHarness, options: { packageRoot?: string } = {}) {
 		this.harness = harness;
+		this.packageRoot = options.packageRoot;
 	}
 
 	async prompt(agentName: string, instruct: Instruct): Promise<ExecutorReply> {
@@ -62,6 +66,9 @@ export class LocalExecutor implements FlowExecutor {
 	async command(invocation: CommandInvocation): Promise<CommandOutput> {
 		const result = await this.commands.execute({
 			...invocation.request,
+			...(this.packageRoot && invocation.request.args
+				? { args: invocation.request.args.map((arg) => this.packagePath(arg)) }
+				: {}),
 			...(invocation.request.cwd === undefined && invocation.cwd !== undefined
 				? { cwd: invocation.cwd }
 				: {}),
@@ -71,5 +78,11 @@ export class LocalExecutor implements FlowExecutor {
 			stdout: result.stdout,
 			stderr: result.stderr,
 		};
+	}
+
+	/** 只把独立的 scripts/... 参数定位到包内文件，其他参数原样传递。 */
+	private packagePath(arg: string): string {
+		if (!/^scripts\/[^\0]+$/.test(arg) || arg.includes("..")) return arg;
+		return join(this.packageRoot as string, arg);
 	}
 }

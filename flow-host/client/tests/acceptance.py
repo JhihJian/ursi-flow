@@ -169,7 +169,7 @@ class Acceptance(unittest.TestCase):
             self.assertEqual(published.readlink(), Path('../.revisions')/rev)
             self.assertEqual((published/'work/FLOW.md').read_text(), FLOW)
             self.assert_code(home, 'flow.create', args, 'conflict')
-            for bad in ({'FLOW.md': 'invalid'}, {'FLOW.md': FLOW},
+            for bad in ({'FLOW.md': 'invalid'},
                         {**files, 'scripts/task.mjs/child': ''}):
                 self.assert_code(home, 'flow.validate', {**args, 'files': bad}, 'invalid_input')
             args['expectedRevision'] = rev

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
 	ExecutorUnconfirmed,
 	FileLogStore,
@@ -31,9 +31,14 @@ interface JobMessage {
 	respond?: { stepId: string; result: string };
 }
 
-function localExecutor(provider: PiProviderConfig, dir: string): FlowExecutor {
+function localExecutor(
+	provider: PiProviderConfig,
+	dir: string,
+	packageRoot: string,
+): FlowExecutor {
 	return new LocalExecutor(
 		new PiSdkHarness(provider, { trajectoryDir: join(dir, "trajectories") }),
+		{ packageRoot },
 	);
 }
 
@@ -54,7 +59,7 @@ process.once("message", async (message: JobMessage) => {
 		const engine = new FlowEngine({
 			executor: job.executorRef
 				? new PlatformExecutor(platform!, job.executorRef, dir)
-				: localExecutor(provider!, dir),
+				: localExecutor(provider!, dir, resolve(path, "..")),
 			store: new FileLogStore(store),
 		});
 		const result = respond

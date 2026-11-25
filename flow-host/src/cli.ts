@@ -37,7 +37,7 @@ async function main() {
     { trajectoryDir: resolve(values.trajectories ?? resolve(cwd, '.ursi-flow', 'trajectories')) },
   );
   const engine = new FlowEngine({
-    executor: new LocalExecutor(harness),
+    executor: new LocalExecutor(harness, { packageRoot: resolve(flowPath, '..') }),
     store: new FileLogStore(resolve(values.store ?? resolve(cwd, '.ursi-flow'))),
   });
   const result = await engine.start({
