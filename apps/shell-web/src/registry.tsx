@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WorkspaceModule, WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
@@ -245,6 +245,13 @@ function assertRegistry(modules: WorkspaceModule[], views: WorkspaceView[]): voi
   }
 }
 
+/** 工厂在模块级只调一次，保持 Panel 等组件引用稳定，覆盖值变化时不重肩 iframe 与模块内部状态。 */
+const BASE_MODULES: WorkspaceModule[] = [
+  createTodoModule(),
+  createFsModule({ apiBaseUrl: '/api/fs-web' }),
+  createPiWebModule(),
+]
+
 /** 组合根装配：覆盖值是宿主状态，变化时重建模块清单与视图。 */
 export function useShellRegistry(): ShellRegistry {
   const [overrides, setOverrides] = useState<Overrides>(loadOverrides)
@@ -269,22 +276,23 @@ export function useShellRegistry(): ShellRegistry {
     [],
   )
 
-  const modules = useMemo(() => {
-    const base = [
-      createTodoModule(),
-      createFsModule({ apiBaseUrl: '/api/fs-web' }),
-      createPiWebModule(),
-    ]
-    return base.map((module) => {
-      const override = overrides[module.id]
-      if (!override) return module
-      return {
-        ...module,
-        minSize: override.minSize ?? module.minSize,
-        maxSize: override.maxSize ?? module.maxSize,
-      }
-    })
-  }, [overrides])
+  const modules = useMemo(
+    () =>
+      BASE_MODULES.map((module) => {
+        const override = overrides[module.id]
+        if (!override) return module
+        return {
+          ...module,
+          minSize: override.minSize ?? module.minSize,
+          maxSize: override.maxSize ?? module.maxSize,
+        }
+      }),
+    [overrides],
+  )
+
+  // views 只建一次；RegistryView 通过 ref 读最新装配，避免编辑约束时自身重肩丢焦点。
+  const latest = useRef({ modules, overrides, onChange: setModuleConstraints })
+  latest.current = { modules, overrides, onChange: setModuleConstraints }
 
   const views = useMemo(
     () => [
@@ -292,12 +300,10 @@ export function useShellRegistry(): ShellRegistry {
       {
         kind: REGISTRY.kind,
         summary: () => 'Registry',
-        Component: () => (
-          <RegistryView modules={modules} overrides={overrides} onChange={setModuleConstraints} />
-        ),
+        Component: () => <RegistryView {...latest.current} />,
       },
     ],
-    [modules, overrides, setModuleConstraints],
+    [],
   )
 
   if (import.meta.env.DEV) assertRegistry(modules, views)

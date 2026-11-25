@@ -1,8 +1,6 @@
 import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
 import { useShellRegistry, SETTINGS, REGISTRY } from './registry'
 
-const { modules, views } = useShellRegistry()
-
 function SettingsButton() {
   const { select } = useWorkspace()
   return (
@@ -22,6 +20,7 @@ function RegistryButton() {
 }
 
 export default function App() {
+  const { modules, views } = useShellRegistry()
   return (
     <WorkspaceShell
       modules={modules}
