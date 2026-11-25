@@ -1,9 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
-import { parseRuntimeOutcome } from "../ability/runtime-tools/bridge.ts";
-import { AttemptUnconfirmed, type AgentNodeExecutionRequest, type AgentRunExecutor } from "../core/contracts/extensions.ts";
-import { isRecord } from "../core/contracts/variables.ts";
-import { preflightFlow } from "../core/execution/preflight.ts";
+import { isRecord } from "ursi-flow-core/runtime";
 
 export interface ExecutorRef { id: string; revision: number }
 export function parseExecutorRef(value: unknown): ExecutorRef {
@@ -79,7 +74,7 @@ export class PlatformClient {
 			if (!isRecord(record) || record.attemptId !== id || typeof record.status !== "string" ||
 				!["starting", "running", "unverified", "succeeded", "failed", "cancelled"].includes(record.status)) throw Error();
 			return { status: record.status, artifactDirectoryId: record.artifactDirectoryId };
-		} catch (e) { throw new AttemptUnconfirmed(`尝试 ${id} 状态待核实${e instanceof HttpError ? `：${e.message}` : ""}`); }
+		} catch (e) { throw new Error(`尝试 ${id} 状态待核实${e instanceof HttpError ? `：${e.message}` : ""}`); }
 	}
 	async cancel(id: string) {
 		// 即使取消回执丢失，也以原尝试的查询状态为准。
@@ -90,57 +85,5 @@ export class PlatformClient {
 		if (typeof directory !== "string" || !directory || directory === "." || directory === "..") throw Error("成功尝试缺少有效的 artifactDirectoryId");
 		const response = await this.request(`directories/${encodeURIComponent(directory)}/file?path=flow-outcome.json`, "GET");
 		return await response.json() as unknown;
-	}
-}
-
-export class PlatformAgent implements AgentRunExecutor {
-	readonly extensions = {};
-	readonly allocateAttemptId = randomUUID;
-	private readonly client: PlatformClient;
-	private readonly ref: ExecutorRef;
-	/** 节点标记声明的执行器名称到已钉死修订的映射；未声明的节点用构造时的 ref。 */
-	private readonly executors: ReadonlyMap<string, ExecutorRef>;
-	constructor(client: PlatformClient, ref: ExecutorRef, executors?: ReadonlyMap<string, ExecutorRef>) {
-		this.client = client;
-		this.ref = ref;
-		this.executors = executors ?? new Map();
-	}
-	async preflight(...[flow, options]: Parameters<AgentRunExecutor["preflight"]>) {
-		await preflightFlow(flow, options);
-		for (const definition of [flow, ...Array.from(options?.references?.values() ?? [], p => p.flow)])
-			for (const node of definition.nodes.values()) {
-				if (node.action.kind === "confirm")
-					throw Error("平台执行器暂不支持人工确认节点");
-				if (node.action.kind === "新建Agent" && /\]\(references\//.test(node.action.prompt))
-					throw Error("平台 Agent 不支持读取本地包的 references 文件");
-			}
-	}
-	async start() {}
-	async end() {}
-	async executeNode(request: AgentNodeExecutionRequest) {
-		const { attemptId, inspectOnly } = request;
-		if (!attemptId || request.action !== "新建Agent") throw Error("平台只支持独立的新建Agent访问");
-		const ref = request.executor ? this.executors.get(request.executor) : this.ref;
-		if (!ref) throw Error(`节点声明的执行器 ${request.executor} 没有已钉死的修订`);
-		if (!inspectOnly) await this.client.start(attemptId, {
-			executorRef: ref, workInstruction: { text: request.prompt, encoding: "utf-8" },
-			runConfig: {
-				nodeContract: {
-					outcomes: request.outcomes.map(o => o.name),
-					variables: [...new Set(Array.from(request.allowedVariables?.values() ?? []).flat())],
-				},
-			},
-		});
-		for (;;) {
-			const state = await this.client.inspect(attemptId);
-			if (state.status === "succeeded") {
-				const artifact = await this.client.outcome(state.artifactDirectoryId);
-				const outcome = parseRuntimeOutcome({ toolName: "submit_flow_outcome", arguments: artifact }, request.outcomes, request.allowedVariables);
-				return { outcome };
-			}
-			if (state.status === "unverified") throw new AttemptUnconfirmed(`尝试 ${attemptId} 状态待核实`);
-			if (state.status === "failed" || state.status === "cancelled") throw Error(`平台尝试 ${attemptId}: ${state.status}`);
-			await delay(1000);
-		}
 	}
 }

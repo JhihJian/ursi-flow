@@ -13,15 +13,12 @@ import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import { NodeTrajectoryRecorder } from "./trajectory.ts";
 import type {
-	AgentOpenRequest,
-	AgentHarnessExtensions,
-} from "../../core/contracts/extensions.ts";
-import type {
 	AgentHandle,
-	FlowAgentHarness,
+	AgentHarness,
+	AgentOpenRequest,
 	RuntimeToolBridge,
-} from "../../core/contracts/types.ts";
-import { isRecord } from "../../core/contracts/variables.ts";
+} from "../../runtime/harness.ts";
+import { isRecord } from "ursi-flow-core/runtime";
 
 /** Pi 支持的请求协议；默认用 OpenAI 兼容的 chat completions。 */
 export const PROVIDER_APIS = [
@@ -162,28 +159,11 @@ export interface PiSdkHarnessOptions {
 	trajectoryDir?: string;
 }
 
-export class PiSdkHarness implements FlowAgentHarness {
+export class PiSdkHarness implements AgentHarness {
 	private readonly sessions = new Map<string, SessionState>();
 	private readonly modelRuntime: Promise<Awaited<ReturnType<typeof createModel>>>;
 	private readonly config: PiProviderConfig;
 	private readonly trajectoryDir?: string;
-	readonly extensions: AgentHarnessExtensions = {
-		continuity: {
-			rebind: async (agent, bridge) => {
-				const state = this.state(agent);
-				state.bridge = bridge;
-				state.submitted = false;
-				state.failure = undefined;
-			},
-			restore: async () => {
-				throw new Error("Pi SDK 执行器暂不支持接管已有会话");
-			},
-			preflight: () => {
-				throw new Error("Pi SDK 执行器暂不支持接管已有会话");
-			},
-		},
-	};
-
 	constructor(config: PiProviderConfig, options: PiSdkHarnessOptions = {}) {
 		validateProviderConfig(config);
 		this.config = config;
@@ -255,23 +235,33 @@ export class PiSdkHarness implements FlowAgentHarness {
 				);
 				const allowed = outcomeNames(definition?.inputSchema);
 				const outcome = (params as Record<string, unknown>).outcome;
-				if (allowed.length && !allowed.includes(String(outcome))) {
-					const message = `节点不允许结果: ${String(outcome)}。可选结果: ${allowed.join("、")}`;
+				// 结果名或变量不合法都计入同一次拒绝，避免模型无限重试。
+				const reject = (message: string) => {
 					state.failure = message;
 					state.invalid++;
-					// 模型连续提交非法结果时结束本轮，避免无限重试。
 					if (state.invalid >= 3)
 						return {
-							content: [{ type: "text", text: `${message}。已停止本节点执行。` }],
+							content: [
+								{ type: "text" as const, text: `${message}。已停止本节点执行。` },
+							],
 							details: { rejected: true },
 							terminate: true,
 						};
 					throw new Error(message);
+				};
+				if (allowed.length && !allowed.includes(String(outcome)))
+					return reject(
+						`节点不允许结果: ${String(outcome)}。可选结果: ${allowed.join("、")}`,
+					);
+				let result;
+				try {
+					result = await state.bridge.invoke({
+						toolName: OUTCOME_TOOL,
+						arguments: params as Record<string, unknown>,
+					});
+				} catch (error) {
+					return reject(error instanceof Error ? error.message : String(error));
 				}
-				const result = await state.bridge.invoke({
-					toolName: OUTCOME_TOOL,
-					arguments: params as Record<string, unknown>,
-				});
 				state.submitted = true;
 				return {
 					content: [{ type: "text", text: result.content as string }],

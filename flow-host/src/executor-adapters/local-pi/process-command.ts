@@ -1,11 +1,15 @@
 import { spawn } from "node:child_process";
-import type {
-	CommandExecutor,
-	CommandRequest,
-	CommandResult,
-} from "../../core/contracts/types.ts";
-export class ProcessCommandExecutor implements CommandExecutor {
-	async execute(request: CommandRequest): Promise<CommandResult> {
+import type { CommandRequest } from "ursi-flow-core";
+
+export interface CommandExecution {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
+/** 用当前用户权限运行命令节点；stdin 以 UTF-8 JSON 写入。 */
+export class ProcessCommandExecutor {
+	async execute(request: CommandRequest): Promise<CommandExecution> {
 		return await new Promise((resolve, reject) => {
 			const child = spawn(request.command, request.args ?? [], {
 				stdio: ["pipe", "pipe", "pipe"],
@@ -26,12 +30,7 @@ export class ProcessCommandExecutor implements CommandExecutor {
 				if (error.code !== "EPIPE") reject(error);
 			});
 			child.once("close", (exitCode) =>
-				resolve({
-					status: exitCode === 0 ? "success" : "failure",
-					exitCode,
-					stdout,
-					stderr,
-				}),
+				resolve({ exitCode: exitCode ?? 0, stdout, stderr }),
 			);
 			if (request.stdin !== undefined)
 				child.stdin.end(JSON.stringify(request.stdin));

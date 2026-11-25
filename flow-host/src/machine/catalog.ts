@@ -13,8 +13,8 @@ import {
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { loadFlow } from "../core/definition/flow-loader.ts";
-import { FlowSyntaxError } from "../core/definition/parser.ts";
+import { parseFlow } from "ursi-flow-core/runtime";
+import { FlowSyntaxError } from "ursi-flow-core/runtime";
 import { BusinessError, invalid } from "./errors.ts";
 
 function validId(value: unknown): value is string {
@@ -176,7 +176,7 @@ export class Catalog {
 			}
 			for (const entry of await readdir(root)) {
 				try {
-					await loadFlow(join(root, entry));
+					parseFlow(await readFile(join(root, entry, "FLOW.md"), "utf8"), entry);
 				} catch (e) {
 					// Only package validation in the staged generation is caller input.
 					if (!(e instanceof Error) || "errno" in e ||

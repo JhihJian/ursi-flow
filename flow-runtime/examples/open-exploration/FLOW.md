@@ -42,7 +42,7 @@ flowchart TD
 
 ## 后续展开当前 aim
 
-```复用Agent
+```新建Agent
 继续围绕开放探索目标展开下一轮：
 
 任务：{var.任务}
@@ -64,7 +64,7 @@ flowchart TD
 
 ## 聚合排序并选择
 
-```复用Agent
+```新建Agent
 读取并聚合当前探索结果：
 
 任务：{var.任务}

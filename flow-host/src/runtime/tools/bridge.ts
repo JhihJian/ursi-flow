@@ -1,19 +1,19 @@
-import type {
-	NodeOutcome,
-	OutcomeOption,
-	RuntimeToolBridge,
-	RuntimeToolCall,
-	RuntimeToolDefinition,
-	RuntimeToolResult,
-} from "../../core/contracts/types.ts";
+import type { OutcomeOption } from "ursi-flow-core";
 import {
 	isRecord,
 	validateFlowValue,
 	validateVariableName,
 	validateVariables,
-} from "../../core/contracts/variables.ts";
+} from "ursi-flow-core/runtime";
+import type {
+	NodeOutcome,
+	RuntimeToolBridge,
+	RuntimeToolCall,
+	RuntimeToolDefinition,
+	RuntimeToolResult,
+} from "../harness.ts";
 
-/** Validate untrusted tool arguments before accepting or copying any outcome. */
+/** 接受前校验不可信的工具参数。 */
 export function parseRuntimeOutcome(
 	call: RuntimeToolCall,
 	outcomes: readonly OutcomeOption[],
@@ -44,9 +44,7 @@ export function parseRuntimeOutcome(
 }
 
 /**
- * One bridge belongs to exactly one NodeRun. It is never retargeted to another
- * execution. Hosts must capture this instance in each native tool callback.
- * Acceptance is synchronous; persistence/routing happens after the turn settles.
+ * 一个桥只属于一次节点访问，从不改绑其他执行。宿主必须在工具回调里捕获这个实例。
  */
 export class RuntimeOutcomeBridge implements RuntimeToolBridge {
 	readonly executionId: string;
@@ -112,26 +110,39 @@ export class RuntimeOutcomeBridge implements RuntimeToolBridge {
 		if (!this.active)
 			throw new Error(`Flow 节点工具桥已关闭: ${this.executionId}`);
 		if (this.accepted) throw new Error("一个 Agent 节点只能提交一次结果");
-		this.accepted = parseRuntimeOutcome(
-			call,
-			this.outcomes,
-			this.allowedVariables,
-		);
+		try {
+			this.accepted = parseRuntimeOutcome(
+				call,
+				this.outcomes,
+				this.allowedVariables,
+			);
+		} catch (error) {
+			if (process.env.URSI_FLOWD_DEBUG === "1")
+				console.error("bridge reject", call.arguments, error instanceof Error ? error.message : error);
+			throw error;
+		}
 		return {
 			content: `Flow outcome submitted: ${this.accepted.result}`,
 			stopExecution: true,
 		};
 	}
 
-	/** A detached snapshot; callers cannot mutate the accepted submission. */
 	get outcome(): NodeOutcome | undefined {
 		return this.accepted && structuredClone(this.accepted);
 	}
 
-	/** Revoke before releasing a session or beginning the next node. Idempotent. */
 	close(): void {
 		this.active = false;
 	}
+}
+
+/** 节点允许提交的变量名，按结果名分组。 */
+export function allowedVariablesOf(
+	outcomes: readonly OutcomeOption[],
+): Map<string, string[]> {
+	return new Map(
+		outcomes.map((option) => [option.name, Object.keys(option.variables)]),
+	);
 }
 
 function freezeJson<T>(value: T): T {
