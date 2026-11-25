@@ -9,7 +9,6 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./core": "./dist/core/index.js",
     "./mcp": "./dist/integrations/mcp/index.js"
   },
   "bin": {
