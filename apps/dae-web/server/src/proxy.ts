@@ -1,7 +1,4 @@
-import { promises as fs } from 'node:fs'
 import http from 'node:http'
-import os from 'node:os'
-import path from 'node:path'
 
 /**
  * 转发 /api/* 到 dae native API。
@@ -15,30 +12,6 @@ import path from 'node:path'
 interface DaeFailure extends Error {
   code?: string
   status?: number
-}
-
-export interface DaeAuth {
-  /** 直接给出的 token，优先使用。 */
-  token?: string
-  /** token 文件路径，文件内容去掉首尾空白后作为 token。 */
-  tokenFile?: string
-}
-
-export async function loadToken(auth: DaeAuth): Promise<string | null> {
-  if (auth.token) return auth.token
-  if (!auth.tokenFile) return null
-  try {
-    const raw = await fs.readFile(auth.tokenFile, 'utf8')
-    const token = raw.trim()
-    return token || null
-  } catch {
-    return null
-  }
-}
-
-export function defaultTokenFile(): string {
-  const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state')
-  return path.join(base, 'dae-web', 'api-token')
 }
 
 export interface DaeClient {

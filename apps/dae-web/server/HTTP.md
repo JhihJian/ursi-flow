@@ -4,10 +4,7 @@
 
 ## 认证
 
-dae 侧启用了 `api.secret`，所有 API 都要求 `Authorization: Bearer <token>`，匿名回环不再生效。token 只保存在服务端：
-
-1. `DAE_API_TOKEN` 环境变量，或
-2. `DAE_API_TOKEN_FILE` 指向的文件（默认 `$XDG_STATE_HOME/dae-web/api-token`，回退 `~/.local/state`），内容去掉首尾空白后使用。
+dae 侧启用了 `api.secret`，所有 API 都要求 `Authorization: Bearer <token>`，匿名回环不再生效。token 只保存在服务端，由 `DAE_API_TOKEN` 环境变量提供，systemd 单元用 `EnvironmentFile`（0600）加载。
 
 转发时客户端自带的 `Authorization`、`Origin`、`Referer`、`Cookie` 一律丢弃，只由服务端补上 token。浏览器页面因此不需要、也拿不到 token。token 缺失时服务启动会告警，读接口返回 401。
 
@@ -53,8 +50,7 @@ dae 每次写入会在同目录生成 `<file>.bak`，这是 dae 自己的备份�
 | `DAE_WEB_PORT` | `8092` | 监听端口 |
 | `DAE_WEB_HOST` | `0.0.0.0` | 监听地址 |
 | `DAE_API_BASE` | `http://127.0.0.1:9527` | dae native API 基址 |
-| `DAE_API_TOKEN` | 未设置 | 直接给出 dae 的 `api.secret` |
-| `DAE_API_TOKEN_FILE` | `$XDG_STATE_HOME/dae-web/api-token` | token 文件，权限应为 0600 |
+| `DAE_API_TOKEN` | 未设置 | dae 的 `api.secret`，通过 `EnvironmentFile` 注入 |
 | `DAE_CONFIG_PATH` | `/etc/dae/config.dae` | 配置入口文件，仅用于展示 |
 | `DAE_WEB_STATIC_DIR` | 相对 `server/` 的 `../web/dist` | 静态产物目录 |
 | `DAE_WEB_ALLOW_MUTATIONS` | 未设置 | 设为 `1` 时允许非回环来源执行写操作与看配置 |

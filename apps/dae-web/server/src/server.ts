@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createConsoleHandler } from './console.ts'
 import { createConfigService } from './daemon-config.ts'
 import { isLoopback, sendError, sendJson } from './http-util.ts'
-import { createDaeClient, defaultTokenFile, loadToken } from './proxy.ts'
+import { createDaeClient } from './proxy.ts'
 import { createStaticHandler } from './static.ts'
 
 /**
@@ -38,12 +38,10 @@ function writeAllowed(req: http.IncomingMessage): boolean {
   return isLoopback(req.socket.remoteAddress)
 }
 
-const token = await loadToken({
-  token: process.env.DAE_API_TOKEN,
-  tokenFile: process.env.DAE_API_TOKEN_FILE ?? defaultTokenFile(),
-})
+// token 来自 EnvironmentFile（0600），不落代码库、不进命令行。
+const token = process.env.DAE_API_TOKEN?.trim() || null
 if (!token) {
-  console.warn('未找到 dae API token：只读访问会返回 401。设置 DAE_API_TOKEN 或 DAE_API_TOKEN_FILE。')
+  console.warn('未设置 DAE_API_TOKEN：dae 会拒绝全部请求（401）。')
 }
 
 const dae = createDaeClient(API_BASE, token)

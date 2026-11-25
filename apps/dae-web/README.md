@@ -34,7 +34,7 @@ printf 'DAE_API_TOKEN=<token>\n' > ~/.config/dae-web/env
 chmod 600 ~/.config/dae-web/env
 ```
 
-`systemd` 单元用 `EnvironmentFile=-%h/.config/dae-web/env` 加载；也可以把 token 写进 `~/.local/state/dae-web/api-token`（0600）让服务端按默认路径读取。
+`systemd` 单元用 `EnvironmentFile=-%h/.config/dae-web/env` 加载这个文件；开发时也可以 `DAE_API_TOKEN=... npm run dev`。
 
 ## 开发
 
