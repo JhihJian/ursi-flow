@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     "./module": "./src/module.tsx",
-    "./styles.css": "./src/styles.css"
+    "./module.css": "./src/module.css"
   },
   "engines": {
     "node": ">=24 <25"
@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ursi/workspace-shell": "*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-unicode11": "^0.9.0",
@@ -24,7 +25,6 @@
     "@xterm/xterm": "^6.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-resizable-panels": "^4.24.2",
     "zustand": "^5.1.0"
   },
   "devDependencies": {

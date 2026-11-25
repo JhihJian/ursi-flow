@@ -1,0 +1,586 @@
+/*
+ * ssh-web 模块样式：全部作用域在 .ssh-embed 容器内（工作区嵌入与独立入口共用）。
+ * 不写全局选择器，不碰宿主样式；变量只挂在容器上，不污染宿主。
+ */
+
+.ssh-embed {
+  --ssh-black: #000000;
+  --ssh-gray-900: #1a1a1a;
+  --ssh-gray-600: #666666;
+  --ssh-gray-400: #999999;
+  --ssh-gray-200: #e5e5e5;
+  --ssh-white: #ffffff;
+
+  --ssh-terminal-bg: #141414;
+  --ssh-terminal-fg: #e6e6e6;
+  --ssh-danger: #b43c3c;
+
+  --ssh-font-serif: Georgia, "Times New Roman", serif;
+  --ssh-font-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+
+  --ssh-space-xs: 4px;
+  --ssh-space-sm: 8px;
+  --ssh-space-md: 16px;
+  --ssh-space-lg: 24px;
+
+  display: flex;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-family: var(--ssh-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ssh-gray-900);
+  background: var(--ssh-white);
+}
+
+.ssh-embed button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.ssh-embed * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ssh-embed *::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── 布局：合并侧栏（上连接 / 下会话）+ 终端区 ─────────────────── */
+
+.ssh-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 180px;
+  min-height: 0;
+  border-right: 1px solid var(--ssh-gray-200);
+  user-select: none;
+}
+
+.ssh-connections {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+}
+
+.ssh-sessions {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+  border-top: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ssh-space-sm);
+  margin-bottom: var(--ssh-space-xs);
+  flex: none;
+}
+
+.ssh-sidebar-title {
+  overflow: hidden;
+  font-family: var(--ssh-font-serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ssh-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 19px;
+  height: 19px;
+  margin-left: auto;
+  padding: 0 var(--ssh-space-xs);
+  border: 0;
+  background: none;
+  color: var(--ssh-gray-400);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ssh-mini-btn:hover {
+  color: var(--ssh-gray-900);
+  background: var(--ssh-gray-200);
+}
+
+.ssh-item-list {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* nowrap 文本的 min-content 不再向外撑（省略号只管用过的宽度），列表宽度完全由布局决定。 */
+  contain: inline-size;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  list-style: none;
+}
+
+.ssh-item {
+  padding: var(--ssh-space-xs) var(--ssh-space-xs);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.ssh-item:hover {
+  background: var(--ssh-gray-200);
+}
+
+.ssh-item.active {
+  border-left-color: var(--ssh-black);
+  background: var(--ssh-gray-200);
+}
+
+.ssh-item-name {
+  display: block;
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--ssh-gray-900);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-item-meta {
+  display: block;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--ssh-gray-400);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-empty {
+  padding: var(--ssh-space-md) var(--ssh-space-xs);
+  color: var(--ssh-gray-400);
+  font-size: 12px;
+  text-align: center;
+  cursor: default;
+}
+
+.ssh-session-note {
+  padding: var(--ssh-space-xs);
+  color: var(--ssh-gray-600);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ssh-error-note {
+  color: var(--ssh-danger);
+}
+
+/* 新建会话与删除确认共用的行内表单块。 */
+.ssh-new-session,
+.ssh-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ssh-space-sm);
+  flex: none;
+  margin-top: var(--ssh-space-xs);
+  padding-top: var(--ssh-space-sm);
+  border-top: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-confirm-text {
+  font-size: 11px;
+  color: var(--ssh-gray-600);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ssh-confirm-actions {
+  display: flex;
+  gap: var(--ssh-space-sm);
+}
+
+.ssh-confirm-actions .ssh-btn {
+  flex: 1;
+  padding: var(--ssh-space-xs) var(--ssh-space-sm);
+}
+
+/* ── 终端区 ──────────────────────────────────────────── */
+
+.ssh-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--ssh-terminal-bg);
+}
+
+.ssh-terminal {
+  flex: 1;
+  min-height: 0;
+}
+
+.ssh-terminal-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ssh-gray-400);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.ssh-terminal-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+  overflow: hidden;
+}
+
+/* xterm 的度量宿主：自身不留内边距，padding 全在 .ssh-terminal-surface 上，fit 时统一扣除。 */
+.ssh-terminal-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ssh-terminal-surface .xterm {
+  height: 100%;
+}
+
+/* 覆盖 xterm.css 的黑色视口底色：亮色主题下会漏出 1px 黑边。 */
+.ssh-embed .xterm .xterm-viewport {
+  background-color: transparent;
+}
+
+/* 始终保留滚动条槽位，避免 Linux 上滑条忽隐忽现引起列宽抖动。 */
+.ssh-embed .xterm .xterm-viewport {
+  overflow-y: scroll;
+}
+
+/* xterm 默认的方形滑块没有配置项，只能从 CSS 收圆角。 */
+.ssh-embed .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {
+  border-radius: 4px;
+}
+
+/* 显式 left:0：xterm 的 left:auto 会让浏览器把输入法候选框错位到光标之外。 */
+.ssh-embed .xterm .xterm-helpers {
+  left: 0;
+}
+
+/* Chromium 会在 xterm 隐藏的输入框上画出原生光标，重绘时看起来像旧光标残留。 */
+.ssh-embed .xterm .xterm-helper-textarea {
+  caret-color: transparent;
+}
+
+/* 终端内搜索：浮在右上角，出版物风格。 */
+.ssh-search {
+  position: absolute;
+  top: var(--ssh-space-xs);
+  right: var(--ssh-space-md);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--ssh-space-xs);
+  padding: 2px var(--ssh-space-xs);
+  background: var(--ssh-white);
+  border: 1px solid var(--ssh-gray-200);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.ssh-search input {
+  width: 160px;
+  border: none;
+  outline: none;
+  font-family: var(--ssh-font-mono);
+  font-size: 12px;
+  color: var(--ssh-gray-900);
+  background: transparent;
+}
+
+.ssh-search-status {
+  min-width: 44px;
+  color: var(--ssh-gray-400);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssh-search button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ssh-gray-600);
+  padding: 2px 4px;
+}
+
+.ssh-search button.active {
+  background: var(--ssh-gray-200);
+  color: var(--ssh-gray-900);
+}
+
+.ssh-search button:hover {
+  color: var(--ssh-black);
+}
+
+/* 链接悬停提示：贴住面板左下角。 */
+.ssh-link-tooltip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  max-width: 80%;
+  padding: 4px var(--ssh-space-sm);
+  border: 1px solid var(--ssh-gray-200);
+  border-bottom: 0;
+  border-left: 0;
+  background: var(--ssh-white);
+  color: var(--ssh-gray-600);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.ssh-terminal-surface:not(.light) .ssh-link-tooltip {
+  border-color: #3f3f46;
+  background: rgb(24 24 27 / 0.85);
+  color: #a1a1aa;
+}
+
+/* 服务端事件条：贴底一条，不遮挡终端内容也不算占位。 */
+.ssh-banner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 15;
+  padding: var(--ssh-space-xs) var(--ssh-space-md);
+  border-top: 1px solid var(--ssh-gray-200);
+  background: var(--ssh-white);
+  font-size: 11px;
+  color: var(--ssh-gray-600);
+  overflow-wrap: anywhere;
+}
+
+.ssh-banner-error {
+  border-top-color: var(--ssh-danger);
+  color: var(--ssh-danger);
+}
+
+.ssh-terminal-surface:not(.light) .ssh-banner {
+  border-top-color: #3f3f46;
+  background: var(--ssh-terminal-bg);
+  color: var(--ssh-gray-400);
+}
+
+.ssh-terminal-surface:not(.light) .ssh-banner-error {
+  border-top-color: var(--ssh-danger);
+  color: #d46a6a;
+}
+
+/* 亮色终端：面板背景随主题切白，xterm 自身 theme 由 JS 设置。 */
+.ssh-terminal-surface.light {
+  background: var(--ssh-white);
+}
+
+.ssh-terminal-surface.light .xterm-viewport,
+.ssh-terminal-surface.light .xterm-screen {
+  background: var(--ssh-white);
+}
+
+/* ── 连接编辑表单：贴 .ssh-main 底部升起 ─────────────────── */
+
+.ssh-sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow-y: auto;
+  border-top: 1px solid var(--ssh-gray-900);
+  background: var(--ssh-white);
+  animation: ssh-sheet-rise 200ms ease-out;
+}
+
+@keyframes ssh-sheet-rise {
+  from {
+    transform: translateY(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssh-sheet {
+    animation: none;
+  }
+}
+
+.ssh-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ssh-space-md);
+  padding: var(--ssh-space-xs) var(--ssh-space-md);
+  border-bottom: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-sheet-title {
+  overflow: hidden;
+  font-family: var(--ssh-font-serif);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-sheet-actions {
+  display: flex;
+  gap: var(--ssh-space-sm);
+}
+
+.ssh-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ssh-space-sm);
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+}
+
+.ssh-field {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: var(--ssh-space-xs);
+  min-width: 0;
+}
+
+.ssh-field-grow {
+  flex: 3 1 240px;
+}
+
+.ssh-field-label {
+  font-size: 11px;
+  color: var(--ssh-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ssh-input {
+  padding: var(--ssh-space-xs) var(--ssh-space-sm);
+  border: 1px solid var(--ssh-gray-200);
+  background: var(--ssh-white);
+  font-family: var(--ssh-font-mono);
+  font-size: 13px;
+  color: var(--ssh-gray-900);
+}
+
+.ssh-input:focus {
+  outline: none;
+  border-color: var(--ssh-gray-900);
+}
+
+.ssh-btn {
+  padding: var(--ssh-space-xs) var(--ssh-space-md);
+  font-family: var(--ssh-font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--ssh-gray-900);
+  background: var(--ssh-white);
+}
+
+.ssh-btn:hover {
+  background: var(--ssh-gray-200);
+}
+
+.ssh-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ssh-btn:disabled:hover {
+  background: var(--ssh-white);
+}
+
+.ssh-btn-primary {
+  background: var(--ssh-gray-900);
+  color: var(--ssh-white);
+}
+
+.ssh-btn-primary:hover {
+  background: var(--ssh-black);
+}
+
+.ssh-btn-danger {
+  border-color: var(--ssh-danger);
+  color: var(--ssh-danger);
+}
+
+.ssh-btn-danger:hover {
+  background: rgb(180 60 60 / 0.1);
+}
+
+/* ── 右键菜单：portal 进 .ssh-embed 容器，absolute 定位 ─────────── */
+
+.ssh-menu {
+  position: absolute;
+  z-index: 200;
+  padding: var(--ssh-space-xs) 0;
+  border: 1px solid var(--ssh-gray-900);
+  background: var(--ssh-white);
+}
+
+.ssh-menu-heading {
+  padding: var(--ssh-space-xs) var(--ssh-space-sm);
+  color: var(--ssh-gray-400);
+  font-size: 11px;
+  border-bottom: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--ssh-space-xs) var(--ssh-space-sm);
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--ssh-font-mono);
+  font-size: 12px;
+  color: var(--ssh-gray-900);
+  cursor: pointer;
+}
+
+.ssh-menu-item:hover,
+.ssh-menu-item:focus-visible {
+  outline: none;
+  background: var(--ssh-gray-200);
+}
+
+.ssh-menu-item.danger {
+  color: var(--ssh-danger);
+}
+
+.ssh-menu-item.danger:hover {
+  background: rgb(180 60 60 / 0.1);
+}

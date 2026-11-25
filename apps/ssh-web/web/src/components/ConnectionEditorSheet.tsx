@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ConnectionInput } from '../api/types'
-import { useSshStore } from '../store/ssh-store'
+import { useSshStore } from '../ssh-context'
 
 const EMPTY_FORM: ConnectionInput = { name: '', command: '' }
 
@@ -51,45 +51,43 @@ export function ConnectionEditorSheet() {
   }
 
   return (
-    <div className="detail-sheet connection-sheet">
-      <div className="detail-heading">
-        <span className="detail-title-static">{editing ? `Edit "${editing.name}"` : 'New connection'}</span>
-        <div className="detail-actions">
-          <button type="button" className="btn" onClick={() => setEditor(null)} disabled={saving}>
+    <div className="ssh-sheet">
+      <div className="ssh-sheet-head">
+        <span className="ssh-sheet-title">{editing ? `Edit "${editing.name}"` : 'New connection'}</span>
+        <div className="ssh-sheet-actions">
+          <button type="button" className="ssh-btn" onClick={() => setEditor(null)} disabled={saving}>
             Close
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
+          <button type="button" className="ssh-btn ssh-btn-primary" onClick={() => void submit()} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>
-      <div className="detail-body">
-        <div className="form-row">
-          <label className="form-group">
-            <span className="form-label">Name</span>
-            <input
-              className="form-input"
-              value={form.name}
-              onChange={(event) => patch({ name: event.target.value })}
-              autoFocus
-            />
-          </label>
-          <label className="form-group form-grow">
-            <span className="form-label">SSH command（完整 ssh 命令，支持 config 别名、-p、-i、-J 等）</span>
-            <input
-              className="form-input"
-              placeholder="ssh user@host"
-              value={form.command}
-              onChange={(event) => patch({ command: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  void submit()
-                }
-              }}
-            />
-          </label>
-        </div>
+      <div className="ssh-sheet-body">
+        <label className="ssh-field">
+          <span className="ssh-field-label">Name</span>
+          <input
+            className="ssh-input"
+            value={form.name}
+            onChange={(event) => patch({ name: event.target.value })}
+            autoFocus
+          />
+        </label>
+        <label className="ssh-field ssh-field-grow">
+          <span className="ssh-field-label">SSH command（完整 ssh 命令，支持 config 别名、-p、-i、-J 等）</span>
+          <input
+            className="ssh-input"
+            placeholder="ssh user@host"
+            value={form.command}
+            onChange={(event) => patch({ command: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                void submit()
+              }
+            }}
+          />
+        </label>
       </div>
     </div>
   )

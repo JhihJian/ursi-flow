@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WorkspaceModule, WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
+import { createSshModule } from '@ursi/ssh-web/module'
 import { createPiWebModule } from './pi-web-panel/module'
 import '@ursi/fs-web/module.css'
+import '@ursi/ssh-web/module.css'
 import './pi-web-panel/module.css'
 
 /**
@@ -26,6 +28,7 @@ export const REGISTRY = { kind: 'app.registry', id: 'registry' } as const
 const SOURCES: Record<string, string> = {
   'todo': '@ursi/todo-web/module',
   'fs-web': '@ursi/fs-web/module',
+  'ssh': '@ursi/ssh-web/module',
   'pi-web': './pi-web-panel/module',
 }
 
@@ -249,6 +252,7 @@ function assertRegistry(modules: WorkspaceModule[], views: WorkspaceView[]): voi
 const BASE_MODULES: WorkspaceModule[] = [
   createTodoModule(),
   createFsModule({ apiBaseUrl: '/api/fs-web' }),
+  createSshModule({ apiBaseUrl: '/api/ssh-web' }),
   createPiWebModule(),
 ]
 

@@ -2,7 +2,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { terminalWsUrl } from '../api/client'
+import type { SshApi } from '../api/client'
 import type { ControlFrame, EventFrame } from '../api/types'
 import type { TerminalTarget } from '../store/ssh-store'
 import { StableCellFitAddon, TerminalFitter, type TerminalSize } from './fit'
@@ -31,8 +31,11 @@ export interface TerminalBridgeOptions {
   tooltip: HTMLElement
   target: TerminalTarget
   light: boolean
+  /** 由调用方注入的 API 通道，WS 地址从同一前缀推导（嵌入时是 /api/ssh-web）。 */
+  api: SshApi
+  /** 生命周期上报：live/ended/error（closed 事件即 ended），驱动折叠摘要。 */
+  onState: (state: 'live' | 'ended' | 'error') => void
   onEvent: (event: TerminalEvent) => void
-  onSearchRequest: () => void
 }
 
 export interface TerminalBridge {
@@ -78,15 +81,6 @@ export function openTerminalBridge(options: TerminalBridgeOptions): TerminalBrid
   // 必须在任何 write 之前激活：Unicode 6 的宽度表会把中文和 emoji 量错格。
   activateTerminalUnicode(terminal)
   terminal.registerLinkProvider(createTerminalLinkProvider(terminal, tooltip))
-
-  terminal.attachCustomKeyEventHandler((event) => {
-    if (event.type !== 'keydown') return true
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
-      options.onSearchRequest()
-      return false
-    }
-    return true
-  })
 
   let socket: WebSocket | null = null
   let renderer: TerminalRenderer | null = null
@@ -144,12 +138,18 @@ export function openTerminalBridge(options: TerminalBridgeOptions): TerminalBrid
   renderer.attach()
 
   socket = new WebSocket(
-    terminalWsUrl(target.connectionId, target.tmuxSession ?? undefined, initialSize.cols, initialSize.rows),
+    options.api.terminalWsUrl(
+      target.connectionId,
+      target.tmuxSession ?? undefined,
+      initialSize.cols,
+      initialSize.rows,
+    ),
   )
   socket.binaryType = 'arraybuffer'
 
   // 握手期间面板可能已经变过尺寸，连上后按当前列行补一次，远端 PTY 才不会停在旧尺寸。
   socket.onopen = () => {
+    options.onState('live')
     const size = fitter.fitNow()
     forwardNow(size ?? { cols: terminal.cols, rows: terminal.rows })
   }
@@ -170,11 +170,14 @@ export function openTerminalBridge(options: TerminalBridgeOptions): TerminalBrid
       const color = frame.type === 'error' ? 31 : 33
       terminal.writeln('')
       terminal.writeln(`\x1b[${color}m${frame.message}\x1b[0m`)
+      options.onState(frame.type === 'closed' ? 'ended' : frame.type)
       options.onEvent({ kind: frame.type, message: frame.message })
       return
     }
     terminal.write(new Uint8Array(event.data as ArrayBuffer))
   }
+
+  socket.onerror = () => options.onState('error')
 
   const resizeObserver = new ResizeObserver(() => fitter.scheduleStableFit())
   resizeObserver.observe(host)

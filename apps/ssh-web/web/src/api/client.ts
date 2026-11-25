@@ -1,5 +1,10 @@
 import type { Connection, ConnectionInput, TmuxSessionsResponse } from './types'
 
+export interface SshApiOptions {
+  /** API 前缀。缺省 `/api`（独立入口的同源代理）；嵌入工作区时由宿主注入 `/api/ssh-web`。 */
+  baseUrl?: string
+}
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -10,54 +15,66 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null
-    throw new ApiError(body?.error ?? `API error: ${response.status}`, response.status)
+/** 一条 API/WS 通道：HTTP 走 baseUrl 前缀，终端 WS 地址由同一前缀推导。 */
+export class SshApi {
+  readonly baseUrl: string
+
+  constructor(options: SshApiOptions = {}) {
+    this.baseUrl = options.baseUrl ?? '/api'
   }
-  return (await response.json()) as T
-}
 
-export function health(): Promise<string> {
-  return request('/health')
-}
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    })
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new ApiError(body?.error ?? `API error: ${response.status}`, response.status)
+    }
+    return (await response.json()) as T
+  }
 
-export function listConnections(): Promise<{ connections: Connection[] }> {
-  return request('/connections')
-}
+  health(): Promise<string> {
+    return fetch(`${this.baseUrl}/health`).then((response) => response.text())
+  }
 
-export function createConnection(input: ConnectionInput): Promise<{ id: number }> {
-  return request('/connections', { method: 'POST', body: JSON.stringify(input) })
-}
+  listConnections(): Promise<{ connections: Connection[] }> {
+    return this.request('/connections')
+  }
 
-export function updateConnection(id: number, input: Partial<ConnectionInput>): Promise<{ success: boolean }> {
-  return request(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(input) })
-}
+  createConnection(input: ConnectionInput): Promise<{ id: number }> {
+    return this.request('/connections', { method: 'POST', body: JSON.stringify(input) })
+  }
 
-export function deleteConnection(id: number): Promise<{ success: boolean }> {
-  return request(`/connections/${id}`, { method: 'DELETE' })
-}
+  updateConnection(id: number, input: Partial<ConnectionInput>): Promise<{ success: boolean }> {
+    return this.request(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(input) })
+  }
 
-/** 列出远端 tmux 会话；sessions 为 null 表示远端没有 tmux。 */
-export function listTmuxSessions(id: number): Promise<TmuxSessionsResponse> {
-  return request(`/connections/${id}/tmux-sessions`)
-}
+  deleteConnection(id: number): Promise<{ success: boolean }> {
+    return this.request(`/connections/${id}`, { method: 'DELETE' })
+  }
 
-/** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */
-export function terminalWsUrl(
-  id: number,
-  tmuxSession: string | undefined,
-  cols: number,
-  rows: number,
-): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const params = new URLSearchParams()
-  if (tmuxSession) params.set('tmux_session', tmuxSession)
-  params.set('cols', String(cols))
-  params.set('rows', String(rows))
-  return `${protocol}://${window.location.host}/api/connections/${id}/terminal?${params}`
+  /** 列出远端 tmux 会话；sessions 为 null 表示远端没有 tmux。 */
+  listTmuxSessions(id: number): Promise<TmuxSessionsResponse> {
+    return this.request(`/connections/${id}/tmux-sessions`)
+  }
+
+  /** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */
+  terminalWsUrl(id: number, tmuxSession: string | undefined, cols: number, rows: number): string {
+    const params = new URLSearchParams()
+    if (tmuxSession) params.set('tmux_session', tmuxSession)
+    params.set('cols', String(cols))
+    params.set('rows', String(rows))
+    const query = params.toString()
+    const base = this.baseUrl
+    if (base.startsWith('http://') || base.startsWith('https://')) {
+      const url = new URL(`${base.replace(/\/+$/, '')}/connections/${id}/terminal`)
+      url.search = query
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+      return url.toString()
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${protocol}://${window.location.host}${base}/connections/${id}/terminal?${query}`
+  }
 }

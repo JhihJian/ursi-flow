@@ -11,10 +11,26 @@ const todoSrc = fileURLToPath(new URL('../todo-web/web/src', import.meta.url))
 const todoApi = process.env.TODO_WEB_API ?? 'http://127.0.0.1:8090'
 /** fs-web 的同源 API。 */
 const fsApi = process.env.FS_WEB_API ?? 'http://127.0.0.1:8199'
+/** ssh-web 的同源 API；前缀在代理层重写，服务端路由保持 /api 不动。 */
+const sshApi = process.env.SSH_WEB_API ?? 'http://127.0.0.1:8091'
+/** 沙箱 Gateway 控制台（server.mjs，含 HTTP Basic 认证代理）。 */
+const sbxApi = process.env.SBX_WEB_API ?? 'http://127.0.0.1:4180'
 
 const proxy = {
-  // 顺序敏感：Vite 按插入顺序首个前缀命中生效，fs-web 必须排在通用 /api 之前。
+  // 顺序敏感：Vite 按插入顺序首个前缀命中生效，各模块前缀必须排在通用 /api 之前。
   '/api/fs-web': { target: fsApi, changeOrigin: false },
+  '/api/ssh-web': {
+    target: sshApi,
+    changeOrigin: false,
+    ws: true,
+    rewrite: (path: string) => path.replace(/^\/api\/ssh-web/, '/api'),
+  },
+  '/sbx': {
+    target: sbxApi,
+    changeOrigin: false,
+    ws: true,
+    rewrite: (path: string) => path.replace(/^\/sbx/, ''),
+  },
   '/api': { target: todoApi, changeOrigin: false },
 }
 

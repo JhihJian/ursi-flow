@@ -1,0 +1,30 @@
+/*
+ * ssh-web 独立入口样式：只负责满屏挂载，其余样式与工作区嵌入共用 module.css。
+ * 仅由独立入口的 main.tsx 引入，模块入口不加载本文件。
+ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100dvh;
+  font-family: var(--ssh-font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #ffffff;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.ssh-standalone {
+  flex: 1;
+}

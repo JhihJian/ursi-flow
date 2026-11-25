@@ -135,7 +135,7 @@ export function TerminalSearch({
 
   return (
     <div
-      className="terminal-search"
+      className="ssh-search"
       data-terminal-search-root
       onKeyDown={(event) => {
         event.stopPropagation()
@@ -174,7 +174,7 @@ export function TerminalSearch({
       >
         .*
       </button>
-      <span className="terminal-search-status">{status}</span>
+      <span className="ssh-search-status">{status}</span>
       <button type="button" title="上一个（Shift+Enter）" onClick={() => find('previous')}>
         ↑
       </button>
