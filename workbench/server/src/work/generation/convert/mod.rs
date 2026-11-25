@@ -12,7 +12,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::time::timeout;
-use ursi_mcp::{McpPlatform, Operation};
+use mcp_web::{McpPlatform, Operation};
 const SNAPSHOT_LIMIT: usize = 4 * 1024 * 1024;
 fn invalid(s: &str) -> Error {
     Error::Invalid(s.into())

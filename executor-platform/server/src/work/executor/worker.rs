@@ -42,7 +42,7 @@ pub(super) async fn launch(root: &Path, id: &str, bin: &Path, policy: &Path) -> 
     tokio::spawn(async move {
         let _ = child.wait().await;
     });
-    // EOF before the release byte prevents a late worker from ever starting Pi.
+    // EOF before the release byte prevents a late worker from ever starting the backend.
     timeout(CLAIM, async {
         if output.read_u8().await? != 1 {
             return Err(io::Error::other("ACP worker did not claim"));
@@ -488,7 +488,7 @@ fn text(
     trace: &mut Trace,
 ) -> Option<String> {
     let s = v.as_str()?;
-    // Pi already redacts across deltas. Bound this second filter before copying.
+    // Backends already redact across deltas. Bound this second filter before copying.
     if s.len() > 16 * 1024 {
         trace.gap(dir, "event_size_limit");
         return None;

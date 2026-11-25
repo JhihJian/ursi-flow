@@ -2,7 +2,7 @@
 use super::{Error, Store, environment};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use ursi_mcp::{
+use mcp_web::{
     Binding, Credentials, Error as McpError, MAX_SERVERS, McpPlatform, ProtocolCheck, RecognitionRule,
     ServerRecord, ServerRepository, Settings, default_recognition_rules,
 };
@@ -174,7 +174,7 @@ mod tests {
         let rules = platform(&store).recognition_rules().unwrap();
         assert_eq!(rules, default_recognition_rules());
         let check = ProtocolCheck {
-            status: ursi_mcp::ProtocolStatus::Checked,
+            status: mcp_web::ProtocolStatus::Checked,
             checked_at: 1,
             labels: vec!["执行器 v1".into()],
         };

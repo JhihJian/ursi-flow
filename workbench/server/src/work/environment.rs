@@ -12,7 +12,7 @@ const TABLE: &str = "platformEnvironment";
 const MAX_VALUE: usize = 8192;
 
 fn check_name(name: &str) -> Result<(), Error> {
-    if ursi_mcp::valid_credential_name(name) {
+    if mcp_web::valid_credential_name(name) {
         Ok(())
     } else {
         Err(Error::Invalid(

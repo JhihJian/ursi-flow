@@ -19,7 +19,8 @@ from uuid import uuid4
 from backend import (CANCEL_INSTRUCTION, DELAYED_ACK, EARLY_MESSAGE, EARLY_TOOL, ECHO_ONLY,
                      FOREIGN_MESSAGE, INVALID_FLOW, LOST_ACK, RECEIPT_TOOL, REPLY_TEXT,
                      STALE_IDLE, STALE_MESSAGE)
-from openai_stub import ANSWER, API_KEY, INPUT_PATH, MODEL, OpenAIStub
+
+BACKEND_ID = 'fixture'
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / '.build'
@@ -107,6 +108,10 @@ class PlatformCase(unittest.TestCase):
         policy.write_text(json.dumps({'models': [{'id': 'fixture', 'provider': provider}], 'tools': []}),
                           encoding='utf-8')
         policy.chmod(0o600)
+        manifest = cls.root / 'backends.json'
+        manifest.write_text(json.dumps([{'id': BACKEND_ID, 'label': '验收后端', 'bin': str(backend),
+                                         'capabilities': ['flowOutcome']}]), encoding='utf-8')
+        manifest.chmod(0o600)
         cls.platform_data = cls.root / 'platform'
         cls.platform_env = {
             'URSI_EXECUTOR_PLATFORM_LISTEN_ADDR': f'0.0.0.0:{platform_port}',
@@ -114,7 +119,7 @@ class PlatformCase(unittest.TestCase):
             'URSI_EXECUTOR_PLATFORM_WORKBENCH_TOKEN': cls.wb_token,
             'URSI_EXECUTOR_PLATFORM_RUNTIME_TOKEN': cls.rt_token,
             'URSI_EXECUTOR_PLATFORM_DATA_DIR': str(cls.platform_data),
-            'URSI_PI_EXECUTOR_BIN': str(backend), 'URSI_PI_POLICY': str(policy),
+            'URSI_AGENT_BACKENDS': str(manifest), 'URSI_PI_POLICY': str(policy),
         }
         cls.launch_platform()
 
@@ -126,14 +131,14 @@ class PlatformCase(unittest.TestCase):
     @classmethod
     def publish_revisions(cls):
         management = cls.management.request
-        check = management('POST', 'v2/agent-backends/pi/check')
+        check = management('POST', f'v2/agent-backends/{BACKEND_ID}/check')
         if check['status'] != 'ready':
             raise AssertionError(f'ACP probe failed: {check}')
         pkg = management('POST', 'v2/patches/config', {'name': 'acceptance'})
         cls.pinned_prompt = 'pinned-' + uuid4().hex
         for rev, prompt in enumerate([cls.pinned_prompt, 'replacement-' + uuid4().hex], 1):
             management('PUT', f"v2/directories/{pkg['directoryId']}/file?path=AGENTS.md&replace=true", prompt.encode())
-            pub = management('POST', 'v2/executors', {'id': REF['id'], 'agent': {'configPackageId': pkg['id'], 'backendId': 'pi'}})
+            pub = management('POST', 'v2/executors', {'id': REF['id'], 'agent': {'configPackageId': pkg['id'], 'backendId': BACKEND_ID}})
             if pub['revision'] != rev:
                 raise AssertionError(f'expected revision {rev}, got {pub}')
 
@@ -142,7 +147,7 @@ class PlatformCase(unittest.TestCase):
         path = 'v2/executor-attempts/' + attempt
         body = {'executorRef': REF, 'workInstruction': {'encoding': 'utf-8', 'text': instruction}}
         if marker is not None:
-            body['inputs'] = [{'kind': 'file', 'path': INPUT_PATH,
+            body['inputs'] = [{'kind': 'file', 'path': 'material.txt',
                                'contentBase64': b64encode(marker.encode()).decode()}]
         if run_config is not None:
             body['runConfig'] = run_config
@@ -513,56 +518,6 @@ print(json.dumps(dict(jsonrpc='2.0', id=req['id'], error=dict(
         encoded = json.dumps(events)
         for secret in ('private ACP failure text', self.pinned_prompt, str(self.attempt_dir(attempt))):
             self.assertNotIn(secret, encoded)
-
-
-class PiIntegration(PlatformCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.stub = OpenAIStub()
-        cls.addClassCleanup(cls.stub.close)
-        cls.launch_log = cls.root / 'pi-launches'
-        launcher = cls.root / 'ursi-pi-executor-acp'
-        node = shlex.quote(shutil.which('node'))
-        acp = BUILD / 'runtime/pi-executor/acp.js'
-        if not acp.is_file():
-            raise FileNotFoundError(f'{acp}: build via acceptance/run.sh')
-        # Platform clears PATH and HOME; use an absolute Node path and a private home.
-        launcher.write_text(f'#!/bin/sh\nset -eu\nexport HOME={shlex.quote(str(cls.root))}\n'
-                            f'printf "%s\\n" "${{URSI_ACP_JOB:-probe}}" >> {shlex.quote(str(cls.launch_log))}\n'
-                            f'exec {node} {shlex.quote(str(acp))}\n', encoding='utf-8')
-        launcher.chmod(0o700)
-        cls.start_platform(launcher, cls.stub.provider)
-
-    def test_preflight_and_direct(self):
-        self.publish_revisions()
-        self.assertEqual(self.launch_log.read_text(encoding='utf-8').splitlines(), ['probe'])
-        self.assertEqual(self.stub.requests, [], 'preflight must not call a model')
-        instruction = 'Read the input material and write an answer.'
-        marker = 'real-pi-material-' + uuid4().hex
-        attempt, path, body = self.start_attempt(self.consumer, instruction, marker=marker)
-        self.wait_running_event(self.consumer, path)
-        result = self.wait_attempt(self.consumer, path, attempt, 'succeeded')
-        answer = self.consumer.request('GET', f"v2/directories/{result['artifactDirectoryId']}/file?path=answer.md")
-        self.assertEqual(answer.decode(), ANSWER)
-        page = self.verify_events(self.consumer, self.runtime, path, 'read_input', reply=ANSWER)
-        self.assertNotIn(API_KEY, json.dumps(page['events']))
-        self.assertNotIn(marker, json.dumps(page['events']))
-        self.assertEqual(self.consumer.request('PUT', path, body), result)
-        changed = [{'kind': 'file', 'path': INPUT_PATH, 'contentBase64': b64encode(b'changed input').decode()}]
-        self.consumer.request('PUT', path, {**body, 'inputs': changed}, expected=409)
-        self.assertEqual(self.launch_log.read_text(encoding='utf-8').splitlines(),
-                         ['probe', str(self.attempt_dir(attempt) / 'acp-job.json')])
-        self.assertEqual(len(self.stub.requests), 2, self.stub.requests)
-        first, second = [request[2] for request in self.stub.requests]
-        self.assertEqual(first['model'], MODEL)
-        self.assertIn(self.pinned_prompt, json.dumps(first['messages'][0]))
-        self.assertEqual(first['messages'][0]['role'], 'system')
-        self.assertIn(instruction, json.dumps(first['messages'][-1]))
-        self.assertEqual(first['messages'][-1]['role'], 'user')
-        self.assertIn('read_input', [tool['function']['name'] for tool in first['tools']])
-        self.assertEqual(second['messages'][-1]['role'], 'tool')
-        self.assertIn(marker, json.dumps(second['messages'][-1]))
 
 
 if __name__ == '__main__':

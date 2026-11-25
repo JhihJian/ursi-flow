@@ -316,11 +316,10 @@ pub(super) fn published_agent(
     store.read(|db| {
         let snapshot = agent_snapshot(db, id, rev)?;
         let agent = &version(db, "executors", id, rev)?["agent"];
-        let requested = agent
+        let backend_id = agent
             .get("backendId")
-            .map(|v| v.as_str().ok_or_else(corrupt))
-            .transpose()?;
-        let backend_id = requested.unwrap_or("pi");
+            .and_then(|v| v.as_str())
+            .ok_or_else(corrupt)?;
         let unavailable = || Error::Unavailable("原执行器后端不可用或绑定已变更".into());
         let entry = registry.lookup(backend_id).map_err(|_| unavailable())?;
         let bindings = &db["catalog"]["executors"][id];

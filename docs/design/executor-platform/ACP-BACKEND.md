@@ -1,6 +1,6 @@
 # 平台执行后端统一为 ACP
 
-执行器平台以 ACP v2 Preview beta.3 经本机 stdio 连接受管 Agent。Pi 是内置实现，复用 Pi SDK 的会话执行、工具授权与结果校验。所有平台新尝试使用同一条 ACP 路径，试跑和固定修订执行均不回退到 MCP。
+执行器平台以 ACP v2 Preview beta.3 经本机 stdio 连接受管 Agent。受管 Agent 由管理员通过 JSON 清单登记，复用平台的会话执行、工具授权与结果校验。所有平台新尝试使用同一条 ACP 路径，试跑和固定修订执行均不回退到 MCP。
 
 ## 调用边界
 
@@ -8,9 +8,9 @@
 | --- | --- |
 | Workbench、Flow Runtime → 执行器平台 | HTTP 提交、查询、取消和只读制品。`attemptId` 作为调用方可查回的执行身份。 |
 | 执行器平台 → 受管 Agent | ACP v2 stdio；每次尝试由独立 worker 持有连接，在新 `sessionId` 中提交一个任务。 |
-| Pi → 业务工具 | 按部署策略调用经授权的只读 MCP 工具。工具协议与尝试执行协议分开。 |
+| Agent → 业务工具 | 按部署策略调用经授权的只读 MCP 工具。工具协议与尝试执行协议分开。 |
 
-Pi 的平台部署入口是 `ursi-pi-executor-acp`，旧 `ursi-pi-executor-mcp` 已从包和源码移除。独立的 [`ursi-flow-executor-mcp`](../../../flow-runtime/README.md#mcp-执行器-adapter) 和执行器 SDK 为 MCP 客户端提供整条 Flow 的启停与查询。这个适配器位于平台执行链路之外，操作的是 Runtime 中的固定修订 Run，待独立使用方审计后决定去留。
+受管 Agent 经 `URSI_AGENT_BACKENDS` 清单登记，详见[后端部署与检查](../../../executor-platform/server/src/work/agent_backends/README.md)。独立的 [`ursi-flow-executor-mcp`](../../../flow-runtime/README.md#mcp-执行器-adapter) 和执行器 SDK 为 MCP 客户端提供整条 Flow 的启停与查询。这个适配器位于平台执行链路之外，操作的是 Runtime 中的固定修订 Run，待独立使用方审计后决定去留。
 
 ## 配置与执行
 
@@ -28,6 +28,6 @@ worker 将根会话的回复、工具和状态更新写成有界、按序持久�
 
 1. 停接旧执行请求，排空在途尝试并确认制品已发布，停服后备份原平台数据目录。
 2. 部署 ACP 程序和策略，在平台重新检查后端。用原配置包发布新的 ACP 修订，让 Workbench 和 Runtime 选择新修订。旧 MCP 修订和绑定保留为历史，不覆写或补造旧快照；在途旧尝试不会自动接续到 ACP。
-3. 使用原角色、原 `attemptId` 验证切换前已发布的结果与制品仍可读取。用新修订验证工作包直跑、Flow 节点分支、取消和归一化事件续读。按[平台验收](../../../executor-platform/acceptance/README.md)检查两条消费路径，再移除旧 Pi MCP 启动配置。
+3. 使用原角色、原 `attemptId` 验证切换前已发布的结果与制品仍可读取。用新修订验证工作包直跑、Flow 节点分支、取消和归一化事件续读。按[平台验收](../../../executor-platform/acceptance/README.md)检查两条消费路径。
 
-[协议基线与首版范围](ACP-SCOPE.md)说明 Pi 的互操作基线、可选能力及异机接入条件。
+[协议基线与首版范围](ACP-SCOPE.md)说明受管 Agent 的互操作基线、可选能力及异机接入条件。

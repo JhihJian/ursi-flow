@@ -1,4 +1,4 @@
-use super::{Backend, Capability, Description, Inner, Registry};
+use super::{Backend, Description, Inner, Registry};
 use rustix::fs::{Access, AtFlags, CWD, accessat};
 use serde::Deserialize;
 use std::{
@@ -69,39 +69,17 @@ fn read_managed(path: &Path) -> io::Result<Vec<Managed>> {
 impl Registry {
     pub(in crate::work) fn from_env() -> io::Result<Self> {
         let path = |key| env::var_os(key).map(PathBuf::from);
-        Self::load(
-            path("URSI_PI_EXECUTOR_BIN"),
-            path("URSI_PI_POLICY"),
-            path("URSI_AGENT_BACKENDS"),
-        )
+        Self::load(path("URSI_PI_POLICY"), path("URSI_AGENT_BACKENDS"))
     }
 
     pub(super) fn load(
-        pi: Option<PathBuf>,
         policy: Option<PathBuf>,
         managed: Option<PathBuf>,
     ) -> io::Result<Self> {
         if let Some(path) = &policy {
             private_file(path, "URSI_PI_POLICY 必须指向私有 0600 普通文件")?;
         }
-        if let Some(bin) = &pi {
-            executable(bin)?;
-            if policy.is_none() {
-                return Err(invalid("Pi 后端缺少 URSI_PI_POLICY"));
-            }
-        }
-        let mut backends = vec![Backend::new(
-            Description {
-                id: "pi".into(),
-                label: "Pi".into(),
-                capabilities: vec![
-                    Capability::Skills,
-                    Capability::Tools,
-                    Capability::FlowOutcome,
-                ],
-            },
-            pi.zip(policy.clone()),
-        )];
+        let mut backends = Vec::new();
         let mut ids = BTreeSet::from(["flow".to_owned(), "pi".to_owned()]);
         if let Some(path) = managed {
             for Managed { bin, info } in read_managed(&path)? {

@@ -8,7 +8,7 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
-use ursi_mcp::McpPlatform;
+use mcp_web::McpPlatform;
 
 pub(super) use runs::recover;
 

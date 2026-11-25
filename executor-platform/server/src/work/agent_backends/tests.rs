@@ -44,7 +44,7 @@ fn invalid_explicit_configuration_is_never_silently_discarded() {
     let policy = t.file("policy", b"{}", 0o600);
     let good = row(Path::new("/bin/true"));
     let registry = t.file("backends", json!([good]).to_string().as_bytes(), 0o600);
-    let load = || Registry::load(None, Some(policy.clone()), Some(registry.clone()));
+    let load = || Registry::load(Some(policy.clone()), Some(registry.clone()));
     assert_eq!(load().unwrap().lookup("reviewer").unwrap().policy, policy);
     for (field, value) in [
         ("id", json!("pi")),
@@ -77,17 +77,15 @@ fn invalid_explicit_configuration_is_never_silently_discarded() {
     fs::write(&registry, b"[").unwrap();
     assert!(load().is_err());
     fs::write(&registry, json!([good]).to_string()).unwrap();
-    assert!(Registry::load(None, None, Some(registry.clone())).is_err());
-    assert!(Registry::load(Some("/bin/true".into()), None, None).is_err());
-    assert!(Registry::load(Some("relative".into()), Some(policy.clone()), None).is_err());
-    assert!(Registry::load(None, None, Some("relative".into())).is_err());
+    assert!(Registry::load(Some(policy.clone()), None).is_ok());
+    assert!(Registry::load(None, Some("relative".into())).is_err());
     let link = t.0.join("link");
     symlink(&registry, &link).unwrap();
-    assert!(Registry::load(None, Some(policy.clone()), Some(link)).is_err());
+    assert!(Registry::load(Some(policy.clone()), Some(link)).is_err());
     fs::set_permissions(&registry, fs::Permissions::from_mode(0o644)).unwrap();
     assert!(load().is_err());
     fs::set_permissions(&policy, fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(Registry::load(None, Some(policy), None).is_err());
+    assert!(Registry::load(Some(policy), None).is_err());
 }
 
 #[test]
@@ -96,26 +94,21 @@ fn selection_uses_shared_health_and_only_required_capabilities() {
     let bin = PathBuf::from("/bin/true");
     let policy = t.file("policy", b"{}", 0o600);
     let managed = t.file("managed", json!([row(&bin)]).to_string().as_bytes(), 0o600);
-    let reg = Registry::load(Some(bin), Some(policy), Some(managed)).unwrap();
+    let reg = Registry::load(Some(policy), Some(managed)).unwrap();
     let clone = reg.clone();
     let skills = json!({"skills":[{"id":"draft"}],"tools":[]});
     let tools = json!({"skills":[],"tools":[{"id":"lookup"}]});
     assert!(reg.select(None, &skills).is_err());
     assert!(reg.select(Some("pi"), &skills).is_err());
     assert!(reg.lookup("flow").is_err());
-    assert_eq!(reg.lookup("pi").unwrap().id, "pi");
+    assert!(reg.lookup("pi").is_err());
     clone
         .health()
         .unwrap()
         .insert("reviewer".into(), Check::finished(true));
     assert_eq!(reg.select(None, &skills).unwrap().id, "reviewer");
     assert!(reg.select(None, &tools).is_err());
-    clone
-        .health()
-        .unwrap()
-        .insert("pi".into(), Check::finished(true));
-    assert!(matches!(reg.select(None, &skills), Err(Error::Conflict(_))));
-    assert_eq!(reg.select(None, &tools).unwrap().id, "pi");
+    assert!(reg.select(None, &tools).is_err());
     assert!(matches!(
         reg.select(Some("reviewer"), &tools),
         Err(Error::Invalid(_))
@@ -178,9 +171,7 @@ assert sys.stdin.read() == ''
 "#,
             0o700,
         );
-        let mut managed = row(&bin);
-        managed["capabilities"] = json!([]);
-        let path = t.file("managed", json!([managed]).to_string().as_bytes(), 0o600);
+        let path = t.file("managed", json!([row(&bin)]).to_string().as_bytes(), 0o600);
         let output = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
@@ -190,7 +181,6 @@ assert sys.stdin.read() == ''
             .env("URSI_TEST_BACKENDS_CHILD", &t.0)
             .env("URSI_AGENT_BACKENDS", path)
             .env("URSI_PI_POLICY", policy)
-            .env_remove("URSI_PI_EXECUTOR_BIN")
             .output()
             .unwrap();
         assert!(
@@ -211,23 +201,19 @@ assert sys.stdin.read() == ''
     let app = reg.routes(store.clone());
     let server = tokio::spawn(async move { axum::serve(socket, app).await.unwrap() });
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
-    let all: Value = client
-        .get(&url)
-        .send()
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+        let all: Value = client
+            .get(&url)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
     assert_eq!(
         all[0],
-        json!({"id":"pi","label":"Pi","capabilities":["skills","tools","flowOutcome"],"configured":false,"status":"unchecked","checkedAt":null})
-    );
-    assert_eq!(
-        all[1],
-        json!({"id":"reviewer","label":"审阅助手","capabilities":[],"configured":true,"status":"unchecked","checkedAt":null})
+        json!({"id":"reviewer","label":"审阅助手","capabilities":["skills"],"configured":true,"status":"unchecked","checkedAt":null})
     );
     assert!(reg.lookup("pi").is_err());
     assert!(!root.exists());
@@ -278,8 +264,6 @@ assert sys.stdin.read() == ''
         .await
         .unwrap();
     assert_eq!(filtered[0]["compatible"], true);
-    assert_eq!(filtered[1]["compatible"], false);
-    assert_eq!(filtered[1]["checkedAt"], item["checkedAt"]);
     assert!(!filtered.to_string().contains(temp.to_str().unwrap()));
     let missing = client
         .get(&url)
@@ -301,15 +285,5 @@ assert sys.stdin.read() == ''
     assert!(failed["checkedAt"].is_u64());
     assert!(reg.select(None, &json!({})).is_err());
     assert!(reg.lookup("reviewer").is_ok());
-    let pi: Value = check("pi")
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(pi["status"], "failed");
-    assert_eq!(pi["configured"], false);
     server.abort();
 }

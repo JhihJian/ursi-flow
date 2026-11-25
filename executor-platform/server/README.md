@@ -20,13 +20,13 @@ cargo build --release --locked
 ./target/release/ursi-executor-platform
 ```
 
-平台可在两个消费者均未启动时提供服务。配置模型、只读工具与适配器时，在**平台进程**配置 `URSI_PI_POLICY`、`URSI_PI_EXECUTOR_BIN` 或 `URSI_AGENT_BACKENDS`，详见[后端部署与检查](src/work/agent_backends/README.md)。Pi 的部署入口为 `ursi-pi-executor-acp`。[独立管理页](../web/README.md)使用管理员令牌；消费者只配置各自的服务凭证。
+平台可在两个消费者均未启动时提供服务。配置模型、只读工具与适配器时，在**平台进程**配置 `URSI_PI_POLICY` 和 `URSI_AGENT_BACKENDS`，详见[后端部署与检查](src/work/agent_backends/README.md)。[独立管理页](../web/README.md)使用管理员令牌；消费者只配置各自的服务凭证。
 
 ## API 与权限检查
 
 平台地址下的 `/api/v2` 是服务 API。管理员用 `/patches/config`、`/directories` 编辑配置，用 `/agent-backends` 检查后端，在 `/resources` 和 `/executors` 发布版本，或用 `previewDefinition` 试跑。消费者只读执行器选择元数据，用 `PUT /executor-attempts/{id}` 提交固定 `executorRef`、UTF-8 `workInstruction` 和可选 `inputs` 快照。平台不接受 `workPatchId`。结果通过原尝试 ID 查询和取消，制品按返回的 `artifactDirectoryId` 读取。
 
-Runtime 启动 Run 前，以消费者令牌读取 `GET /node-executors/{id}/{revision}`，检查 Agent 修订及其后端是否声明 `flowOutcome`。提交新尝试时，平台还会核对该修订的 ACP 后端绑定。内置 Pi 支持该能力，其他受管后端在实现 `runConfig.nodeContract` 和结果制品后，可在注册配置的 `capabilities` 中声明。
+Runtime 启动 Run 前，以消费者令牌读取 `GET /node-executors/{id}/{revision}`，检查 Agent 修订及其后端是否声明 `flowOutcome`。提交新尝试时，平台还会核对该修订的 ACP 后端绑定。受管后端在实现 `runConfig.nodeContract` 和结果制品后，可在注册配置的 `capabilities` 中声明 `flowOutcome`。
 
 从 MCP 切到 ACP 时，原平台已完成的结果与已发布制品仍可按原 ID 查回。旧 MCP 修订保留为历史，新执行须重新发布并选择 ACP 修订。独立的整条 Flow MCP 入口留在平台之外，待独立使用方审计。见 [ACP 切换说明](../../docs/design/executor-platform/ACP-BACKEND.md#从旧平台执行链路切换)。若从旧 Workbench 抽取管理资产，另见[离线迁移说明](../migration/README.md)。
 

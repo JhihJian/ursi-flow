@@ -1,12 +1,12 @@
 # ACP v2 基线与首版范围
 
-[执行契约](ACP-PROFILE.md)规定平台生产流程使用的能力。本文件记录该流程之外的 Pi 协议基线、暂不启用的可选项，以及平台可以忽略的报告。分类依据 [beta.3 基线 schema](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.json)和[实验 schema](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.unstable.json)。
+[执行契约](ACP-PROFILE.md)规定平台生产流程使用的能力。本文件记录该流程之外的 Agent 协议基线、暂不启用的可选项，以及平台可以忽略的报告。分类依据 [beta.3 基线 schema](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.json)和[实验 schema](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.unstable.json)。
 
-## Pi 仍须实现的会话基线
+## Agent 仍须实现的会话基线
 
-Pi 声明 `capabilities.session` 就须实现[七个基线方法](https://agentclientprotocol.com/protocol/v2/initialization#session-capabilities)。以下两个方法和资源链接属于 Pi 的 ACP 互操作验收。平台按 `attemptId` 查账本，业务轨迹来自实时持久化记录。
+Agent 声明 `capabilities.session` 就须实现[七个基线方法](https://agentclientprotocol.com/protocol/v2/initialization#session-capabilities)。以下两个方法和资源链接属于 Agent 的 ACP 互操作验收。平台按 `attemptId` 查账本，业务轨迹来自实时持久化记录。
 
-| 能力 | Pi 实现与验收 |
+| 能力 | Agent 实现与验收 |
 | --- | --- |
 | `session/list` | 返回有权访问且仍保留的会话。验证目录过滤和无匹配结果。 |
 | `session/resume` | 校验原 `cwd`，验收时重送原配置。省略 `replayFrom` 时先同步现态再回应。指定 `{type: "start"}` 时回放保留历史，再发送 `replay_complete`、同步现态并回应。基线允许有界留存，已丢弃的会话按协议拒绝。回放只证明对端交付了保留的历史，任务终态以尝试账本为准。 |

@@ -160,7 +160,7 @@ mod tests {
     fn old_published_revision_uses_its_snapshot_without_package_lookup() {
         let path = std::env::temp_dir().join(Uuid::new_v4().to_string());
         let store = Store::open(path.clone()).unwrap();
-        let inline = json!({"id":"old","agent":{"systemPrompt":"original","modelProfile":"managed","tools":[]},"resources":[{"id":"legacy","revision":7}]});
+        let inline = json!({"id":"old","agent":{"systemPrompt":"original","modelProfile":"managed","tools":[],"backendId":"pi"},"resources":[{"id":"legacy","revision":7}]});
         let snapshot = json!({"systemPrompt":"original","modelProfile":"managed","tools":[],"skills":[{"id":"legacy","revision":7,"content":"fixed"}]});
         store
             .update(|db| {

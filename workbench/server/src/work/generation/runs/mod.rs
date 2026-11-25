@@ -16,7 +16,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use ursi_mcp::McpPlatform;
+use mcp_web::McpPlatform;
 use uuid::Uuid;
 
 const RUNS: &str = "workPatchGenerationRuns";

@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 axum = "0.8"
 base64 = "0.22"
-ursi-mcp = { path = "../../ursi-mcp/server" }
+mcp-web = { path = "../../apps/mcp-web/server" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 ursi-executor-platform = { path = "../../executor-platform/server" }
 sha2 = "0.10"

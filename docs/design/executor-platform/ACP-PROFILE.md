@@ -1,6 +1,6 @@
 # 执行器 ACP v2 执行契约
 
-平台为每个 `attemptId` 启动独立 worker。worker 作为 ACP Client 经本机 stdio 连接受管 Agent，在新会话中至多提交一次任务。Pi 是内置 Agent。本契约基于 [ACP v2 Preview beta.3](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.json)。[协议基线与首版范围](ACP-SCOPE.md)另行列出生产流程以外的协议义务和可选能力。
+平台为每个 `attemptId` 启动独立 worker。worker 作为 ACP Client 经本机 stdio 连接受管 Agent，在新会话中至多提交一次任务。本契约基于 [ACP v2 Preview beta.3](https://github.com/agentclientprotocol/agent-client-protocol/blob/schema-v2.0.0-beta.3/schema/v2/schema.json)。[协议基线与首版范围](ACP-SCOPE.md)另行列出生产流程以外的协议义务和可选能力。
 
 ## Agent 配置与生效条件
 
@@ -8,14 +8,14 @@
 
 | 配置项 | 项目配置与冻结内容 | 执行时怎样生效 |
 | --- | --- | --- |
-| 系统提示词 | 编辑 `AGENTS.md`。冻结 UTF-8 正文。平台生产流程统一使用 `override` 替换语义。 | 平台按修订通过 `session/new.systemPrompt` 传递，Pi 将正文应用到实际系统上下文。任务指令另走 `session/prompt`。 |
-| Skills 列表 | `skills/` 的直接子目录就是启用列表，每个 `skills/<id>/` 必须含 `SKILL.md`。冻结技能 ID、入口与纳入该目录的配套文件，保留相对路径和摘要。 | Pi 按冻结列表注册；会话通过 `read_skill_file` 以相对路径读取快照内的配套文件。宿主和业务输入目录不参与技能发现。 |
-| MCP 工具 | 在 `mcp.json.tools` 填选管理员已经授权的只读业务工具 ID，省略则业务工具列表为空。冻结每个 `{id, schemaDigest}`。 | Pi 只把所选业务工具注册给模型。工具调用前复核当前授权与远端参数 schema。权限被撤销或 schema 漂移时拒绝调用。 |
-| 模型 | `mcp.json.modelProfile` 选择管理员登记的模型。省略时在冻结时解析为部署策略的默认模型 ID。 | Pi 从受管策略解析该 ID 及连接配置。模型和 MCP 的接入地址、命令及凭据留在管理员控制的部署配置中。 |
+| 系统提示词 | 编辑 `AGENTS.md`。冻结 UTF-8 正文。平台生产流程统一使用 `override` 替换语义。 | 平台按修订通过 `session/new.systemPrompt` 传递，Agent 将正文应用到实际系统上下文。任务指令另走 `session/prompt`。 |
+| Skills 列表 | `skills/` 的直接子目录就是启用列表，每个 `skills/<id>/` 必须含 `SKILL.md`。冻结技能 ID、入口与纳入该目录的配套文件，保留相对路径和摘要。 | Agent 按冻结列表注册；会话通过 `read_skill_file` 以相对路径读取快照内的配套文件。宿主和业务输入目录不参与技能发现。 |
+| MCP 工具 | 在 `mcp.json.tools` 填选管理员已经授权的只读业务工具 ID，省略则业务工具列表为空。冻结每个 `{id, schemaDigest}`。 | Agent 只把所选业务工具注册给模型。工具调用前复核当前授权与远端参数 schema。权限被撤销或 schema 漂移时拒绝调用。 |
+| 模型 | `mcp.json.modelProfile` 选择管理员登记的模型。省略时在冻结时解析为部署策略的默认模型 ID。 | Agent 从受管策略解析该 ID 及连接配置。模型和 MCP 的接入地址、命令及凭据留在管理员控制的部署配置中。 |
 
-平台为正式尝试生成私有只读的 `agent-config.json` 和作业文件。`URSI_ACP_JOB` 指向该作业文件，其中的 `cwd` 定位本次 `workspace/`，`configDigest` 固定快照的 SHA-256，可选 `nodeContract` 固定 Flow 节点的结果和变量声明。Pi 核对快照与附件摘要；业务输入和输出分别位于 `workspace/inputs/` 和 `workspace/artifacts/`。配置包的 `mcpServers` 只允许省略或空对象。ACP 的 `session/new.mcpServers` 是服务列表，不承载项目的工具白名单。受管 Pi 通过既有业务工具客户端访问 MCP。平台到执行器之间只用 ACP 管理会话和执行。
+平台为正式尝试生成私有只读的 `agent-config.json` 和作业文件。`URSI_ACP_JOB` 指向该作业文件，其中的 `cwd` 定位本次 `workspace/`，`configDigest` 固定快照的 SHA-256，可选 `nodeContract` 固定 Flow 节点的结果和变量声明。Agent 核对快照与附件摘要；业务输入和输出分别位于 `workspace/inputs/` 和 `workspace/artifacts/`。配置包的 `mcpServers` 只允许省略或空对象。ACP 的 `session/new.mcpServers` 是服务列表，不承载项目的工具白名单。Agent 通过既有业务工具客户端访问 MCP。平台到执行器之间只用 ACP 管理会话和执行。
 
-发布和试跑时校验配置完整性、路径边界和模型、工具授权。执行时，Pi 核验快照及工作区，应用系统指令并注册技能和工具后，才返回 `sessionId`。装配失败时拒绝建会话，平台不提交任务。远端 MCP 工具的授权与 schema 在实际调用前复核。
+发布和试跑时校验配置完整性、路径边界和模型、工具授权。执行时，Agent 核验快照及工作区，应用系统指令并注册技能和工具后，才返回 `sessionId`。装配失败时拒绝建会话，平台不提交任务。远端 MCP 工具的授权与 schema 在实际调用前复核。
 
 ## 后端预检与建立连接
 
@@ -33,12 +33,12 @@
 | 方法 | 方向 | 执行契约 |
 | --- | --- | --- |
 | `session/prompt` | 平台发请求 | 将 `workInstruction` 作为一个 `text` 块发送。发送前持久化提交意图和 `idempotencyKey`。回执的 `messageId` 确认消息已插入。 |
-| `session/update` | Pi 发通知 | 使用下表中的更新关联本轮任务、记录生命周期及归一化轨迹。 |
-| `session/request_permission` | Pi 可发请求 | 平台按标准回 `outcome: {outcome: "cancelled"}`，表示未选择任何授权项。工具所需权限在注册与调用时按部署策略验证。 |
+| `session/update` | Agent 发通知 | 使用下表中的更新关联本轮任务、记录生命周期及归一化轨迹。 |
+| `session/request_permission` | Agent 可发请求 | 平台按标准回 `outcome: {outcome: "cancelled"}`，表示未选择任何授权项。工具所需权限在注册与调用时按部署策略验证。 |
 
 双向消息循环分别处理响应、通知和反向请求。[stdio](https://agentclientprotocol.com/protocol/v2/transports#stdio) 使用 UTF-8，每行承载一条 JSON-RPC 消息。平台在发送 `session/new` 前开始接收更新。建会话期间早到的更新暂存于限制条数和字节数的缓冲区。持久绑定 `attemptId` 与 `sessionId` 后，只按接收顺序处理匹配根会话的更新。
 
-本轮更新可先于或晚于 prompt 回执，包括结束通知。worker 用请求 ID 和根会话 ID 关联消息，若收到用户消息回显，其 `messageId` 须与回执一致。回执只确认插入；常规终态还要求本轮活动后收到实时结束原因。回执未到时，worker 短暂等待迟到回执。等待结束或连接正常断开后，只有已收到消息回显与可信结束证据时才可能查回终态，否则保持 `unverified`。平台按 `attemptId` 查账本，从不重发任务；Pi 对仍保留的 `idempotencyKey` 去重。
+本轮更新可先于或晚于 prompt 回执，包括结束通知。worker 用请求 ID 和根会话 ID 关联消息，若收到用户消息回显，其 `messageId` 须与回执一致。回执只确认插入；常规终态还要求本轮活动后收到实时结束原因。回执未到时，worker 短暂等待迟到回执。等待结束或连接正常断开后，只有已收到消息回显与可信结束证据时才可能查回终态，否则保持 `unverified`。平台按 `attemptId` 查账本，从不重发任务；Agent 对仍保留的 `idempotencyKey` 去重。
 
 | 更新 | 平台处理 |
 | --- | --- |
@@ -63,7 +63,7 @@
 
 `rpc.method` 取 `initialize`、`session/new`、`session/prompt`、`session/cancel` 或 `session/close`。`sent` 表示完整消息已写入 stdio；`ack` 表示收到并通过校验的对应成功响应；`failed` 表示发送失败，或在该方法的处理期限内未获有效成功响应，包括错误响应和回执丢失。`session/cancel` 是通知，阶段仅为 `sent` 或 `failed`。`session/prompt` 回执缺失仍可能由独立证据确认任务结果。RPC 记录只公开方法和阶段，参数、请求与会话 ID、结果和错误详情均留在事件之外。
 
-接口按序逐条返回归一化记录，保留消息片段和工具状态更新的边界；原始 ACP 帧留在传输层。Pi 在发送显示文本前过滤已知敏感值，worker 按字段白名单及大小上限写入，用户消息正文、内部思维、系统提示和原始工具参数与输出不作为事件字段。已提交记录按尝试内递增的 `seq` 可读，重启后游标不变。每次尝试最多留存前 512 条记录；若还有后续事件，以一条 `retention_limit` 标记留存缺口。可记录的采集缺口用于说明轨迹不完整，事件页与终态判定相互独立。
+接口按序逐条返回归一化记录，保留消息片段和工具状态更新的边界；原始 ACP 帧留在传输层。Agent 在发送显示文本前过滤已知敏感值，worker 按字段白名单及大小上限写入，用户消息正文、内部思维、系统提示和原始工具参数与输出不作为事件字段。已提交记录按尝试内递增的 `seq` 可读，重启后游标不变。每次尝试最多留存前 512 条记录；若还有后续事件，以一条 `retention_limit` 标记留存缺口。可记录的采集缺口用于说明轨迹不完整，事件页与终态判定相互独立。
 
 ## 停止与终态
 
@@ -87,7 +87,7 @@
 
 1. 发布 ACP 修订后分别更改包内 `AGENTS.md`、Skills 列表、配套文件和 `mcp.json.tools`。已发布的 ACP 修订仍使用冻结配置，新试跑使用新配置。检查模型实际收到的系统指令和工具列表，并验证选中的 Skill 能读到冻结的配套文件。配置装配失败或协商能力不符时，断言未发送 `session/prompt`。
 2. 用测试 MCP 服务验证选中的工具可调用，未选工具不暴露给模型。撤权或参数 schema 变化后，下一次调用必须拒绝，远端不得收到 `tools/call`。
-3. 注入版本或能力不符、建会话失败和预检回收超时，验证未就绪的后端不能用于新发布和试跑，预检全程不发送任务。另验证标准权限拒绝和 Pi 对同键提交的去重。其余基线验收见[基线能力](ACP-SCOPE.md#pi-仍须实现的会话基线)。
+3. 注入版本或能力不符、建会话失败和预检回收超时，验证未就绪的后端不能用于新发布和试跑，预检全程不发送任务。另验证标准权限拒绝和 Agent 对同键提交的去重。其余基线验收见[基线能力](ACP-SCOPE.md)。
 4. 注入建会话回执前的更新、prompt 回执前后的结束通知，以及回执丢失。核对早到更新按根会话顺序入账，初始或重复的 `idle` 与其他会话的更新不作为本轮终态证据，原任务至多提交一次。
 5. 验证原角色可用原游标增量读取已提交记录，跨角色返回 404。验证短时等待由新记录或 worker 停止唤醒，同一尝试仍可取消；注入带私有详情的 RPC 错误并核对事件字段。覆盖缓冲和留存超限，核对缺口与终态分开记录。
 6. 注入关闭超时、主进程退出但子进程仍写入、服务重启、执行进程崩溃和取消竞态。缺少停止证据时保持 `unverified`，不发布制品。非法 Flow 结果不选边。
