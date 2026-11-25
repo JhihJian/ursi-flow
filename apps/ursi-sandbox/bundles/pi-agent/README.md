@@ -17,7 +17,7 @@ Gateway 只管理资源。session-service 管理会话和 CLI 进程，监督器
 
 使用 Linux、本机 Docker daemon、Rust 工具链及 OpenSSH 客户端。session-service 需要支持 pidfd 的内核和相应 Docker seccomp 策略。二进制架构与 glibc 要求见镜像说明。
 
-从独立产品根 `ursi-sandbox/` 执行：
+从独立产品根 `apps/ursi-sandbox/` 执行：
 
 ```bash
 cargo build -p ursi-gateway -p ursi-session-service -p ursi-sandbox-client

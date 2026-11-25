@@ -8,7 +8,7 @@
 
 管理员从实例详情进入「网络观测」。启用和配对 [Observer](../observer/README.md) 后，可为运行且无待处理操作的实例开始采集。活动页每 2 秒更新已写报文数、PCAP 大小、丢包及最近一分钟的写入速率。离开页面不停止观测，保存记录链接即可在刷新或重建后打开同一记录。服务离线时保留最后快照，恢复后重新查询。
 
-停止请求受理后，等待收尾，再选择分段。点「预览分段」可读取前 500 条完整 SLL2 记录，按地址、协议和方向筛选。列表保留文件中的记录顺序，显示相对本段首帧的时间、端点和协议摘要。选择一行可展开协议字段，并在 Hex/ASCII 中定位对应字节；点击字节则定位到最具体的已解析字段。字节窗每条最多显示前 512 B。点「下载完整分段」可取回未经显示筛选的 PCAP。`interrupted` 的末段可能不完整。状态、预览和下载均限管理员。自建同源代理须对观测 GET 和 POST 再次校验管理员身份，并按二进制流转发分段。技术细节见[页面设计](../../docs/design/ursi-sandbox/NETWORK-OBSERVATION.md)。
+停止请求受理后，等待收尾，再选择分段。点「预览分段」可读取前 500 条完整 SLL2 记录，按地址、协议和方向筛选。列表保留文件中的记录顺序，显示相对本段首帧的时间、端点和协议摘要。选择一行可展开协议字段，并在 Hex/ASCII 中定位对应字节；点击字节则定位到最具体的已解析字段。字节窗每条最多显示前 512 B。点「下载完整分段」可取回未经显示筛选的 PCAP。`interrupted` 的末段可能不完整。状态、预览和下载均限管理员。自建同源代理须对观测 GET 和 POST 再次校验管理员身份，并按二进制流转发分段。技术细节见[页面设计](../../../docs/design/ursi-sandbox/NETWORK-OBSERVATION.md)。
 
 ## 能力注册表
 
@@ -90,7 +90,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`node tests/live-observation.mjs` 验证真实 Chromium、Web 代理、Gateway 和 Observer 的完整链路。先在 `ursi-sandbox/` 构建 Gateway 和 Observer 的 debug 二进制，准备 [Docker 验收镜像](../observer/ACCEPTANCE.md#复现)，再从 `web/` 以普通用户运行 `npm run build` 和该脚本。Linux 测试宿主需允许 `sudo -n` 启动 Python 夹具。夹具核对两个临时沙箱和宿主的网络命名空间各异，再开始观测；浏览器在方向筛选后下载的文件须与 Gateway 原始分段的大小和 SHA-256 一致。脚本退出时清理本轮资源。
+`node tests/live-observation.mjs` 验证真实 Chromium、Web 代理、Gateway 和 Observer 的完整链路。先在 `apps/ursi-sandbox/` 构建 Gateway 和 Observer 的 debug 二进制，准备 [Docker 验收镜像](../observer/ACCEPTANCE.md#复现)，再从 `web/` 以普通用户运行 `npm run build` 和该脚本。Linux 测试宿主需允许 `sudo -n` 启动 Python 夹具。夹具核对两个临时沙箱和宿主的网络命名空间各异，再开始观测；浏览器在方向筛选后下载的文件须与 Gateway 原始分段的大小和 SHA-256 一致。脚本退出时清理本轮资源。
 
 `tests/live-management.mjs` 会在专用 Docker 命名空间实际创建、启停并删除 `alpine:3.22` 实例。设置 `URSI_TEST_WEB_URL` 为管理页、`URSI_TEST_ADMIN_FILE` 为管理密码文件后执行 `node tests/live-management.mjs`。使用自签证书时，`URSI_TEST_CERT_PIN` 指定经核实的证书 SPKI SHA-256（Base64）。
 

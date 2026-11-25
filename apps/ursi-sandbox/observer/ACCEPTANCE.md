@@ -4,7 +4,7 @@ Linux 宿主机、Docker 29.1.4、本机 Unix socket。两套临时沙箱使用�
 
 ## 复现
 
-从 `ursi-sandbox/` 执行，仅在受信任的测试机上以特权运行已检查的二进制和测试脚本。若已有 `ursi-gateway-acceptance:local` 测试镜像，可跳过镜像构建。
+从 `apps/ursi-sandbox/` 执行，仅在受信任的测试机上以特权运行已检查的二进制和测试脚本。若已有 `ursi-gateway-acceptance:local` 测试镜像，可跳过镜像构建。
 
 ```bash
 cargo build --locked -p ursi-gateway -p ursi-observer

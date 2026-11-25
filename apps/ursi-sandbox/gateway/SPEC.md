@@ -5,7 +5,7 @@ depends-on:
   - ../observer/SPEC.md
 references:
   - ./CONTRACT.md
-  - ../../docs/design/ursi-sandbox/SANDBOX-PLATFORM.md
+  - ../../../docs/design/ursi-sandbox/SANDBOX-PLATFORM.md
   - ./README.md
 ---
 

@@ -4,7 +4,7 @@
 
 ## 构建与启动
 
-从独立产品根 `ursi-sandbox/` 执行：
+从独立产品根 `apps/ursi-sandbox/` 执行：
 
 ```bash
 cargo build -p ursi-gateway --release

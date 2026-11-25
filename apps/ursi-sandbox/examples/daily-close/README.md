@@ -6,7 +6,7 @@
 
 使用 Linux 本机 Docker daemon、Python 3.10+、OpenSSH 客户端（`ssh`、`sftp`、`ssh-keygen`）和有 `sudo` 权限的账户。宿主必须能访问沙箱 SSH 端口，容器必须能访问宿主的 bundle 发布端口。请在受控网络中运行：临时 Gateway 和 bundle HTTP 服务会监听 `0.0.0.0` 的随机端口。root 用于创建 Runtime 所需的私有配置目录，请使用可信的源码、二进制、镜像和 bundle。
 
-以下命令从 `ursi-sandbox/` 目录运行。已有正式构建产物时可以直接进入下一节；从源码构建需要 Rust 工具链和 Docker 构建权限：
+以下命令从 `apps/ursi-sandbox/` 目录运行。已有正式构建产物时可以直接进入下一节；从源码构建需要 Rust 工具链和 Docker 构建权限：
 
 ```bash
 cargo build --locked --bins

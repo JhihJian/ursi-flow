@@ -12,7 +12,7 @@
 
 ## 准备与启动
 
-从 `ursi-sandbox/` 构建。下面用 `ursi-observe-a` 表示已创建的专用组，Gateway 服务账户须在此组内，并在加入组后重新启动以取得组身份。特权进程应只运行管理员信任、普通用户无法修改的二进制。
+从 `apps/ursi-sandbox/` 构建。下面用 `ursi-observe-a` 表示已创建的专用组，Gateway 服务账户须在此组内，并在加入组后重新启动以取得组身份。特权进程应只运行管理员信任、普通用户无法修改的二进制。
 
 ```bash
 cargo build --locked --release -p ursi-observer -p ursi-gateway

@@ -4,7 +4,7 @@
 
 ## 准备
 
-使用已部署的 [Gateway](../../gateway/README.md) 和启用 SSH 的 Runtime。安装 `ursi-sandbox-client`、OpenSSH 客户端、Bash、jq 和 sha256sum。以下命令从 `ursi-sandbox/` 运行。向部署者获取以下配置（路径和地址替换为本机值）：
+使用已部署的 [Gateway](../../gateway/README.md) 和启用 SSH 的 Runtime。安装 `ursi-sandbox-client`、OpenSSH 客户端、Bash、jq 和 sha256sum。以下命令从 `apps/ursi-sandbox/` 运行。向部署者获取以下配置（路径和地址替换为本机值）：
 
 ```bash
 export PATH="$PWD/target/debug:$PATH"

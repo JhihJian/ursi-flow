@@ -4,7 +4,7 @@
 
 ## 构建与定向验证
 
-以下命令从独立产品根 `ursi-sandbox/` 执行，产物位于该根目录的 `target/`。
+以下命令从独立产品根 `apps/ursi-sandbox/` 执行，产物位于该根目录的 `target/`。
 
 ```bash
 cargo build -p ursi-sandbox-client
@@ -152,7 +152,7 @@ $CLIENT acp close SESSION_ID
 
 ## 真实验收输入
 
-从 `ursi-sandbox/` 运行 `builder/build-image.sh pi` 构建镜像。用 `cargo build -p ursi-session-service` 编译 Pi 会话服务，再运行 `builder/scripts/build-bundle.sh target/debug/ursi-session-service dist` 生成 `dist/runtime-bundle.tar.gz`，作为下文 `--bundle` 的输入。
+从 `apps/ursi-sandbox/` 运行 `builder/build-image.sh pi` 构建镜像。用 `cargo build -p ursi-session-service` 编译 Pi 会话服务，再运行 `builder/scripts/build-bundle.sh target/debug/ursi-session-service dist` 生成 `dist/runtime-bundle.tar.gz`，作为下文 `--bundle` 的输入。
 
 验收脚本启动独立 Gateway，并将正式 bundle 发布到监听 `0.0.0.0` 的临时 HTTP 端口。Gateway 同样监听 `0.0.0.0` 临时端口，命名空间为随机 scope。SSH 和 ACP 通过逻辑 endpoint bridge 连接，不读取 endpoint address。本验收覆盖 Gateway tunnel 路径。
 
@@ -180,7 +180,7 @@ sudo env URSI_AGENT_ACCEPTANCE=1 python3 client/scripts/agent_acceptance.py \
 
 复用操作方 SSH 身份时增加 `--ssh-key /private/id_ed25519`。可调期限为 `--operation-timeout 60`、`--lifecycle-timeout 240`、`--prompt-timeout 300`，单位为秒，每项范围 1..3600。每个命令、轮询和进程回收都有期限。
 
-Cargo ignored 测试使用同一个脚本，也要求 root。以下命令从独立产品根 `ursi-sandbox/` 执行。先在已配置 Rust 工具链的 root shell（`sudo -i`）中进入该目录。日常验证使用前面的非 ignored 定向测试，无需 root：
+Cargo ignored 测试使用同一个脚本，也要求 root。以下命令从独立产品根 `apps/ursi-sandbox/` 执行。先在已配置 Rust 工具链的 root shell（`sudo -i`）中进入该目录。日常验证使用前面的非 ignored 定向测试，无需 root：
 
 ```bash
 export URSI_AGENT_ACCEPTANCE=1

@@ -4,7 +4,7 @@ depends-on:
   - ../gateway/SPEC.md
 references:
   - ./README.md
-  - ../../docs/design/ursi-sandbox/NETWORK-OBSERVATION.md
+  - ../../../docs/design/ursi-sandbox/NETWORK-OBSERVATION.md
   - ../gateway/CONTRACT.md
 ---
 

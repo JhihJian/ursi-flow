@@ -4,7 +4,7 @@
 
 ## 构建
 
-从独立产品根 `ursi-sandbox/` 执行：
+从独立产品根 `apps/ursi-sandbox/` 执行：
 
 ```bash
 builder/build-image.sh pi

@@ -7,7 +7,7 @@
 
 ## 自己跑一次
 
-在受控 Linux 开发机上准备 Docker、本机 bridge 网络、Python 3 和 OpenSSH 客户端。从 `ursi-sandbox/` 按[构建说明](../../README.md)准备三个二进制、镜像及 bundle。每条命令临时创建一个沙箱和 root 私有配置，经 SFTP 上传代码、通过 SSH 应用 Git 补丁并运行 unittest。请使用可信的构建产物。临时 Gateway 和 bundle 服务会监听随机端口。
+在受控 Linux 开发机上准备 Docker、本机 bridge 网络、Python 3 和 OpenSSH 客户端。从 `apps/ursi-sandbox/` 按[构建说明](../../README.md)准备三个二进制、镜像及 bundle。每条命令临时创建一个沙箱和 root 私有配置，经 SFTP 上传代码、通过 SSH 应用 Git 补丁并运行 unittest。请使用可信的构建产物。临时 Gateway 和 bundle 服务会监听随机端口。
 
 ```bash
 sudo python3 -I -B examples/release-review/run.py v1

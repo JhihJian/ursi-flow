@@ -2,7 +2,7 @@
 parent: ../SPEC.md
 references:
   - HTTP.md
-  - ../../docs/design/mcp-web/EXECUTOR-DISCOVERY-DESIGN.md
+  - ../../../docs/design/mcp-web/EXECUTOR-DISCOVERY-DESIGN.md
 ---
 
 # 平台 MCP 后端库

@@ -57,4 +57,4 @@ v2 已移除 v1 的 `fs/read_text_file`、`fs/write_text_file` 和客户端代�
 
 ## 异机与沙箱接入
 
-现有[沙箱 ACP](../../../ursi-sandbox/bundles/pi-agent/AGENT-CONTRACT.md#acp-子集) 是 v1 WebSocket 子集。异机后端准入要求可核验的配置装配、按尝试授权的文件交付，以及可持久查回的任务终态和停止证据。标准会话恢复达不到这些要求时，可经[能力协商](https://agentclientprotocol.com/protocol/v2/extensibility)扩充原尝试的证据查询。
+现有[沙箱 ACP](../../../apps/ursi-sandbox/bundles/pi-agent/AGENT-CONTRACT.md#acp-子集) 是 v1 WebSocket 子集。异机后端准入要求可核验的配置装配、按尝试授权的文件交付，以及可持久查回的任务终态和停止证据。标准会话恢复达不到这些要求时，可经[能力协商](https://agentclientprotocol.com/protocol/v2/extensibility)扩充原尝试的证据查询。
