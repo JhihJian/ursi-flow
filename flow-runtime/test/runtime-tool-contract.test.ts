@@ -75,7 +75,6 @@ describe("Agent identity and ownership", () => {
 		pluginDigest: "digest",
 		profileId: "profile",
 		paramsDigest: "params",
-		resolvedCapabilityDigest: "capabilities",
 	};
 
 	it("compares all assembly fields regardless of property order and checks restored sessions", () => {
@@ -132,7 +131,6 @@ describe("Agent identity and ownership", () => {
 		});
 		await model.start(
 			"run",
-			{ tools: [], skills: [] },
 			"saved",
 			undefined,
 			assembly,

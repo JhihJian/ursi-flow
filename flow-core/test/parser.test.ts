@@ -463,15 +463,8 @@ describe("显式子 Flow 输入", () => {
 	});
 });
 
-describe("Flow Agent 能力声明", () => {
-	it("未声明时归一为空能力", () => {
-		expect(parseFlow(serial({ metadata: "" }), "empty").capabilities).toEqual({
-			tools: [],
-			skills: [],
-		});
-	});
-
-	it("解析并保留显式工具和 Skill", () => {
+describe("Flow 元信息", () => {
+	it("capabilities 属于陌生元信息字段，不进入定义", () => {
 		expect(
 			parseFlow(
 				serial({
@@ -480,10 +473,7 @@ describe("Flow Agent 能力声明", () => {
 				}),
 				"declared",
 			).capabilities,
-		).toEqual({
-			tools: ["read", "grep"],
-			skills: ["code-review"],
-		});
+		).toBeUndefined();
 	});
 
 	it("解析新建Agent 的结构化 Profile 和参数", () => {
@@ -556,17 +546,6 @@ describe("Flow Agent 能力声明", () => {
 				serial().replace("```新建Agent", "```" + marker),
 				"invalid-executor-marker",
 			),
-		).toThrow(FlowSyntaxError);
-	});
-
-	it.each([
-		"capabilities: []",
-		"capabilities:\n  tools: read",
-		"capabilities:\n  tools: [read, read]",
-		"capabilities:\n  extra: [read]",
-	])("拒绝非法能力声明 %s", (metadata) => {
-		expect(() =>
-			parseFlow(serial({ metadata }), "invalid-capabilities"),
 		).toThrow(FlowSyntaxError);
 	});
 });

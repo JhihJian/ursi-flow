@@ -11,7 +11,6 @@ const ASSEMBLY_FIELDS = [
 	"pluginDigest",
 	"profileId",
 	"paramsDigest",
-	"resolvedCapabilityDigest",
 ] as const;
 
 /** Validate host identities without interpreting provider or model configuration. */

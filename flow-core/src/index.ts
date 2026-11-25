@@ -72,8 +72,6 @@ export interface FlowContext {
 export function ready(flowMd: string, options: ReadyOptions = {}): { context: FlowContext } {
 	const parsed = parseFlow(flowMd, options.flowId ?? "inline");
 	if (parsed.parallels.size > 0) throw new Error("Flow Core 不支持并行节点");
-	if (parsed.capabilities?.tools.length || parsed.capabilities?.skills.length)
-		throw new Error("Flow Core 不支持宿主业务能力装配");
 
 	const nodes = new Map<string, CoreNode>();
 	for (const node of parsed.nodes.values()) {

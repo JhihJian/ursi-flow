@@ -6,12 +6,6 @@ variables:
     description: 本次开放探索目标
   图:
     description: Treelite GraphLite 图标识
-capabilities:
-  tools:
-    - subagent
-    - create_graph
-    - read_graph
-    - apply_graph_changes
 ---
 
 ```mermaid

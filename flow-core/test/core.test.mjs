@@ -95,7 +95,6 @@ test("unsupported actions and package features fail before reaching the first vi
 		["```confirm", "```复用Agent", /不支持节点 review 的动作/],
 		["```新建Agent", "```新建Agent:reviewer", /专用执行器/],
 		["请审核第", "请查看[材料](references/spec.md)，审核第", /包内资料引用/],
-		["variables:\n  主题", "capabilities:\n  tools: [business-tool]\nvariables:\n  主题", /宿主业务能力装配/],
 	]) {
 		assert.throws(() => ready(reviewFlow.replace(old, replacement), options), error);
 	}

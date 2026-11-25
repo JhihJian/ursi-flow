@@ -1,4 +1,3 @@
-import { normalizeAgentCapabilities } from "../../core/contracts/agent-capabilities.ts";
 import { validateAgentIdentity } from "../../core/contracts/agent-identity.ts";
 import type {
 	AgentHarnessExtensions,
@@ -8,8 +7,6 @@ import type {
 } from "../../core/contracts/extensions.ts";
 import type {
 	AgentAssemblyIdentity,
-	AgentAssemblyRequest,
-	AgentCapabilityDeclaration,
 	AgentHandle,
 	AgentProfileReference,
 	FlowAgentHarness,
@@ -26,7 +23,7 @@ type Restoration = {
 	takeOverNew: boolean;
 	sessionReference: string;
 	cwd?: string;
-	assembly: AgentAssemblyRequest;
+	profile?: AgentProfileReference;
 	expectedAssembly?: AgentAssemblyIdentity;
 };
 
@@ -73,7 +70,6 @@ export class AgentRunModel implements AgentRunExecutor {
 
 	async start(
 		runId: string,
-		capabilities: AgentCapabilityDeclaration,
 		existingAgentReference?: string,
 		cwd?: string,
 		expectedAssembly?: AgentAssemblyIdentity,
@@ -95,10 +91,7 @@ export class AgentRunModel implements AgentRunExecutor {
 			takeOverNew,
 			sessionReference: existingAgentReference,
 			cwd,
-			assembly: {
-				capabilities: normalizeAgentCapabilities(capabilities),
-				...(expectedProfile ? { profile: expectedProfile } : {}),
-			},
+			...(expectedProfile ? { profile: expectedProfile } : {}),
 			expectedAssembly,
 		});
 	}
@@ -139,23 +132,20 @@ export class AgentRunModel implements AgentRunExecutor {
 			) {
 				const continuity = this.extensions.continuity;
 				if (!continuity) throw new Error("Flow 缺少扩展能力: Agent Continuity");
-				const assembly = {
-					...restoration.assembly,
-					...(request.profile ? { profile: request.profile } : {}),
-				};
+				const profile = restoration.profile ?? request.profile;
 				const agent = await continuity.restore({
 					runId: request.runId,
 					cwd: restoration.cwd,
 					runtimeTools: bridge,
 					sessionReference: restoration.sessionReference,
 					expectedAssembly: restoration.expectedAssembly,
-					assembly,
+					...(profile ? { profile } : {}),
 				});
 				try {
 					validateAgentIdentity(agent, {
 						sessionReference: restoration.sessionReference,
 						assembly: restoration.expectedAssembly,
-						profile: assembly.profile,
+						profile,
 					});
 				} catch (error) {
 					await this.harness.close(agent);
@@ -166,28 +156,18 @@ export class AgentRunModel implements AgentRunExecutor {
 				this.restorations.delete(request.runId);
 			} else if (request.action === "新建Agent") {
 				await this.release(request.runId);
-				const assembly = {
-					capabilities: normalizeAgentCapabilities(request.capabilities),
-					...(request.profile ? { profile: request.profile } : {}),
-				};
 				const open = {
 					runId: request.runId,
 					cwd: request.cwd,
 					runtimeTools: bridge,
 				};
-				const needsAssembly =
-					request.profile ||
-					assembly.capabilities.tools.length ||
-					assembly.capabilities.skills.length;
 				const assemblyExtension = this.extensions.assembly;
-				if (needsAssembly && !assemblyExtension)
-					throw new Error("Flow 缺少扩展能力: Agent Assembly");
-				if (needsAssembly)
-					await assemblyExtension?.preflight(assembly, request.cwd);
-				const agent =
-					needsAssembly && assemblyExtension
-						? await assemblyExtension.open({ ...open, assembly })
-						: await this.harness.open(open);
+				const agent = request.profile
+					? await this.extensions.assembly!.open({
+							...open,
+							assembly: { profile: request.profile },
+						})
+					: await this.harness.open(open);
 				try {
 					validateAgentIdentity(agent, { profile: request.profile });
 					this.claimSession(

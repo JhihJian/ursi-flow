@@ -9,7 +9,6 @@ import {
 	VariableReferenceError,
 } from "ursi-flow-core/runtime";
 import { AttemptUnconfirmed, AwaitingInput } from "../contracts/extensions.ts";
-import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
 	AgentRunExecutor,
 	FlowExecutionExtensions,
@@ -142,7 +141,6 @@ export class FlowCoordinator {
 		) {
 			await this.agentModel.extensions.assembly?.preflight(
 				{
-					capabilities: normalizeAgentCapabilities(this.flow.capabilities),
 					profile: renderAgentProfile(
 						initialNode.action.profile,
 						undefined,
@@ -166,20 +164,17 @@ export class FlowCoordinator {
 					/\{(?:var|input)\./.test(
 						JSON.stringify(first.action.profile?.params ?? {}),
 					);
-				const assembly = deferred
+				const profile = deferred
 					? undefined
-					: {
-							capabilities: normalizeAgentCapabilities(this.flow.capabilities),
-							profile: renderAgentProfile(
-								first.action.profile,
-								undefined,
-								variables,
-							),
-						};
+					: renderAgentProfile(
+							first.action.profile,
+							undefined,
+							variables,
+						);
 				await this.agentModel.extensions.continuity?.preflight?.({
 					sessionReference: options.existingAgentReference,
 					cwd: options.cwd,
-					assembly,
+					...(profile ? { profile } : {}),
 					runtimeToolDefinitions: runtimeToolsForNode(this.flow, first),
 				});
 			}
@@ -372,10 +367,7 @@ export class FlowCoordinator {
 				await this.agentModel.extensions.continuity?.preflight?.({
 					sessionReference: resumedOptions.existingAgentReference,
 					cwd: resumedOptions.cwd,
-					assembly: {
-						capabilities: normalizeAgentCapabilities(this.flow.capabilities),
-						...(profile ? { profile } : {}),
-					},
+					...(profile ? { profile } : {}),
 					expectedAssembly: run.agentAssembly,
 					runtimeToolDefinitions: runtimeToolsForNode(this.flow, target),
 				});
@@ -391,7 +383,6 @@ export class FlowCoordinator {
 			const resumeNodeRef = run.currentNodeRef ?? this.flow.startNodeRef;
 			await this.agentModel.start(
 				run.id,
-				normalizeAgentCapabilities(this.flow.capabilities),
 				resumedOptions.existingAgentReference,
 				resumedOptions.cwd,
 				run.agentAssembly,
@@ -419,7 +410,6 @@ export class FlowCoordinator {
 			}
 			await this.agentModel.start(
 				run.id,
-				normalizeAgentCapabilities(this.flow.capabilities),
 				restoreCurrent ? resumedOptions.existingAgentReference : undefined,
 				resumedOptions.cwd,
 				run.agentAssembly,
@@ -440,7 +430,6 @@ export class FlowCoordinator {
 
 		await this.agentModel.start(
 			run.id,
-			normalizeAgentCapabilities(this.flow.capabilities),
 			resumedOptions.existingAgentReference,
 			resumedOptions.cwd,
 			run.agentAssembly,
@@ -518,7 +507,6 @@ export class FlowCoordinator {
 			if (!agentStarted)
 				await this.agentModel.start(
 					run.id,
-					normalizeAgentCapabilities(this.flow.capabilities),
 					options.existingAgentReference,
 					options.cwd,
 					run.agentAssembly,
@@ -961,7 +949,6 @@ export class FlowCoordinator {
 					...(node.action.kind === "新建Agent" && node.action.executor
 						? { executor: node.action.executor }
 						: {}),
-					capabilities: normalizeAgentCapabilities(this.flow.capabilities),
 					profile,
 					prompt: renderAgentPrompt(
 						node.action.prompt,
@@ -1174,7 +1161,6 @@ export class FlowCoordinator {
 			await this.interruptNode(run, current);
 			await this.agentModel.start(
 				run.id,
-				normalizeAgentCapabilities(this.flow.capabilities),
 				options.existingAgentReference,
 				options.cwd,
 				run.agentAssembly,
@@ -1198,7 +1184,6 @@ export class FlowCoordinator {
 				await this.completeNode(run, current, outcome);
 			await this.agentModel.start(
 				run.id,
-				normalizeAgentCapabilities(this.flow.capabilities),
 				options.existingAgentReference,
 				options.cwd,
 				run.agentAssembly,
@@ -1304,7 +1289,6 @@ export class FlowCoordinator {
 		await this.recordRecovery(run, undefined, "continue_routing", "人工确认已应答，继续路由");
 		await this.agentModel.start(
 			run.id,
-			normalizeAgentCapabilities(this.flow.capabilities),
 			options.existingAgentReference,
 			options.cwd,
 			run.agentAssembly,
@@ -1895,7 +1879,7 @@ function toFlowError(error: unknown, fallback: FlowErrorCategory): FlowError {
 		return { category: "variable_reference", summary: error.message };
 	const summary = error instanceof Error ? error.message : String(error);
 	if (
-		/Agent Profile|Profile 装配|声明的工具|声明的 Skill|无法隔离|能力不匹配/.test(
+		/Agent Profile|Profile 装配|无法隔离|能力不匹配/.test(
 			summary,
 		)
 	)
@@ -1942,7 +1926,6 @@ export function fingerprintFlow(
 		})),
 		parallels: [...flow.parallels.values()],
 		variables: flow.variables,
-		capabilities: normalizeAgentCapabilities(flow.capabilities),
 	};
 	return `sha256:${createHash("sha256").update(JSON.stringify({ definition, children })).digest("hex")}`;
 }

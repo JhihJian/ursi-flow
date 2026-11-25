@@ -1,7 +1,5 @@
 import type {
 	AgentAssemblyIdentity,
-	AgentAssemblyRequest,
-	AgentCapabilityDeclaration,
 	AgentHandle,
 	AgentProfileReference,
 	CommandExecutor,
@@ -31,7 +29,6 @@ export interface AgentNodeExecutionRequest {
 	nodeExecutionReference: string;
 	/** 节点标记后缀声明的执行器名称；宿主负责解析为具体修订，未声明时宿主用默认执行器。 */
 	executor?: string;
-	capabilities?: AgentCapabilityDeclaration;
 	profile?: AgentProfileReference;
 	prompt: string;
 	outcomes: OutcomeOption[];
@@ -54,7 +51,6 @@ export interface AgentRunExecutor {
 	): Promise<void>;
 	start(
 		runId: string,
-		capabilities: AgentCapabilityDeclaration,
 		existingAgentReference?: string,
 		cwd?: string,
 		expectedAssembly?: AgentAssemblyIdentity,
@@ -78,15 +74,15 @@ export interface AgentOpenRequest {
 export interface AgentAssemblyExtension {
 	/** Validate a parameter-dependent Profile without invoking its resolver. */
 	preflightDeferred?(
-		request: {
-			capabilities: AgentAssemblyRequest["capabilities"];
-			profileId: string;
-		},
+		request: { profileId: string },
 		cwd?: string,
 	): void | Promise<void>;
-	preflight(request: AgentAssemblyRequest, cwd?: string): void | Promise<void>;
+	preflight(
+		request: { profile?: AgentProfileReference },
+		cwd?: string,
+	): void | Promise<void>;
 	open(
-		request: AgentOpenRequest & { assembly: AgentAssemblyRequest },
+		request: AgentOpenRequest & { assembly: { profile?: AgentProfileReference } },
 	): Promise<AgentHandle>;
 }
 
@@ -97,7 +93,8 @@ export interface AgentAssemblyExtension {
  */
 export interface AgentRestoreRequest {
 	sessionReference: string;
-	assembly?: AgentAssemblyRequest;
+	/** Profile reference used by the restored session, when known. */
+	profile?: AgentProfileReference;
 	expectedAssembly?: AgentAssemblyIdentity;
 	cwd?: string;
 	/** Expected native schema, when the next Agent visit is known before restoration. */

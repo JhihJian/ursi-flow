@@ -16,7 +16,6 @@ export type FlowScope = "project" | "user";
 export interface AvailableFlow extends FlowListing {
 	scope: FlowScope;
 	variables: FlowDefinition["variables"];
-	capabilities: FlowDefinition["capabilities"];
 }
 
 export interface FlowCatalogIssue {
@@ -131,7 +130,6 @@ async function discoverAvailableFlows(
 					path: loaded.path,
 					scope,
 					variables: loaded.flow.variables,
-					capabilities: loaded.flow.capabilities,
 				});
 			} catch (error) {
 				issues.push({

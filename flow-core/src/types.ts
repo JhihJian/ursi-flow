@@ -15,12 +15,6 @@ export type FlowVariableDeclarations = Record<string, FlowVariableDeclaration>;
 
 export type FlowVariables = Record<string, FlowValue>;
 
-/** Logical business capabilities requested by every Agent in a Flow. */
-export interface AgentCapabilityDeclaration {
-	tools: string[];
-	skills: string[];
-}
-
 /** Explicit host profile selection for a new Agent session. */
 export interface AgentProfileReference {
 	id: string;
@@ -103,8 +97,6 @@ export interface FlowDefinition {
 	parallels: Map<string, ParallelStart>;
 	/** Flow 全局变量声明及默认值。 */
 	variables?: FlowVariableDeclarations;
-	/** Agent 业务能力；未声明时由 Runtime 视为空集合。 */
-	capabilities?: AgentCapabilityDeclaration;
 }
 
 export interface TemplateContext {

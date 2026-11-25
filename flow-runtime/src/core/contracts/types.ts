@@ -1,5 +1,4 @@
 import type {
-	AgentCapabilityDeclaration,
 	AgentProfileReference,
 	CommandRequest,
 	FlowAction,
@@ -12,7 +11,6 @@ import type {
 export type {
 	AgentAction,
 	AgentActionKind,
-	AgentCapabilityDeclaration,
 	AgentProfileReference,
 	CommandAction,
 	CommandRequest,
@@ -38,7 +36,6 @@ export interface AgentAssemblyIdentity {
 	pluginDigest: string;
 	profileId: string;
 	paramsDigest: string;
-	resolvedCapabilityDigest: string;
 }
 
 /** Files adjacent to a directory-based Flow entry. */
@@ -105,7 +102,6 @@ export interface RuntimeToolBridge {
 }
 
 export interface AgentAssemblyRequest {
-	capabilities: AgentCapabilityDeclaration;
 	profile?: AgentProfileReference;
 }
 

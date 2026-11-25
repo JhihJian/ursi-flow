@@ -1,4 +1,3 @@
-export * from "./contracts/agent-capabilities.ts";
 export * from "./contracts/agent-identity.ts";
 export * from "./contracts/extensions.ts";
 export * from "./contracts/types.ts";

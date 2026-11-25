@@ -1,10 +1,9 @@
-import { normalizeAgentCapabilities } from "../contracts/agent-capabilities.ts";
 import type {
 	AgentHarnessExtensions,
 	FlowExecutionExtensions,
 } from "../contracts/extensions.ts";
 import type {
-	AgentAssemblyRequest,
+	AgentProfileReference,
 	FlowDefinition,
 	FlowDestination,
 	FlowNode,
@@ -26,7 +25,7 @@ export async function preflightFlow(
 	} = {},
 ): Promise<void> {
 	const visited = new Set<FlowDefinition>();
-	const assemblies: AgentAssemblyRequest[] = [];
+	const profiles: AgentProfileReference[] = [];
 	const requireCapability = (available: unknown, name: string) => {
 		if (!available) throw new Error(`Flow 缺少扩展能力: ${name}`);
 	};
@@ -38,7 +37,6 @@ export async function preflightFlow(
 	const visit = (definition: FlowDefinition, root = false) => {
 		if (visited.has(definition)) return;
 		visited.add(definition);
-		const capabilities = normalizeAgentCapabilities(definition.capabilities);
 		if (options.agent?.continuity?.toolSchemaMode === "fixed")
 			assertFixedToolSchemas(definition);
 		if (definition.parallels.size) {
@@ -77,18 +75,9 @@ export async function preflightFlow(
 					requireCapability(options.agent?.continuity, "Agent Continuity");
 					break;
 				case "新建Agent":
-					if (
-						action.profile ||
-						capabilities.tools.length ||
-						capabilities.skills.length
-					) {
+					if (action.profile) {
 						requireCapability(options.agent?.assembly, "Agent Assembly");
-					}
-					if (options.agent?.assembly) {
-						assemblies.push({
-							capabilities,
-							...(action.profile ? { profile: action.profile } : {}),
-						});
+						profiles.push(action.profile);
 					}
 					break;
 			}
@@ -96,23 +85,16 @@ export async function preflightFlow(
 	};
 	visit(flow, true);
 	// Finish structural checks first; then ask the host to validate actual profiles.
-	for (const request of assemblies) {
+	for (const profile of profiles) {
 		const assembly = options.agent?.assembly;
 		if (
-			request.profile &&
-			/\{(?:var|input)\./.test(JSON.stringify(request.profile.params ?? {}))
+			profile.params &&
+			/\{(?:var|input)\./.test(JSON.stringify(profile.params ?? {}))
 		) {
 			if (!assembly?.preflightDeferred)
 				throw new Error("宿主不支持动态 Profile 参数预检");
-			await assembly.preflightDeferred(
-				{
-					capabilities: structuredClone(request.capabilities),
-					profileId: request.profile.id,
-				},
-				options.cwd,
-			);
-		} else await assembly?.preflight(structuredClone(request), options.cwd);
-	}
+			await assembly.preflightDeferred({ profileId: profile.id }, options.cwd);
+		} else await assembly?.preflight({ profile }, options.cwd);	}
 }
 
 export function runtimeToolsForNode(flow: FlowDefinition, node: FlowNode) {
