@@ -1,4 +1,5 @@
 import type {
+  HomesListing,
   AgentProfileDetail,
   AgentsListing,
   AuthListing,
@@ -63,6 +64,20 @@ export const api = {
     })
   },
   homeCheck: (home: string) => request<HomeCheck>('GET', '/api/home/check', home),
+  /** 已知 pi home：服务端扫描默认位置、env 位置、同机其他用户，外加前端登记的预设。 */
+  getHomes: (extra: string[]) => {
+    const url = new URL('/api/homes', window.location.origin)
+    for (const path of extra) url.searchParams.append('extra', path)
+    return fetch(url).then(async (res) => {
+      const text = await res.text()
+      const json = text ? (JSON.parse(text) as unknown) : null
+      if (!res.ok) {
+        const err = (json as { error?: { code?: string; message?: string } } | null)?.error
+        throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`)
+      }
+      return json as HomesListing
+    })
+  },
   getGeneral: (home: string) => request<GeneralListing>('GET', '/api/general', home),
   putGeneralKey: (home: string, key: string, value: unknown, revision: string) =>
     request<MutationResult>('PUT', '/api/general/key', home, { key, value, revision }),

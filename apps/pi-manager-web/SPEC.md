@@ -17,6 +17,8 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 #### 验收
 
 - 首次打开自动探测默认 pi home；顶栏显示当前路径，「切换 home」输入绝对路径后即时校验。
+- 左侧「Pi 预设」分组列出所有已知 pi home：默认位置（`~/.pi/agent`）、`PI_CODING_AGENT_DIR` 指定的位置、同机其他用户的 `/home/*/.pi/agent`，以及用户自己登记的预设。每条显示短名、来源标记与内容摘要（skill / agent / mcp / 插件数量）。
+- 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效目录标红并说明缺失项。「+」把当前路径登记为预设（存 localStorage），已登记的预设可「×」移除，目录本身不受影响。
 - 目录缺 `settings.json`（realpath 校验）时明确提示"不是有效的 pi home"，分区不加载；路径错误不写脏数据。
 - 切换 home 后整个内容区强制重挂载，所有分区状态重置；选中的 home 持久化在 localStorage，下次打开自动恢复。
 - 服务端不持有全局 home 状态，每个请求携带 `?home=` 参数并逐次 realpath 校验。
@@ -72,5 +74,5 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home 与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 发现已知 pi home 并生成轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

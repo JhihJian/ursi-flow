@@ -12,6 +12,27 @@ export interface HomeCheck {
   valid: boolean
 }
 
+export type HomeSource = 'default' | 'env' | 'user' | 'manual'
+
+/** 一个已知 pi home 的摘要（服务端扫描 + 前端登记的预设）。 */
+export interface HomeSummary {
+  path: string
+  label: string
+  valid: boolean
+  sources: HomeSource[]
+  skills: number
+  agents: number
+  mcpServers: number
+  packages: number
+  hasModels: boolean
+  hasAuth: boolean
+  error?: string
+}
+
+export interface HomesListing {
+  homes: HomeSummary[]
+}
+
 export interface GeneralListing {
   revision: string
   path: string

@@ -341,3 +341,33 @@ test('home 解析：~ 展开为当前用户主目录', async () => {
     rmSync(base, { recursive: true, force: true })
   }
 })
+
+test('homes：发现默认 home 并合并登记的预设', async () => {
+  const { discoverHomes, displayLabel } = await import('./homes.ts')
+  const { homedir } = await import('node:os')
+  const base = join(homedir(), '.pi-manager-homes-test')
+  mkdirSync(base, { recursive: true })
+  writeFileSync(join(base, 'settings.json'), '{"packages":["a","b"]}')
+  mkdirSync(join(base, 'skills', 'one'), { recursive: true })
+  writeFileSync(join(base, 'skills', 'one', 'SKILL.md'), '---\nname: one\n---\n')
+  writeFileSync(join(base, 'mcp.json'), '{"mcpServers":{"s1":{}}}')
+  try {
+    const homes = discoverHomes([base, '~/nonexistent-preset-xyz'])
+    const found = homes.find((h) => h.path === base)
+    assert.ok(found, '登记的预设应出现在列表里')
+    assert.equal(found.valid, true)
+    assert.deepEqual(found.sources, ['manual'])
+    assert.equal(found.skills, 1)
+    assert.equal(found.packages, 2)
+    assert.equal(found.mcpServers, 1)
+    // 失效预设仍然列出，标记 invalid
+    const missing = homes.find((h) => h.path.endsWith('nonexistent-preset-xyz'))
+    assert.ok(missing)
+    assert.equal(missing.valid, false)
+    // 默认 home 排在最前
+    assert.ok(homes.some((h) => h.sources.includes('default')))
+    assert.equal(displayLabel(join(homedir(), '.pi', 'agent')), '~/.pi/agent')
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
+})
