@@ -185,7 +185,7 @@ export function AccessSetup({ source }: { source: Source }) {
       </div>
       {notice && <Alert role="status">{notice}</Alert>}
       {error && (
-        <Alert role="alert" className="text-err">
+        <Alert role="alert" className="text-sbx-err">
           {error}
         </Alert>
       )}
@@ -198,7 +198,7 @@ export function AccessSetup({ source }: { source: Source }) {
           <li className="space-y-2">
             <h3 className="font-medium">1. 在本机生成密钥对</h3>
             <Command text={keygenCommand} />
-            <p className="text-sm text-txt3">
+            <p className="text-sm text-sbx-txt3">
               {'私钥留在本机，只上传公钥。已有密钥时跳到下一步。'}
             </p>
           </li>
@@ -246,7 +246,7 @@ export function AccessSetup({ source }: { source: Source }) {
           <li className="space-y-2">
             <h3 className="font-medium">3. 配置本机 SSH 客户端</h3>
             <Command text={sshConfigCommand} />
-            <p className="text-sm text-txt3">
+            <p className="text-sm text-sbx-txt3">
               {'之后可直接使用 '}
               <code>ssh ursi-沙箱ID</code>
               {'，任意支持 ssh_config 的工具（含 pi 的 SSH 扩展）都可接入。'}
@@ -255,7 +255,7 @@ export function AccessSetup({ source }: { source: Source }) {
           <li className="space-y-2">
             <h3 className="font-medium">4. 验证</h3>
             <Command text="ssh ursi-沙箱ID 'echo ok'" />
-            <p className="text-sm text-txt3">
+            <p className="text-sm text-sbx-txt3">
               {'客户端需能读取 URSI_GATEWAY_URL 与 URSI_GATEWAY_KEY_FILE 环境变量。'}
             </p>
           </li>
@@ -273,11 +273,11 @@ export function AccessSetup({ source }: { source: Source }) {
         )}
         {identity?.configured && (
           <div className="space-y-2 text-sm">
-            <p className="text-txt3">
+            <p className="text-sbx-txt3">
               {'控制台用自己的 SSH 身份真实登录一次实例，用来证明公钥已登记、已渲染、容器已挂载且 sshd 接受登录。它不会读取你的私钥。'}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <code className="border border-line bg-elevated px-2 py-1 font-mono text-xs">
+              <code className="border border-sbx-line bg-sbx-elevated px-2 py-1 font-mono text-xs">
                 {identity.fingerprint}
               </code>
               <Badge variant="outline">
@@ -306,9 +306,9 @@ export function AccessSetup({ source }: { source: Source }) {
         <h2 id="state" className="text-lg font-semibold">
           状态
         </h2>
-        {loading && !report && <p className="text-sm text-txt3">正在读取…</p>}
+        {loading && !report && <p className="text-sm text-sbx-txt3">正在读取…</p>}
         {report && profiles.length === 0 && (
-          <p className="text-sm text-txt3">尚未登记任何公钥。</p>
+          <p className="text-sm text-sbx-txt3">尚未登记任何公钥。</p>
         )}
         {profiles.map((item) => (
           <ProfileCard
@@ -321,7 +321,7 @@ export function AccessSetup({ source }: { source: Source }) {
             onRemove={(fingerprint) => remove(item, fingerprint)}
           />
         ))}
-        <p className="text-sm text-txt3">
+        <p className="text-sm text-sbx-txt3">
           {'状态只证明 Gateway 已登记并渲染公钥，以及容器是否已挂载该文件。它不证明某个私钥能登录，请用第 4 步自行验证。'}
         </p>
       </section>
@@ -350,7 +350,7 @@ function ProfileCard({
         <h3 className="font-medium">{profile.profile}</h3>
         <Badge variant="outline">{profile.keys.length} 个公钥</Badge>
         {profile.rendered_at ? (
-          <span className="text-sm text-txt3">
+          <span className="text-sm text-sbx-txt3">
             {`渲染于 ${new Date(profile.rendered_at * 1000).toLocaleString()}`}
           </span>
         ) : (
@@ -392,7 +392,7 @@ function ProfileCard({
       <div className="space-y-1">
         <h4 className="text-sm font-medium">使用该 Profile 的沙箱</h4>
         {profile.sandboxes.length === 0 ? (
-          <p className="text-sm text-txt3">暂无实例。</p>
+          <p className="text-sm text-sbx-txt3">暂无实例。</p>
         ) : (
           <ul className="space-y-1">
             {profile.sandboxes.map((sandbox) => {
@@ -403,7 +403,7 @@ function ProfileCard({
                   <Badge variant="outline">
                     {statusNames[sandbox.status] ?? sandbox.status}
                   </Badge>
-                  <span className="text-txt3">
+                  <span className="text-sbx-txt3">
                     {sandbox.attached === true
                       ? '已挂载授权文件'
                       : sandbox.attached === false
@@ -423,7 +423,7 @@ function ProfileCard({
                   )}
                   {result && (
                     <span
-                      className={result.ok ? 'text-ok' : 'text-err'}
+                      className={result.ok ? 'text-sbx-ok' : 'text-sbx-err'}
                       role="status"
                     >
                       {result.ok
@@ -454,7 +454,7 @@ function Command({ text }: { text: string }) {
   }
   return (
     <div className="flex items-start gap-2">
-      <pre className="min-w-0 flex-1 overflow-x-auto border border-line bg-elevated px-3 py-2 text-xs">
+      <pre className="min-w-0 flex-1 overflow-x-auto border border-sbx-line bg-sbx-elevated px-3 py-2 text-xs">
         <code>{text}</code>
       </pre>
       <Button variant="outline" size="sm" onClick={copy} aria-label="复制命令">

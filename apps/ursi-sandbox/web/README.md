@@ -38,6 +38,8 @@ npm run build
 npm start
 ```
 
+`npm run build` 依次做类型检查、打包独立入口，并输出模块样式 `dist/module.css`（由 `src/module.css` 经 `tailwind.module.config.js` 生成）。嵌入工作台外壳时，宿主只需依赖本包的两条导出：`@ursi/sandbox-web/module` 提供 `createSandboxModule({ apiBase })`，`@ursi/sandbox-web/module.css` 提供作用域内的样式产物。
+
 打开 `http://localhost:4180/sandboxes`。内置服务的交付文件包括 `dist/`、`server.mjs`、`workbench.mjs` 和 npm 清单。安装运行依赖后，使用 `node server.mjs` 启动。`PORT` 可调整监听端口。
 
 无 Gateway 环境时可用模拟数据预览：`npm run build && node preview-server.mjs`，打开 `http://127.0.0.1:14482/dist/`。服务静态托管 dist 并返回内置示例数据（实例、注册表、访问密钥、观测记录与分段 pcap），支持全部页面浏览与创建、停止、观测等写操作的模拟交互。
@@ -46,7 +48,7 @@ npm start
 
 页面采用 React 19、TypeScript、React Router、Tailwind CSS 3、Vite 和 shadcn/ui 组件模式。`src/shared/ui/` 提供基于 Radix UI、CVA 和 Tailwind 封装的界面组件，包括表格、标签页、下拉菜单、开关、确认对话框和折叠区。工作台的工具栏与独立显示区参考 Grasp 的沙箱视图，终端和远程画面继续由 xterm.js 和 noVNC 渲染。`npm run build` 先做类型检查，再将 HTML、CSS 和脚本输出到 `dist/`。资源路径相对于入口目录；详情使用 hash 路由，直接打开或刷新均无需配置 SPA 回退。
 
-`src/tokens.css` 在 `.sbx-app` 容器作用域内定义工作台外壳的灰度变量（衬线标题 + 等宽正文，固定浅色，不做暗色切换）。样式不写全局规则，浮层通过 Radix Portal 挂到 `.sbx-app` 容器并以 absolute 定位呈现。构建不依赖 Workbench 源码。将静态资源部署到子目录（例如 `/apps/sandbox/`）时，由同源鉴权代理在该目录提供 `console-config.json`（`{"mode":"gateway"}`）及 Gateway API。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
+`src/tokens.css` 在 `.sbx-app` 容器作用域内定义工作台外壳的灰度变量（衬线标题 + 等宽正文，固定浅色，不做暗色切换）。样式不写全局规则，浮层通过 Radix Portal 挂到 `.sbx-app` 容器并以 absolute 定位呈现，嵌入外壳时随栏位滚动和裁剪。独立入口与嵌入入口共用同一控制台：`src/main.tsx` 提供 HashRouter 与视口高度（`src/standalone.css`），`src/module.tsx` 用 MemoryRouter 承载相同路由，API 基准由宿主注入。构建不依赖 Workbench 源码。将静态资源部署到子目录（例如 `/apps/sandbox/`）时，由同源鉴权代理在该目录提供 `console-config.json`（`{"mode":"gateway"}`）及 Gateway API。管理身份的配置额外返回 `manage:true`，代理须按身份及方法再次鉴权。Gateway 管理密钥只配置在代理端。
 
 ## 配置 Gateway 与 Web 身份
 

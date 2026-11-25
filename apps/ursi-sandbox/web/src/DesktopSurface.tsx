@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import RFB from '@novnc/novnc/lib/rfb.js'
+import RFB from '@novnc/novnc'
 
 export default function DesktopSurface({
   url,

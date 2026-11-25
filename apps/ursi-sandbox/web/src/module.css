@@ -1,0 +1,10 @@
+/*
+ * 模块样式入口（嵌入外壳时由宿主引入打包产物 dist/module.css）。
+ * 与 src/style.css 相同的层级结构，但只负责「模块级」样式：
+ * - tokens（CSS 变量）已在 tokens.css 中定义为 .sbx-app 作用域，这里引入即可。
+ * - tailwind 用独立配置（tailwind.module.config.js，content 扫 src，无 important 前缀），
+ *   产物全部由 AppRoot 的 .sbx-app 根类承载作用域。
+ */
+@import './tokens.css';
+@import './style.css';
+@import './packet-inspector.css';

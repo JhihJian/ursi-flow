@@ -85,5 +85,14 @@ references:
 
 #### 验收
 
-- 控制台独立构建；静态资源可部署在由同源鉴权代理提供 Gateway API 的子目录中，刷新详情、返回列表均无需服务端路由回退。实例、日志及工作台内容均来自真实连接。内置服务要求配置 Gateway 和 Web 身份；配置缺失或查询失败时显示对应错误。视觉沿用工作台外壳的灰度基线（衬线标题 + 等宽正文，见 `src/tokens.css`），当前为固定浅色，后续作为模块嵌入外壳时随外壳主题联动。
+- 控制台独立构建；静态资源可部署在由同源鉴权代理提供 Gateway API 的子目录中，刷新详情、返回列表均无需服务端路由回退。实例、日志及工作台内容均来自真实连接。内置服务要求配置 Gateway 和 Web 身份；配置缺失或查询失败时显示对应错误。视觉沿用工作台外壳的灰度基线（衬线标题 + 等宽正文，见 `src/tokens.css`），当前为固定浅色。
 - 查看者和管理员使用独立密码。界面控件使用独立的 shadcn/ui 组件封装，组件由 Radix UI、CVA 和 Tailwind 提供交互与样式基础。页面依据当前身份开放操作，代理再次鉴权，Gateway 密钥只在服务端使用。
+
+### 工作区模块
+
+#### 验收
+
+- 包导出 `@ursi/sandbox-web/module` 与 `./module.css`；`createSandboxModule({ apiBase })` 返回 `WorkspaceModule`（id `sandbox`、`hideHeader`），宿主只登记一条栏位即可嵌入，不改动本包服务端。
+- 独立入口与嵌入入口共用同一控制台：`src/main.tsx` 提供 HashRouter 与视口承载（`src/standalone.css`），`src/module.tsx` 用 MemoryRouter 承载原有路由，实例列表与详情都在本栏内完成，不向外壳发布选中项。
+- API 基准由宿主注入（嵌入时 `/sbx`），缺省为相对路径；HTTP 请求与工作台 WebSocket 地址同源换算，直接部署不依赖前缀。
+- 模块样式产物只含 `.sbx-app` 作用域内规则：不输出 `html`/`body`/`:root` 全局重置，不生成脱离容器的定位规则；浮层（对话框、下拉菜单）经 Portal 挂回模块根节点，随栏位滚动与裁剪。

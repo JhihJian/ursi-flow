@@ -304,13 +304,13 @@ export function CreateSandbox({ source }: { source: Source }) {
                   {inventoryNotice && (
                     <p
                       role={inventoryError ? 'alert' : 'status'}
-                      className="text-xs text-txt3"
+                      className="text-xs text-sbx-txt3"
                     >
                       {inventoryNotice}
                     </p>
                   )}
                   {selected && (
-                    <p className="break-words text-xs text-txt3">
+                    <p className="break-words text-xs text-sbx-txt3">
                       受管端点：
                       {selectedRegistration?.endpoints
                         .map(({ name }) => name)
@@ -397,12 +397,12 @@ export function CreateSandbox({ source }: { source: Source }) {
             </TabsContent>
           </Tabs>
           {!source.manage && (
-            <Alert className="border-warn/30 bg-warn/10 text-warn">
+            <Alert className="border-sbx-warn/30 bg-sbx-warn/10 text-sbx-warn">
               当前账户只读。提交需要 Gateway 管理员身份。
             </Alert>
           )}
           {error && (
-            <Alert className="border-err/30 bg-err/10 text-err">{error}</Alert>
+            <Alert className="border-sbx-err/30 bg-sbx-err/10 text-sbx-err">{error}</Alert>
           )}
           <DialogFooter>
             <Button
@@ -531,7 +531,7 @@ export function Actions({
           )}
           {source.capabilities.rebuild_destroy_data && (
             <DropdownMenuItem
-              className="text-err"
+              className="text-sbx-err"
               onSelect={() => setConfirmation('destroy')}
             >
               <RefreshCw />
@@ -540,7 +540,7 @@ export function Actions({
           )}
           {hasRebuild && <DropdownMenuSeparator />}
           <DropdownMenuItem
-            className="text-err"
+            className="text-sbx-err"
             onSelect={() => setConfirmation('delete')}
           >
             <Trash2 />
@@ -590,7 +590,7 @@ export function Actions({
         </AlertDialogContent>
       </AlertDialog>
       {error && (
-        <Alert className="basis-full border-err/30 bg-err/10 text-err">
+        <Alert className="basis-full border-sbx-err/30 bg-sbx-err/10 text-sbx-err">
           {error}
         </Alert>
       )}
@@ -599,15 +599,15 @@ export function Actions({
 }
 export function CliTools() {
   return (
-    <dl className="space-y-3 text-xs leading-5 text-txt3">
+    <dl className="space-y-3 text-xs leading-5 text-sbx-txt3">
       <div>
-        <dt className="font-medium text-txt2">ACP 会话</dt>
+        <dt className="font-medium text-sbx-txt2">ACP 会话</dt>
         <dd>
           <code>acp initialize / new / prompt / status / cancel / close</code>
         </dd>
       </div>
       <div>
-        <dt className="font-medium text-txt2">工作区访问</dt>
+        <dt className="font-medium text-sbx-txt2">工作区访问</dt>
         <dd>
           <code>ssh</code> · <code>sftp-put</code> · <code>sftp-get</code>
         </dd>

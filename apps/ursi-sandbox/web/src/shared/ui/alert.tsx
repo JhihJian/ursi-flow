@@ -8,7 +8,7 @@ export const Alert = React.forwardRef<
     ref={ref}
     role="alert"
     className={cn(
-      'border border-line bg-surface p-3 text-sm',
+      'border border-sbx-line bg-surface p-3 text-sm',
       className,
     )}
     {...props}

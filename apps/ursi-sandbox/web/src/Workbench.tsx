@@ -10,6 +10,7 @@ import {
   Unplug,
 } from 'lucide-react'
 import type { Sandbox, Source } from './data'
+import { apiUrl } from './api-base'
 import { cn } from './shared/lib/utils'
 import { Button } from './shared/ui/button'
 import { Select } from './shared/ui/select'
@@ -92,7 +93,7 @@ export function EndpointWorkbench({
                           : ''
   const route = view === 'preview' ? `preview/${selected?.name}` : view
   const url = new URL(
-    `./api/v1/sandboxes/${row.id}/workbench/${row.resource.generation}/${route}`,
+    apiUrl(`./api/v1/sandboxes/${row.id}/workbench/${row.resource.generation}/${route}`),
     location.href,
   )
   url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -145,7 +146,7 @@ export function EndpointWorkbench({
     <section
       ref={stage}
       aria-label="端点工作台"
-      className="workbench-frame min-w-0 self-start overflow-hidden border border-line bg-surface"
+      className="sbx-workbench-frame min-w-0 self-start overflow-hidden border border-sbx-line bg-surface"
     >
       <Tabs
         value={view}
@@ -154,9 +155,9 @@ export function EndpointWorkbench({
           disconnect()
           setView(value as View)
         }}
-        className="workbench-tabs"
+        className="sbx-workbench-tabs"
       >
-        <div className="flex h-12 items-center justify-between gap-1 border-b border-line px-2 sm:px-3">
+        <div className="flex h-12 items-center justify-between gap-1 border-b border-sbx-line px-2 sm:px-3">
           <div className="min-w-0 overflow-x-auto">
             <TabsList
               aria-label="工作台视图"
@@ -166,7 +167,7 @@ export function EndpointWorkbench({
                 <TabsTrigger
                   key={key}
                   value={key}
-                  className="px-1.5 min-[360px]:px-2 data-[state=active]:bg-accent-dim data-[state=active]:text-accent-2 data-[state=active]:shadow-none sm:px-3"
+                  className="px-1.5 min-[360px]:px-2 data-[state=active]:bg-sbx-accent-dim data-[state=active]:text-sbx-accent-2 data-[state=active]:shadow-none sm:px-3"
                 >
                   <Icon aria-hidden="true" />
                   {label}
@@ -191,22 +192,22 @@ export function EndpointWorkbench({
           <TabsContent
             key={key}
             value={key}
-            className="workbench-panel min-w-0"
+            className="sbx-workbench-panel min-w-0"
           >
             {key === view && (
               <>
-                <div className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line bg-elevated/35 px-3 py-2 sm:px-4">
+                <div className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-sbx-line bg-sbx-elevated/35 px-3 py-2 sm:px-4">
                   <span
                     role="status"
-                    className="inline-flex items-center gap-2 text-xs font-medium text-txt2"
+                    className="inline-flex items-center gap-2 text-xs font-medium text-sbx-txt2"
                   >
                     <span
                       aria-hidden="true"
                       className={cn(
-                        'size-2 rounded-full bg-txt3',
-                        connected && connection === 'connected' && 'bg-ok',
-                        connected && connection === 'failed' && 'bg-err',
-                        connected && connection === 'connecting' && 'bg-warn',
+                        'size-2 rounded-full bg-sbx-txt3',
+                        connected && connection === 'connected' && 'bg-sbx-ok',
+                        connected && connection === 'failed' && 'bg-sbx-err',
+                        connected && connection === 'connecting' && 'bg-sbx-warn',
                       )}
                     />
                     {status}
@@ -239,7 +240,7 @@ export function EndpointWorkbench({
                       connection === 'connected' && (
                         <label
                           htmlFor={controlId}
-                          className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-txt2"
+                          className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-sbx-txt2"
                         >
                           <Switch
                             id={controlId}
@@ -265,14 +266,14 @@ export function EndpointWorkbench({
                   </div>
                 </div>
                 {fullscreenError && (
-                  <p role="alert" className="px-4 py-2 text-sm text-err">
+                  <p role="alert" className="px-4 py-2 text-sm text-sbx-err">
                     无法进入全屏
                   </p>
                 )}
                 <div
                   className={cn(
-                    'workbench-screen',
-                    view !== 'terminal' && 'workbench-screen-graphical',
+                    'sbx-workbench-screen',
+                    view !== 'terminal' && 'sbx-workbench-screen-graphical',
                   )}
                 >
                   {showSurface ? (
@@ -296,7 +297,7 @@ export function EndpointWorkbench({
                     <div className="stage-idle">
                       <Icon
                         aria-hidden="true"
-                        className="size-7 text-txt3"
+                        className="size-7 text-sbx-txt3"
                       />
                       <span>
                         {unavailable ||

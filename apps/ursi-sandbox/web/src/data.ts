@@ -1,3 +1,5 @@
+import { apiUrl } from './api-base'
+
 export interface Sandbox {
   id: string
   status: string
@@ -144,7 +146,7 @@ export async function json<T>(
   signal?: AbortSignal,
   init?: RequestInit,
 ): Promise<T> {
-  const r = await fetch(path, { signal, cache: 'no-store', ...init })
+  const r = await fetch(apiUrl(path), { signal, cache: 'no-store', ...init })
   const errors: Record<number, string> = {
     401: '身份验证失败',
     403: '无权访问',

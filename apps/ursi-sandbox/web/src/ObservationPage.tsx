@@ -9,13 +9,14 @@ import {
   Square,
 } from 'lucide-react'
 import { GatewayError, json, type Sandbox, type Source } from './data'
+import { apiUrl } from './api-base'
 import { Button, buttonVariants } from './shared/ui/button'
 import { Input } from './shared/ui/input'
 import { SegmentPreview } from './SegmentPreview'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const write = { method: 'POST', headers: { 'X-Ursi-Action': 'manage' } }
-const api = (id: string) => `./api/v1/sandboxes/${id}/observations`
+const api = (id: string) => apiUrl(`./api/v1/sandboxes/${id}/observations`)
 const route = (id: string) => `/sandboxes/${id}/observations`
 interface Snapshot {
   observation_id: string
@@ -76,7 +77,7 @@ export function ObservationRoute({ source }: { source: Source }) {
       <div className="page-heading">
         <div>
           <h1>网络观测</h1>
-          <code className="break-all text-txt3">沙箱 {id}</code>
+          <code className="break-all text-sbx-txt3">沙箱 {id}</code>
         </div>
       </div>
       {!source.manage ? (
@@ -133,7 +134,7 @@ function Launch({ id, source }: { id: string; source: Source }) {
   }
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 border-y border-line py-4">
+      <div className="flex flex-wrap items-center gap-3 border-y border-sbx-line py-4">
         <Button
           variant="primary"
           disabled={
@@ -164,7 +165,7 @@ function Launch({ id, source }: { id: string; source: Source }) {
         </Button>
       </div>
       {issue && (
-        <p role="alert" className="text-err">
+        <p role="alert" className="text-sbx-err">
           {issue}
         </p>
       )}
@@ -314,12 +315,12 @@ function Observation({ id, run }: { id: string; run: string }) {
         : '正在读取'
   return (
     <>
-      <div className="page-heading border-y border-line py-3">
+      <div className="page-heading border-y border-sbx-line py-3">
         <div>
           <strong role="status">
             {stop && !ended && !error ? '正在收尾' : state}
           </strong>
-          <p className="break-all font-mono text-xs text-txt3">{run}</p>
+          <p className="break-all font-mono text-xs text-sbx-txt3">{run}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -351,7 +352,7 @@ function Observation({ id, run }: { id: string; run: string }) {
       {error && (
         <div
           role="alert"
-          className="flex flex-wrap items-center gap-2 text-warn"
+          className="flex flex-wrap items-center gap-2 text-sbx-warn"
         >
           {error}
           {last > 0 && ` · 最后快照 ${datetime(last)}`}
@@ -368,19 +369,19 @@ function Observation({ id, run }: { id: string; run: string }) {
         </div>
       )}
       {actionError && (
-        <p role="alert" className="text-err">
+        <p role="alert" className="text-sbx-err">
           {actionError}
         </p>
       )}
       {snap && (
         <>
-          <p className="text-txt3">
+          <p className="text-sbx-txt3">
             代际 {snap.generation} · 开始 {datetime(snap.started_ms)}
             {snap.ended_ms != null && ` · 结束 ${datetime(snap.ended_ms)}`}
             {snap.reason &&
               ` · ${{ requested: '按请求停止', container_exited: '容器退出', observer_interrupted: 'Observer 中断' }[snap.reason] ?? snap.reason}`}
           </p>
-          <dl className="grid grid-cols-2 gap-4 border-b border-line pb-4 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-4 border-b border-sbx-line pb-4 sm:grid-cols-4">
             {[
               ['已写报文', snap.packets],
               ['PCAP 大小（B）', snap.bytes],
@@ -388,7 +389,7 @@ function Observation({ id, run }: { id: string; run: string }) {
               ['队列丢包', snap.queue_drops],
             ].map(([k, v]) => (
               <div key={k}>
-                <dt className="text-xs text-txt3">{k}</dt>
+                <dt className="text-xs text-sbx-txt3">{k}</dt>
                 <dd className="break-all font-mono text-xl font-semibold">
                   {v.toLocaleString()}
                 </dd>
@@ -396,12 +397,12 @@ function Observation({ id, run }: { id: string; run: string }) {
             ))}
           </dl>
           {snap.error && (
-            <p role="alert" className="break-words text-err">
+            <p role="alert" className="break-words text-sbx-err">
               {snap.error}
             </p>
           )}
           {snap.state === 'interrupted' && (
-            <p className="text-warn">计数来自最后一次快照，末段可能不完整。</p>
+            <p className="text-sbx-warn">计数来自最后一次快照，末段可能不完整。</p>
           )}
           {ended && !error ? (
             <SegmentPreview
@@ -425,7 +426,7 @@ function RateChart({ points }: { points: Point[] }) {
     <section className="space-y-2">
       <div className="page-heading">
         <h2 className="font-semibold">PCAP 写入速率</h2>
-        <span className="text-xs text-txt3">
+        <span className="text-xs text-sbx-txt3">
           最近 60 秒 ·{' '}
           {current?.rate != null
             ? `${current.rate.toFixed(1)} KiB/s`
@@ -436,7 +437,7 @@ function RateChart({ points }: { points: Point[] }) {
       <svg
         viewBox="0 0 600 80"
         preserveAspectRatio="none"
-        className="h-24 w-full border-b border-line text-accent-2"
+        className="h-24 w-full border-b border-sbx-line text-sbx-accent-2"
         role="img"
         aria-label="最近一分钟 PCAP 写入速率，缺失的采样区间留白"
       >

@@ -53,7 +53,7 @@ export function PacketInspector({
   return (
     <div className="pkt-workspace">
       {message && (
-        <p className="text-err" role="alert">
+        <p className="text-sbx-err" role="alert">
           {message}
         </p>
       )}
@@ -244,7 +244,7 @@ function PacketDetail({ row }: { row: PacketRow }) {
           捕获 {row.captured} / 原始 {row.original} B
           {row.captured < row.original && '（抓包时已截短）'}
         </span>
-        {row.note && <span className="text-warn">{row.note}</span>}
+        {row.note && <span className="text-sbx-warn">{row.note}</span>}
       </div>
       <div className="pkt-panes">
         <section aria-label="协议分层">

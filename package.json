@@ -7,6 +7,7 @@
   },
   "workspaces": [
     "apps/fs-web/web",
+    "apps/ursi-sandbox/web",
     "apps/todo-web/web",
     "apps/chat-web/web",
     "apps/chat-web/server",

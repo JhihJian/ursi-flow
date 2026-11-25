@@ -51,7 +51,7 @@ function SegmentPicker({ base, segments, onAccessDenied }: Props) {
             onChange={(e) => setSelection(e.target.value)}
           />
         )}
-        <span className="text-txt3">/ {segments}</span>
+        <span className="text-sbx-txt3">/ {segments}</span>
       </label>
       {valid ? (
         <>
@@ -135,18 +135,18 @@ function Reader({
           {state.type === 'error' ? '重试预览' : '预览分段'}
         </Button>
       )}
-      <span className="text-xs text-txt3">
+      <span className="text-xs text-sbx-txt3">
         仅预览本段前 {PREVIEW_LIMIT} 条完整记录
       </span>
       {state.type === 'loading' && <p role="status">正在读取分段…</p>}
       {state.type === 'cancelled' && <p role="status">已取消预览。</p>}
       {state.type === 'error' && (
-        <p className="text-err" role="alert">
+        <p className="text-sbx-err" role="alert">
           {state.message}
         </p>
       )}
       {state.type === 'denied' && (
-        <p className="text-err" role="alert">
+        <p className="text-sbx-err" role="alert">
           无权读取分段。
         </p>
       )}

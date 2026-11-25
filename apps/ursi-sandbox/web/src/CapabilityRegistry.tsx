@@ -60,13 +60,13 @@ const recipes = new Map<string, typeof modules>([
 ])
 
 function Endpoints({ endpoints }: { endpoints: LogicalEndpoint[] }) {
-  if (!endpoints.length) return <span className="text-txt3">无端点</span>
+  if (!endpoints.length) return <span className="text-sbx-txt3">无端点</span>
   return (
     <ul className="space-y-0.5">
       {endpoints.map((endpoint) => (
         <li key={endpoint.name}>
           <code>{endpoint.name}</code>{' '}
-          <span className="whitespace-nowrap text-xs text-txt3">
+          <span className="whitespace-nowrap text-xs text-sbx-txt3">
             {endpoint.protocol} · {endpoint.port}
           </span>
         </li>
@@ -136,7 +136,7 @@ function RegistryEditor({
           <DialogDescription>变更适用于之后创建的实例。</DialogDescription>
         </DialogHeader>
         {error && (
-          <Alert role="alert" className="text-err">
+          <Alert role="alert" className="text-sbx-err">
             {error}
           </Alert>
         )}
@@ -230,7 +230,7 @@ export function CapabilityRegistry({ source }: { source: Source }) {
               <TableRow key={module.id}>
                 <TableCell>
                   <span className="font-medium">{module.name}</span>
-                  <code className="block text-xs text-txt3">{module.id}</code>
+                  <code className="block text-xs text-sbx-txt3">{module.id}</code>
                 </TableCell>
                 <TableCell>{module.environment}</TableCell>
                 <TableCell>
@@ -256,11 +256,11 @@ export function CapabilityRegistry({ source }: { source: Source }) {
           </Button>
         </div>
         {error ? (
-          <Alert role="alert" className="text-err">
+          <Alert role="alert" className="text-sbx-err">
             读取镜像清单失败：{error}
           </Alert>
         ) : !result ? (
-          <p role="status" className="text-sm text-txt3">
+          <p role="status" className="text-sm text-sbx-txt3">
             正在查询镜像…
           </p>
         ) : (
@@ -274,7 +274,7 @@ export function CapabilityRegistry({ source }: { source: Source }) {
               </Alert>
             )}
             {result.images.length === 0 ? (
-              <p role="status" className="text-sm text-txt3">
+              <p role="status" className="text-sm text-sbx-txt3">
                 暂无本机 URSI 构建镜像或 Gateway 登记镜像
               </p>
             ) : (
@@ -312,7 +312,7 @@ export function CapabilityRegistry({ source }: { source: Source }) {
                             {id && (
                               <code
                                 title={id}
-                                className="mt-1 block text-xs text-txt3"
+                                className="mt-1 block text-xs text-sbx-txt3"
                               >
                                 {id.slice(0, 19)}
                               </code>
@@ -344,15 +344,15 @@ export function CapabilityRegistry({ source }: { source: Source }) {
                                 ))}
                               </ul>
                             ) : (
-                              <span className="text-txt3">无可用组合</span>
+                              <span className="text-sbx-txt3">无可用组合</span>
                             )}
                             {!registered && recipe.length > 0 && (
-                              <span className="text-xs text-txt3">
+                              <span className="text-xs text-sbx-txt3">
                                 构建配方
                               </span>
                             )}
                             {valid?.runtime_min_image_level != null && (
-                              <span className="text-xs text-txt3">
+                              <span className="text-xs text-sbx-txt3">
                                 归档要求镜像级别 ≥{' '}
                                 {valid.runtime_min_image_level}
                               </span>

@@ -1,11 +1,114 @@
-@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* 独立控制台占满视口，页面内容与实例列表各自滚动。 */
 @layer components {
+  /* 模块内 tw 变量基线：不引 preflight 时 utilities 依赖这些变量，挂在根上不出作用域。 */
   .sbx-app {
-    @apply relative flex h-dvh min-w-0 flex-col overflow-hidden bg-base font-mono text-[13px] text-txt antialiased;
+    --tw-border-spacing-x: 0;
+    --tw-border-spacing-y: 0;
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+    --tw-rotate: 0;
+    --tw-skew-x: 0;
+    --tw-skew-y: 0;
+    --tw-scale-x: 1;
+    --tw-scale-y: 1;
+    --tw-ordinal: ;
+    --tw-slashed-zero: ;
+    --tw-numeric-figure: ;
+    --tw-numeric-spacing: ;
+    --tw-numeric-fraction: ;
+    --tw-ring-inset: ;
+    --tw-ring-offset-width: 0px;
+    --tw-ring-offset-color: #fff;
+    --tw-ring-color: rgb(var(--c-accent) / 0.5);
+    --tw-ring-offset-shadow: 0 0 #0000;
+    --tw-ring-shadow: 0 0 #0000;
+    --tw-shadow: 0 0 #0000;
+    --tw-shadow-colored: 0 0 #0000;
+    --tw-blur: ;
+    --tw-brightness: ;
+    --tw-contrast: ;
+    --tw-grayscale: ;
+    --tw-hue-rotate: ;
+    --tw-invert: ;
+    --tw-saturate: ;
+    --tw-sepia: ;
+    --tw-drop-shadow: ;
+    --tw-backdrop-blur: ;
+    --tw-backdrop-brightness: ;
+    --tw-backdrop-contrast: ;
+    --tw-backdrop-grayscale: ;
+    --tw-backdrop-hue-rotate: ;
+    --tw-backdrop-invert: ;
+    --tw-backdrop-opacity: ;
+    --tw-backdrop-saturate: ;
+    --tw-backdrop-sepia: ;
+    --tw-content: "";
+  }
+  /* 元素基线：替代 preflight 的部分（仅作用域内，模块契约禁止全局元素重置）。 */
+  .sbx-app {
+    box-sizing: border-box;
+    line-height: 1.5;
+  }
+  .sbx-app *,
+  .sbx-app ::before,
+  .sbx-app ::after {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: rgb(var(--c-line));
+  }
+  .sbx-app h1,
+  .sbx-app h2,
+  .sbx-app h3,
+  .sbx-app h4,
+  .sbx-app h5,
+  .sbx-app h6,
+  .sbx-app p,
+  .sbx-app pre,
+  .sbx-app figure,
+  .sbx-app blockquote,
+  .sbx-app dl,
+  .sbx-app dd {
+    margin: 0;
+  }
+  .sbx-app ul,
+  .sbx-app ol,
+  .sbx-app menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sbx-app img,
+  .sbx-app svg,
+  .sbx-app video,
+  .sbx-app canvas,
+  .sbx-app iframe {
+    display: block;
+    vertical-align: middle;
+  }
+  .sbx-app img,
+  .sbx-app video {
+    max-width: 100%;
+    height: auto;
+  }
+  .sbx-app input,
+  .sbx-app select,
+  .sbx-app textarea,
+  .sbx-app button {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+  }
+  .sbx-app [hidden] {
+    display: none;
+  }
+  /* 高度由容器决定（嵌入与独立一致）：独立部署时 standalone.css 提供视口高度。 */
+  .sbx-app {
+    @apply relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-sbx-base font-mono text-[13px] text-sbx-txt antialiased;
+    height: 100%;
   }
   .sbx-app :focus-visible {
     outline: 2px solid rgb(var(--c-accent));
@@ -18,7 +121,7 @@
   .sbx-app > header {
     @apply shrink-0;
   }
-  .sbx-app > .page-shell {
+  .sbx-app > .sbx-page-shell {
     @apply min-h-0 flex-1 overflow-auto;
   }
   .sbx-app .sbx-instance-layout {
@@ -28,19 +131,19 @@
     @apply flex min-h-0 min-w-0 flex-col bg-surface;
   }
   .sbx-app .sbx-instance-sidebar-head {
-    @apply shrink-0 space-y-2 border-b border-line p-3;
+    @apply shrink-0 space-y-2 border-b border-sbx-line p-3;
   }
   .sbx-app .sbx-instance-filters {
-    @apply grid grid-cols-2 gap-1 bg-elevated/50 p-1;
+    @apply grid grid-cols-2 gap-1 bg-sbx-elevated/50 p-1;
   }
   .sbx-app .sbx-instance-scroll {
     @apply min-h-0 flex-1 overflow-auto overscroll-contain;
   }
   .sbx-app .sbx-instance-link {
-    @apply flex min-h-[3.5rem] min-w-0 items-center gap-2 border-l-2 border-transparent py-2 pl-2.5 pr-3 text-txt hover:bg-elevated;
+    @apply flex min-h-[3.5rem] min-w-0 items-center gap-2 border-l-2 border-transparent py-2 pl-2.5 pr-3 text-sbx-txt hover:bg-sbx-elevated;
   }
   .sbx-app .sbx-instance-link[aria-current='page'] {
-    @apply border-l-accent bg-accent-dim;
+    @apply border-l-sbx-accent bg-sbx-accent-dim;
   }
   .sbx-app .sbx-instance-link:focus-visible {
     outline-offset: -2px;
@@ -50,13 +153,13 @@
     container: sbx-instance-content / inline-size;
   }
   .sbx-app .sbx-instance-overview {
-    @apply flex min-h-full flex-col items-center justify-center gap-3 p-4 text-txt2;
+    @apply flex min-h-full flex-col items-center justify-center gap-3 p-4 text-sbx-txt2;
   }
   .sbx-app .sbx-detail-grid {
     @apply grid min-w-0 gap-4;
   }
   .sbx-app .sbx-detail-inspector {
-    @apply min-w-0 self-start border-t border-line pt-2;
+    @apply min-w-0 self-start border-t border-sbx-line pt-2;
   }
   @media (max-width: 767px) {
     .sbx-app .sbx-instance-layout[data-detail='true'] > .sbx-instance-sidebar,
@@ -69,7 +172,7 @@
       grid-template-columns: clamp(14rem, 21vw, 17rem) minmax(0, 1fr);
     }
     .sbx-app .sbx-instance-sidebar {
-      @apply border-r border-line;
+      @apply border-r border-sbx-line;
     }
   }
   @container sbx-instance-content (min-width: 56rem) {
@@ -80,60 +183,60 @@
       @apply border-l border-t-0 pl-3 pt-0;
     }
   }
-  .page-shell {
+  .sbx-app .sbx-page-shell {
     @apply mx-auto w-full min-w-0 max-w-[1680px] px-3 sm:px-6 lg:px-8;
   }
-  .page-content {
+  .sbx-app .sbx-page-content {
     @apply py-4 sm:py-6;
   }
-  .page-heading {
+  .sbx-app .sbx-page-heading {
     @apply flex min-w-0 flex-wrap items-center justify-between gap-3;
   }
-  .page-heading h1 {
+  .sbx-app .sbx-page-heading h1 {
     @apply font-serif text-2xl font-semibold;
   }
-  .input,
-  .textarea {
-    @apply block w-full min-w-0 border border-line bg-surface px-3 py-2 text-sm text-txt transition-colors focus-visible:border-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-txt3;
+  .sbx-app .sbx-input,
+  .sbx-app .sbx-textarea {
+    @apply block w-full min-w-0 border border-sbx-line bg-surface px-3 py-2 text-sm text-sbx-txt transition-colors focus-visible:border-sbx-accent disabled:cursor-not-allowed disabled:bg-sbx-elevated disabled:text-sbx-txt3;
   }
-  .textarea {
+  .sbx-app .sbx-textarea {
     @apply min-h-24 resize-y;
   }
-  .nav-link {
-    @apply inline-flex min-h-9 items-center whitespace-nowrap border-b-2 border-transparent px-1 text-sm font-medium text-txt3 hover:text-txt sm:min-h-14;
+  .sbx-app .sbx-nav-link {
+    @apply inline-flex min-h-9 items-center whitespace-nowrap border-b-2 border-transparent px-1 text-sm font-medium text-sbx-txt3 hover:text-sbx-txt sm:min-h-14;
   }
-  .nav-link[aria-current='page'] {
-    @apply border-accent text-txt;
+  .sbx-app .sbx-nav-link[aria-current='page'] {
+    @apply border-sbx-accent text-sbx-txt;
   }
-  .icon-tile {
-    @apply inline-grid place-items-center border border-line bg-elevated text-txt;
+  .sbx-app .sbx-icon-tile {
+    @apply inline-grid place-items-center border border-sbx-line bg-sbx-elevated text-sbx-txt;
   }
-  .empty-state {
-    @apply flex min-h-24 flex-wrap items-center justify-center gap-2 break-words border border-dashed border-line bg-surface p-3 text-center text-txt3;
+  .sbx-app .sbx-empty-state {
+    @apply flex min-h-24 flex-wrap items-center justify-center gap-2 break-words border border-dashed border-sbx-line bg-surface p-3 text-center text-sbx-txt3;
   }
-  .stage-idle {
-    @apply flex size-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-txt3;
+  .sbx-app .sbx-stage-idle {
+    @apply flex size-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-sbx-txt3;
   }
-  .workbench-screen {
+  .sbx-app .sbx-workbench-screen {
     @apply min-w-0 overflow-hidden bg-black;
     height: clamp(17rem, 55dvh, 46rem);
   }
-  .workbench-screen-graphical {
+  .sbx-app .sbx-workbench-screen-graphical {
     background: #0a0a0b;
   }
-  .workbench-frame:fullscreen {
+  .sbx-app .sbx-workbench-frame:fullscreen {
     @apply size-full border-0;
   }
-  .workbench-frame:fullscreen .workbench-tabs {
+  .sbx-app .sbx-workbench-frame:fullscreen .sbx-workbench-tabs {
     @apply flex h-full min-h-0 flex-col;
   }
-  .workbench-frame:fullscreen .workbench-tabs > div:first-child {
+  .sbx-app .sbx-workbench-frame:fullscreen .sbx-workbench-tabs > div:first-child {
     @apply shrink-0;
   }
-  .workbench-frame:fullscreen .workbench-panel[data-state='active'] {
+  .sbx-app .sbx-workbench-frame:fullscreen .sbx-workbench-panel[data-state='active'] {
     @apply flex min-h-0 flex-1 flex-col;
   }
-  .workbench-frame:fullscreen .workbench-screen {
+  .sbx-app .sbx-workbench-frame:fullscreen .sbx-workbench-screen {
     @apply min-h-0 flex-1;
     height: auto;
   }

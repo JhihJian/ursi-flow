@@ -1,6 +1,6 @@
 # 工作区入口
 
-把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。第一版接入 todo 与 fs 两个模块，工作区区域与右侧操作栏已按契约工作。
+把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、fs、ssh、沙箱与 pi-web 五个模块，工作区区域与右侧操作栏按契约工作。
 
 ## 开发
 
@@ -9,7 +9,7 @@ npm install
 npm run dev:shell-web        # http://localhost:5191
 ```
 
-`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖）。先启动 todo-web 服务：
+`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/sbx` 代理到沙箱控制台服务（默认 `http://127.0.0.1:4180`，可用 `SBX_WEB_API` 覆盖，HTTP 与 WebSocket 同规则，代理层剥掉 `/sbx` 前缀）。先启动 todo-web 服务：
 
 ```sh
 cd todo-web/server && cargo run          # 或已有实例

@@ -24,7 +24,7 @@ export function TableRow({ className, ...props }: ComponentProps<'tr'>) {
   return (
     <tr
       className={cn(
-        'border-b border-line transition-colors hover:bg-elevated/50',
+        'border-b border-sbx-line transition-colors hover:bg-sbx-elevated/50',
         className,
       )}
       {...props}
@@ -36,7 +36,7 @@ export function TableHead({ className, ...props }: ComponentProps<'th'>) {
     <th
       scope="col"
       className={cn(
-        'h-10 px-4 text-left font-serif text-[11px] font-semibold uppercase tracking-[0.5px] text-txt3',
+        'h-10 px-4 text-left font-serif text-[11px] font-semibold uppercase tracking-[0.5px] text-sbx-txt3',
         className,
       )}
       {...props}
@@ -46,7 +46,7 @@ export function TableHead({ className, ...props }: ComponentProps<'th'>) {
 export function TableCell({ className, ...props }: ComponentProps<'td'>) {
   return (
     <td
-      className={cn('px-4 py-3 align-top text-txt', className)}
+      className={cn('px-4 py-3 align-top text-sbx-txt', className)}
       {...props}
     />
   )
