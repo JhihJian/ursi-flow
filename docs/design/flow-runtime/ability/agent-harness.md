@@ -1,10 +1,13 @@
-# Agent Harness
+# Agent 会话
 
 ## 能力说明
-执行 Agent 节点的 Prompt，绑定 Run 级 Agent，并在每个 NodeRun 中承载独立的 Runtime Tool Bridge。
+
+每个 `新建Agent` 节点产生一次独立的模型会话；提示词由 Flow 正文、允许的结果与提交指令组成，结果通过 `submit_flow_outcome` 工具回执交回引擎。
 
 ## 依赖说明
-依赖 `core/contracts` 中的 `FlowAgentHarness`、`AgentRunExecutor` 和 Flow 类型。具体 Session、模型和工具协议由 `integrations/pi`、`integrations/codex` 或 `integrations/deepseek` 提供。
+
+引擎只调用执行器的 `prompt(agentName, instruct)`。会话、模型、工具与凭据都由宿主实现；宿主侧的 `AgentHarness` 提供 `open`、`run`、`close`，本地执行器用 Pi SDK 实现它。
 
 ## 启用与生命周期
-Agent 节点固定启用。Run 开始时绑定，NodeRun 完成或失败后释放，Run 结束、取消或恢复失败时关闭全部资源。
+
+Flow 含 Agent 节点时启用。一次节点访问开一个会话，取得合法回执后关闭；同一节点连续三次提交不允许的结果时本次运行失败。执行器无法确认结果时，运行进入待核实，由 `resume` 只核实原尝试。

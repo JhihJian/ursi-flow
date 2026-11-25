@@ -1,10 +1,13 @@
-# Runtime Tools
+# 节点结果工具
 
 ## 能力说明
-为每个 NodeRun 提供一次性 `submit_flow_outcome` 工具，严格校验结果、变量和生命周期，并把结构化结果交回 Core。
+
+每次节点访问提供一个一次性的 `submit_flow_outcome` 工具，严格校验结果名与变量，并把结构化结果交回引擎。
 
 ## 依赖说明
-依赖 `core/contracts` 的结果声明、变量值和 Runtime Tool 类型。不依赖具体模型、Session 或平台。
+
+工具桥由宿主实现（`flow-host/src/runtime/tools/bridge.ts`），只依赖 Flow Core 的结果声明与变量校验。不依赖具体模型、会话或平台。
 
 ## 启用与生命周期
-Agent 节点固定启用。NodeRun 开始时创建，成功提交后冻结，节点结束、失败、取消或关闭时撤销迟到调用。
+
+Agent 节点固定启用。一次访问开始时创建，成功提交后冻结；节点结束、失败或关闭时撤销迟到调用。任何非法提交都计入同一拒绝上限，连续三次即结束本轮。

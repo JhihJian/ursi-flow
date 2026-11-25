@@ -41,9 +41,9 @@ const answered = await engine.respond(result.runId, result.pending.stepId, '通�
 
 ## 能力边界
 
-Flow Core 定义了本库能执行的 Flow 子集：`新建Agent` 与 `confirm` 两种动作。并行开始点、`复用Agent`、`执行自定义命令`、`执行Flow`、Profile 和包内资料引用会在启动前被拒绝，不会进入执行。
+Flow Core 定义四种动作：`新建Agent`、`confirm`、`执行自定义命令`、并行开始点。引擎按这四种动作推进，宿主只提供会话与子进程。
 
-这意味着引擎适合「一串 Agent 步骤加人工确认」的流程。需要命令节点、并行或子 Flow 时，能力应补进 Flow Core 与引擎，而不是在宿主里另造一套推进逻辑。
+`复用Agent`、`执行Flow`、Agent Profile、节点级执行器与包内资料引用已从格式移除，解析期直接报错，不做兼容。
 
 ## 日志布局
 

@@ -31,7 +31,7 @@ flowchart TD
 
 ## 完成任务
 
-```复用Agent
+```新建Agent
 根据分析结果完成任务：
 {input.分析结论}
 ```
