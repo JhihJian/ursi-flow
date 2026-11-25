@@ -167,7 +167,7 @@ function WorkspaceRegion({ modules, views }: { modules: WorkspaceModule[]; views
   const view = findWorkspaceView(modules, views, selection)
 
   return (
-    <Panel id="workspace" className="ws-workspace" minSize={280}>
+    <Panel id="workspace" className="ws-workspace" defaultSize={480} minSize={280}>
       {view ?? (
         <div className="ws-placeholder">
           <span className="ws-placeholder-title">Workspace</span>
