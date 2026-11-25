@@ -259,7 +259,11 @@ function Shell({
   status,
   storageKey = 'ursi.workspace-shell',
 }: WorkspaceShellProps) {
-  const layout = useDefaultLayout({ id: storageKey })
+  // panelIds 随模块组合一起入键：组合变了就不读旧布局，避免新模块被旧布局挤到最小宽度。
+  const layout = useDefaultLayout({
+    id: storageKey,
+    panelIds: [...modules.map((module) => module.id), 'workspace', 'actions'],
+  })
   const { selection } = useWorkspace()
   const summary = selection
     ? (summaryFor(modules, selection) ?? views.find((view) => view.kind === selection.kind)?.summary(selection) ?? selection.id)
