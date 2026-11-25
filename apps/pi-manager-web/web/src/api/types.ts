@@ -120,10 +120,19 @@ export interface ModelsListing {
   hadComments: boolean
 }
 
+export type AuthEntryType = 'oauth' | 'api_key' | 'unknown'
+
 export interface AuthEntryView {
   provider: string
-  type: 'oauth' | 'api_key'
-  masked: string | null
+  type: AuthEntryType
+  /** 遮蔽后的条目 JSON：key / access / refresh 显示为掩码。 */
+  entry: Record<string, unknown>
+  /** 被遮蔽的字段名（key / access / refresh）。 */
+  maskedFields: string[]
+  /** oauth 过期时间（epoch ms）。 */
+  expires: number | null
+  /** api_key 的 key 是 `!command` 形式。 */
+  keyCommand: string | null
 }
 
 export interface AuthListing {

@@ -7,7 +7,7 @@ import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
 import { listAgentProfiles, saveAgentProfile, deleteAgentProfile, readAgentsSettings, writeAgentsSettings, renderProfile } from './agents.ts'
 import { readMcp, mergeMcp } from './mcp-file.ts'
-import { readModels, mergeModels, readAuth, setAuthApiKey, deleteAuthEntry } from './models-auth.ts'
+import { readModels, mergeModels, readAuth, mergeAuth } from './models-auth.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { createStaticHandler } from './static.ts'
 import { isLoopback } from './http-util.ts'
@@ -221,21 +221,24 @@ route('PUT', '/api/models/providers', async ({ home, body }) => {
 
 route('GET', '/api/auth', async ({ home }) => readAuth(home))
 
-route('PUT', '/api/auth/api-key', async ({ home, body, req }) => {
-  const payload = await body<{ provider?: string; apiKey?: string; revision?: string }>()
-  if (typeof payload.provider !== 'string' || typeof payload.apiKey !== 'string' || !payload.apiKey.trim()) {
-    throw new HomeError('provider 与 apiKey 必填', 400, 'invalid_request')
+// 合并写回：只改提交里出现的 provider，null 删除条目，掩码占位符按原文还原。
+route('PUT', '/api/auth/entries', async ({ home, body }) => {
+  const payload = await body<{ revision?: string; entries?: Record<string, unknown> }>()
+  if (!payload.entries || typeof payload.entries !== 'object' || Array.isArray(payload.entries)) {
+    throw new HomeError('entries 必须是对象', 400, 'invalid_request')
   }
-  const revision = await setAuthApiKey(home, payload.revision ?? '', payload.provider, payload.apiKey.trim())
-  return { ok: true, revision }
-})
-
-route('DELETE', '/api/auth/api-key', async ({ home, body }) => {
-  const payload = await body<{ provider?: string; revision?: string }>()
-  if (typeof payload.provider !== 'string' || typeof payload.revision !== 'string') {
-    throw new HomeError('provider 与 revision 必填', 400, 'invalid_request')
+  const entries: Record<string, Record<string, unknown> | null> = {}
+  for (const [provider, value] of Object.entries(payload.entries)) {
+    if (value === null) {
+      entries[provider] = null
+      continue
+    }
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw new HomeError(`provider ${provider} 的条目必须是对象或 null`, 400, 'invalid_request')
+    }
+    entries[provider] = value as Record<string, unknown>
   }
-  const revision = await deleteAuthEntry(home, payload.revision, payload.provider)
+  const revision = await mergeAuth(home, payload.revision ?? '', entries)
   return { ok: true, revision }
 })
 

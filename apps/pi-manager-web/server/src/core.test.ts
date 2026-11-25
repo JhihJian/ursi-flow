@@ -8,7 +8,7 @@ import { readSnapshotSync, writeSnapshot, ConflictError } from './rw.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { toggleDisableModelInvocation, readDisableModelInvocation } from './skills.ts'
 import { readMcp, maskSecret } from './mcp-file.ts'
-import { readModels, readAuth, setAuthApiKey } from './models-auth.ts'
+import { readModels, readAuth, mergeAuth } from './models-auth.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
 
@@ -196,17 +196,83 @@ test('models：JSONC 读入、apiKey 遮蔽、模型计数', () => {
   assert.equal((p.entry.apiKey as string).includes('abcdefgh1234'), false)
 })
 
-test('auth：设置与读取，密钥不回传', async () => {
+test('auth：写入 api_key 条目，密钥不回传', async () => {
   const dir = makeHome()
-  const revision = await setAuthApiKey(dir, '', 'zenmux', 'sk-secret-9999')
+  const revision = await mergeAuth(dir, '', {
+    zenmux: { type: 'api_key', key: 'sk-secret-9999' },
+  })
   assert.ok(revision)
   const listing = readAuth(dir)
   assert.equal(listing.entries.length, 1)
   assert.equal(listing.entries[0].provider, 'zenmux')
   assert.equal(listing.entries[0].type, 'api_key')
-  assert.ok(listing.entries[0].masked!.startsWith('•••'))
+  assert.deepEqual(listing.entries[0].maskedFields, ['key'])
+  assert.ok((listing.entries[0].entry.key as string).startsWith('•••'))
   const raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
-  assert.equal(raw.zenmux.api_key, 'sk-secret-9999')
+  assert.deepEqual(raw.zenmux, { type: 'api_key', key: 'sk-secret-9999' })
+})
+
+test('auth：合并写回保留原文，改值写新值，null 删除条目', async () => {
+  const dir = makeHome()
+  await mergeAuth(dir, '', {
+    p1: { type: 'api_key', key: 'sk-keep-1111', env: { REGION: 'eu' } },
+    p2: { type: 'oauth', access: 'acc-2222-token', refresh: 'ref-3333-token', expires: 1790000000000 },
+  })
+  let listing = readAuth(dir)
+  const p1 = listing.entries.find((e) => e.provider === 'p1')!
+  const p2 = listing.entries.find((e) => e.provider === 'p2')!
+  assert.deepEqual(p1.maskedFields.sort(), ['key'])
+  assert.deepEqual(p2.maskedFields.sort(), ['access', 'refresh'])
+  assert.equal(p2.expires, 1790000000000)
+
+  // 原样提交掩码 + 改 env → key 还原，env 更新
+  const submitted1 = JSON.parse(JSON.stringify(p1.entry)) as Record<string, unknown>
+  ;(submitted1.env as Record<string, string>).REGION = 'us'
+  await mergeAuth(dir, listing.revision, { p1: submitted1 })
+  let raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p1.key, 'sk-keep-1111')
+  assert.equal(raw.p1.env.REGION, 'us')
+
+  // oauth 原样提交掩码 + 改 expires → access/refresh 还原
+  listing = readAuth(dir)
+  const p2entry = listing.entries.find((e) => e.provider === 'p2')!
+  const submitted2 = JSON.parse(JSON.stringify(p2entry.entry)) as Record<string, unknown>
+  submitted2.expires = 1800000000000
+  await mergeAuth(dir, listing.revision, { p2: submitted2 })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p2.access, 'acc-2222-token')
+  assert.equal(raw.p2.refresh, 'ref-3333-token')
+  assert.equal(raw.p2.expires, 1800000000000)
+
+  // 改成新 key
+  listing = readAuth(dir)
+  const p1entry = listing.entries.find((e) => e.provider === 'p1')!.entry
+  await mergeAuth(dir, listing.revision, { p1: { ...p1entry, key: 'sk-new-4444' } })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p1.key, 'sk-new-4444')
+
+  // null 删除
+  listing = readAuth(dir)
+  await mergeAuth(dir, listing.revision, { p2: null })
+  raw = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'))
+  assert.equal(raw.p2, undefined)
+  assert.ok(raw.p1)
+})
+
+test('auth：revision 不匹配时拒绝写入；!command 形式不遮蔽', async () => {
+  const dir = makeHome()
+  await mergeAuth(dir, '', { p1: { type: 'api_key', key: 'sk-a-5555' } })
+  const listing = readAuth(dir)
+  await assert.rejects(mergeAuth(dir, 'stale-revision', { p1: null }), /已被其他进程修改/)
+  const withCommand = await mergeAuth(dir, listing.revision, {
+    p2: { type: 'api_key', key: '!security find-generic-password -ws p2' },
+  })
+  assert.ok(withCommand)
+  const after = readAuth(dir)
+  const p2 = after.entries.find((e) => e.provider === 'p2')!
+  assert.equal(p2.keyCommand, '!security find-generic-password -ws p2')
+  assert.deepEqual(p2.maskedFields, [])
+  assert.equal(p2.entry.key, '!security find-generic-password -ws p2')
 })
 
 // ---------------------------------------------------------------------------

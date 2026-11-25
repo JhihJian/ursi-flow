@@ -60,9 +60,11 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- 「凭据」分区列出 `auth.json` 条目（provider、oauth 或 api_key 类型），api_key 显示掩码（末 4 位）。
-- 设置/覆盖 API key 只在提交瞬间经请求体传输，页面不回显明文；删除条目有确认。
-- OAuth 凭据只读展示；凭据原文任何接口都不返回。
+- 「凭据」分区按 `auth.json` 条目列出 provider、类型（api_key / oauth / 未知）与凭据摘要；oauth 显示过期时间并标注是否已过期，`!command` 形式的 key 标注为从命令取密钥。
+- 选中条目后以 JSON 编辑完整条目并保存：`key`/`access`/`refresh` 回显为掩码（末 4 位），原样保存即保留磁盘原文，改成新值则写新值；api_key 的 `env` 等其余字段可直接改。
+- 新增条目按 api_key 或 oauth 模板创建；删除条目有确认。合并写回只改提交的 provider，其余条目原样保留，原文件备份 `auth.json.bak-manager`，写入模式 0600。
+- 乐观锁：`auth.json` 被 pi CLI 等进程改过后写入返回 409，原文件不变。
+- 凭据原文任何接口都不返回，只在提交瞬间经请求体传输。
 
 ### 安全边界
 

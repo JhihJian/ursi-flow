@@ -105,10 +105,12 @@ export const api = {
   putModelProviders: (home: string, providers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/models/providers', home, { providers, revision }),
   getAuth: (home: string) => request<AuthListing>('GET', '/api/auth', home),
-  putAuthApiKey: (home: string, provider: string, apiKey: string, revision: string) =>
-    request<MutationResult>('PUT', '/api/auth/api-key', home, { provider, apiKey, revision }),
-  deleteAuthEntry: (home: string, provider: string, revision: string) =>
-    request<MutationResult>('DELETE', '/api/auth/api-key', home, { provider, revision }),
+  /** 合并写回 auth.json 条目：只改提交里出现的 provider，null 删除条目。 */
+  putAuthEntries: (
+    home: string,
+    entries: Record<string, Record<string, unknown> | null>,
+    revision: string,
+  ) => request<MutationResult>('PUT', '/api/auth/entries', home, { entries, revision }),
   getPlugins: (home: string) => request<PluginsListing>('GET', '/api/plugins', home),
   mutatePluginEntry: (home: string, action: 'enable' | 'disable' | 'remove', index: number, revision: string) =>
     request<MutationResult>('POST', '/api/plugins/entry', home, { action, index, revision }),
