@@ -33,6 +33,15 @@ import type {
   TrafficRule,
   VersionInfo,
 } from '@/api/types'
+import {
+  applyConfig,
+  checkConfig,
+  getConfig,
+  restoreConfig,
+  type ConfigCheckResult,
+  type ConfigDiagnostic,
+  type ConfigSnapshot,
+} from '@/api/console'
 import { errorMessage } from '@/lib/ui'
 import { splitEndpoint } from '@/lib/format'
 
@@ -45,6 +54,8 @@ export type SelectedEntry =
 
 interface DaeState {
   section: Section
+  /** 本连接能否读写 dae 配置文件（服务端按来源判定）。 */
+  consoleAllowed: boolean
   paused: boolean
   tickSeconds: number
   loading: boolean
@@ -74,6 +85,14 @@ interface DaeState {
   tracePending: boolean
   traceError: string | null
 
+  config: ConfigSnapshot | null
+  configDraft: string
+  configDirty: boolean
+  configDiagnostics: ConfigDiagnostic[]
+  configCheckedAt: string | null
+  configNotice: { kind: 'ok' | 'error'; message: string } | null
+  configBusy: boolean
+
   setSection: (section: Section) => void
   togglePaused: () => void
   setTickSeconds: (seconds: number) => void
@@ -87,6 +106,12 @@ interface DaeState {
   flushCache: () => Promise<void>
   appendLog: (record: LogRecord) => void
   clearLogs: () => void
+  loadConfig: () => Promise<void>
+  setConfigDraft: (text: string) => void
+  resetConfigDraft: () => void
+  checkDraft: () => Promise<void>
+  saveDraft: (content: string) => Promise<boolean>
+  revertToBackup: (name: string) => Promise<void>
 }
 
 const MAX_LOGS = 500
@@ -104,6 +129,7 @@ function mergeConnections(snapshot: ConnectionsSnapshot): NetworkConnection[] {
 
 export const useDaeStore = create<DaeState>((set, get) => ({
   section: 'overview',
+  consoleAllowed: false,
   paused: false,
   tickSeconds: 3,
   loading: false,
@@ -133,6 +159,14 @@ export const useDaeStore = create<DaeState>((set, get) => ({
   tracePending: false,
   traceError: null,
 
+  config: null,
+  configDraft: '',
+  configDirty: false,
+  configDiagnostics: [],
+  configCheckedAt: null,
+  configNotice: null,
+  configBusy: false,
+
   setSection: (section) => {
     set({ section, selected: null, trace: null, traceError: null })
     void get().refresh()
@@ -144,6 +178,10 @@ export const useDaeStore = create<DaeState>((set, get) => ({
   bootstrap: async () => {
     set({ loading: true })
     try {
+      const health = await fetch('/healthz')
+        .then((response) => response.json() as Promise<{ console?: boolean }>)
+        .catch(() => ({ console: false }))
+      set({ consoleAllowed: health.console === true })
       const [version, runtime, outbounds, traffic, memory] = await Promise.all([
         getVersion(),
         getRuntime(),
@@ -222,6 +260,10 @@ export const useDaeStore = create<DaeState>((set, get) => ({
         }
         case 'logs':
           // 日志由 SSE 推送，轮询只刷新运行态指标。
+          break
+        case 'config':
+          // 首次进入时拉一次文件内容；已有草稿时不让轮询覆盖编辑。
+          if (!get().config) await get().loadConfig()
           break
       }
       // 选中的条目在轮询后同步最新数值，详情面板不会停在旧快照上。
@@ -304,6 +346,112 @@ export const useDaeStore = create<DaeState>((set, get) => ({
   appendLog: (record) =>
     set((state) => ({ logs: [...state.logs, record].slice(-MAX_LOGS) })),
   clearLogs: () => set({ logs: [] }),
+
+  loadConfig: async () => {
+    set({ configBusy: true })
+    try {
+      const snapshot = await getConfig()
+      set({
+        config: snapshot,
+        configDraft: snapshot.content,
+        configDirty: false,
+        configDiagnostics: [],
+        configCheckedAt: null,
+        configNotice: null,
+      })
+    } catch (error) {
+      set({ configNotice: { kind: 'error', message: errorMessage(error) } })
+    } finally {
+      set({ configBusy: false })
+    }
+  },
+
+  setConfigDraft: (text) =>
+    set((state) => ({
+      configDraft: text,
+      configDirty: state.config ? text !== state.config.content : false,
+      configNotice: null,
+    })),
+
+  resetConfigDraft: () =>
+    set((state) => ({
+      configDraft: state.config?.content ?? '',
+      configDirty: false,
+      configDiagnostics: [],
+      configCheckedAt: null,
+      configNotice: null,
+    })),
+
+  checkDraft: async () => {
+    set({ configBusy: true, configNotice: null })
+    try {
+      const { configDraft } = get()
+      const result: ConfigCheckResult = await checkConfig(configDraft)
+      set({
+        configDiagnostics: result.diagnostics,
+        configCheckedAt: result.validated_at,
+        configNotice: {
+          kind: result.valid ? 'ok' : 'error',
+          message: result.valid
+            ? '校验通过'
+            : `校验未通过，共 ${result.diagnostics.length} 条问题`,
+        },
+      })
+    } catch (error) {
+      set({ configNotice: { kind: 'error', message: errorMessage(error) } })
+    } finally {
+      set({ configBusy: false })
+    }
+  },
+
+  saveDraft: async (content) => {
+    set({ configBusy: true, configNotice: null })
+    try {
+      const snapshot = get().config
+      const result = await applyConfig(content, snapshot?.sha256 ?? null)
+      const refreshed = await getConfig()
+      set({
+        config: refreshed,
+        configDraft: refreshed.content,
+        configDirty: false,
+        configDiagnostics: [],
+        configCheckedAt: null,
+        configNotice: {
+          kind: 'ok',
+          message: `已生效，generation ${result.generationId ?? '-'}，备份 ${result.backup}`,
+        },
+      })
+      return true
+    } catch (error) {
+      set({ configNotice: { kind: 'error', message: errorMessage(error) } })
+      return false
+    } finally {
+      set({ configBusy: false })
+    }
+  },
+
+  revertToBackup: async (name) => {
+    set({ configBusy: true, configNotice: null })
+    try {
+      const result = await restoreConfig(name)
+      const refreshed = await getConfig()
+      set({
+        config: refreshed,
+        configDraft: refreshed.content,
+        configDirty: false,
+        configDiagnostics: [],
+        configCheckedAt: null,
+        configNotice: {
+          kind: 'ok',
+          message: `已回滚到 ${result.backup}，generation ${result.generationId ?? '-'}`,
+        },
+      })
+    } catch (error) {
+      set({ configNotice: { kind: 'error', message: errorMessage(error) } })
+    } finally {
+      set({ configBusy: false })
+    }
+  },
 }))
 
 /** 供 SSE 回调使用的稳定引用，避免订阅整个 store。 */

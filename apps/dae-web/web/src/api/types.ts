@@ -281,4 +281,4 @@ export interface LogRecord {
   fields: Record<string, unknown> | null
 }
 
-export type Section = 'overview' | 'connections' | 'flows' | 'rules' | 'dns' | 'logs'
+export type Section = 'overview' | 'connections' | 'flows' | 'rules' | 'dns' | 'logs' | 'config'

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
+import { ConfigSection } from './ConfigSection'
 import { ConnectionsSection } from './ConnectionsSection'
 import { DetailSheet } from './DetailSheet'
 import { DnsSection } from './DnsSection'
@@ -29,6 +30,8 @@ function SectionBody() {
       return <DnsSection />
     case 'logs':
       return <LogsSection />
+    case 'config':
+      return <ConfigSection />
   }
 }
 

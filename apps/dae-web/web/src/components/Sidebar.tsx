@@ -2,13 +2,15 @@ import type { Section } from '@/api/types'
 import { cx } from '@/lib/ui'
 import { useDaeStore } from '@/store/dae-store'
 
-const NAV: Array<{ id: Section; label: string; hint: string }> = [
+/** config 分区依赖本机权限，局域网访问时整条隐藏。 */
+const NAV: Array<{ id: Section; label: string; hint: string; localOnly?: boolean }> = [
   { id: 'overview', label: '概览', hint: '运行态与出口' },
   { id: 'connections', label: '连接', hint: '活跃连接' },
   { id: 'flows', label: '流历史', hint: '近期记录' },
   { id: 'rules', label: '规则', hint: '分流与 DNS' },
   { id: 'dns', label: 'DNS', hint: '解析与缓存' },
   { id: 'logs', label: '日志', hint: '实时输出' },
+  { id: 'config', label: '配置', hint: '编辑与热加载', localOnly: true },
 ]
 
 function useNavCounts(): Record<Section, string> {
@@ -17,6 +19,7 @@ function useNavCounts(): Record<Section, string> {
   const rules = useDaeStore((state) => state.rules.length)
   const dnsLogTotal = useDaeStore((state) => state.dnsLogTotal)
   const logs = useDaeStore((state) => state.logs.length)
+  const configDirty = useDaeStore((state) => state.configDirty)
   return {
     overview: '',
     connections: String(connections),
@@ -24,6 +27,7 @@ function useNavCounts(): Record<Section, string> {
     rules: String(rules),
     dns: String(dnsLogTotal),
     logs: String(logs),
+    config: configDirty ? '●' : '',
   }
 }
 
@@ -41,8 +45,10 @@ export function Sidebar({
   const setSection = useDaeStore((state) => state.setSection)
   const version = useDaeStore((state) => state.version)
   const runtime = useDaeStore((state) => state.runtime)
+  const consoleAllowed = useDaeStore((state) => state.consoleAllowed)
   const counts = useNavCounts()
-  const current = NAV.find((item) => item.id === section) ?? NAV[0]
+  const nav = NAV.filter((item) => !item.localOnly || consoleAllowed)
+  const current = nav.find((item) => item.id === section) ?? nav[0]
 
   if (collapsed) {
     return (
@@ -72,7 +78,7 @@ export function Sidebar({
         </button>
       </div>
       <ul className="nav-list">
-        {NAV.map((item) => (
+        {nav.map((item) => (
           <li key={item.id}>
             <button
               type="button"

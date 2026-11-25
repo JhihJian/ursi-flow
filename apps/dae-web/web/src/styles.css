@@ -907,6 +907,118 @@ input {
   color: var(--gray-400);
 }
 
+/* 配置编辑 */
+.config-path {
+  font-size: 11px;
+  color: var(--gray-600);
+  word-break: break-all;
+}
+
+.config-flag {
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.config-dirty {
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.config-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.config-notice {
+  margin-bottom: var(--space-sm);
+  font-size: 11px;
+}
+
+.config-editor {
+  display: flex;
+  height: calc(100vh - 420px);
+  min-height: 220px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  overflow: hidden;
+}
+
+.config-gutter {
+  flex: none;
+  margin: 0;
+  padding: var(--space-sm) var(--space-xs) var(--space-sm) var(--space-sm);
+  overflow: hidden;
+  border-right: 1px solid var(--gray-200);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--gray-400);
+  text-align: right;
+  user-select: none;
+}
+
+.config-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 0;
+  resize: none;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--gray-900);
+  background: var(--white);
+  white-space: pre;
+  tab-size: 4;
+}
+
+.config-text:focus {
+  outline: none;
+}
+
+.config-diagnostics {
+  list-style: none;
+  margin-top: var(--space-sm);
+  border-top: 1px solid var(--gray-200);
+}
+
+.config-diagnostic {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 11px;
+}
+
+.config-diagnostic-where {
+  flex: none;
+  width: 64px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.config-diagnostic-message {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.config-diagnostic.level-error .config-diagnostic-message {
+  color: var(--danger);
+}
+
+.config-backups {
+  margin-top: var(--space-lg);
+}
+
+.config-restore {
+  margin-top: var(--space-sm);
+}
+
 /* 详情面板 */
 .detail-sheet {
   display: flex;

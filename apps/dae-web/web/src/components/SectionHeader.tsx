@@ -10,6 +10,7 @@ const TITLES: Record<Section, { title: string; subtitle: string }> = {
   rules: { title: '分流规则', subtitle: '流量规则与 DNS 路由规则' },
   dns: { title: 'DNS 观测', subtitle: '解析日志与本地缓存' },
   logs: { title: '运行日志', subtitle: '实时日志输出，按级别过滤' },
+  config: { title: '配置', subtitle: '编辑 dae 配置，校验后热加载' },
 }
 
 function subtitleFor(section: Section, counts: Record<string, number>): string {
