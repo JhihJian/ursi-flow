@@ -2,7 +2,7 @@
 parent: ../../../SPEC.md
 depends-on:
   - ../../shared/SPEC.md
-  - ../../../../../ursi-mcp/web/SPEC.md
+  - ../../../../../apps/mcp-web/web/SPEC.md
 references:
   - ../../../../server/src/work/mcp/PLATFORM.md
 ---

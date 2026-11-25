@@ -1,7 +1,7 @@
 ---
 parent: ../../../SPEC.md
 depends-on:
-  - ../../../../../ursi-mcp/server/SPEC.md
+  - ../../../../../apps/mcp-web/server/SPEC.md
 references:
   - PLATFORM.md
 ---
