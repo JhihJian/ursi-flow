@@ -373,3 +373,90 @@
   font-size: 11px;
   color: #b43c3c;
 }
+
+/* ===== 区域与 profile ===== */
+
+/* 区域 Panel 外壳：模块条目的 ws-panel 已有 min-width:0，区域容器同样防溢出。 */
+.ws-region {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 纵向区域（多条目叠放）。 */
+.ws-stack {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+}
+
+/* 横向区域（多条目左右排）。 */
+.ws-row {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 纵向区域的分隔线：横线样式（库按 orientation 注入 ns-resize）。 */
+.ws-separator-v {
+  height: 6px;
+  flex: 0 0 6px;
+  width: auto;
+}
+
+.ws-separator-v::before {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  height: 1px;
+  width: auto;
+  transform: translateY(-50%);
+}
+
+/* 纵向叠放的模块折叠窄条：横排在 Panel 底部。 */
+.ws-rail-h {
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  padding: 0 6px;
+}
+
+/* 横排窄条的展开按钮箭头方向在 TSX 里切换（˅/˄），布局沿用 rail 的横向排列。 */
+.ws-rail-h .ws-rail-toggle {
+  transform: none;
+  flex: none;
+}
+
+.ws-rail-h .ws-rail-summary {
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+}
+
+.ws-rail-h .ws-rail-item {
+  flex-direction: column;
+  gap: 0;
+}
+
+.ws-rail-h .ws-rail-label,
+.ws-rail-h .ws-rail-value {
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+}
+
+/* profile 切换器：与 ws-settings 按钮同风格。 */
+.ws-profile-select {
+  appearance: none;
+  border: 1px solid var(--ws-line);
+  background: transparent;
+  color: var(--ws-ink);
+  font-family: var(--ws-mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.ws-profile-select:hover {
+  border-color: var(--ws-ink);
+}

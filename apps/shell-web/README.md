@@ -2,6 +2,16 @@
 
 把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、fs、ssh、沙箱与 pi-web 五个模块，工作区区域与右侧操作栏按契约工作。
 
+## 页面 profile
+
+组合根声明三套内置 profile，标题栏下拉切换，布局按 profile 隔离持久化：
+
+- **经典**（`classic`）：单横向区域平铺全部模块 + workspace + actions，与历史布局一致，直接复用 `ursi.workspace` 的存量布局数据。
+- **开发**（`dev`）：三个区域，左侧任务与文件、中间终端与沙箱、右侧 pi-web 与工作区。
+- **对话**（`chat`）：窄侧栏放 todo，主区放 pi-web + workspace + actions 纵向叠放。
+
+当前选择存于 `ursi.workspace:profile`；各 profile 的布局与折叠状态存在 `ursi.workspace:<profileId>`。切换 profile 会重挂布局表面，iframe 类模块（pi-web）会重载一次，属可接受的低频行为。
+
 ## 开发
 
 ```sh

@@ -20,11 +20,12 @@ function RegistryButton() {
 }
 
 export default function App() {
-  const { modules, views } = useShellRegistry()
+  const { modules, views, profiles } = useShellRegistry()
   return (
     <WorkspaceShell
       modules={modules}
       views={views}
+      profiles={profiles}
       title="ursi workspace"
       settings={
         <>

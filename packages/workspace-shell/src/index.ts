@@ -6,6 +6,9 @@ export type {
   Selection,
   WorkspaceAction,
   WorkspaceModule,
+  WorkspaceProfile,
+  WorkspaceRegionItem,
+  WorkspaceRegionSpec,
   WorkspaceView,
   WorkspaceShellProps,
 } from './contracts'

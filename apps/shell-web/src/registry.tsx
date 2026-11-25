@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { WorkspaceModule, WorkspaceView } from '@ursi/workspace-shell'
+import type { WorkspaceModule, WorkspaceProfile, WorkspaceView } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
 import { createSshModule } from '@ursi/ssh-web/module'
@@ -18,6 +18,7 @@ import './pi-web-panel/module.css'
 export interface ShellRegistry {
   modules: WorkspaceModule[]
   views: WorkspaceView[]
+  profiles: WorkspaceProfile[]
 }
 
 /** 设置页不占栏，注册成不占栏的视图，由标题栏按钮选中它。 */
@@ -260,6 +261,82 @@ const BASE_MODULES: WorkspaceModule[] = [
   createPiWebModule(),
 ]
 
+/**
+ * 内置页面 profile：切换区域布局与模块集合。
+ * 布局按 profile 隔离持久化（ursi.workspace:<profileId>），当前选择存于 ursi.workspace:profile。
+ */
+const PROFILES: WorkspaceProfile[] = [
+  {
+    id: 'classic',
+    title: '经典',
+    regions: [
+      {
+        id: 'main',
+        direction: 'horizontal',
+        items: [
+          { type: 'module', moduleId: 'todo' },
+          { type: 'module', moduleId: 'fs-web' },
+          { type: 'module', moduleId: 'ssh' },
+          { type: 'module', moduleId: 'sandbox' },
+          { type: 'module', moduleId: 'pi-web' },
+          { type: 'workspace' },
+          { type: 'actions' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'dev',
+    title: '开发',
+    regions: [
+      {
+        id: 'primary',
+        defaultSize: 640,
+        items: [
+          { type: 'module', moduleId: 'todo' },
+          { type: 'module', moduleId: 'fs-web' },
+        ],
+      },
+      {
+        id: 'terminal',
+        defaultSize: 520,
+        items: [
+          { type: 'module', moduleId: 'ssh' },
+          { type: 'module', moduleId: 'sandbox' },
+        ],
+      },
+      {
+        id: 'assistant',
+        defaultSize: 760,
+        items: [
+          { type: 'module', moduleId: 'pi-web' },
+          { type: 'workspace' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'chat',
+    title: '对话',
+    regions: [
+      {
+        id: 'side',
+        defaultSize: 360,
+        items: [{ type: 'module', moduleId: 'todo' }],
+      },
+      {
+        id: 'chat',
+        defaultSize: 900,
+        items: [
+          { type: 'module', moduleId: 'pi-web' },
+          { type: 'workspace' },
+          { type: 'actions' },
+        ],
+      },
+    ],
+  },
+]
+
 /** 组合根装配：覆盖值是宿主状态，变化时重建模块清单与视图。 */
 export function useShellRegistry(): ShellRegistry {
   const [overrides, setOverrides] = useState<Overrides>(loadOverrides)
@@ -316,5 +393,5 @@ export function useShellRegistry(): ShellRegistry {
 
   if (import.meta.env.DEV) assertRegistry(modules, views)
 
-  return { modules, views }
+  return { modules, views, profiles: PROFILES }
 }

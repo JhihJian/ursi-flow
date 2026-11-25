@@ -58,8 +58,33 @@ export interface WorkspaceView {
   Component: ComponentType<{ selection: Selection }>
 }
 
+/** 区域条目：模块栏、工作区区域或操作栏。 */
+export type WorkspaceRegionItem =
+  | { type: 'module'; moduleId: string }
+  | { type: 'workspace' }
+  | { type: 'actions' }
+
+/** 区域：一组条目按同一方向叠放。 */
+export interface WorkspaceRegionSpec {
+  id: string
+  /** 条目排列方向，缺省 'vertical' 自上而下；此时模块的尺寸契约字段（defaultSize/minSize/maxSize/collapsedSize）作用于高度。 */
+  direction?: 'horizontal' | 'vertical'
+  /** 区域默认宽度（px），只在多区域 profile 的根布局生效，缺省 720。 */
+  defaultSize?: number
+  items: WorkspaceRegionItem[]
+}
+
+/** 页面 profile：一份区域布局与模块集合声明，由组合根提供。 */
+export interface WorkspaceProfile {
+  id: string
+  title: string
+  regions: WorkspaceRegionSpec[]
+}
+
 export interface WorkspaceShellProps {
   modules: WorkspaceModule[]
+  /** 页面 profile：切换区域布局与模块集合，≥2 个时标题栏出现切换器。缺省单横向平铺全部模块（与历史行为一致）。 */
+  profiles?: WorkspaceProfile[]
   /** 标题栏文字。 */
   title?: string
   /** 标题栏右侧内容，通常放设置按钮；省略且提供 onSettings 时用默认按钮。 */
@@ -69,7 +94,7 @@ export interface WorkspaceShellProps {
   status?: ReactNode
   /** 不占栏的视图，例如全局设置。 */
   views?: WorkspaceView[]
-  /** 布局与折叠状态的存储键。 */
+  /** 布局与折叠状态的存储键；当前 profile 存在 `${storageKey}:profile`。 */
   storageKey?: string
   /** 操作失败时的提示，缺省 console.error。 */
   onError?: (error: unknown) => void

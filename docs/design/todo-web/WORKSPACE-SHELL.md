@@ -90,6 +90,7 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 `packages/workspace-shell` 与 `shell-web` 已经落地，形态是一个独立入口把 todo 作为**一栏**接入：
 
 - 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
+- 区域与页面 profile：外壳接收 `profiles`（`{ id, title, regions }`），根布局横向排区域，区域内条目按声明方向叠放；条目可以是模块栏、工作区或操作栏。提供 ≥2 个 profile 时标题栏出现下拉切换器，布局与折叠状态按 `${storageKey}:${profile.id}` 隔离持久化，当前 profile 存于 `${storageKey}:profile`。未传 `profiles` 时保持单横向平铺的历史行为。设计权衡见下文「被否决的方案」。
 - 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`hideHeader?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
 - 折叠由外壳负责，模块不写折叠 UI：模块实现 `useCollapsedSummary()` 公布 `{ title, items }`，外壳按书脊式排版渲染。todo 公布当前任务标题、`status` 与 `project`，未选中时公布 `Tasks` 与任务数；信息变化时窄条自动更新。窄条按 18px 间距分行，标题用衬线体、标签用小号大写、值用等宽体，避免堆在一起。
 - 模块内部还能驱动栏宽：`useModuleColumn()` 提供 `width`、`resize`、`collapse`、`expand`。子面板需要更多空间时（例如以后的运行详情），模块自己调 `resize`，外壳不需要知道模块内部有几层。把外壳做成「逐层管理子面板」会让它认识每个模块的内部结构，那样的耦合不划算。
@@ -144,5 +145,14 @@ todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判�
 | settings 贡献 | 模块往全局设置页贡献分节 | 出现第一个真实模块设置项（当前设置页仍是占位） |
 | onSelectionChanged 钩子 | 专用响应钩子 | 现有 `useWorkspace()` 订阅写法被证明繁琐（fs 模块已在用订阅方式响应选中，暂无新钩子必要） |
 | 外壳级 services | 模块间服务契约进入外壳契约 | 出现第二对需要跨模块服务调用的模块（第一对用宿主胶水解决，见下） |
+
+## 区域与 profile 的选型记录
+
+模块增多后单横向排布放不下（各模块 minSize 之和已超 1920px 屏宽），引入「区域」层与页面 profile。布局选型上保留 `Group/Panel` 两层结构（根横向排区域、区域内可横可纵），另两个方案被否决：
+
+- `Grid`：无折叠与像素约束语义，模块契约的 min/max/collapsed 字段无法映射，需要另写一层约束系统。
+- `Workspace` tabset：无拖拽 dock 需求却要重写整个契约；tabset 表头横向与折叠窄条纵向形态冲突；且该库在 Safari 缺 `moveBefore` 时 tab 切换会导致 iframe 重载，与 pi-web 的 keepMounted 目标相悳。
+
+v1 明确不做：用户自定义 profile、切换动画、跨 profile 携带选中、跨 profile 保留 iframe 状态。切换 profile 会重挂布局表面，iframe 重载一次属可接受代价。
 
 跨模块联动（如「todo 选中任务，fs 打开其 workdir」）的第一对用宿主胶水解决：需要实体解析（selection 只带 `{kind, id}`，fs 无法凭 id 解析出任务的工作目录），由宿主在组合根实现解析并提供给消费方模块；外壳契约不新增面。

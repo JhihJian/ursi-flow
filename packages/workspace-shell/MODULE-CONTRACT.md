@@ -44,6 +44,7 @@ export function createExecutorModule(): WorkspaceModule {
 - 不要写死超过栏宽的像素默认值；用 `flex` 与 `min-width: 0`，表格允许横向滚动或收列。
 - 需要固定宽度只用在小块（图标栏、列表），并给栏留出 `minSize` 的余量。
 - 滚动放在栏内自己的容器上，不要让整页滚动；外壳已固定标题栏与状态栏。
+- 模块被放进纵向区域（`direction: 'vertical'`，多条目上下叠放）时，契约里的 `defaultSize`/`minSize`/`maxSize`/`collapsedSize` 作用于高度而非宽度；`minSize` 应按内容的最小高度取值，折叠窄条由外壳转为横排书脊，模块无需感知方向。
 
 ## 5. 样式：进容器作用域
 
