@@ -46,15 +46,20 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
+    const onScroll = (event: Event) => {
+      // 页面滚动时跟随关闭；菜单自身内滚不关
+      if (ref.current?.contains(event.target as Node)) return
+      onClose()
+    }
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [state, onClose])
 
