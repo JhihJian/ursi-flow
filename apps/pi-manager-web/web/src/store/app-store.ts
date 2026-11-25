@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ApiError, api } from '../api/client'
+import type { HomeSummary } from '../api/types'
 
 /**
  * 全局唯一 store：home 选择 + 主题 + 页脚消息。
@@ -7,12 +8,45 @@ import { ApiError, api } from '../api/client'
  */
 
 const HOME_KEY = 'pi-manager.home'
+const PRESET_KEY = 'pi-manager.presets'
+
+/** 用户登记的 pi home 预设（路径 + 可选别名）。 */
+export interface HomePreset {
+  path: string
+  label?: string
+}
 
 function loadHome(): string {
   try {
     return localStorage.getItem(HOME_KEY) ?? ''
   } catch {
     return ''
+  }
+}
+
+function loadPresets(): HomePreset[] {
+  try {
+    const raw = localStorage.getItem(PRESET_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const path = (item as { path?: unknown }).path
+      if (typeof path !== 'string' || !path.startsWith('/')) return []
+      const label = (item as { label?: unknown }).label
+      return [{ path, label: typeof label === 'string' && label ? label : undefined }]
+    })
+  } catch {
+    return []
+  }
+}
+
+function savePresets(presets: HomePreset[]): void {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(presets))
+  } catch {
+    /* ignore */
   }
 }
 
@@ -24,10 +58,17 @@ interface AppState {
   homeChecking: boolean
   homeError: string | null
   footer: { kind: FooterKind; message: string }
+  /** 已知 pi home（服务端扫描结果 + 登记的预设）。 */
+  homes: HomeSummary[]
+  homesLoading: boolean
+  presets: HomePreset[]
 
   initHome: () => Promise<void>
   setHomePath: (path: string) => void
   confirmHome: (path: string) => Promise<boolean>
+  refreshHomes: () => Promise<void>
+  addPreset: (path: string, label?: string) => Promise<void>
+  removePreset: (path: string) => Promise<void>
   setFooter: (kind: FooterKind, message: string) => void
   clearFooter: () => void
   /** 包装写操作：footer 显示忙碌/成功/失败，返回是否成功。 */
@@ -40,8 +81,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   homeChecking: false,
   homeError: null,
   footer: { kind: 'idle', message: '' },
+  homes: [],
+  homesLoading: false,
+  presets: loadPresets(),
 
   async initHome() {
+    void get().refreshHomes()
     const current = get().homePath
     if (current) {
       await get().confirmHome(current)
@@ -54,6 +99,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       set({ homeError: describeError(error) })
     }
+  },
+
+  async refreshHomes() {
+    set({ homesLoading: true })
+    try {
+      const extra = get().presets.map((p) => p.path)
+      const { homes } = await api.getHomes(extra)
+      set({ homes, homesLoading: false })
+    } catch (error) {
+      set({ homesLoading: false, footer: { kind: 'error', message: `读取 pi home 列表失败：${describeError(error)}` } })
+    }
+  },
+
+  async addPreset(path, label) {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    const existing = get().presets
+    const next = existing.some((p) => p.path === trimmed)
+      ? existing.map((p) => (p.path === trimmed ? { ...p, label: label ?? p.label } : p))
+      : [...existing, { path: trimmed, label }]
+    set({ presets: next })
+    savePresets(next)
+    await get().refreshHomes()
+  },
+
+  async removePreset(path) {
+    const next = get().presets.filter((p) => p.path !== path)
+    set({ presets: next })
+    savePresets(next)
+    await get().refreshHomes()
   },
 
   setHomePath(path: string) {
@@ -74,6 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         /* ignore */
       }
       set({ homePath: resolved, homeValid: check.valid, homeChecking: false })
+      void get().refreshHomes()
       return true
     } catch (error) {
       set({ homeChecking: false, homeValid: false, homeError: describeError(error) })

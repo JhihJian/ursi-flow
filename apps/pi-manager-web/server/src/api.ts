@@ -1,6 +1,7 @@
 import type http from 'node:http'
 import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
+import { discoverHomes } from './homes.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
@@ -45,6 +46,12 @@ route('GET', '/api/home/check', async ({ url }) => {
   const raw = url.searchParams.get('home')
   const real = await resolveRequestedHome(raw)
   return { home: real, valid: looksLikePiHome(real) }
+})
+
+// 已知 pi home 目录（默认位置、env 位置、同机其他用户、前端登记的预设）。
+route('GET', '/api/homes', async ({ url }) => {
+  const extra = url.searchParams.getAll('extra').flatMap((v) => v.split(',')).filter(Boolean)
+  return { homes: discoverHomes(extra) }
 })
 
 // ---------------------------------------------------------------------------
@@ -275,8 +282,10 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
         sendError(res, 404, 'not_found', `未知 API：${req.method} ${pathname}`)
         return true
       }
-      // home 探测类路由自己解析参数，不参与统一校验。
-      const home = pathname.startsWith('/api/home/')
+      // home 探测与列表路由自己解析参数，不参与统一校验。
+      const selfResolved =
+        pathname.startsWith('/api/home/') || pathname === '/api/homes'
+      const home = selfResolved
         ? (url.searchParams.get('home') ?? '')
         : await resolveRequestedHome(url.searchParams.get('home'))
       const isWrite = req.method !== 'GET' && req.method !== 'HEAD'

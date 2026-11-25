@@ -148,14 +148,146 @@ textarea {
   user-select: none;
 }
 
+.config-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.config-sidebar-head-sections {
+  margin-top: var(--space-lg);
+}
+
 .config-sidebar-heading {
+  flex: 1;
   font-family: var(--font-serif);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--gray-400);
-  margin-bottom: var(--space-md);
+}
+
+.rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  padding: 0 var(--space-xs);
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rail-toggle:hover {
+  color: var(--gray-900);
+  background: var(--gray-200);
+}
+
+/* pi home 预设列表 */
+.preset-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.preset-item {
+  display: flex;
+  align-items: stretch;
+  border-left: 2px solid transparent;
+}
+
+.preset-item:hover {
+  background: var(--gray-200);
+}
+
+.preset-item.active {
+  border-left-color: var(--black);
+  background: var(--gray-200);
+}
+
+.preset-item.invalid .preset-name {
+  color: var(--gray-400);
+}
+
+.preset-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-sm) var(--space-xs);
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.preset-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  color: var(--gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-item.active .preset-name {
+  color: var(--black);
+  font-weight: 500;
+}
+
+.preset-source {
+  flex: none;
+  font-size: 10px;
+  color: var(--gray-400);
+  letter-spacing: 0.5px;
+}
+
+.preset-sub {
+  font-size: 11px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-item.invalid .preset-sub {
+  color: var(--danger);
+}
+
+.preset-remove {
+  flex: none;
+  width: 20px;
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.preset-item:hover .preset-remove {
+  opacity: 1;
+}
+
+.preset-remove:hover {
+  color: var(--danger);
+}
+
+.preset-empty {
+  padding: var(--space-sm) var(--space-xs);
+  font-size: 11px;
+  color: var(--gray-400);
 }
 
 .sidebar-item {
