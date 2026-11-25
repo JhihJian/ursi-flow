@@ -1,29 +1,7 @@
-import { WorkspaceShell, useWorkspace, type WorkspaceView } from '@ursi/workspace-shell'
-import { createTodoModule } from '@ursi/todo-web/module'
-import { createFsModule } from '@ursi/fs-web/module'
-import '@ursi/fs-web/module.css'
+import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
+import { buildRegistry, SETTINGS } from './registry'
 
-const modules = [createTodoModule(), createFsModule()]
-
-/** 设置页不占栏，注册成不占栏的视图，由标题栏按钮选中它。 */
-const SETTINGS = { kind: 'app.settings', id: 'settings' } as const
-
-function SettingsView() {
-  return (
-    <div className="app-settings">
-      <h2 className="app-settings-title">Settings</h2>
-      <p>全局设置占位：后续放服务地址、执行器修订、主题与快捷键。</p>
-    </div>
-  )
-}
-
-const views: WorkspaceView[] = [
-  {
-    kind: SETTINGS.kind,
-    summary: () => 'Settings',
-    Component: SettingsView,
-  },
-]
+const { modules, views } = buildRegistry()
 
 function SettingsButton() {
   const { select } = useWorkspace()

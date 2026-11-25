@@ -1,6 +1,6 @@
 # 工作区入口
 
-把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/App.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。第一版接入 todo 与 fs 两个模块，工作区区域与右侧操作栏已按契约工作。
+把多个模块组合进一个工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包身份接入，宿主依赖它们并调用各自导出的模块工厂。第一版接入 todo 与 fs 两个模块，工作区区域与右侧操作栏已按契约工作。
 
 ## 开发
 
@@ -17,19 +17,11 @@ cd todo-web/server && cargo run          # 或已有实例
 
 ## 模块怎么加
 
-在 `src/App.tsx` 的 `modules` 数组里加一项 `WorkspaceModule`：
-
-```ts
-{
-  id: 'runs', title: 'Runs', Panel: RunsPanel,
-  selection: { kind: 'run.attempt', summary, WorkspaceView },
-  actions: [{ id: 'cancel', label: 'Cancel run', appliesTo, run }],
-}
-```
+组合根 `src/registry.tsx` 是全应用唯一允许出现宿主胶水代码的地方：登记模块清单（栏序即数组顺序）、注入模块 options（如 `apiBaseUrl`）、声明不占栏的视图，开发期校验模块 id 与 selection kind 全局唯一，撞名直接报错而不是被静默掩盖。
 
 新模块的接入要求（契约、选中、折叠、样式作用域、副作用、交付物与检查清单）见 [`packages/workspace-shell/MODULE-CONTRACT.md`](../../packages/workspace-shell/MODULE-CONTRACT.md)。
 
-接入分三步：模块自己导出接入代码（如 `todo-web/web` 的 `src/module.tsx` 与 `fs-web/web` 的 `src/module.tsx`），宿主 `package.json` 声明对它的依赖（`@ursi/todo-web`、`@ursi/fs-web`），再在 `src/App.tsx` 的 `modules` 数组里调用模块工厂：
+接入分三步：模块自己导出接入代码（如 `todo-web/web` 的 `src/module.tsx` 与 `fs-web/web` 的 `src/module.tsx`），宿主 `package.json` 声明对它的依赖（`@ursi/todo-web`、`@ursi/fs-web`），再在 `src/registry.tsx` 的组合根里调用模块工厂：
 
 外壳负责栏宽、折叠、选中与操作栏渲染，模块自己取数据。模块自带标题或工具条时可声明 `hideHeader: true`，外壳不再画标题行，折叠按钮移到分隔线中点。
 
