@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAppStore } from '../store/app-store'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
 export type SectionId =
   | 'general'
@@ -72,19 +73,49 @@ function InlineInput({
 
 type EditingField = 'name' | 'description' | null
 
+type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+
 function HomeItem({
   home,
   active,
   onSelect,
+  openMenu,
 }: {
   home: HomeSummary
   active: boolean
   onSelect: () => void
+  openMenu: OpenMenu
 }) {
   const updateHome = useAppStore((s) => s.updateHome)
   const removeHome = useAppStore((s) => s.removeHome)
+  const createHome = useAppStore((s) => s.createHome)
   const [editing, setEditing] = useState<EditingField>(null)
-  const [confirming, setConfirming] = useState(false)
+
+  const menuItems: MenuItem[] = home.listed
+    ? [
+        { label: '重命名', onSelect: () => setEditing('name') },
+        { label: '编辑说明', onSelect: () => setEditing('description') },
+        {
+          label: '从清单移除',
+          danger: true,
+          onSelect: () => {
+            // 菜单已关闭，再在条目位置弹出确认菜单；只动清单，不删文件。
+            const rect = document
+              .querySelector(`[data-pi-home-id="${home.id}"]`)
+              ?.getBoundingClientRect()
+            openMenu(
+              rect?.left ?? 0,
+              (rect?.bottom ?? 0) + 4,
+              [
+                { label: '移除', danger: true, onSelect: () => void removeHome(home.id) },
+                { label: '取消', onSelect: () => {} },
+              ],
+              `移除「${home.name}」？仅从清单移除，不动文件。`,
+            )
+          },
+        },
+      ]
+    : [{ label: '登记到清单', onSelect: () => void createHome({ mode: 'adopt', path: home.path }) }]
 
   if (editing) {
     const isName = editing === 'name'
@@ -108,76 +139,25 @@ function HomeItem({
   }
 
   return (
-    <li>
-      <div
-        className={`preset-item${active ? ' active' : ''}${home.valid ? '' : ' invalid'}`}
-        title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}`}
-      >
-        <button type="button" className="preset-main" aria-current={active} onClick={onSelect}>
-          <span className="preset-name">
-            {home.name}
-            <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
-          </span>
-          <span className="preset-path">{home.path}</span>
-          <span className="preset-sub">{summaryLine(home)}</span>
-        </button>
-        {confirming ? (
-          <span className="preset-confirm">
-            <button
-              type="button"
-              className="preset-confirm-yes"
-              title="仅从列表移除，不删文件"
-              onClick={() => {
-                setConfirming(false)
-                void removeHome(home.id)
-              }}
-            >
-              移除
-            </button>
-            <button type="button" className="preset-confirm-no" onClick={() => setConfirming(false)}>
-              取消
-            </button>
-          </span>
-        ) : home.listed ? (
-          <span className="preset-actions">
-            <button
-              type="button"
-              className="preset-action"
-              title="重命名"
-              onClick={() => setEditing('name')}
-            >
-              ✎
-            </button>
-            <button
-              type="button"
-              className="preset-action"
-              title="编辑说明"
-              onClick={() => setEditing('description')}
-            >
-              ≡
-            </button>
-            <button
-              type="button"
-              className="preset-action"
-              title="从清单移除（不删目录）"
-              onClick={() => setConfirming(true)}
-            >
-              ×
-            </button>
-          </span>
-        ) : (
-          <span className="preset-actions">
-            <button
-              type="button"
-              className="preset-action"
-              title="登记到清单（可改名、可复制配置）"
-              onClick={() => void useAppStore.getState().createHome({ mode: 'adopt', path: home.path })}
-            >
-              +
-            </button>
-          </span>
-        )}
-      </div>
+    <li
+      data-pi-home-id={home.id}
+      className={`preset-item${active ? ' active' : ''}${home.valid ? '' : ' invalid'}`}
+      title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}\n右键查看更多操作`}
+      onClick={onSelect}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        openMenu(event.clientX, event.clientY, menuItems, home.description || undefined)
+      }}
+    >
+      <span className="preset-main">
+        <span className="preset-name">
+          {home.name}
+          <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
+        </span>
+        <span className="preset-path">{home.path}</span>
+        <span className="preset-sub">{summaryLine(home)}</span>
+      </span>
     </li>
   )
 }
@@ -302,6 +282,8 @@ export function Sidebar({
   const confirmHome = useAppStore((s) => s.confirmHome)
   const refreshHomes = useAppStore((s) => s.refreshHomes)
   const [creating, setCreating] = useState(false)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
 
   return (
     <nav className="config-sidebar" aria-label="pi home 与配置分区">
@@ -335,6 +317,7 @@ export function Sidebar({
             home={home}
             active={home.path === homePath}
             onSelect={() => void confirmHome(home.path)}
+            openMenu={openMenu}
           />
         ))}
         {homes.length === 0 ? (
@@ -359,6 +342,7 @@ export function Sidebar({
           <span className="sidebar-item-label">{section.label}</span>
         </button>
       ))}
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </nav>
   )
 }

@@ -277,6 +277,8 @@ textarea {
   display: flex;
   align-items: stretch;
   border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
 }
 
 .preset-item:hover {
@@ -299,10 +301,6 @@ textarea {
   flex-direction: column;
   gap: 1px;
   padding: var(--space-sm) var(--space-xs);
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
   overflow: hidden;
 }
 
@@ -348,63 +346,53 @@ textarea {
   color: var(--danger);
 }
 
-.preset-actions {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  opacity: 0;
-}
-
-.preset-item:hover .preset-actions {
-  opacity: 1;
-}
-
-.preset-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 14px;
-  border: 0;
-  background: none;
-  color: var(--gray-400);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.preset-action:hover {
-  color: var(--gray-900);
-  background: var(--gray-200);
-}
-
 .preset-item-editing {
   padding: var(--space-xs) 0;
+  cursor: default;
 }
 
-.preset-confirm {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.preset-confirm-yes,
-.preset-confirm-no {
-  padding: 1px var(--space-xs);
+/* 右键菜单（参照 fs-web 的上下文菜单） */
+.context-menu {
+  position: fixed;
+  z-index: 200;
+  padding: 4px 0;
   border: 1px solid var(--gray-900);
   background: var(--white);
-  font-size: 10px;
+}
+
+.context-menu-heading {
+  padding: 4px var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--gray-400);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
   cursor: pointer;
 }
 
-.preset-confirm-yes {
-  background: var(--gray-900);
-  color: var(--white);
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
+  outline: none;
+  background: var(--gray-200);
 }
 
-.preset-confirm-no:hover {
-  background: var(--gray-200);
+.context-menu-item.danger {
+  color: var(--danger);
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(179, 37, 62, 0.1);
 }
 
 .preset-empty {
