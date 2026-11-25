@@ -109,8 +109,21 @@ textarea {
   white-space: nowrap;
 }
 
-.home-bar-path {
+.home-bar-home {
+  display: flex;
   flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.home-bar-name {
+  font-size: 12px;
+  color: var(--gray-900);
+  white-space: nowrap;
+}
+
+.home-bar-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -120,8 +133,14 @@ textarea {
   user-select: text;
 }
 
-.home-bar-path.invalid {
+.home-bar-flag {
+  flex: none;
+  font-size: 12px;
   color: var(--danger);
+}
+
+.home-bar-home.invalid .home-bar-path {
+  color: var(--gray-400);
 }
 
 /* ------------------------------------------------------------------ */
