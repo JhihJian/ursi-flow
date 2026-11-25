@@ -5,16 +5,23 @@ import { openTerminalBridge, type TerminalBridge } from '../terminal/bridge'
 import { TerminalSearch } from '../terminal/search'
 import { terminalBackground } from '../terminal/theme'
 import { useSshContainer, useSshController, useSshStore, terminalStateTo } from '../ssh-context'
+import type { TerminalTab } from '../store/ssh-store'
 
 /**
- * 右侧终端区：点会话即经 WS 建 SSH 并 attach。
- * 终端与主题解耦：切亮暗只改 xterm 的 theme，不重建终端也不重连 SSH。
- * 搜索入口统一由容器快捷键（Ctrl/Cmd+F）下发：searchKey 自增即视为一次请求。
+ * 一个终端标签对应的 xterm 面板。所有打开的标签常驻挂载（非激活的 visibility 隐藏，
+ * 保持同一盒尺寸，输出照常写入、远端 PTY 不被误 resize），激活时置顶并聚焦。
+ * 搜索入口统一由容器快捷键（Ctrl/Cmd+F）下发：searchKey 自增即视为一次请求，仅激活标签响应。
  */
 export function TerminalPane({
+  tab,
+  active,
   searchKey,
   onSearchHandled,
 }: {
+  /** 对应的终端标签。 */
+  tab: TerminalTab
+  /** 是否为当前激活标签。 */
+  active: boolean
   /** 父组件维护的单调递增计数，自增即一次搜索请求。 */
   searchKey: number
   onSearchHandled: () => void
@@ -25,7 +32,6 @@ export function TerminalPane({
   const tooltipRef = useRef<HTMLDivElement>(null)
   const bridgeRef = useRef<TerminalBridge | null>(null)
   const lastSearchKey = useRef(0)
-  const terminal = useSshStore((state) => state.terminal)
   const terminalLight = useSshStore((state) => state.terminalLight)
   const setEditor = useSshStore((state) => state.setEditor)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -34,23 +40,27 @@ export function TerminalPane({
   const [ended, setEnded] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
 
-  const focusTerminal = useCallback(() => bridgeRef.current?.focus(), [])
+  const focusTerminal = useCallback(() => {
+    if (active) bridgeRef.current?.focus()
+  }, [active])
 
-  // 新的搜索请求（key 变大）才打开面板；搜索完成时父组件会回调推进已处理水位。
+  // 新的搜索请求（key 变大）才打开面板；只有激活标签响应，搜索完成时父组件回调推进水位。
   useEffect(() => {
+    if (!active) return
     if (searchKey > lastSearchKey.current) {
       lastSearchKey.current = searchKey
       setSearchOpen(true)
     }
-  }, [searchKey])
+  }, [searchKey, active])
   useEffect(() => {
     if (!searchOpen) onSearchHandled()
   }, [searchOpen, onSearchHandled])
 
+  // 建桥生命周期只跟标签 key 绑定：同一标签的亮暗切换、激活切换都不重建、不重连。
   useEffect(() => {
     const host = hostRef.current
     const tooltip = tooltipRef.current
-    if (!host || !tooltip || !terminal) return
+    if (!host || !tooltip) return
     setEnded(null)
     setFailed(null)
     setSearchOpen(false)
@@ -61,14 +71,14 @@ export function TerminalPane({
       bridge = openTerminalBridge({
         host,
         tooltip,
-        target: terminal,
+        target: { connectionId: tab.connectionId, tmuxSession: tab.tmuxSession },
         light: store.getState().terminalLight,
         api,
         onState: (state) => {
-          store.getState().setTerminalState(state)
+          store.getState().setTerminalState(tab.key, state)
         },
         onEvent: (event) => {
-          store.getState().setTerminalState(terminalStateTo(event))
+          store.getState().setTerminalState(tab.key, terminalStateTo(event))
           if (event.kind === 'error') setFailed(event.message)
           else setEnded(event.message)
         },
@@ -76,7 +86,7 @@ export function TerminalPane({
     } catch (error) {
       // 建桥失败（WS URL 非法、WebGL 初始化异常等）不拖垮整棵 React 树。
       setFailed(error instanceof Error ? error.message : String(error))
-      store.getState().setTerminalState('error')
+      store.getState().setTerminalState(tab.key, 'error')
       return
     }
     bridgeRef.current = bridge
@@ -84,10 +94,14 @@ export function TerminalPane({
     return () => {
       bridgeRef.current = null
       setSearchAddon(null)
-      store.getState().setTerminalState('closed')
       bridge.dispose()
     }
-  }, [terminal])
+  }, [tab.key, tab.connectionId, tab.tmuxSession, api, store])
+
+  // 激活时聚焦终端：首次打开与切标签都靠这里。
+  useEffect(() => {
+    if (active) bridgeRef.current?.focus()
+  }, [active, searchAddon])
 
   useEffect(() => {
     bridgeRef.current?.setTheme(terminalLight)
@@ -110,21 +124,14 @@ export function TerminalPane({
     setMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top, items })
   }
 
-  if (!terminal) {
-    return (
-      <div className="ssh-terminal ssh-terminal-placeholder" onContextMenu={openMenu}>
-        从左侧选择 tmux 会话，或右键新建
-        <ContextMenu state={menu} onClose={() => setMenu(null)} />
-      </div>
-    )
-  }
-
   return (
     <div
       className={
-        terminalLight ? 'ssh-terminal ssh-terminal-surface light' : 'ssh-terminal ssh-terminal-surface'
+        terminalLight
+          ? 'ssh-terminal-pane ssh-terminal-surface light'
+          : 'ssh-terminal-pane ssh-terminal-surface'
       }
-      style={{ background: surfaceBackground }}
+      style={{ background: surfaceBackground, visibility: active ? 'visible' : 'hidden' }}
       onContextMenu={openMenu}
     >
       <div className="ssh-terminal-host" ref={hostRef} />

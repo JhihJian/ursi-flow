@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { ConnectionEditorSheet } from './components/ConnectionEditorSheet'
-import { ConnectionSidebar } from './components/ConnectionSidebar'
-import { SessionSidebar } from './components/SessionSidebar'
+import { ConnectionTree } from './components/ConnectionTree'
+import { NewSessionForm } from './components/NewSessionForm'
+import { SessionTabBar } from './components/SessionTabBar'
 import { TerminalPane } from './components/TerminalPane'
 import {
   SshContainerProvider,
   SshControllerProvider,
   useSshController,
+  useSshStore,
   type SshController,
 } from './ssh-context'
 
-/** 一次终端搜索请求；key 为单调递增计数，TerminalPane 只响应比上次更新的 key。 */
+/** 一次终端搜索请求；key 为单调递增计数，激活的 TerminalPane 只响应比上次更新的 key。 */
 export interface SearchRequest {
   key: number
 }
 
-/** 布局容器：180px 合并侧栏（上连接 / 下 tmux 会话）+ 终端区自适应；controller 必传。 */
+/** 布局容器：左侧连接树侧栏 + 右侧（顶部会话标签栏 + 终端区）；controller 必传。 */
 export function SshWorkspace({ controller }: { controller: SshController }) {
   return (
     <SshControllerProvider controller={controller}>
@@ -27,6 +29,9 @@ export function SshWorkspace({ controller }: { controller: SshController }) {
 function SshShell() {
   const { store } = useSshController()
   const loadConnections = store((state) => state.loadConnections)
+  const terminals = useSshStore((state) => state.terminals)
+  const activeTerminalKey = useSshStore((state) => state.activeTerminalKey)
+  const sessionFormOpen = useSshStore((state) => state.sessionFormOpen)
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const seenSearchKey = useRef(0)
@@ -58,11 +63,25 @@ function SshShell() {
     <div className="ssh-embed" ref={setContainer} onKeyDownCapture={handleKeyDown}>
       <SshContainerProvider value={container}>
         <div className="ssh-sidebar">
-          <ConnectionSidebar />
-          <SessionSidebar />
+          <ConnectionTree />
         </div>
         <div className="ssh-main">
-          <TerminalPane searchKey={searchKey} onSearchHandled={handleSearchDone} />
+          <SessionTabBar />
+          {sessionFormOpen ? <NewSessionForm /> : null}
+          <div className="ssh-terminal-stack">
+            {terminals.map((tab) => (
+              <TerminalPane
+                key={tab.key}
+                tab={tab}
+                active={tab.key === activeTerminalKey}
+                searchKey={searchKey}
+                onSearchHandled={handleSearchDone}
+              />
+            ))}
+            {terminals.length === 0 ? (
+              <div className="ssh-terminal ssh-terminal-placeholder">从左侧选择 tmux 会话，或右键新建</div>
+            ) : null}
+          </div>
           <ConnectionEditorSheet />
         </div>
       </SshContainerProvider>

@@ -21,16 +21,19 @@ export interface SshWebModuleOptions extends SshControllerOptions {}
 export function createSshModule(options: SshWebModuleOptions = {}): WorkspaceModule {
   const controller = createSshController(options)
 
-  /** 折叠窄条摘要：当前会话名 + 终端生命周期。 */
+  /** 折叠窄条摘要：激活标签的会话名 + 终端生命周期 + 打开数。 */
   const useCollapsedSummary: WorkspaceModule['useCollapsedSummary'] = () => {
     const connections = controller.store((state) => state.connections)
-    const activeId = controller.store((state) => state.activeId)
-    const terminal = controller.store((state) => state.terminal)
-    const terminalState = controller.store((state) => state.terminalState)
-    const connection = connections.find((item) => item.id === activeId)
+    const terminals = controller.store((state) => state.terminals)
+    const activeTerminalKey = controller.store((state) => state.activeTerminalKey)
+    const activeTab = terminals.find((tab) => tab.key === activeTerminalKey)
+    const connection = activeTab
+      ? connections.find((item) => item.id === activeTab.connectionId)
+      : undefined
     const items: { label: string; value: string }[] = []
-    if (terminal) items.push({ label: '会话', value: terminal.tmuxSession ?? 'ssh-main' })
-    items.push({ label: '状态', value: STATE_LABEL[terminalState] ?? terminalState })
+    if (activeTab) items.push({ label: '会话', value: activeTab.tmuxSession ?? 'ssh-main' })
+    items.push({ label: '状态', value: STATE_LABEL[activeTab?.state ?? 'closed'] ?? '未连接' })
+    if (terminals.length > 1) items.push({ label: '标签', value: String(terminals.length) })
     return { title: connection?.name ?? 'SSH', items }
   }
 

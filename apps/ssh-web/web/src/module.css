@@ -51,34 +51,24 @@
   display: none;
 }
 
-/* ── 布局：合并侧栏（上连接 / 下会话）+ 终端区 ─────────────────── */
+/* ── 布局：左侧连接树侧栏 + 右侧（顶部会话标签栏 + 终端栈）────── */
 
 .ssh-sidebar {
   display: flex;
   flex-direction: column;
-  flex: 0 0 180px;
+  flex: 0 0 200px;
   min-height: 0;
   border-right: 1px solid var(--ssh-gray-200);
   user-select: none;
 }
 
-.ssh-connections {
+.ssh-tree {
   display: flex;
   flex-direction: column;
-  flex: 1 1 50%;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   padding: var(--ssh-space-sm) var(--ssh-space-md);
-}
-
-.ssh-sessions {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 50%;
-  min-width: 0;
-  min-height: 0;
-  padding: var(--ssh-space-sm) var(--ssh-space-md);
-  border-top: 1px solid var(--ssh-gray-200);
 }
 
 .ssh-sidebar-head {
@@ -134,23 +124,52 @@
   list-style: none;
 }
 
-.ssh-item {
-  padding: var(--ssh-space-xs) var(--ssh-space-xs);
+.ssh-tree-node {
+  min-width: 0;
+}
+
+.ssh-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--ssh-space-xs);
   cursor: pointer;
   border-left: 2px solid transparent;
 }
 
-.ssh-item:hover {
+.ssh-tree-row:hover {
   background: var(--ssh-gray-200);
 }
 
-.ssh-item.active {
+.ssh-tree-row.active {
   border-left-color: var(--ssh-black);
   background: var(--ssh-gray-200);
 }
 
-.ssh-item-name {
-  display: block;
+.ssh-tree-chevron {
+  flex: none;
+  width: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.ssh-tree-chevron:hover {
+  color: var(--ssh-gray-900);
+}
+
+.ssh-tree-chevron.open {
+  transform: rotate(90deg);
+}
+
+.ssh-tree-label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   font-weight: 500;
   color: var(--ssh-gray-900);
@@ -158,13 +177,36 @@
   white-space: nowrap;
 }
 
-.ssh-item-meta {
-  display: block;
+.ssh-tree-children {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssh-tree-row.child {
+  padding-left: 20px;
+}
+
+.ssh-tree-row.child .ssh-tree-label {
+  font-weight: 400;
+}
+
+.ssh-tree-meta {
+  flex: none;
+  max-width: 45%;
   overflow: hidden;
   font-size: 11px;
   color: var(--ssh-gray-400);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ssh-tree-note {
+  padding: var(--ssh-space-xs);
+  padding-left: 20px;
+  color: var(--ssh-gray-600);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .ssh-empty {
@@ -186,8 +228,17 @@
   color: var(--ssh-danger);
 }
 
-/* 新建会话与删除确认共用的行内表单块。 */
-.ssh-new-session,
+/* 新建会话表单：标签栏下方一行内联展开；删除确认仍在侧栏底部。 */
+.ssh-new-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ssh-space-sm);
+  flex: none;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+  border-bottom: 1px solid var(--ssh-gray-200);
+  background: var(--ssh-white);
+}
+
 .ssh-confirm {
   display: flex;
   flex-direction: column;
@@ -215,9 +266,130 @@
   padding: var(--ssh-space-xs) var(--ssh-space-sm);
 }
 
-/* ── 终端区 ──────────────────────────────────────────── */
+/* ── 顶部会话标签栏 ─────────────────────────────────── */
+
+.ssh-tabbar {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  min-width: 0;
+  height: 30px;
+  border-bottom: 1px solid var(--ssh-gray-200);
+  background: var(--ssh-white);
+  user-select: none;
+}
+
+.ssh-tabbar-strip {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.ssh-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 160px;
+  min-width: 0;
+  padding: 0 var(--ssh-space-sm);
+  border-right: 1px solid var(--ssh-gray-200);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ssh-tab:hover {
+  background: var(--ssh-gray-200);
+}
+
+.ssh-tab.active {
+  position: relative;
+  background: var(--ssh-terminal-bg);
+  color: var(--ssh-terminal-fg);
+}
+
+.ssh-tab.active::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--ssh-black);
+}
+
+/* 标签上的生命周期指示：connecting 空心、error 红点，live 无前缀。 */
+.ssh-tab.state-error .ssh-tab-label::before {
+  content: '\25CF\ ';
+  color: var(--ssh-danger);
+}
+
+.ssh-tab.state-connecting .ssh-tab-label::before {
+  content: '\25CC\ ';
+  color: var(--ssh-gray-400);
+}
+
+.ssh-tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-tab-close {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ssh-gray-400);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ssh-tab-close:hover {
+  color: inherit;
+  background: rgb(128 128 128 / 0.25);
+}
+
+.ssh-tabbar-add {
+  flex: none;
+  width: 30px;
+  border: 0;
+  border-left: 1px solid var(--ssh-gray-200);
+  background: none;
+  color: var(--ssh-gray-600);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.ssh-tabbar-add:hover:not(:disabled) {
+  color: var(--ssh-gray-900);
+  background: var(--ssh-gray-200);
+}
+
+.ssh-tabbar-add:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── 终端栈：所有标签常驻堆叠，激活的可见 ─────────────── */
 
 .ssh-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ssh-terminal-stack {
   position: relative;
   display: flex;
   flex: 1;
@@ -227,12 +399,19 @@
   background: var(--ssh-terminal-bg);
 }
 
+.ssh-terminal-pane {
+  position: absolute;
+  inset: 0;
+}
+
 .ssh-terminal {
   flex: 1;
   min-height: 0;
 }
 
 .ssh-terminal-placeholder {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -10,13 +10,25 @@ export interface TerminalTarget {
   tmuxSession: string | null
 }
 
-/** 终端生命周期，驱动折叠摘要与事件条展示。 */
+/** 一个打开的终端标签：同一 (连接, tmux 会话) 只允许一个标签。 */
+export interface TerminalTab extends TerminalTarget {
+  /** 稳定标识：`{connectionId}/{tmuxSession ?? 'main'}`。 */
+  key: string
+  /** 终端生命周期：openTerminal 置 connecting，TerminalPane 按 WS/事件推进，卸载落 closed。 */
+  state: TerminalState
+}
+
+/** 终端生命周期，驱动标签事件条展示。 */
 export type TerminalState =
-  | /** 打开了目标，WS 建立中 */ 'connecting'
+  | /** WS 建立中 */ 'connecting'
   | /** WS 已建立并可交互 */ 'live'
   | /** 远端会话正常结束 */ 'ended'
   | /** 连接失败 */ 'error'
-  | /** 未打开或面板已卸载 */ 'closed'
+  | /** 未打开 */ 'closed'
+
+export function terminalKey(connectionId: number, tmuxSession: string | null): string {
+  return `${connectionId}/${tmuxSession ?? 'main'}`
+}
 
 export interface SshStoreDeps {
   api: SshApi
@@ -26,11 +38,14 @@ export interface SshStoreDeps {
 
 export interface SshStoreState {
   connections: Connection[]
+  /** 树中选中的连接；决定侧栏展开哪个连接的 tmux 会话子级。 */
   activeId: number | null
-  /** 当前终端目标；null 表示未打开终端（显示占位）。 */
-  terminal: TerminalTarget | null
-  /** 终端生命周期：openTerminal 置 connecting，TerminalPane 按 WS/事件推进，卸载落 closed。 */
-  terminalState: TerminalState
+  /** 打开的终端标签，顺序即标签栏顺序。 */
+  terminals: TerminalTab[]
+  /** 当前激活的标签 key；null 表示全部关闭（显示占位）。 */
+  activeTerminalKey: string | null
+  /** 新建 tmux 会话表单是否展开（提交目标为 activeId）。 */
+  sessionFormOpen: boolean
   /** tmux 会话列表；null 表示远端无 tmux 或查询失败（看 notice）。 */
   tmuxSessions: TmuxSession[] | null
   tmuxLoading: boolean
@@ -40,14 +55,18 @@ export interface SshStoreState {
   terminalLight: boolean
 
   loadConnections: () => Promise<void>
-  /** 选中连接：只切换选中并刷新 tmux 会话列表，不建连。 */
+  /** 选中连接：切换树选中并刷新 tmux 会话列表，不影响已打开的标签。 */
   selectConnection: (id: number) => Promise<void>
-  /** 打开终端：attach 指定 tmux 会话（null = 默认 ssh-main）。 */
-  openTerminal: (tmuxSession: string | null) => void
-  /** 关闭终端（断开 WS；远端 tmux 会话保留）。 */
-  closeTerminal: () => void
-  /** 由 TerminalPane 推进生命周期；桥卸载时传 closed。 */
-  setTerminalState: (state: TerminalState) => void
+  /** 打开（或激活）一个终端标签：attach 指定 tmux 会话（null = 默认 ssh-main）。 */
+  openTerminal: (connectionId: number, tmuxSession: string | null) => void
+  /** 激活已打开的标签。 */
+  activateTerminal: (key: string) => void
+  /** 关闭标签（断开 WS；远端 tmux 会话保留），激活相邻标签。 */
+  closeTerminal: (key: string) => void
+  /** 由 TerminalPane 推进对应标签的生命周期。 */
+  setTerminalState: (key: string, state: TerminalState) => void
+  openSessionForm: () => void
+  closeSessionForm: () => void
   refreshTmuxSessions: () => Promise<void>
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
   removeConnection: (id: number) => Promise<void>
@@ -60,6 +79,15 @@ function toMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/** 关闭一组标签后选出新的激活标签：优先保持原激活位置，否则取最后一个。 */
+function nextActiveKey(terminals: TerminalTab[], closedKeys: Set<string>, activeKey: string | null): string | null {
+  const remaining = terminals.filter((tab) => !closedKeys.has(tab.key))
+  if (remaining.length === 0) return null
+  if (activeKey !== null && !closedKeys.has(activeKey)) return activeKey
+  const closedIndex = terminals.findIndex((tab) => closedKeys.has(tab.key))
+  return remaining[Math.min(closedIndex, remaining.length - 1)]?.key ?? null
 }
 
 /**
@@ -83,8 +111,9 @@ export function createSshStore(
   return create<SshStoreState>((set, get) => ({
     connections: [],
     activeId: null,
-    terminal: null,
-    terminalState: 'closed',
+    terminals: [],
+    activeTerminalKey: null,
+    sessionFormOpen: false,
     tmuxSessions: null,
     tmuxLoading: false,
     editor: null,
@@ -97,19 +126,46 @@ export function createSshStore(
     },
 
     selectConnection: async (id) => {
-      set({ activeId: id, terminal: null, terminalState: 'closed', tmuxSessions: null })
+      if (get().activeId !== id) set({ activeId: id, tmuxSessions: null, tmuxLoading: false })
       await get().refreshTmuxSessions()
     },
 
-    openTerminal: (tmuxSession) => {
-      const id = get().activeId
-      if (id === null) return
-      set({ terminal: { connectionId: id, tmuxSession }, terminalState: 'connecting', notice: null })
+    openTerminal: (connectionId, tmuxSession) => {
+      const key = terminalKey(connectionId, tmuxSession)
+      const { terminals } = get()
+      if (terminals.some((tab) => tab.key === key)) {
+        set({ activeTerminalKey: key, sessionFormOpen: false })
+        return
+      }
+      set({
+        terminals: [...terminals, { key, connectionId, tmuxSession, state: 'connecting' }],
+        activeTerminalKey: key,
+        sessionFormOpen: false,
+        notice: null,
+      })
     },
 
-    closeTerminal: () => set({ terminal: null, terminalState: 'closed' }),
+    activateTerminal: (key) => set({ activeTerminalKey: key }),
 
-    setTerminalState: (state) => set({ terminalState: state }),
+    closeTerminal: (key) => {
+      const { terminals, activeTerminalKey } = get()
+      const next = nextActiveKey(terminals, new Set([key]), activeTerminalKey)
+      set({
+        terminals: terminals.filter((tab) => tab.key !== key),
+        activeTerminalKey: next,
+        sessionFormOpen: false,
+      })
+    },
+
+    setTerminalState: (key, state) =>
+      set((current) => ({
+        terminals: current.terminals.map((tab) =>
+          tab.key === key ? { ...tab, state } : tab,
+        ),
+      })),
+
+    openSessionForm: () => set({ sessionFormOpen: true }),
+    closeSessionForm: () => set({ sessionFormOpen: false }),
 
     refreshTmuxSessions: async () => {
       const id = get().activeId
@@ -137,8 +193,15 @@ export function createSshStore(
 
     removeConnection: async (id) => {
       await api.deleteConnection(id)
-      if (get().activeId === id)
-        set({ activeId: null, terminal: null, terminalState: 'closed', tmuxSessions: null })
+      const { terminals, activeTerminalKey } = get()
+      const closed = new Set(terminals.filter((tab) => tab.connectionId === id).map((tab) => tab.key))
+      set({
+        terminals: terminals.filter((tab) => !closed.has(tab.key)),
+        activeTerminalKey: nextActiveKey(terminals, closed, activeTerminalKey),
+        activeId: get().activeId === id ? null : get().activeId,
+        tmuxSessions: get().activeId === id ? null : get().tmuxSessions,
+        tmuxLoading: get().activeId === id ? false : get().tmuxLoading,
+      })
       await get().loadConnections()
     },
 
