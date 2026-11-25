@@ -7,8 +7,7 @@ use tokio::process::Command;
 use tokio::select;
 use tokio::sync::mpsc;
 
-use crate::models::Connection as ConnectionConfig;
-use crate::models::TmuxSession;
+use crate::models::{Connection as ConnectionConfig, ConnectionKind, TmuxSession};
 
 /// 连接超时：不可达时 ssh 自身也会退出，这里兜底防悬挂。
 pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
@@ -51,6 +50,14 @@ pub enum ControlMessage {
     Resize { cols: u32, rows: u32 },
 }
 
+/// tmux attach 启动脚本：tmux 可用则 attach 指定会话，否则回退普通 shell 并提示。
+/// 会话名已过白名单，单引号内拼接安全。POSIX sh 兼容；fallback_shell 是回退时 exec 的命令。
+fn tmux_script(name: &str, fallback_shell: &str) -> String {
+    format!(
+        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec {fallback_shell}; }}",
+    )
+}
+
 /// 从用户命令提取 ssh 参数（去掉首词 `ssh`），并追加服务端固定参数：
 /// `-tt` 强制分配远端 PTY、`StrictHostKeyChecking=accept-new` 首连自动接受主机密钥。
 /// 不加 `-q`：连接失败等诊断信息必须原样透传到终端。
@@ -66,6 +73,11 @@ fn ssh_args(command: &str, remote_script: &str) -> Vec<String> {
     args.push("StrictHostKeyChecking=accept-new".into());
     args.push(remote_script.into());
     args
+}
+
+/// 本机回退 shell：登录 shell，环境变量缺失时兜底 bash。
+fn local_shell() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into())
 }
 
 /// 终端任务：在本地 PTY 中启动 ssh 子进程、泵数据。
@@ -99,15 +111,10 @@ async fn run_terminal_inner(
     event_tx: &mpsc::Sender<WsEvent>,
 ) -> Result<()> {
     let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
-    // 远端启动命令：tmux 可用则 attach 指定会话，否则回退普通 shell 并提示。
-    // 会话名已过白名单，单引号内拼接安全。POSIX sh 兼容。
-    let remote_script = format!(
-        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec $SHELL; }}",
-    );
-    let args = ssh_args(&connection.command, &remote_script);
+    let remote_script = tmux_script(&name, "$SHELL");
 
-    // portable-pty：分配本地 PTY（初始尺寸即终端面板尺寸）并在其中启动 ssh。
-    // ssh -tt 要求 stdin 是终端，PTY 由这里提供。
+    // portable-pty：分配本地 PTY（初始尺寸即终端面板尺寸）并在其中启动连接进程。
+    // ssh -tt 要求 stdin 是终端，PTY 由这里提供；本机连接则直接在 PTY 里开 shell。
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -118,8 +125,19 @@ async fn run_terminal_inner(
         })
         .context("分配 PTY 失败")?;
 
-    let mut cmd = CommandBuilder::new("ssh");
-    cmd.args(&args);
+    let mut cmd = match connection.kind {
+        ConnectionKind::Local => {
+            let mut cmd = CommandBuilder::new(local_shell());
+            cmd.arg("-c");
+            cmd.arg(&remote_script);
+            cmd
+        }
+        ConnectionKind::Ssh => {
+            let mut cmd = CommandBuilder::new("ssh");
+            cmd.args(&ssh_args(&connection.command, &remote_script));
+            cmd
+        }
+    };
     // 远端 shell 与 tmux 依赖正确的终端类型；服务进程常无 TERM（nohup/守护），显式指定。
     cmd.env("TERM", "xterm-256color");
     let mut child = pair
@@ -228,28 +246,38 @@ async fn pump(
     }
 }
 
-/// 在远端执行一条命令，收集 stdout 与退出码。
-async fn exec_collect(connection: &ConnectionConfig, remote_script: &str) -> Result<(String, i32)> {
-    let args = ssh_args(&connection.command, remote_script);
+/// 在连接目标上执行一条命令（本机直接跑，ssh 经 OpenSSH），收集 stdout 与退出码。
+async fn exec_collect(connection: &ConnectionConfig, script: &str) -> Result<(String, i32)> {
+    let mut command = match connection.kind {
+        ConnectionKind::Local => {
+            let mut command = Command::new(local_shell());
+            command.arg("-c").arg(script);
+            command
+        }
+        ConnectionKind::Ssh => {
+            // tmux ls 无交互输出，不需要 PTY；去掉 ssh_args 尾部的 -tt 保持批量模式干净。
+            let args = ssh_args(&connection.command, script);
+            let mut command = Command::new("ssh");
+            command.args(&args[..args.len() - 1]).arg(script);
+            command
+        }
+    };
     let output = tokio::time::timeout(
         CONNECT_TIMEOUT,
-        // tmux ls 无交互输出，不需要 PTY，直接 ssh 批量执行。
-        Command::new("ssh")
-            .args(&args[..args.len() - 1]) // 去掉 -tt 保持批量模式干净
-            .arg(remote_script)
+        command
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
             .output(),
     )
     .await
     .map_err(|_| anyhow!("连接超时"))?
-    .context("启动 ssh 子进程失败")?;
+    .context("启动子进程失败")?;
     let code = output.status.code().unwrap_or(-1);
     Ok((String::from_utf8_lossy(&output.stdout).into_owned(), code))
 }
 
-/// 列出远端 tmux 会话。远端没有 tmux 时返回 None（前端据此展示回退提示）。
-/// tmux 无会话（exit 1）是正常空态。
+/// 列出连接目标上的 tmux 会话。目标没有 tmux 时返回 None（前端据此展示回退提示）。
+/// tmux 无会话（exit 1）是正常空态。本机连接在本机执行，ssh 连接在远端执行。
 pub async fn list_tmux_sessions(
     connection: &ConnectionConfig,
 ) -> Result<Option<Vec<TmuxSession>>> {

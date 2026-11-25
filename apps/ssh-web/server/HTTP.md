@@ -10,14 +10,14 @@
 
 ## 连接配置
 
-连接配置只有两个字段：`name`（唯一名称）与 `command`（一条 ssh 命令）。认证、跳板、端口、密钥等全部由命令本身（及 `~/.ssh/config`）表达。
+连接列表首项固定为「本机」虚拟连接：`id` 0、`name` 本机、`kind` "local"、`command` "登录 shell"，指向服务所在设备的 shell，不入库、不可修改与删除（PUT/DELETE 返回 400 `bad_request`）。其余连接只有两个字段：`name`（唯一名称）与 `command`（一条 ssh 命令），`kind` 为 "ssh"。认证、跳板、端口、密钥等全部由命令本身（及 `~/.ssh/config`）表达。
 
 ### `GET /connections`
 
-返回连接列表，按名称不区分大小写排序。
+返回连接列表：「本机」固定在首项（若用户自建了同名连接则不重复出现），其余按名称不区分大小写排序。
 
 ```json
-{"connections": [{"id": 1, "name": "spike", "command": "ssh spike@10.0.0.5", "created_at": "...", "updated_at": "..."}]}
+{"connections": [{"id": 0, "name": "本机", "command": "登录 shell", "kind": "local", "created_at": "", "updated_at": ""}, {"id": 1, "name": "spike", "command": "ssh spike@10.0.0.5", "kind": "ssh", "created_at": "...", "updated_at": "..."}]}
 ```
 
 ### `POST /connections`
@@ -32,11 +32,11 @@
 
 ### `PUT /connections/{id}`
 
-更新连接。字段全部可选，只更新出现的字段；`name`/`command` 提供即替换（校验规则同 POST）。返回 `{"success": true}`；连接不存在返回 404。
+更新连接。字段全部可选，只更新出现的字段；`name`/`command` 提供即替换（校验规则同 POST）。返回 `{"success": true}`；连接不存在返回 404。id 0（本机）返回 400 `bad_request`。
 
 ### `DELETE /connections/{id}`
 
-删除连接。返回 `{"success": true}`。
+删除连接。返回 `{"success": true}`。id 0（本机）返回 400 `bad_request`。
 
 ### `GET /connections/{id}`
 
@@ -44,11 +44,11 @@
 
 ## tmux 会话
 
-服务端不维护会话注册表：WS 握手即启动一条全新 OpenSSH 子进程并 attach 到远端 tmux，会话的创建、列表、保活全部由远端 tmux 承担。
+服务端不维护会话注册表：WS 握手即启动一条全新子进程并 attach 到目标设备的 tmux（ssh 连接在远端，「本机」连接在本机），会话的创建、列表、保活全部由目标设备的 tmux 承担。
 
 ### `GET /connections/{id}/tmux-sessions`
 
-经 ssh 在远端执行 `tmux ls` 并解析（连接命令附加 `tmux ls -F '...'` 执行一次）。返回：
+在目标设备执行 `tmux ls` 并解析（本机直接执行；ssh 连接经 ssh 运行 `tmux ls -F '...'` 一次）。返回：
 
 ```json
 {"sessions": [{"name": "ssh-main", "attached": 1, "created": 1700000000}]}
@@ -60,14 +60,14 @@
 
 ### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
 
-WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：
+WebSocket 升级请求，启动一条全新子进程并 attach：
 
 - 不带 `tmux_session`：执行 `tmux new -A -s ssh-main`（默认会话，不存在则新建）。
 - 带 `tmux_session`：执行 `tmux new -A -s <name>`。会话名服务端白名单校验（ASCII 字母数字下划线连字符，1–64），非法返回 400 `bad_request` 后拒绝升级。
 - `cols`/`rows`（可选）：PTY 初始尺寸，取自前端终端面板实际大小，2–500，缺省或非法回退 80×24。
-- ssh 以 `ssh -tt` 运行，强制分配远端 PTY；`StrictHostKeyChecking=accept-new` 首次连接自动接受主机密钥。
+- SSH 连接以 `ssh -tt` 运行，强制分配远端 PTY；`StrictHostKeyChecking=accept-new` 首次连接自动接受主机密钥。「本机」连接（id 0）直接在本机 PTY 中以登录 shell 运行同一段 tmux 启动命令，不走 ssh，tmux 持久模型与 SSH 连接一致。
 - 认证失败、主机不可达等错误原样经 WS 下发（OpenSSH 自身 stderr 输出），由前端红色内联显示。
-- 远端无 tmux 时由远端侧一行启动命令回退普通 shell（终端内黄色提示），服务端不解析输出。
+- 目标设备无 tmux 时由启动命令回退普通 shell（终端内黄色提示），服务端不解析输出。
 
 **帧协议**：
 
@@ -79,7 +79,7 @@ WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：
   - 二进制帧：终端原始字节流（stdout/stderr 合并）。
   - 文本帧 JSON 事件：`{"type":"error","message":"..."}` 与 `{"type":"closed","message":"ssh 已退出，exit code 0"}`。发送后服务端关闭 WS 并终止子进程；远端 tmux 会话不受影响，重连即恢复。
 
-WS 断开即终止 ssh 子进程，服务端无任何会话状态；持久性完全由远端 tmux 承担。
+WS 断开即终止子进程，服务端无任何会话状态；持久性完全由目标设备的 tmux 承担。
 
 ### `GET /health`
 

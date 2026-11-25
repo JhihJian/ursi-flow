@@ -7,7 +7,7 @@ use crate::app::{app_state, bad_request, not_found, AppError, AppResult};
 use crate::db;
 use crate::models::{
     Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse, SuccessResponse,
-    UpdateConnectionRequest,
+    UpdateConnectionRequest, LOCAL_CONNECTION_ID,
 };
 
 /// `GET /api/connections`：连接列表。
@@ -35,6 +35,9 @@ pub async fn put_connection(
     Path(id): Path<i64>,
     Json(request): Json<UpdateConnectionRequest>,
 ) -> AppResult<Json<SuccessResponse>> {
+    if id == LOCAL_CONNECTION_ID {
+        return Err(bad_request("本机连接为固定入口，不可修改"));
+    }
     let name = request.name.as_deref().map(str::trim);
     if name == Some("") {
         return Err(bad_request("name 不能为空"));
@@ -53,6 +56,9 @@ pub async fn put_connection(
 
 /// `DELETE /api/connections/{id}`：删除连接。远端 tmux 会话不受影响。
 pub async fn delete_connection(Path(id): Path<i64>) -> AppResult<Json<SuccessResponse>> {
+    if id == LOCAL_CONNECTION_ID {
+        return Err(bad_request("本机连接为固定入口，不可删除"));
+    }
     let db = app_state().db.lock().await;
     let deleted = db::delete_connection(&db, id)?;
     if !deleted {

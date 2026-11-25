@@ -1,8 +1,9 @@
-/** 一条 SSH 连接配置：名称 + ssh 命令。 */
+/** 一条连接配置。kind 为 local 时是虚拟本机连接（服务所在设备）。 */
 export interface Connection {
   id: number
   name: string
   command: string
+  kind: 'local' | 'ssh'
   created_at: string
   updated_at: string
 }
