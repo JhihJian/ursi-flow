@@ -13,7 +13,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web](docs/design/pi-web/INTEGRATION.md) | 上游 pi coding agent 的完整 Web UI，以 git subtree 从 fork `JhihJian/pi-web` 接入 `apps/pi-web`，内容不改造。进程内驱动 AgentSession，与 CLI 共享 `~/.pi/agent`，浏览器里完整使用 Pi agent。 |
-| [Pi 管理台](apps/pi-manager-web/SPEC.md) | 对任意给定的 pi home（默认 `~/.pi/agent`）做文件级配置管理：settings 受管项、skills 开关、subagent profile 与内置开关、MCP 与自定义模型条目、凭据。零依赖 Node 服务托管 React 页面，只读写配置文件，不运行会话、不加载扩展；凭据遮蔽、写操作限回环、乐观锁加原子写。 |
+| [Pi 管理台](apps/pi-manager-web/SPEC.md) | 对任意给定的 pi home（默认 `~/.pi/agent`）做文件级配置管理：settings 受管项、skills 开关、subagent profile 与内置开关、MCP 与自定义模型条目、凭据。Node 服务托管 React 页面，以读写配置文件为主；另提供按 agent profile 执行一次性会话任务的接口（pi SDK 按需加载）。凭据遮蔽、写操作限回环、乐观锁加原子写。 |
 | [Flow Core](flow-core/SPEC.md) | 独立 SDK，从 `FLOW.md` 或当前 JSON 快照和回执生成待办。解析、变量和路由规则供引擎复用。 |
 | [Flow Runtime](flow-runtime/SPEC.md) | 只有三部分的库：引擎把 FLOW.md 推到最终结果，过程日志实体定义观测记录，文件存储保存这些记录。执行 Agent 的唯一依赖是 `prompt(agentName, instruct)`。不持有进程、Socket 与模型配置。 |
 | [Flow Host](flow-host/SPEC.md) | Flow 的进程宿主：`ursi-flowd` 管理包修订、运行登记、配置与后台 worker，执行器适配负责本地 Pi 与平台调用，另提供 `ursi-flow-local`、`ursi-flow-executor-mcp` 与 Rust 客户端。 |
