@@ -18,7 +18,7 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 - 首次打开自动探测默认 pi home；顶栏显示当前 home 的名称与路径，切换与新增统一在左侧「Pi home」列表完成。
 - 左侧「Pi home」分组列出 pi home 清单与自动发现项：清单由服务端持有并原子落盘（`$XDG_STATE_HOME/pi-manager-web/homes.json`，`PI_MANAGER_STATE` 可覆盖），首次启动用默认位置（`~/.pi/agent`）与 `PI_CODING_AGENT_DIR` 播种；`/home/*/.pi/agent` 等未登记项作为只读候选列出，标来源「本机」并带「+」一键登记。条目 id 取 realpath 的 sha256 前 16 位，跨重启稳定。
-- 每条显示自定义名称、完整路径与内容摘要（skill / agent / mcp / 插件数量）；悬停出现重命名、编辑说明、从清单移除三个操作，移除有内联确认且只动清单不删文件。
+- 每条显示自定义名称、完整路径与内容摘要（skill / agent / mcp / 插件数量）；左键切换，右键弹出菜单：重命名、编辑说明、从清单移除（先弹确认菜单，只动清单不删文件）。未登记的自动发现项右键只有「登记到清单」。菜单点空白、按 Esc、滚动或改变窗口大小时关闭。
 - 分组标题右侧「+」展开新增面板，三选一：**初始化**（新建目录，生成 `settings.json` 与空的 `skills/`、`agents/`）、**复制**（从另一份 home 复制 `settings.json`/`models.json`/`mcp.json` 与 `skills`、`agents`、`prompts`、`themes` 目录，默认不带 `auth.json` 凭据，也不带 sessions/npm 等运行态）、**登记**（目录必须已是 pi home）。可同时指定显示名称，留空取目录名。
 - 新增只创建最后一级目录：上级目录不存在时报错，不静默生成目录链；目标已存在且非空返回 409。
 - 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效条目标红并说明缺失项。当前 home 失效时侧边栏仍可用，内容区提示从列表另选或新增。「↻」重新扫描。
