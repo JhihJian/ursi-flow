@@ -12,7 +12,12 @@ export interface PendingConfirm {
 }
 
 export interface FlowFailure {
-	code: "flow_invalid" | "executor_failed" | "rejected_results" | "store_failed";
+	code:
+		| "flow_invalid"
+		| "executor_failed"
+		| "executor_unconfirmed"
+		| "rejected_results"
+		| "store_failed";
 	message: string;
 	/** 失败发生在哪个步骤。定义非法时没有步骤。 */
 	stepId?: string;
@@ -27,4 +32,5 @@ export type RunResult =
 			steps: CompletedStep[];
 	  }
 	| { status: "awaiting_input"; runId: string; pending: PendingConfirm }
-	| { status: "failed"; runId: string; error: FlowFailure };
+	| { status: "failed"; runId: string; error: FlowFailure }
+	| { status: "unconfirmed"; runId: string; error: FlowFailure };

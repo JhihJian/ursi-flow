@@ -89,13 +89,132 @@ test("a new process can rework, reject a stale visit, and approve using only JSO
 	assert.throws(() => submit(approved, receipt(reviewAgain, "批准")), /流程已结束/);
 });
 
-test("unsupported actions and package features fail before reaching the first visit", () => {
+test("移除的动作与包内引用在解析期失败", () => {
 	const options = { variables: { 主题: "手册" } };
 	for (const [old, replacement, error] of [
-		["```confirm", "```复用Agent", /不支持节点 review 的动作/],
-		["```新建Agent", "```新建Agent:reviewer", /专用执行器/],
-		["请审核第", "请查看[材料](references/spec.md)，审核第", /包内资料引用/],
+		["```confirm", "```复用Agent", /动作标记无效: 复用Agent/],
+		["```新建Agent", "```新建Agent:reviewer", /动作标记无效: 新建Agent:reviewer/],
+		["```confirm", "```执行Flow", /动作标记无效: 执行Flow/],
+		[
+			"起草「{var.主题}」，当前版本 {var.版本}。",
+			'{"prompt":"起草","profile":"x"}',
+			/不允许字段: profile/,
+		],
 	]) {
-		assert.throws(() => ready(reviewFlow.replace(old, replacement), options), error);
+		assert.throws(
+			() => ready(reviewFlow.replace(old, replacement), options),
+			error,
+		);
 	}
+	// 包内相对链接不再有特殊语义，按普通文本渲染。
+	const linked = ready(
+		reviewFlow.replace("起草「{var.主题}」", "起草[材料](references/spec.md)「{var.主题}」"),
+		options,
+	).context;
+	assert.match(linked.current.prompt, /\[材料\]\(references\/spec\.md\)/);
+});
+
+const pipelineFlow = readFileSync(new URL("../examples/pipeline/FLOW.md", import.meta.url), "utf8");
+const pipeline = () => ready(pipelineFlow, { variables: { 任务: "发布" } }).context;
+
+test("command steps render the request and take variables from stdout", () => {
+	const first = pipeline();
+	const running = submit(first, {
+		stepId: first.current.stepId,
+		outcome: "已准备",
+		variables: { 清单: ["单元测试"] },
+	}).context;
+	assert.equal(running.current.kind, "parallel");
+	assert.deepEqual(running.current.branches.map(({ ref }) => ref), ["test", "lint"]);
+	const testBranch = running.current.branches[0];
+	assert.deepEqual(testBranch.request, {
+		command: "npm",
+		args: ["test"],
+		stdin: { 清单: ["单元测试"] },
+		output: "variables",
+	});
+	assert.equal(running.current.branches[1].request.stdin, undefined);
+	assert.equal(running.current.input.清单[0], "单元测试");
+});
+
+test("parallel steps submit every branch then prepare the join with branch results", () => {
+	const first = pipeline();
+	const running = submit(first, {
+		stepId: first.current.stepId,
+		outcome: "已准备",
+		variables: { 清单: ["单元测试"] },
+	}).context;
+	const parallel = running.current;
+	assert.equal(parallel.kind, "parallel");
+	const join = submit(running, {
+		stepId: parallel.stepId,
+		branches: {
+			test: { outcome: "已执行", variables: { 测试结果: "通过", 测试状态: "通过" } },
+			lint: { outcome: "已执行", variables: { 检查结果: "无告警" } },
+		},
+	}).context;
+	assert.equal(join.current.kind, "command");
+	assert.equal(join.current.nodeRef, "merge");
+	assert.deepEqual(join.current.request.stdin, {
+		test: "通过",
+		lint: "无告警",
+	});
+	// 分支各自留下一条已完成步骤记录。
+	assert.deepEqual(
+		join.steps.slice(-2).map(({ nodeRef, result }) => [nodeRef, result.outcome]),
+		[["test", "已执行"], ["lint", "已执行"]],
+	);
+	const done = submit(join, {
+		stepId: join.current.stepId,
+		outcome: "已执行",
+		variables: { 结论: "全部通过" },
+	}).context;
+	assert.equal(done.current, null);
+	// 分支写入的全局变量在并行完成后合并，局部变量只进入下一步输入。
+	assert.deepEqual(done.variables, {
+		任务: "发布",
+		测试状态: "通过",
+	});
+	assert.deepEqual(done.steps.at(-1).result.variables, { 结论: "全部通过" });
+});
+
+test("parallel rejects missing branches, bad outcomes and conflicting globals", () => {
+	const first = pipeline();
+	const running = submit(first, {
+		stepId: first.current.stepId,
+		outcome: "已准备",
+		variables: { 清单: [] },
+	}).context;
+	const parallel = running.current;
+	assert.throws(
+		() => submit(running, { stepId: parallel.stepId, branches: { test: { outcome: "已执行" } } }),
+		/缺少并行分支结果: lint/,
+	);
+	assert.throws(
+		() => submit(running, {
+			stepId: parallel.stepId,
+			branches: { test: { outcome: "已完成" }, lint: { outcome: "已执行" } },
+		}),
+		/结果必须是“已执行”/,
+	);
+	// 两个分支提交同一个全局变量时直接失败。
+	assert.throws(
+		() => submit(running, {
+			stepId: parallel.stepId,
+			branches: {
+				test: { outcome: "已执行", variables: { 测试状态: "a" } },
+				lint: { outcome: "已执行", variables: { 测试状态: "b" } },
+			},
+		}),
+		/同时写入变量: 测试状态/,
+	);
+});
+
+test("readCommandVariables only accepts the variables envelope", async () => {
+	const { readCommandVariables } = await import("ursi-flow-core/runtime");
+	assert.deepEqual(readCommandVariables('{"variables":{"结论":"通过"}}'), { 结论: "通过" });
+	assert.throws(() => readCommandVariables("{}"), /变量信封/);
+	assert.throws(() => readCommandVariables("not json"), /不是有效 JSON/);
+	assert.throws(() => readCommandVariables('{"结论":"通过"}'), /变量信封/);
+	assert.throws(() => readCommandVariables('{"variables":1}'), /必须是 JSON 对象/);
 });

@@ -1,12 +1,16 @@
 export type {
 	AgentRejected,
 	AgentReplied,
+	CommandFinished,
+	CommandStarted,
 	ConfirmAnswered,
 	ConfirmPending,
 	LogDestination,
 	LogEvent,
 	LogEventPayload,
 	LogStore,
+	NodeEntered,
+	ParallelEntered,
 	RouteSelected,
 	RunCompleted,
 	RunFailed,
@@ -15,5 +19,6 @@ export type {
 	RunSnapshot,
 	RunStarted,
 	RunStatus,
+	RunUnconfirmed,
 	StoredRun,
 } from "./entities.ts";

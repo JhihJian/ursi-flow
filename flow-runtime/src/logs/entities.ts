@@ -1,9 +1,4 @@
-import type {
-	CompletedStep,
-	CurrentStep,
-	FlowContext,
-	FlowVariables,
-} from "ursi-flow-core";
+import type { CompletedStep, CurrentStep, FlowVariables } from "ursi-flow-core";
 import type { FlowFailure, PendingConfirm } from "../engine/outcome.ts";
 
 /** 运行头。Flow 原文一并保存，包被删除或修订后仍能重建这次运行。 */
@@ -18,7 +13,10 @@ export interface RunHeader {
 	startedAt: string;
 }
 
-export type LogDestination = { kind: "node"; ref: string } | { kind: "finish" };
+export type LogDestination =
+	| { kind: "node"; ref: string }
+	| { kind: "parallel"; ref: string }
+	| { kind: "finish" };
 
 interface LogEventBase {
 	runId: string;
@@ -38,10 +36,41 @@ export interface NodeEntered {
 	nodeRef: string;
 	nodeName: string;
 	kind: CurrentStep["kind"];
-	/** 本次 Run 内第几次进入该节点。 */
-	serve: number;
-	prompt: string;
+	/** 本次 Run 内第几次进入该节点。并行步骤按汇合节点计。 */
+	serve?: number;
+	/** Agent 与确认步骤的渲染文本。 */
+	prompt?: string;
 	variables: FlowVariables;
+}
+
+export interface ParallelEntered {
+	type: "parallel.entered";
+	stepId: string;
+	parallelRef: string;
+	joinName: string;
+	branches: Array<{ ref: string; nodeRef: string; name: string; request: unknown }>;
+}
+
+export interface CommandStarted {
+	type: "command.started";
+	stepId: string;
+	nodeRef: string;
+	nodeName: string;
+	/** 并行分支所属的并行开始点。 */
+	parallelRef?: string;
+	request: unknown;
+	cwd?: string;
+}
+
+export interface CommandFinished {
+	type: "command.finished";
+	stepId: string;
+	nodeRef: string;
+	nodeName: string;
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	variables?: FlowVariables;
 }
 
 export interface AgentReplied {
@@ -100,10 +129,17 @@ export interface RunFailed extends FlowFailure {
 	type: "run.failed";
 }
 
+export interface RunUnconfirmed extends FlowFailure {
+	type: "run.unconfirmed";
+}
+
 /** 过程日志的全部实体。写入时由 store 补上 runId、seq 与 at。 */
 export type LogEventPayload =
 	| RunStarted
 	| NodeEntered
+	| ParallelEntered
+	| CommandStarted
+	| CommandFinished
 	| AgentReplied
 	| AgentRejected
 	| ConfirmPending
@@ -111,16 +147,22 @@ export type LogEventPayload =
 	| RouteSelected
 	| RunResumed
 	| RunCompleted
-	| RunFailed;
+	| RunFailed
+	| RunUnconfirmed;
 
 export type LogEvent = LogEventPayload & LogEventBase;
 
-export type RunStatus = "running" | "awaiting_input" | "completed" | "failed";
+export type RunStatus =
+	| "running"
+	| "awaiting_input"
+	| "completed"
+	| "failed"
+	| "unconfirmed";
 
 /** 可重建下一步的完整状态。Flow Core 的 stepId 不可注入，恢复只能依赖这份快照。 */
 export interface RunSnapshot {
 	status: RunStatus;
-	context: FlowContext;
+	context: import("ursi-flow-core").FlowContext;
 	pending?: PendingConfirm;
 	failure?: FlowFailure;
 	/** 最后写入的事件序号。 */

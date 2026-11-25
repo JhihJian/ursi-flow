@@ -36,7 +36,7 @@ ${options.first ?? "任务：{var.任务}"}
 ${options.result ?? table}
 
 ## 处理
-\`\`\`复用Agent
+\`\`\`新建Agent
 ${options.next ?? "问题：{input.问题}，任务：{var.任务}"}
 \`\`\`
 ### 已完成
@@ -92,20 +92,6 @@ flowchart TD
 汇合完成。
 `;
 
-const reference = (content: string) => `---
-name: 子流程
-description: 显式输入。
----
-\`\`\`mermaid
-flowchart TD
-  start((开始)) --> child[调用]
-  child --> finish((结束))
-\`\`\`
-## 调用
-\`\`\`执行Flow
-${content}
-\`\`\`
-`;
 
 describe("变量声明和结果变量表", () => {
 	it("保留声明、默认值和每个结果独立的下一跳变量", () => {
@@ -432,37 +418,6 @@ describe("并行汇合命令", () => {
 	});
 });
 
-describe("显式子 Flow 输入", () => {
-	it("使用 inputs，省略时不隐式附加父变量", () => {
-		expect(
-			parseFlow(
-				reference('{"flow":"check","inputs":{"项目":"{var.项目}"}}'),
-				"ref",
-			).nodes.get("child")?.action,
-		).toEqual({
-			kind: "执行Flow",
-			flow: "check",
-			inputs: { 项目: "{var.项目}" },
-		});
-		expect(
-			parseFlow(reference('{"flow":"check"}'), "ref-empty").nodes.get("child")
-				?.action,
-		).toEqual({ kind: "执行Flow", flow: "check" });
-	});
-
-	it.each([
-		'{"flow":"check","variables":{}}',
-		'{"flow":"check","task":"任务"}',
-		'{"flow":"check","inputs":[]}',
-		'{"flow":"check","inputs":{"a.b":1}}',
-		'{"flow":"check","inputs":{"项目":"{input.项目}"}}',
-	])("拒绝非法或首节点不可见的输入 %s", (content) => {
-		expect(() => parseFlow(reference(content), "invalid-ref")).toThrow(
-			FlowSyntaxError,
-		);
-	});
-});
-
 describe("Flow 元信息", () => {
 	it("capabilities 属于陌生元信息字段，不进入定义", () => {
 		expect(
@@ -476,77 +431,47 @@ describe("Flow 元信息", () => {
 		).toBeUndefined();
 	});
 
-	it("解析新建Agent 的结构化 Profile 和参数", () => {
+	it("新建Agent 可以用结构化 JSON 给出 prompt", () => {
 		const flow = parseFlow(
-			serial({
-				first: JSON.stringify({
-					profile: "reviewer",
-					params: { focus: "{var.任务}" },
-					prompt: "请完成评审。",
-				}),
-			}),
-			"profile-action",
+			serial({ first: JSON.stringify({ prompt: "请完成评审。" }) }),
+			"prompt-action",
 		);
 		expect(flow.nodes.get("analyze")?.action).toEqual({
 			kind: "新建Agent",
 			prompt: "请完成评审。",
-			profile: { id: "reviewer", params: { focus: "{var.任务}" } },
-		});
-	});
-
-	it("复用Agent 不能重新指定 Profile", () => {
-		expect(() =>
-			parseFlow(
-				serial({
-					next: JSON.stringify({
-						profile: "reviewer",
-						prompt: "继续处理。",
-					}),
-				}),
-				"reuse-profile",
-			),
-		).toThrow(FlowSyntaxError);
-	});
-
-	it("新建Agent 标记后缀解析为执行器名称", () => {
-		const flow = parseFlow(
-			serial({ first: "请完成任务。" }).replace("```新建Agent", "```新建Agent:deep-reviewer"),
-			"executor-suffix",
-		);
-		expect(flow.nodes.get("analyze")?.action).toEqual({
-			kind: "新建Agent",
-			prompt: "请完成任务。",
-			executor: "deep-reviewer",
-		});
-	});
-
-	it("新建Agent:名称 可与结构化 JSON 组合", () => {
-		const flow = parseFlow(
-			serial({
-				first: JSON.stringify({ profile: "reviewer", prompt: "请完成评审。" }),
-			}).replace("```新建Agent", "```新建Agent:deep-reviewer"),
-			"executor-with-profile",
-		);
-		expect(flow.nodes.get("analyze")?.action).toEqual({
-			kind: "新建Agent",
-			prompt: "请完成评审。",
-			executor: "deep-reviewer",
-			profile: { id: "reviewer" },
 		});
 	});
 
 	it.each([
-		"复用Agent:deep-reviewer",
-		"新建Agent:",
-		"新建Agent:1bad",
-		"新建Agent:deep:reviewer",
-	])("拒绝无效的执行器标记 %s", (marker) => {
+		["复用Agent", /动作标记无效: 复用Agent/],
+		["新建Agent:reviewer", /动作标记无效: 新建Agent:reviewer/],
+		["执行Flow", /动作标记无效: 执行Flow/],
+	])("移除的动作标记 %s 在解析期失败", (marker, error) => {
 		expect(() =>
 			parseFlow(
 				serial().replace("```新建Agent", "```" + marker),
-				"invalid-executor-marker",
+				"removed-action",
 			),
-		).toThrow(FlowSyntaxError);
+		).toThrow(error);
+	});
+
+	it("profile 与 params 不再是合法字段", () => {
+		expect(() =>
+			parseFlow(
+				serial({
+					first: JSON.stringify({ prompt: "评审。", profile: "reviewer" }),
+				}),
+				"profile-field",
+			),
+		).toThrow(/不允许字段: profile/);
+		expect(() =>
+			parseFlow(
+				serial({
+					first: JSON.stringify({ prompt: "评审。", params: { a: 1 } }),
+				}),
+				"params-field",
+			),
+		).toThrow(/不允许字段: params/);
 	});
 });
 

@@ -1,5 +1,8 @@
 export { FlowEngine, EngineError } from "./flow-engine.ts";
+export { ExecutorUnconfirmed } from "./contracts.ts";
 export type {
+	CommandInvocation,
+	CommandOutput,
 	Engine,
 	EngineOptions,
 	ExecutorReply,

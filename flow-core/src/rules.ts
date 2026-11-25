@@ -73,3 +73,26 @@ export function renderPrompt(
 ): string {
 	return String(renderTemplate(prompt, { variables, input }));
 }
+
+/** 命令节点 stdout 的变量信封：`{"variables": {...}}`。 */
+export function readCommandVariables(stdout: string): FlowVariables | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(stdout);
+	} catch (error) {
+		throw new VariableReferenceError(
+			`命令输出不是有效 JSON: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+		throw new VariableReferenceError("命令输出必须是 JSON 对象");
+	const keys = Object.keys(parsed);
+	if (!keys.includes("variables") || keys.some((key) => key !== "variables"))
+		throw new VariableReferenceError(
+			'命令输出需要形如 {"variables": {...}} 的变量信封',
+		);
+	const variables = (parsed as { variables: unknown }).variables;
+	if (variables === undefined) return undefined;
+	validateVariables(variables);
+	return variables;
+}

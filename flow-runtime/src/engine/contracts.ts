@@ -1,4 +1,8 @@
-import type { FlowVariables, OutcomeOption } from "ursi-flow-core";
+import type {
+	CommandRequest,
+	FlowVariables,
+	OutcomeOption,
+} from "ursi-flow-core";
 import type { LogStore } from "../logs/index.ts";
 import type { FlowFailure, PendingConfirm, RunResult } from "./outcome.ts";
 
@@ -26,12 +30,33 @@ export interface ExecutorReply {
 	variables?: FlowVariables;
 }
 
+/** 执行器无法确认本次访问的结果：Run 进入待核实，`resume` 只核实原尝试。 */
+export class ExecutorUnconfirmed extends Error {}
+
+/** 一次命令执行。request 已按变量与分支结果渲染完成。 */
+export interface CommandInvocation {
+	runId: string;
+	stepId: string;
+	nodeRef: string;
+	nodeName: string;
+	request: CommandRequest;
+	cwd?: string;
+}
+
+/** 命令执行证据。退出码不为 0 仍按“已执行”路由，由流程自行判断。 */
+export interface CommandOutput {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
 /**
- * 引擎唯一的外部依赖。agentName 是 Flow 节点名，执行器据此选择或复用模型会话；
- * instruct 携带提示词、可选结果与当前变量。
+ * 引擎唯一的外部依赖。agentName 是 Flow 节点名，执行器据此选择会话；
+ * instruct 携带提示词、可选结果与当前变量；command 执行命令节点。
  */
 export interface FlowExecutor {
 	prompt(agentName: string, instruct: Instruct): Promise<ExecutorReply>;
+	command(invocation: CommandInvocation): Promise<CommandOutput>;
 }
 
 export interface FlowSource {
@@ -64,7 +89,7 @@ export interface Engine {
 	start(request: StartRequest): Promise<RunResult>;
 	/** 对等待人工确认的步骤提交一个结果名。非法提交抛错且不改变等待状态。 */
 	respond(runId: string, stepId: string, result: string): Promise<RunResult>;
-	/** 从持久化快照继续未完成的运行。 */
+	/** 从持久化快照继续未完成的运行；等待中的运行重新提问。 */
 	resume(runId: string): Promise<RunResult>;
 	/** 读取等待中的确认；不等待时返回 undefined。 */
 	pending(runId: string): Promise<PendingConfirm | undefined>;
