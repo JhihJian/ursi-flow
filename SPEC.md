@@ -12,7 +12,7 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。工作台与 Runtime 使用各自的凭证消费同一修订。
 
-独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。
+独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 
@@ -32,6 +32,13 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 
 - 独立构建并启动的看板读取 SUMM-Todo 本机库，按项目展示任务与今日、本周、本月统计，可新建、编辑和删除项目与任务。
 - 拖拽任务到状态标签或项目项后，状态或归属写入同一待办库；重新加载页面仍保持结果。
+
+### 查看本机代理路由
+
+#### 验收
+
+- 独立启动的 dae 路由观察台监听 `0.0.0.0:8092`，通过同源 `/api` 读取本机 dae 的运行态、连接、流记录、规则、DNS 与日志，浏览器不需要访问 dae 的 loopback 端口。
+- 选中一条连接后可回放当前规则，得到最终出口与每条候选规则的判定结果；关闭连接与清缓存只在回环地址访问时可用。
 
 ### 从工作清单生成文件包
 

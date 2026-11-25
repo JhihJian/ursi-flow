@@ -1,0 +1,10 @@
+{
+  "name": "@ursi/dae-web-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "start": "node src/server.ts"
+  },
+  "description": "dae-web 服务端：托管静态页面并把 /api 转发到本机 dae native API，无第三方依赖"
+}
