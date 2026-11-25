@@ -14,10 +14,15 @@ export interface HomeCheck {
 
 export type HomeSource = 'default' | 'env' | 'user' | 'manual'
 
-/** 一个已知 pi home 的摘要（服务端扫描 + 前端登记的预设）。 */
+/** 一个 pi home 的摘要：服务端清单条目 + 自动发现项。 */
 export interface HomeSummary {
+  id: string
+  /** 用户定义的显示名。 */
+  name: string
+  description?: string
   path: string
-  label: string
+  /** 是否在服务端清单里（清单条目可改名、移除）。 */
+  listed: boolean
   valid: boolean
   sources: HomeSource[]
   skills: number
@@ -31,6 +36,19 @@ export interface HomeSummary {
 
 export interface HomesListing {
   homes: HomeSummary[]
+}
+
+/** 新增 pi home：登记已有目录 / 初始化默认配置 / 从另一份复制。 */
+export type HomeCreateMode = 'adopt' | 'init' | 'clone'
+
+export interface HomeCreateInput {
+  mode: HomeCreateMode
+  path: string
+  name?: string
+  /** clone 模式的来源 pi home 路径。 */
+  from?: string
+  /** clone 时是否一并复制 auth.json（默认不复制）。 */
+  includeAuth?: boolean
 }
 
 export interface GeneralListing {

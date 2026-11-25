@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppStore } from '../store/app-store'
-import type { HomeSummary } from '../api/types'
+import type { HomeCreateMode, HomeSummary } from '../api/types'
 
 export type SectionId =
   | 'general'
@@ -25,8 +25,14 @@ const SOURCE_LABEL: Record<HomeSummary['sources'][number], string> = {
   default: '默认',
   env: 'ENV',
   user: '本机',
-  manual: '预设',
+  manual: '清单',
 }
+
+const MODE_OPTIONS: Array<{ value: HomeCreateMode; label: string; hint: string }> = [
+  { value: 'init', label: '初始化', hint: '新建目录并生成默认配置' },
+  { value: 'clone', label: '复制', hint: '从另一份 home 复制配置' },
+  { value: 'adopt', label: '登记', hint: '登记已有目录' },
+]
 
 function summaryLine(home: HomeSummary): string {
   if (home.error) return home.error
@@ -36,7 +42,253 @@ function summaryLine(home: HomeSummary): string {
   return parts.join(' · ')
 }
 
-/** 左侧导航：已知 pi home 列表（含新增）+ 配置分区。 */
+/** 行内输入：回车提交、Esc 取消、失焦提交（与 fs-web 的 WorkspaceList 同语义）。 */
+function InlineInput({
+  initial,
+  placeholder,
+  onDone,
+}: {
+  initial: string
+  placeholder: string
+  onDone: (value: string) => void
+}) {
+  const [value, setValue] = useState(initial)
+  return (
+    <input
+      className="preset-inline-input"
+      value={value}
+      placeholder={placeholder}
+      autoFocus
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onDone(value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onDone(value)
+        if (e.key === 'Escape') onDone(initial)
+      }}
+    />
+  )
+}
+
+type EditingField = 'name' | 'description' | null
+
+function HomeItem({
+  home,
+  active,
+  onSelect,
+}: {
+  home: HomeSummary
+  active: boolean
+  onSelect: () => void
+}) {
+  const updateHome = useAppStore((s) => s.updateHome)
+  const removeHome = useAppStore((s) => s.removeHome)
+  const [editing, setEditing] = useState<EditingField>(null)
+  const [confirming, setConfirming] = useState(false)
+
+  if (editing) {
+    const isName = editing === 'name'
+    return (
+      <li className="preset-item preset-item-editing">
+        <InlineInput
+          initial={isName ? home.name : (home.description ?? '')}
+          placeholder={isName ? '显示名称' : '一句话说明（可留空清除）'}
+          onDone={(value) => {
+            setEditing(null)
+            const text = value.trim()
+            if (isName) {
+              if (text && text !== home.name) void updateHome(home.id, { name: text })
+            } else if (text !== (home.description ?? '')) {
+              void updateHome(home.id, { description: text })
+            }
+          }}
+        />
+      </li>
+    )
+  }
+
+  return (
+    <li>
+      <div
+        className={`preset-item${active ? ' active' : ''}${home.valid ? '' : ' invalid'}`}
+        title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}`}
+      >
+        <button type="button" className="preset-main" aria-current={active} onClick={onSelect}>
+          <span className="preset-name">
+            {home.name}
+            <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
+          </span>
+          <span className="preset-path">{home.path}</span>
+          <span className="preset-sub">{summaryLine(home)}</span>
+        </button>
+        {confirming ? (
+          <span className="preset-confirm">
+            <button
+              type="button"
+              className="preset-confirm-yes"
+              title="仅从列表移除，不删文件"
+              onClick={() => {
+                setConfirming(false)
+                void removeHome(home.id)
+              }}
+            >
+              移除
+            </button>
+            <button type="button" className="preset-confirm-no" onClick={() => setConfirming(false)}>
+              取消
+            </button>
+          </span>
+        ) : home.listed ? (
+          <span className="preset-actions">
+            <button
+              type="button"
+              className="preset-action"
+              title="重命名"
+              onClick={() => setEditing('name')}
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              className="preset-action"
+              title="编辑说明"
+              onClick={() => setEditing('description')}
+            >
+              ≡
+            </button>
+            <button
+              type="button"
+              className="preset-action"
+              title="从清单移除（不删目录）"
+              onClick={() => setConfirming(true)}
+            >
+              ×
+            </button>
+          </span>
+        ) : (
+          <span className="preset-actions">
+            <button
+              type="button"
+              className="preset-action"
+              title="登记到清单（可改名、可复制配置）"
+              onClick={() => void useAppStore.getState().createHome({ mode: 'adopt', path: home.path })}
+            >
+              +
+            </button>
+          </span>
+        )}
+      </div>
+    </li>
+  )
+}
+
+/** 新增 pi home 的面板：模式（初始化/复制/登记）+ 路径 + 名称 + 复制来源。 */
+function CreatePanel({ onDone }: { onDone: () => void }) {
+  const homes = useAppStore((s) => s.homes)
+  const homePath = useAppStore((s) => s.homePath)
+  const createHome = useAppStore((s) => s.createHome)
+  const [mode, setMode] = useState<HomeCreateMode>('init')
+  const [path, setPath] = useState('')
+  const [name, setName] = useState('')
+  const [from, setFrom] = useState(homePath)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const sources = homes.filter((h) => h.valid && h.path !== path.trim())
+
+  async function submit() {
+    const target = path.trim()
+    if (!target) {
+      setError('请输入路径')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const failure = await createHome({
+      mode,
+      path: target,
+      name: name.trim() || undefined,
+      from: mode === 'clone' ? from : undefined,
+    })
+    setBusy(false)
+    if (failure) {
+      setError(failure)
+      return
+    }
+    onDone()
+  }
+
+  return (
+    <div className="preset-create">
+      <div className="preset-create-modes" role="group" aria-label="新增方式">
+        {MODE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`preset-mode${mode === option.value ? ' active' : ''}`}
+            aria-pressed={mode === option.value}
+            title={option.hint}
+            onClick={() => setMode(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <input
+        className="preset-inline-input"
+        autoFocus
+        value={path}
+        placeholder={mode === 'adopt' ? '已有 pi home 的绝对路径' : '新目录绝对路径，如 ~/.pi/work'}
+        aria-label="pi home 路径"
+        onChange={(e) => {
+          setPath(e.target.value)
+          setError(null)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+          if (e.key === 'Escape') onDone()
+        }}
+      />
+      <input
+        className="preset-inline-input"
+        value={name}
+        placeholder="显示名称（留空取目录名）"
+        aria-label="显示名称"
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+          if (e.key === 'Escape') onDone()
+        }}
+      />
+      {mode === 'clone' ? (
+        <select className="preset-inline-input" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="复制来源">
+          {sources.map((h) => (
+            <option key={h.id} value={h.path}>
+              {h.name}（{h.path}）
+            </option>
+          ))}
+        </select>
+      ) : null}
+      <div className={`preset-add-hint${error ? ' error' : ''}`}>
+        {error ??
+          (mode === 'init'
+            ? '目录不存在或为空时创建；生成 settings.json 与空的 skills/、agents/'
+            : mode === 'clone'
+              ? '复制 settings/models/mcp 与 skills/agents/prompts/themes；不含 auth.json 凭据'
+              : '目录必须已是 pi home（含 settings.json）')}
+      </div>
+      <div className="preset-create-actions">
+        <button type="button" className="btn small" disabled={busy} onClick={() => void submit()}>
+          {busy ? '处理中…' : MODE_OPTIONS.find((o) => o.value === mode)?.label}
+        </button>
+        <button type="button" className="btn small" onClick={onDone} disabled={busy}>
+          取消
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 左侧导航：pi home 清单（可新增、改名、移除）+ 配置分区。 */
 export function Sidebar({
   active,
   onSelect,
@@ -47,36 +299,9 @@ export function Sidebar({
   const homes = useAppStore((s) => s.homes)
   const homesLoading = useAppStore((s) => s.homesLoading)
   const homePath = useAppStore((s) => s.homePath)
-  const presets = useAppStore((s) => s.presets)
   const confirmHome = useAppStore((s) => s.confirmHome)
-  const addHome = useAppStore((s) => s.addHome)
-  const removePreset = useAppStore((s) => s.removePreset)
   const refreshHomes = useAppStore((s) => s.refreshHomes)
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [addError, setAddError] = useState<string | null>(null)
-
-  async function submitNew() {
-    const raw = draft.trim()
-    if (!raw) {
-      setAdding(false)
-      return
-    }
-    setAddError(null)
-    const failure = await addHome(raw)
-    if (failure) {
-      setAddError(failure)
-      return
-    }
-    setAdding(false)
-    setDraft('')
-  }
-
-  function cancelAdd() {
-    setAdding(false)
-    setDraft('')
-    setAddError(null)
-  }
+  const [creating, setCreating] = useState(false)
 
   return (
     <nav className="config-sidebar" aria-label="pi home 与配置分区">
@@ -85,7 +310,7 @@ export function Sidebar({
         <button
           type="button"
           className="rail-toggle"
-          title="重新扫描已知 pi home"
+          title="重新扫描"
           onClick={() => void refreshHomes()}
         >
           ↻
@@ -94,83 +319,24 @@ export function Sidebar({
           type="button"
           className="rail-toggle"
           title="新增 pi home"
-          aria-expanded={adding}
-          onClick={() => {
-            if (adding) cancelAdd()
-            else {
-              setDraft('')
-              setAddError(null)
-              setAdding(true)
-            }
-          }}
+          aria-expanded={creating}
+          onClick={() => setCreating((prev) => !prev)}
         >
           +
         </button>
       </div>
 
-      {adding ? (
-        <div className="preset-add">
-          <input
-            className="input"
-            autoFocus
-            value={draft}
-            placeholder="如 ~/.pi/agent 或 /opt/pi/agent"
-            aria-label="新增 pi home 路径"
-            onChange={(e) => {
-              setDraft(e.target.value)
-              setAddError(null)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void submitNew()
-              if (e.key === 'Escape') cancelAdd()
-            }}
-          />
-          <div className={`preset-add-hint${addError ? ' error' : ''}`}>
-            {addError ?? '输入绝对路径或 ~/…；新增后立即切换'}
-          </div>
-        </div>
-      ) : null}
+      {creating ? <CreatePanel onDone={() => setCreating(false)} /> : null}
 
       <ul className="preset-list">
-        {homes.map((home) => {
-          const isCurrent = home.path === homePath
-          const custom = presets.find((p) => p.path === home.path)
-          return (
-            <li key={home.path}>
-              <div
-                className={`preset-item${isCurrent ? ' active' : ''}${home.valid ? '' : ' invalid'}`}
-                title={`${home.path}\n${summaryLine(home)}`}
-              >
-                <button
-                  type="button"
-                  className="preset-main"
-                  aria-current={isCurrent}
-                  onClick={() => void confirmHome(home.path)}
-                >
-                  <span className="preset-name">
-                    {custom?.label ?? home.label}
-                    <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
-                  </span>
-                  <span className="preset-sub">{summaryLine(home)}</span>
-                </button>
-                {home.sources.includes('manual') ? (
-                  <button
-                    type="button"
-                    className="preset-remove"
-                    title="从列表里移除（不删除目录）"
-                    onClick={() => {
-                      if (window.confirm(`从列表移除 ${custom?.label ?? home.label}？目录本身不会删除。`)) {
-                        void removePreset(home.path)
-                      }
-                    }}
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          )
-        })}
+        {homes.map((home) => (
+          <HomeItem
+            key={home.id}
+            home={home}
+            active={home.path === homePath}
+            onSelect={() => void confirmHome(home.path)}
+          />
+        ))}
         {homes.length === 0 ? (
           <li className="preset-empty">{homesLoading ? '扫描中…' : '没有发现 pi home'}</li>
         ) : null}

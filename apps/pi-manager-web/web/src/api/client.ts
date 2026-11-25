@@ -1,4 +1,6 @@
 import type {
+  HomeCreateInput,
+  HomeSummary,
   HomesListing,
   AgentProfileDetail,
   AgentsListing,
@@ -50,6 +52,27 @@ async function request<T>(method: string, path: string, home: string, body?: unk
   return json as T
 }
 
+/** 不携带 home 参数的请求：清单与探测类接口自己解析入参。 */
+async function requestNoHome<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(new URL(path, window.location.origin), {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  let json: unknown = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    /* 非 JSON 响应按错误处理 */
+  }
+  if (!res.ok) {
+    const err = (json as { error?: { code?: string; message?: string } } | null)?.error
+    throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`)
+  }
+  return json as T
+}
+
 export const api = {
   homeDefaults: () => {
     const url = new URL('/api/home/defaults', window.location.origin)
@@ -64,20 +87,13 @@ export const api = {
     })
   },
   homeCheck: (home: string) => request<HomeCheck>('GET', '/api/home/check', home),
-  /** 已知 pi home：服务端扫描默认位置、env 位置、同机其他用户，外加前端登记的预设。 */
-  getHomes: (extra: string[]) => {
-    const url = new URL('/api/homes', window.location.origin)
-    for (const path of extra) url.searchParams.append('extra', path)
-    return fetch(url).then(async (res) => {
-      const text = await res.text()
-      const json = text ? (JSON.parse(text) as unknown) : null
-      if (!res.ok) {
-        const err = (json as { error?: { code?: string; message?: string } } | null)?.error
-        throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`)
-      }
-      return json as HomesListing
-    })
-  },
+  /** pi home 清单：注册表条目 + 自动发现（默认位置、env、同机其他用户）。 */
+  getHomes: () => requestNoHome<HomesListing>('GET', '/api/homes'),
+  createHome: (input: HomeCreateInput) =>
+    requestNoHome<{ home: HomeSummary }>('POST', '/api/homes', input),
+  updateHome: (id: string, patch: { name?: string; description?: string }) =>
+    requestNoHome<{ home: HomeSummary }>('PATCH', '/api/homes', { id, ...patch }),
+  removeHome: (id: string) => requestNoHome<{ ok: true }>('DELETE', '/api/homes', { id }),
   getGeneral: (home: string) => request<GeneralListing>('GET', '/api/general', home),
   putGeneralKey: (home: string, key: string, value: unknown, revision: string) =>
     request<MutationResult>('PUT', '/api/general/key', home, { key, value, revision }),

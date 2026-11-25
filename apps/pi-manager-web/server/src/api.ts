@@ -1,7 +1,7 @@
 import type http from 'node:http'
 import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
-import { discoverHomes } from './homes.ts'
+import { HomeRegistry } from './homes.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
@@ -48,10 +48,56 @@ route('GET', '/api/home/check', async ({ url }) => {
   return { home: real, valid: looksLikePiHome(real) }
 })
 
-// 已知 pi home 目录（默认位置、env 位置、同机其他用户、前端登记的预设）。
-route('GET', '/api/homes', async ({ url }) => {
-  const extra = url.searchParams.getAll('extra').flatMap((v) => v.split(',')).filter(Boolean)
-  return { homes: discoverHomes(extra) }
+// pi home 清单：注册表条目 + 自动发现（默认位置、env、同机其他用户）。
+// 注册表由服务端持有并落盘，条目可改名、编辑说明、移除；也可创建新 home。
+const homes = new HomeRegistry()
+
+route('GET', '/api/homes', async () => ({ homes: homes.list() }))
+
+route('POST', '/api/homes', async ({ body }) => {
+  const payload = await body<{
+    mode?: unknown
+    path?: unknown
+    name?: unknown
+    from?: unknown
+    includeAuth?: unknown
+  }>()
+  const mode = payload.mode
+  if (mode !== 'adopt' && mode !== 'init' && mode !== 'clone') {
+    throw new HomeError('mode 必须是 adopt / init / clone', 400, 'invalid_request')
+  }
+  if (typeof payload.path !== 'string') {
+    throw new HomeError('path 必填', 400, 'invalid_request')
+  }
+  const home = await homes.add({
+    mode,
+    path: payload.path,
+    name: typeof payload.name === 'string' ? payload.name : undefined,
+    from: typeof payload.from === 'string' ? payload.from : undefined,
+    includeAuth: payload.includeAuth === true,
+  })
+  return { home }
+})
+
+route('PATCH', '/api/homes', async ({ body }) => {
+  const payload = await body<{ id?: unknown; name?: unknown; description?: unknown }>()
+  if (typeof payload.id !== 'string' || !payload.id) {
+    throw new HomeError('id 必填', 400, 'invalid_request')
+  }
+  const home = await homes.update(payload.id, {
+    name: typeof payload.name === 'string' ? payload.name : undefined,
+    description: typeof payload.description === 'string' ? payload.description : undefined,
+  })
+  return { home }
+})
+
+route('DELETE', '/api/homes', async ({ body }) => {
+  const payload = await body<{ id?: unknown }>()
+  if (typeof payload.id !== 'string' || !payload.id) {
+    throw new HomeError('id 必填', 400, 'invalid_request')
+  }
+  await homes.remove(payload.id)
+  return { ok: true }
 })
 
 // ---------------------------------------------------------------------------

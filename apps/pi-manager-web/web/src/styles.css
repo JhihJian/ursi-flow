@@ -185,21 +185,61 @@ textarea {
   background: var(--gray-200);
 }
 
-/* 新增 pi home 的行内输入 */
-.preset-add {
+/* 新增 pi home 面板 */
+.preset-create {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-xs);
   margin-bottom: var(--space-sm);
 }
 
-.preset-add .input {
+.preset-create-modes {
+  display: flex;
+  gap: 2px;
+}
+
+.preset-mode {
+  flex: 1;
+  padding: 2px var(--space-xs);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.preset-mode:hover {
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.preset-mode.active {
+  border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.preset-create-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.preset-inline-input {
+  width: 100%;
   padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
   font-size: 12px;
+}
+
+.preset-inline-input:focus {
+  outline: none;
+  border-color: var(--black);
 }
 
 .preset-add-hint {
   font-size: 10px;
+  line-height: 1.4;
   color: var(--gray-400);
 }
 
@@ -262,6 +302,14 @@ textarea {
   font-weight: 500;
 }
 
+.preset-path {
+  font-size: 10px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .preset-source {
   flex: none;
   font-size: 10px;
@@ -281,24 +329,63 @@ textarea {
   color: var(--danger);
 }
 
-.preset-remove {
+.preset-actions {
+  display: flex;
   flex: none;
-  width: 20px;
-  border: 0;
-  background: none;
-  color: var(--gray-400);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
+  flex-direction: column;
   opacity: 0;
 }
 
-.preset-item:hover .preset-remove {
+.preset-item:hover .preset-actions {
   opacity: 1;
 }
 
-.preset-remove:hover {
-  color: var(--danger);
+.preset-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.preset-action:hover {
+  color: var(--gray-900);
+  background: var(--gray-200);
+}
+
+.preset-item-editing {
+  padding: var(--space-xs) 0;
+}
+
+.preset-confirm {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.preset-confirm-yes,
+.preset-confirm-no {
+  padding: 1px var(--space-xs);
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.preset-confirm-yes {
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.preset-confirm-no:hover {
+  background: var(--gray-200);
 }
 
 .preset-empty {

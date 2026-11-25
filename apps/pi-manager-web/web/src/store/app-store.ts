@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { ApiError, api } from '../api/client'
-import type { HomeSummary } from '../api/types'
+import type { HomeCreateInput, HomeSummary } from '../api/types'
 
 /**
  * 全局唯一 store：home 选择 + 主题 + 页脚消息。
@@ -8,45 +8,13 @@ import type { HomeSummary } from '../api/types'
  */
 
 const HOME_KEY = 'pi-manager.home'
-const PRESET_KEY = 'pi-manager.presets'
 
-/** 用户登记的 pi home 预设（路径 + 可选别名）。 */
-export interface HomePreset {
-  path: string
-  label?: string
-}
-
+/** 当前 home 记在 localStorage：它是"我用哪个 home"的偏好，不是清单本身。 */
 function loadHome(): string {
   try {
     return localStorage.getItem(HOME_KEY) ?? ''
   } catch {
     return ''
-  }
-}
-
-function loadPresets(): HomePreset[] {
-  try {
-    const raw = localStorage.getItem(PRESET_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.flatMap((item) => {
-      if (!item || typeof item !== 'object') return []
-      const path = (item as { path?: unknown }).path
-      if (typeof path !== 'string' || !path.startsWith('/')) return []
-      const label = (item as { label?: unknown }).label
-      return [{ path, label: typeof label === 'string' && label ? label : undefined }]
-    })
-  } catch {
-    return []
-  }
-}
-
-function savePresets(presets: HomePreset[]): void {
-  try {
-    localStorage.setItem(PRESET_KEY, JSON.stringify(presets))
-  } catch {
-    /* ignore */
   }
 }
 
@@ -58,19 +26,20 @@ interface AppState {
   homeChecking: boolean
   homeError: string | null
   footer: { kind: FooterKind; message: string }
-  /** 已知 pi home（服务端扫描结果 + 登记的预设）。 */
+  /** pi home 清单：服务端注册表 + 自动发现。 */
   homes: HomeSummary[]
   homesLoading: boolean
-  presets: HomePreset[]
 
   initHome: () => Promise<void>
   setHomePath: (path: string) => void
   confirmHome: (path: string) => Promise<boolean>
-  /** 新增并切换到指定 home：成功返回 null，失败返回错误文本（不破坏当前视图）。 */
-  addHome: (raw: string) => Promise<string | null>
   refreshHomes: () => Promise<void>
-  addPreset: (path: string, label?: string) => Promise<void>
-  removePreset: (path: string) => Promise<void>
+  /** 新增 pi home（登记 / 初始化 / 复制）并切换过去：成功返回 null，失败返回错误文本。 */
+  createHome: (input: HomeCreateInput) => Promise<string | null>
+  /** 改名 / 编辑说明；只动清单元数据。 */
+  updateHome: (id: string, patch: { name?: string; description?: string }) => Promise<string | null>
+  /** 从清单移除（不删目录）；移除当前 home 时自动切到第一个可用项。 */
+  removeHome: (id: string) => Promise<string | null>
   setFooter: (kind: FooterKind, message: string) => void
   clearFooter: () => void
   /** 包装写操作：footer 显示忙碌/成功/失败，返回是否成功。 */
@@ -85,7 +54,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   footer: { kind: 'idle', message: '' },
   homes: [],
   homesLoading: false,
-  presets: loadPresets(),
 
   async initHome() {
     void get().refreshHomes()
@@ -103,48 +71,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  async addHome(raw) {
-    const trimmed = raw.trim()
-    if (!trimmed) return '请输入 pi home 路径'
-    try {
-      // 先校验再切换：无效路径不改动当前 home，只回报错误。
-      const check = await api.homeCheck(trimmed)
-      if (!get().homes.some((h) => h.path === check.home)) await get().addPreset(check.home)
-      await get().confirmHome(check.home)
-      return null
-    } catch (error) {
-      return describeError(error)
-    }
-  },
-
   async refreshHomes() {
     set({ homesLoading: true })
     try {
-      const extra = get().presets.map((p) => p.path)
-      const { homes } = await api.getHomes(extra)
+      const { homes } = await api.getHomes()
       set({ homes, homesLoading: false })
     } catch (error) {
       set({ homesLoading: false, footer: { kind: 'error', message: `读取 pi home 列表失败：${describeError(error)}` } })
     }
   },
 
-  async addPreset(path, label) {
-    const trimmed = path.trim()
-    if (!trimmed) return
-    const existing = get().presets
-    const next = existing.some((p) => p.path === trimmed)
-      ? existing.map((p) => (p.path === trimmed ? { ...p, label: label ?? p.label } : p))
-      : [...existing, { path: trimmed, label }]
-    set({ presets: next })
-    savePresets(next)
-    await get().refreshHomes()
+  async createHome(input) {
+    try {
+      const { home } = await api.createHome(input)
+      await get().refreshHomes()
+      await get().confirmHome(home.path)
+      return null
+    } catch (error) {
+      return describeError(error)
+    }
   },
 
-  async removePreset(path) {
-    const next = get().presets.filter((p) => p.path !== path)
-    set({ presets: next })
-    savePresets(next)
-    await get().refreshHomes()
+  async updateHome(id, patch) {
+    try {
+      await api.updateHome(id, patch)
+      await get().refreshHomes()
+      return null
+    } catch (error) {
+      return describeError(error)
+    }
+  },
+
+  async removeHome(id) {
+    try {
+      const removed = get().homes.find((h) => h.id === id)
+      await api.removeHome(id)
+      await get().refreshHomes()
+      // 移除的正是当前 home 时切到第一个可用项，避免停在失效条目上。
+      if (removed && removed.path === get().homePath) {
+        const next = get().homes.find((h) => h.valid)
+        if (next) await get().confirmHome(next.path)
+      }
+      return null
+    } catch (error) {
+      return describeError(error)
+    }
   },
 
   setHomePath(path: string) {

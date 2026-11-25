@@ -17,9 +17,11 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 #### 验收
 
 - 首次打开自动探测默认 pi home；顶栏只显示当前路径，切换与新增统一在左侧「Pi home」列表完成。
-- 左侧「Pi home」分组列出所有已知 pi home：默认位置（`~/.pi/agent`）、`PI_CODING_AGENT_DIR` 指定的位置、同机其他用户的 `/home/*/.pi/agent`，以及用户新增的条目。每条显示短名、来源标记与内容摘要（skill / agent / mcp / 插件数量）。
-- 分组标题右侧「+」展开行内输入框，填绝对路径或 `~/…` 后回车即新增并切换；路径无效时只在输入框下报错，当前 home 与各分区保持原样。新增项存 localStorage（`~` 规范成绝对路径），可「×」从列表移除，目录本身不受影响；「↻」重新扫描。
-- 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效条目标红并说明缺失项。当前 home 失效时侧边栏仍可用，内容区提示从列表另选或新增。
+- 左侧「Pi home」分组列出 pi home 清单与自动发现项：清单由服务端持有并原子落盘（`$XDG_STATE_HOME/pi-manager-web/homes.json`，`PI_MANAGER_STATE` 可覆盖），首次启动用默认位置（`~/.pi/agent`）与 `PI_CODING_AGENT_DIR` 播种；`/home/*/.pi/agent` 等未登记项作为只读候选列出，标来源「本机」并带「+」一键登记。条目 id 取 realpath 的 sha256 前 16 位，跨重启稳定。
+- 每条显示自定义名称、完整路径与内容摘要（skill / agent / mcp / 插件数量）；悬停出现重命名、编辑说明、从清单移除三个操作，移除有内联确认且只动清单不删文件。
+- 分组标题右侧「+」展开新增面板，三选一：**初始化**（新建目录，生成 `settings.json` 与空的 `skills/`、`agents/`）、**复制**（从另一份 home 复制 `settings.json`/`models.json`/`mcp.json` 与 `skills`、`agents`、`prompts`、`themes` 目录，默认不带 `auth.json` 凭据，也不带 sessions/npm 等运行态）、**登记**（目录必须已是 pi home）。可同时指定显示名称，留空取目录名。
+- 新增只创建最后一级目录：上级目录不存在时报错，不静默生成目录链；目标已存在且非空返回 409。
+- 点击条目即切换该 home 并重新加载全部分区；当前项高亮，失效条目标红并说明缺失项。当前 home 失效时侧边栏仍可用，内容区提示从列表另选或新增。「↻」重新扫描。
 - 目录缺 `settings.json`（realpath 校验）时明确提示"不是有效的 pi home"，分区不加载；路径错误不写脏数据。
 - 切换 home 后整个内容区强制重挂载，所有分区状态重置；选中的 home 持久化在 localStorage，下次打开自动恢复。
 - 服务端不持有全局 home 状态，每个请求携带 `?home=` 参数并逐次 realpath 校验。
@@ -77,5 +79,5 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 发现已知 pi home 并生成轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
 - `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
