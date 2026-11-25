@@ -23,3 +23,4 @@ node_modules
 
 /apps/ssh-web/web/dist/
 /apps/ssh-web/target/
+/apps/pi-manager-web/web/dist/

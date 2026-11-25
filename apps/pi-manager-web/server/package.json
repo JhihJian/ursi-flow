@@ -1,0 +1,11 @@
+{
+  "name": "@ursi/pi-manager-web-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test src/*.test.ts"
+  },
+  "description": "pi-manager-web 服务端：零依赖托管静态页面与 pi home 配置文件的同源管理 API"
+}

@@ -14,7 +14,9 @@
     "apps/chat-web/server",
     "apps/shell-web",
     "apps/ssh-web/web",
-    "packages/workspace-shell"
+    "packages/workspace-shell",
+    "apps/pi-manager-web/web",
+    "apps/pi-manager-web/server"
   ],
   "scripts": {
     "test": "node --test apps/fs-web/server/test/*.test.ts",
