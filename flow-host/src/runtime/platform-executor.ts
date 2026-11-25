@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { ExecutorUnconfirmed } from "ursi-flow-runtime";
 import type {
 	CommandOutput,
 	CommandInvocation,
@@ -14,8 +15,8 @@ import { PlatformClient, type ExecutorRef, type PlatformConfig } from "../execut
 import { renderAgentPrompt } from "./prompt.ts";
 import { allowedVariablesOf, parseRuntimeOutcome } from "./tools/bridge.ts";
 
-/** 平台无法确认尝试状态：宿主据此把 Run 标为待核实，`resume` 只查询原尝试。 */
-export class AttemptUnconfirmed extends Error {}
+/** 平台无法确认尝试状态：引擎据此把 Run 标为待核实，`resume` 只查询原尝试。 */
+export class AttemptUnconfirmed extends ExecutorUnconfirmed {}
 
 /**
  * 平台执行器：把独立的 Agent 节点交给执行器平台，命令节点不支持。
@@ -55,7 +56,14 @@ export class PlatformExecutor implements FlowExecutor {
 			});
 		}
 		for (;;) {
-			const state = await this.client.inspect(attemptId);
+			let state: { status: string; artifactDirectoryId?: unknown };
+			try {
+				state = await this.client.inspect(attemptId);
+			} catch (error) {
+				throw new AttemptUnconfirmed(
+					error instanceof Error ? error.message : String(error),
+				);
+			}
 			if (state.status === "succeeded") {
 				const artifact = await this.client.outcome(state.artifactDirectoryId);
 				const outcome = parseRuntimeOutcome(

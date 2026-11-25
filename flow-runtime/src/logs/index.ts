@@ -19,6 +19,7 @@ export type {
 	RunSnapshot,
 	RunStarted,
 	RunStatus,
+	RunStopped,
 	RunUnconfirmed,
 	StoredRun,
 } from "./entities.ts";

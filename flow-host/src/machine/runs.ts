@@ -145,14 +145,14 @@ export class Runs {
 				? "completed"
 				: stored?.snapshot.status === "failed"
 					? "failed"
-					: stored?.snapshot.status === "awaiting_input"
-						? job.stopRequested
-							? "stopped"
-							: "waiting_input"
-						: stored?.snapshot.status === "unconfirmed"
-							? "unknown"
-							: job.stopRequested
+					: stored?.snapshot.status === "interrupted"
+						? "stopped"
+						: stored?.snapshot.status === "awaiting_input"
+							? job.stopRequested
 								? "stopped"
+								: "waiting_input"
+							: stored?.snapshot.status === "unconfirmed"
+								? "unknown"
 								: "unknown";
 		const failure = stored?.snapshot.failure;
 		return {
@@ -412,6 +412,7 @@ export class Runs {
 			job.stopRequested = true;
 			await save(join(this.dir(key), "job.json"), job);
 		}
+		let confirmedLocal = !job.executorRef;
 		if (info?.pid) {
 			info.stop = true;
 			try {
@@ -424,23 +425,42 @@ export class Runs {
 			// 本地运行没有活动 worker 时，停止只记取消意图并压住后续应答。
 			job.stopRequested = true;
 			await save(join(this.dir(key), "job.json"), job);
+			await this.markStopped(key);
 		}
 		if (job.executorRef) {
+			let confirmed = false;
 			try {
 				const platform = this.boundPlatform(job);
 				const executor = new PlatformExecutor(platform, job.executorRef, this.dir(key));
-				const confirmed = await executor.cancel();
-				const stopped = info ? await groupStopped(info.pid) : true;
-				if (!stopped || !confirmed) {
-					job.stopRequested = true;
-					await save(join(this.dir(key), "job.json"), job);
-				}
+				confirmed = await executor.cancel();
 			} catch {
+				confirmed = false;
+			}
+			const stopped = info ? await groupStopped(info.pid) : true;
+			confirmedLocal = confirmed && stopped;
+			if (!confirmedLocal) {
 				job.stopRequested = true;
 				await save(join(this.dir(key), "job.json"), job);
 			}
 		}
+		if (confirmedLocal) await this.markStopped(key);
 		return this.view(key, job);
+	}
+	/** 用引擎写一条停止事实：之后的状态与应答都以它为准。 */
+	private async markStopped(key: string) {
+		const { FlowEngine } = await import("ursi-flow-runtime");
+		const engine = new FlowEngine({
+			executor: {
+				prompt: async () => {
+					throw new Error("停止中的运行不应执行节点");
+				},
+				command: async () => {
+					throw new Error("停止中的运行不应执行命令");
+				},
+			},
+			store: this.store,
+		});
+		await engine.stop(key, "运行被停止").catch(() => undefined);
 	}
 	async shutdown(key: string) {
 		const info = this.active.get(key);

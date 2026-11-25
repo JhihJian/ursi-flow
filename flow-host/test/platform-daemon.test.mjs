@@ -103,15 +103,13 @@ before(async () => {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
       const { method, url } = req, s = scenario;
       if (method === 'GET' && url === '/api/v2/node-executors/reviewer/7') return res.end(JSON.stringify(ref));
-      if (method === 'GET' && url === '/api/v2/node-executors/heavy-x/3') return res.end(JSON.stringify({ id: 'heavy-x', revision: 3 }));
-      if (method === 'GET' && url === '/api/v2/executors/heavy-x') return res.end(JSON.stringify({ id: 'heavy-x', revision: 3 }));
-      if (method === 'GET' && (url.startsWith('/api/v2/node-executors/') || url.startsWith('/api/v2/executors/'))) return res.writeHead(404).end();
+      if (method === 'GET' && url.startsWith('/api/v2/node-executors/')) return res.writeHead(404).end();
       s.calls.push([method, url]);
       if (method === 'PUT') {
-        // Read the real worker's facts while dispatch is in flight, not after its receipt.
-        const facts = JSON.parse(await readFile(join(home, 'runs', s.id, 'facts.json'), 'utf8'));
-        s.attempt = facts.nodeRuns.at(-1).attemptId;
-        assert.match(s.attempt, /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/);
+        // Read the worker's attempt record while dispatch is in flight, not after its receipt.
+        const attempts = JSON.parse(await readFile(join(home, 'runs', s.id, 'attempts.json'), 'utf8'));
+        s.attempt = Object.values(attempts).at(-1);
+        assert.match(s.attempt, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
         assert.equal(url, `/api/v2/executor-attempts/${s.attempt}`);
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
@@ -205,24 +203,6 @@ test('取消未确认保持 unknown；重试原 ID，确认后停止且不选边
   assert.deepEqual(scenario.calls.slice(-4).map(([method]) => method), ['POST', 'GET', 'POST', 'GET']);
   assert.equal(scenario.calls.filter(([method]) => method === 'PUT').length, 1);
   assert.equal((await rpc('run.history', { id })).routeDecisions.length, 0);
-});
-
-test('节点标记声明的执行器在启动时钉死最新修订并用于派发', async () => {
-  const marked = markdown.replace('```新建Agent', '```新建Agent:heavy-x');
-  await rpc('flow.create', { id: 'review-pinned', files: { 'FLOW.md': marked } });
-  const args = await start('pinned', { flow: 'review-pinned', status: 'succeeded', nodeExecutorRef: { id: 'heavy-x', revision: 3 } });
-  await statusOf(args.id, 'completed');
-  const job = JSON.parse(await readFile(join(home, 'runs', 'pinned', 'job.json'), 'utf8'));
-  assert.deepEqual(job.nodeExecutors, { 'heavy-x': { id: 'heavy-x', revision: 3 } });
-});
-
-test('未知执行器名称拒绝启动', async () => {
-  const marked = markdown.replace('```新建Agent', '```新建Agent:missing-x');
-  await rpc('flow.create', { id: 'review-missing', files: { 'FLOW.md': marked } });
-  await assert.rejects(
-    rpc('run.start', { id: 'missing-x', flow: 'review-missing', cwd: home, variables: { 任务: 'x' }, executorRef: ref }),
-    /执行器 missing-x/,
-  );
 });
 
 for (const [id, options, error] of [

@@ -33,4 +33,5 @@ export type RunResult =
 	  }
 	| { status: "awaiting_input"; runId: string; pending: PendingConfirm }
 	| { status: "failed"; runId: string; error: FlowFailure }
-	| { status: "unconfirmed"; runId: string; error: FlowFailure };
+	| { status: "unconfirmed"; runId: string; error: FlowFailure }
+	| { status: "interrupted"; runId: string };

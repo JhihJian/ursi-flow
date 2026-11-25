@@ -55,7 +55,6 @@ test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
   const { baseUrl, requests } = await openaiFixture(t);
   const dir = await mkdtemp(join(tmpdir(), 'ursi-sdk-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const history = join(dir, 'history.json');
   const result = await exec(
     process.execPath,
     [
@@ -64,8 +63,8 @@ test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
       resolve('../flow-runtime/examples/ordinary'),
       '--cwd',
       dir,
-      '--history',
-      history,
+      '--store',
+      join(dir, 'store'),
       '--trajectories',
       join(dir, 'trajectories'),
       '--base-url',
@@ -87,7 +86,11 @@ test('Pi SDK 执行器按 provider 配置运行完整示例', async (t) => {
     assert.ok(names.includes(tool), `缺少工具 ${tool}: ${names.join(',')}`);
   const outcome = requests[0].tools.find((tool) => tool.function.name === 'submit_flow_outcome');
   assert.ok(outcome.function.parameters.properties.outcome, JSON.stringify(outcome.function.parameters));
-  assert.ok(requests[1].messages.some((message) => message.role === 'tool'));
+  // 每个节点是独立会话：第二节点带上一步声明的下一跳变量。
+  assert.ok(
+    JSON.stringify(requests[1].messages).includes('本地验收'),
+    JSON.stringify(requests[1].messages),
+  );
   // 每个 Agent 节点执行留一份可被轨迹查看器解析的 JSONL 切片。
   const files = (await readdir(join(dir, 'trajectories'))).filter((name) => name.endsWith('.jsonl'));
   assert.ok(files.length >= 2, `应至少记录两次节点执行：${files.join(',')}`);

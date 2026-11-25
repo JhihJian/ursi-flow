@@ -92,6 +92,8 @@ export function projectHistory(
 		sequence = Math.max(sequence, event.seq);
 		switch (event.type) {
 			case "node.entered": {
+				const existing = byStep.get(event.stepId);
+				if (existing) break;
 				const record: NodeFact = {
 					id: event.stepId,
 					runId: event.runId,
@@ -210,9 +212,10 @@ export function projectHistory(
 					...(event.fromStepId === undefined
 						? {}
 						: { interruptedNodeRunId: event.fromStepId }),
-					strategy: snapshot.status === "unconfirmed"
-						? "inspect_attempt"
-						: "continue_routing",
+					strategy:
+						event.fromStatus === "unconfirmed"
+							? "inspect_attempt"
+							: "continue_routing",
 					resumedAt: event.at,
 					summary: "继续执行未完成的运行",
 				});

@@ -117,6 +117,8 @@ export interface RouteSelected {
 export interface RunResumed {
 	type: "run.resumed";
 	fromStepId?: string;
+	/** 恢复前的运行状态，用于区分“待核实”与普通续跑。 */
+	fromStatus?: RunStatus;
 }
 
 export interface RunCompleted {
@@ -131,6 +133,11 @@ export interface RunFailed extends FlowFailure {
 
 export interface RunUnconfirmed extends FlowFailure {
 	type: "run.unconfirmed";
+}
+
+export interface RunStopped {
+	type: "run.stopped";
+	reason?: string;
 }
 
 /** 过程日志的全部实体。写入时由 store 补上 runId、seq 与 at。 */
@@ -148,7 +155,8 @@ export type LogEventPayload =
 	| RunResumed
 	| RunCompleted
 	| RunFailed
-	| RunUnconfirmed;
+	| RunUnconfirmed
+	| RunStopped;
 
 export type LogEvent = LogEventPayload & LogEventBase;
 
@@ -157,7 +165,8 @@ export type RunStatus =
 	| "awaiting_input"
 	| "completed"
 	| "failed"
-	| "unconfirmed";
+	| "unconfirmed"
+	| "interrupted";
 
 /** 可重建下一步的完整状态。Flow Core 的 stepId 不可注入，恢复只能依赖这份快照。 */
 export interface RunSnapshot {

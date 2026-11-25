@@ -91,6 +91,8 @@ export interface Engine {
 	respond(runId: string, stepId: string, result: string): Promise<RunResult>;
 	/** 从持久化快照继续未完成的运行；等待中的运行重新提问。 */
 	resume(runId: string): Promise<RunResult>;
+	/** 终止未完成的运行：记一条停止事实，快照进入 interrupted。 */
+	stop(runId: string, reason?: string): Promise<RunResult>;
 	/** 读取等待中的确认；不等待时返回 undefined。 */
 	pending(runId: string): Promise<PendingConfirm | undefined>;
 }

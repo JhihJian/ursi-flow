@@ -157,11 +157,46 @@ export class FlowEngine implements Engine {
 		}
 		await this.record(state, {
 			type: "run.resumed",
+			fromStatus: snapshot.status,
 			...(snapshot.context.current === null
 				? {}
 				: { fromStepId: snapshot.context.current.stepId }),
 		});
 		return this.advance(state);
+	}
+
+	/** 终止运行：已终态时原样返回。停止事实是之后状态的唯一依据。 */
+	async stop(runId: string, reason?: string): Promise<RunResult> {
+		const stored = await this.require(runId);
+		const { snapshot, header } = stored;
+		if (snapshot.status === "completed")
+			return {
+				status: "completed",
+				runId,
+				variables: snapshot.context.variables,
+				steps: snapshot.context.steps,
+			};
+		if (snapshot.status === "failed")
+			return {
+				status: "failed",
+				runId,
+				error: snapshot.failure ?? {
+					code: "executor_failed",
+					message: "运行已失败",
+				},
+			};
+		const state: RunState = {
+			runId,
+			context: snapshot.context,
+			seq: snapshot.seq,
+			...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+		};
+		await this.record(state, {
+			type: "run.stopped",
+			...(reason === undefined ? {} : { reason }),
+		});
+		await this.saveSnapshot(state, "interrupted");
+		return { status: "interrupted", runId };
 	}
 
 	async pending(runId: string): Promise<PendingConfirm | undefined> {
