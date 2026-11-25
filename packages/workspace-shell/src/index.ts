@@ -1,14 +1,14 @@
 export { WorkspaceShell } from './shell'
-export { ModuleColumnProvider, WorkspaceProvider, useModuleColumn, useWorkspace } from './context'
-export type { ModuleColumnValue } from './context'
+export { SidebarFrame } from './frame'
+export { WorkspaceProvider, useWorkspace, useOptionalWorkspace } from './context'
 export type {
-  CollapsedSummary,
+  ModuleContext,
+  ModuleSidebarProps,
   Selection,
   WorkspaceAction,
   WorkspaceModule,
   WorkspaceProfile,
-  WorkspaceRegionItem,
-  WorkspaceRegionSpec,
-  WorkspaceView,
   WorkspaceShellProps,
+  WorkspaceView,
 } from './contracts'
+export type { SidebarFrameProps } from './frame'

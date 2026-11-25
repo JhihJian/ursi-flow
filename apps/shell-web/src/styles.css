@@ -1,4 +1,4 @@
-/* 宿主自己的最小样式；todo-web 的样式已在上方导入，这里只覆盖外壳需要的高度。 */
+/* 宿主自己的最小样式：只负责挂载高度与宿主页面，模块样式由各模块自带。 */
 html,
 body {
   height: 100%;
@@ -11,78 +11,23 @@ body {
   height: 100%;
 }
 
-.ws-root {
-  height: 100%;
-}
-
-/* todo 模块嵌在栏里时，用自己的纵向容器撑满 */
-.todo-embed {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.todo-view {
-  height: 100%;
-  padding: 16px 20px;
-  overflow-y: auto;
-  font-size: 12px;
-}
-
-.todo-view-title {
-  margin: 0 0 12px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 18px;
-  font-weight: 400;
-}
-
-.todo-view-meta {
-  margin: 0 0 12px;
-}
-
-.todo-view-row {
-  display: flex;
-  gap: 8px;
-  padding: 3px 0;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.todo-view-row dt {
-  width: 72px;
-  flex: none;
-  color: #999999;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 10px;
-}
-
-.todo-view-row dd {
-  margin: 0;
-  color: #1a1a1a;
-}
-
-.todo-view-hint {
-  color: #999999;
-  font-size: 11px;
-}
-
-.app-settings {
+/* 不占侧边栏的宿主页面（设置、注册表） */
+.app-page {
   height: 100%;
   padding: 20px 24px;
   overflow-y: auto;
+  font-family: var(--ws-mono);
   font-size: 12px;
   color: #666666;
 }
 
-.app-settings-title {
+.app-page-title {
   margin: 0 0 12px;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--ws-serif);
   font-size: 18px;
   font-weight: 400;
   color: #1a1a1a;
 }
-
 
 .app-registry-item {
   margin: 0 0 14px;
@@ -100,13 +45,13 @@ body {
 }
 
 .app-registry-title {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--ws-serif);
   font-size: 14px;
   color: #1a1a1a;
 }
 
 .app-registry-id {
-  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--ws-mono);
   font-size: 11px;
   color: #999999;
 }
@@ -128,68 +73,7 @@ body {
 
 .app-registry-row dd {
   margin: 0;
-  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--ws-mono);
   font-size: 11px;
   color: #1a1a1a;
-}
-
-.app-constraints {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.app-constraint {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.app-constraint-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #999999;
-}
-
-.app-constraint-input {
-  width: 64px;
-  padding: 2px 6px;
-  border: 1px solid #e0e0e0;
-  border-radius: 3px;
-  font: 11px "SF Mono", Menlo, Consolas, monospace;
-  color: #1a1a1a;
-  background: #ffffff;
-}
-
-.app-constraint-input:focus {
-  outline: none;
-  border-color: #999999;
-}
-
-/* 隐藏 number 输入的上下箭头，保持紧凑 */
-.app-constraint-input::-webkit-outer-spin-button,
-.app-constraint-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.app-constraint-reset {
-  padding: 2px 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 3px;
-  background: none;
-  font: 11px inherit;
-  color: #666666;
-  cursor: pointer;
-}
-
-.app-constraint-reset:hover {
-  border-color: #999999;
-  color: #1a1a1a;
-}
-
-.app-constraint-error {
-  font-size: 11px;
-  color: #a04040;
 }

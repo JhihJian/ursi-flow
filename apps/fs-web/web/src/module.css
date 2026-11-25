@@ -965,3 +965,8 @@ button.wsx-git-sync-status {
   font-family: var(--wsx-serif, Georgia, serif);
   color: var(--wsx-muted, #999999);
 }
+
+/* 模块侧边栏内容：填满 SidebarFrame 的内容区 */
+.wsx-panel-fill {
+  height: 100%;
+}

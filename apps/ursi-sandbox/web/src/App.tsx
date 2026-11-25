@@ -1,39 +1,16 @@
-import {
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-  type DependencyList,
-} from 'react'
+import { useEffect, useRef } from 'react'
 import {
   Activity,
   ArrowLeft,
   Box,
   Boxes,
   ChevronDown,
-  ChevronRight,
-  CircleAlert,
-  CircleStop,
-  Layers3,
   RefreshCw,
-  Server,
 } from 'lucide-react'
-import {
-  HashRouter,
-  Link,
-  NavLink,
-  Outlet,
-  Route,
-  Routes,
-  useLocation,
-  useMatch,
-  useOutletContext,
-  useParams,
-  useNavigate,
-} from 'react-router'
+import { Link, Route, Routes, useNavigate, useParams } from 'react-router'
 import { ObservationRoute } from './ObservationPage'
 import { EndpointWorkbench } from './Workbench'
-import { CreateSandbox, Actions, CliTools } from './Management'
+import { Actions, CliTools } from './Management'
 import { AccessSetup } from './AccessSetup'
 import { CapabilityRegistry } from './CapabilityRegistry'
 import { Button, buttonVariants } from './shared/ui/button'
@@ -45,277 +22,18 @@ import {
   CollapsibleTrigger,
 } from './shared/ui/collapsible'
 import { cn } from './shared/lib/utils'
-import { loadSource, GatewayError, type Source, type Sandbox } from './data'
+import { GatewayError, type Source } from './data'
+import {
+  AsyncState,
+  Refresh,
+  StatusBadge,
+  memory,
+  nameOf,
+  useLoad,
+  useSandboxData,
+} from './common'
 
-/** 沙箱控制台应用本体。由 main.tsx（独立部署，HashRouter）或 module.tsx（嵌入外壳，MemoryRouter）提供路由。 */
-
-const statuses: Record<string, string> = {
-  running: '运行中',
-  preparing: '准备中',
-  stopped: '已停止',
-  deleting: '删除中',
-  error: '异常',
-}
-const nameOf = (r: Sandbox) => r.spec.labels.name || r.id
-const memory = (mb: number) =>
-  mb % 1024 === 0 ? `${mb / 1024} GiB` : `${mb} MiB`
-type State<T> = { value?: T; loading?: boolean; error?: string }
-function useLoad<T>(
-  load: (s: AbortSignal) => T | Promise<T>,
-  deps: DependencyList,
-) {
-  const [seq, refresh] = useReducer((n) => n + 1, 0)
-  const run = useRef(0)
-  const [state, set] = useState<State<T>>({ loading: true })
-  useEffect(() => {
-    const ctl = new AbortController(),
-      current = ++run.current
-    set((previous) => ({ value: previous.value, loading: true }))
-    Promise.resolve()
-      .then(() => load(ctl.signal))
-      .then(
-        (value) => {
-          if (!ctl.signal.aborted && current === run.current) set({ value })
-        },
-        (error) => {
-          if (ctl.signal.aborted || current !== run.current) return
-          const lost =
-            error instanceof GatewayError &&
-            [401, 403, 404].includes(error.status)
-          set((previous) => ({
-            value: lost ? undefined : previous.value,
-            error: error.message,
-          }))
-        },
-      )
-    return () => ctl.abort()
-  }, [...deps, seq])
-  function update(value: T) {
-    // 生命周期操作返回的新状态优先于尚未完成的旧详情请求。
-    run.current += 1
-    set({ value })
-  }
-  return { ...state, refresh, update }
-}
-type RequestState = State<unknown> & { refresh: () => void }
-function AsyncState({ state }: { state: RequestState }) {
-  return (
-    <div role="status" className="sbx-empty-state">
-      {state.error ? (
-        <>
-          <CircleAlert className="size-4 text-sbx-err" />
-          {state.error}
-          <Button variant="outline" size="sm" onClick={state.refresh}>
-            <RefreshCw />
-            重试
-          </Button>
-        </>
-      ) : (
-        '正在读取…'
-      )}
-    </div>
-  )
-}
-function StatusBadge({ status }: { status: string }) {
-  const tone =
-    status === 'running'
-      ? 'bg-sbx-ok/10 text-sbx-ok'
-      : status === 'error'
-        ? 'bg-sbx-err/10 text-sbx-err'
-        : ['preparing', 'deleting'].includes(status)
-          ? 'bg-sbx-warn/10 text-sbx-warn'
-          : 'bg-sbx-elevated text-sbx-txt3'
-  return (
-    <Badge
-      variant="secondary"
-      data-testid="instance-status"
-      className={cn('gap-1.5 whitespace-nowrap', tone)}
-    >
-      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      {statuses[status] || status}
-    </Badge>
-  )
-}
-function Refresh({ state }: { state: RequestState }) {
-  return (
-    <Button
-      variant="outline"
-      onClick={state.refresh}
-      disabled={state.loading}
-      aria-busy={state.loading}
-    >
-      <RefreshCw className={cn(state.loading && 'motion-safe:animate-spin')} />
-      刷新
-    </Button>
-  )
-}
-function Header({ source }: { source?: Source }) {
-  return (
-    <header className="border-b border-sbx-line bg-surface">
-      <div className="sbx-page-shell flex min-h-14 flex-wrap items-center gap-x-5 gap-y-1">
-        <Link
-          className="inline-flex min-h-12 items-center gap-2 whitespace-nowrap font-semibold"
-          to="/sandboxes"
-        >
-          <span className="sbx-icon-tile size-7">
-            <Boxes className="size-4" />
-          </span>
-          Ursi Sandbox
-        </Link>
-        <nav
-          className="order-last flex w-full items-center gap-4 sm:order-none sm:w-auto"
-          aria-label="主导航"
-        >
-          <NavLink className="sbx-nav-link" to="/sandboxes">
-            沙箱
-          </NavLink>
-          {source && (
-            <NavLink className="sbx-nav-link" to="/registry">
-              能力注册表
-            </NavLink>
-          )}
-          {source?.manage && source.capabilities.access_keys && (
-            <NavLink className="sbx-nav-link" to="/access">
-              接入配置
-            </NavLink>
-          )}
-        </nav>
-        <Badge variant="outline" className="ml-auto whitespace-nowrap">
-          <Server className="size-3" />
-          {source?.manage
-            ? 'Gateway · 管理员'
-            : source
-              ? 'Gateway · 只读'
-              : 'Gateway'}
-        </Badge>
-      </div>
-    </header>
-  )
-}
-const filters = [
-  ['', '全部实例', Layers3],
-  ['running', '运行中', Activity],
-  ['stopped', '已停止', CircleStop],
-  ['error', '异常', CircleAlert],
-] as const
-function InstanceLink({ row }: { row: Sandbox }) {
-  return (
-    <NavLink
-      to={'/sandboxes/' + row.id}
-      end
-      aria-label={'查看 ' + nameOf(row)}
-      className="sbx-instance-link"
-      title={nameOf(row)}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{nameOf(row)}</span>
-        <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-sbx-txt2">
-          <span className="inline-flex shrink-0 items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className={cn(
-                'size-1.5 rounded-full border border-current',
-                row.status === 'running' && 'bg-current',
-              )}
-            />
-            {statuses[row.status] || row.status}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span className="truncate" title={row.spec.image}>{row.spec.image}</span>
-        </span>
-      </span>
-      <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-sbx-txt3" />
-    </NavLink>
-  )
-}
-function InstanceSidebar({
-  source,
-  state,
-}: {
-  source: Source
-  state: State<Sandbox[]> & { refresh: () => void }
-}) {
-  const [status, filter] = useState('')
-  const rows = state.value ?? []
-  const result = rows.filter((row) => !status || row.status === status)
-  const counts = new Map<string, number>()
-  for (const row of rows) counts.set(row.status, (counts.get(row.status) ?? 0) + 1)
-  return (
-    <aside className="sbx-instance-sidebar" aria-labelledby="instances">
-      <div className="sbx-instance-sidebar-head">
-        <div className="flex items-center justify-between gap-2">
-          <h2 id="instances" className="text-base">实例列表</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label="刷新实例列表"
-            title="刷新实例列表"
-            onClick={state.refresh}
-            disabled={state.loading}
-          >
-            <RefreshCw className={cn(state.loading && 'motion-safe:animate-spin')} />
-          </Button>
-        </div>
-        <CreateSandbox source={source} />
-        <div className="sbx-instance-filters" role="group" aria-label="按状态筛选">
-          {filters.map(([value, label, Icon]) => (
-            <Button
-              key={value}
-              variant="ghost"
-              aria-pressed={status === value}
-              onClick={() => filter(value)}
-              className="h-8 justify-between gap-1 px-1.5 text-xs aria-pressed:bg-sbx-accent-dim aria-pressed:text-sbx-txt"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <Icon aria-hidden="true" />
-                {label}
-              </span>
-              <span className="tabular-nums">
-                {state.value ? (value ? counts.get(value) ?? 0 : rows.length) : '·'}
-              </span>
-            </Button>
-          ))}
-        </div>
-      </div>
-      <div className="sbx-instance-scroll">
-        {(!state.value || state.error) && (
-          <div className="p-3"><AsyncState state={state} /></div>
-        )}
-        {state.value && !result.length && !state.error && (
-          <div className="px-3 py-5 text-xs text-sbx-txt2">
-            <p role="status">{rows.length ? '没有匹配的实例' : '暂无沙箱实例'}</p>
-            {rows.length > 0 && (
-              <Button variant="link" size="sm" className="px-0" onClick={() => filter('')}>
-                显示全部
-              </Button>
-            )}
-          </div>
-        )}
-        {result.length > 0 && (
-          <ul className="divide-y divide-sbx-line" aria-labelledby="instances">
-            {result.map((row) => (
-              <li key={row.id}><InstanceLink row={row} /></li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </aside>
-  )
-}
-function InstanceLayout({ source }: { source: Source }) {
-  const { pathname } = useLocation()
-  const hasDetail = Boolean(useMatch('/sandboxes/:id'))
-  const list = useLoad((signal) => source.list(signal), [source, pathname])
-  return (
-    <div className="sbx-instance-layout" data-detail={hasDetail}>
-      <InstanceSidebar source={source} state={list} />
-      <div className="sbx-instance-content" key={pathname}>
-        <Outlet context={list.refresh} />
-      </div>
-    </div>
-  )
-}
+/** 沙箱工作区：路由内容（实例详情、注册表、接入配置、网络观测）。 */
 function InstanceOverview() {
   return (
     <main className="sbx-instance-overview" aria-labelledby="instances-heading">
@@ -386,11 +104,17 @@ function Logs({ source, id }: { source: Source; id: string }) {
     </div>
   )
 }
-function DetailsRoute({ source }: { source: Source }) {
+function DetailsRoute({
+  source,
+  refreshList,
+}: {
+  source: Source
+  refreshList: () => void
+}) {
   const id = useParams<'id'>().id!
-  const refreshList = useOutletContext<() => void>()
   return <Details key={id} source={source} id={id} refreshList={refreshList} />
 }
+
 function Details({
   source,
   id,
@@ -565,45 +289,43 @@ function Details({
     </main>
   )
 }
-/** 沙箱控制台应用本体。由 main.tsx（独立部署，HashRouter）或 module.tsx（嵌入外壳，MemoryRouter）提供路由。 */
-export function SandboxConsole() {
-  const config = useLoad(loadSource, [])
+
+export function SandboxRoutes() {
+  const { config, list } = useSandboxData()
+  const source = config.value
+  if (!source) {
+    // 配置的加载与错误状态由侧边栏统一展示，工作区这里不再放一个 status，
+    // 避免同一件事出现两个互相冲突的状态位。
+    return (
+      <main className="sbx-page-shell sbx-page-content">
+        <p className="text-sm text-sbx-txt3">
+          {config.error ? `沙箱配置不可用：${config.error}` : '正在读取沙箱配置…'}
+        </p>
+      </main>
+    )
+  }
   return (
-    <>
-      <Header source={config.value} />
-      {!config.value ? (
-        <main className="sbx-page-shell sbx-page-content">
-          <AsyncState state={config} />
-        </main>
-      ) : (
-        <Routes>
-          <Route element={<InstanceLayout source={config.value} />}>
-            <Route index element={<InstanceOverview />} />
-            <Route path="sandboxes" element={<InstanceOverview />} />
-            <Route path="sandboxes/:id" element={<DetailsRoute source={config.value} />} />
-          </Route>
-          <Route
-            path="registry"
-            element={<CapabilityRegistry source={config.value} />}
-          />
-          <Route
-            path="access"
-            element={<AccessSetup source={config.value} />}
-          />
-          <Route
-            path="sandboxes/:id/observations/:run?"
-            element={<ObservationRoute source={config.value} />}
-          />
-          <Route
-            path="*"
-            element={
-              <main className="sbx-page-shell sbx-page-content">
-                页面不存在 <Link to="/sandboxes">实例列表</Link>
-              </main>
-            }
-          />
-        </Routes>
-      )}
-    </>
+    <Routes>
+      <Route index element={<InstanceOverview />} />
+      <Route path="sandboxes" element={<InstanceOverview />} />
+      <Route
+        path="sandboxes/:id"
+        element={<DetailsRoute source={source} refreshList={list.refresh} />}
+      />
+      <Route path="registry" element={<CapabilityRegistry source={source} />} />
+      <Route path="access" element={<AccessSetup source={source} />} />
+      <Route
+        path="sandboxes/:id/observations/:run?"
+        element={<ObservationRoute source={source} />}
+      />
+      <Route
+        path="*"
+        element={
+          <main className="sbx-page-shell sbx-page-content">
+            页面不存在 <Link to="/sandboxes">实例列表</Link>
+          </main>
+        }
+      />
+    </Routes>
   )
 }

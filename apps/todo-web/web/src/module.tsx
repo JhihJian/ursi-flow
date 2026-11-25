@@ -1,7 +1,9 @@
-import { useEffect } from 'react'
-import type { CollapsedSummary, Selection, WorkspaceModule } from '@ursi/workspace-shell'
+import { useEffect, useRef, type ReactNode } from 'react'
+import type { WorkspaceModule } from '@ursi/workspace-shell'
 import { useWorkspace } from '@ursi/workspace-shell'
-import TodoApp from './App'
+import { TodoSidebar } from './components/TodoSidebar'
+import { TodoWorkspace } from './components/TodoWorkspace'
+import { TodoProvider } from './providers'
 import { useTodoStore } from './store/todo-store'
 import { buildTaskMarkdown } from './lib/task-markdown'
 import { copyText } from './lib/clipboard'
@@ -14,117 +16,66 @@ function useSelectedTask() {
   return useTodoStore((state) => (state.detail?.mode === 'view' ? state.detail.task : null))
 }
 
-/**
- * todo 模块的展开态。内部仍是完整的 todo 应用，同时把「选中了哪个任务」
- * 同步给工作区外壳，供工作区区域与右侧操作面板使用。
- */
-function TodoPanel() {
-  const { select } = useWorkspace()
+/** 把模块内的任务选中同步到外壳；侧边栏、工作区、状态栏读同一份。 */
+function TodoSelectionBridge() {
+  const { selection, select } = useWorkspace()
   const task = useSelectedTask()
+  // 只清自己发布的选中，避免模块挂载时抹掉别的模块的选中。
+  const current = useRef(selection)
+  current.current = selection
 
   useEffect(() => {
-    select(task ? { kind: KIND, id: task.id, label: task.title } : null)
+    if (task) select({ kind: KIND, id: task.id, label: task.title })
+    else if (current.current?.kind === KIND) select(null)
   }, [task, select])
 
-  return (
-    <div className="todo-embed">
-      <TodoApp />
-    </div>
-  )
+  return null
 }
 
-/**
- * 折叠后由外壳排版，这里只公布关键信息：当前任务与状态、所属项目，未选中时给任务数。
- * 折叠 UI 不归 todo 维护。
- */
-function useCollapsedSummary(): CollapsedSummary {
-  const task = useSelectedTask()
+/** 状态栏：待办数量与当前选中任务。 */
+function TodoStatus() {
   const tasks = useTodoStore((state) => state.tasks)
-  const projects = useTodoStore((state) => state.projects)
-  const project = task?.project_id
-    ? projects.find((candidate) => candidate.id === task.project_id)
-    : undefined
-
-  if (!task) {
-    return {
-      title: 'Tasks',
-      items: [{ label: 'count', value: String(tasks.length) }],
-    }
-  }
-  return {
-    title: task.title,
-    items: [
-      { label: 'status', value: task.status },
-      ...(project ? [{ label: 'project', value: project.name }] : []),
-    ],
-  }
-}
-
-function TodoWorkspaceView({ selection }: { selection: Selection }) {
-  const task = useTodoStore((state) => state.tasks.find((item) => item.id === selection.id))
-  const projects = useTodoStore((state) => state.projects)
-  const project = task?.project_id
-    ? projects.find((candidate) => candidate.id === task.project_id)
-    : undefined
-
-  if (!task) {
-    return (
-      <div className="ws-placeholder">
-        <span className="ws-placeholder-title">Task</span>
-        <span className="ws-placeholder-text">该任务不在当前筛选结果里，切回全部状态后可见。</span>
-      </div>
-    )
-  }
-
-  const rows: Array<[string, string]> = [
-    ['Project', project?.name ?? '-'],
-    ['Status', task.status],
-    ['Priority', task.priority],
-    ['Tags', task.tags.length ? task.tags.map((tag) => `#${tag}`).join(' ') : '-'],
-  ]
-
+  const { selection } = useWorkspace()
+  const pending = tasks.filter((task) => task.status === 'pending').length
+  const selected = selection?.kind === KIND ? (selection.label ?? selection.id) : ''
   return (
-    <div className="todo-view">
-      <h2 className="todo-view-title">{task.title}</h2>
-      <dl className="todo-view-meta">
-        {rows.map(([label, value]) => (
-          <div key={label} className="todo-view-row">
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="todo-view-hint">
-        执行集成、制品与事件后续在这里接入；工作区外壳只按选中类型分派视图。
-      </p>
-    </div>
+    <span>
+      待办 {pending}
+      {selected ? ` · ${selected}` : ''}
+    </span>
   )
 }
 
-function selectedTaskFrom(selection: Selection) {
+function selectedTaskFrom(selection: { id: string }) {
   return useTodoStore.getState().tasks.find((item) => item.id === selection.id) ?? null
 }
 
 export function createTodoModule(): WorkspaceModule {
+  const Provider = ({ children }: { children: ReactNode }) => (
+    <TodoProvider>
+      <TodoSelectionBridge />
+      {children}
+    </TodoProvider>
+  )
+
   return {
     id: 'todo',
     title: 'Todo',
-    // todo 自带统计栏与工具区，外壳不再重复一条标题行。
-    hideHeader: true,
-    useCollapsedSummary,
-    defaultSize: 520,
-    minSize: 320,
-    collapsedSize: 32,
-    Panel: TodoPanel,
-    selection: {
+    Provider,
+    Sidebar: TodoSidebar,
+    Workspace: TodoWorkspace,
+    context: {
       kind: KIND,
       summary: (selection) => selection.label ?? `Task ${selection.id}`,
-      WorkspaceView: TodoWorkspaceView,
+      Status: TodoStatus,
     },
+    sidebarDefaultSize: 320,
+    sidebarMinSize: 180,
+    sidebarMaxSize: 560,
     actions: [
       {
         id: 'copy-markdown',
-        label: 'Copy as Markdown',
+        label: '复制为 Markdown',
         appliesTo: (selection) => selection?.kind === KIND,
         run: async (selection) => {
           const task = selectedTaskFrom(selection)

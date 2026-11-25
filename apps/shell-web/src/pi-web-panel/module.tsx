@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react'
-import type { CollapsedSummary, WorkspaceModule } from '@ursi/workspace-shell'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react'
+import {
+  SidebarFrame,
+  type ModuleSidebarProps,
+  type WorkspaceModule,
+} from '@ursi/workspace-shell'
 
 export interface PiWebModuleOptions {
   /** 覆盖 pi-web 地址，缺省按当前窗口 hostname + 端口 30141 推导。 */
@@ -35,7 +45,22 @@ async function isReachable(url: string): Promise<boolean> {
   }
 }
 
-function PiWebPanel({ url }: { url: string }) {
+interface PiWebStatus {
+  reachable: boolean
+  attempt: number
+  retry: () => void
+}
+
+const StatusContext = createContext<PiWebStatus | null>(null)
+
+function usePiWebStatus(): PiWebStatus {
+  const value = useContext(StatusContext)
+  if (!value) throw new Error('pi-web: 缺少 PiWebStatusProvider')
+  return value
+}
+
+/** 连通性探测放在 Provider：侧边栏与工作区共用一份结果，不重复轮询。 */
+function PiWebStatusProvider({ url, children }: { url: string; children: ReactNode }) {
   const [reachable, setReachable] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -55,6 +80,40 @@ function PiWebPanel({ url }: { url: string }) {
     }
   }, [url, attempt])
 
+  const retry = () => setAttempt((current) => current + 1)
+  return (
+    <StatusContext.Provider value={{ reachable, attempt, retry }}>
+      {children}
+    </StatusContext.Provider>
+  )
+}
+
+function PiWebSidebar({ collapsed, collapse, expand }: ModuleSidebarProps) {
+  const { reachable, retry } = usePiWebStatus()
+  return (
+    <SidebarFrame
+      title="pi-web"
+      collapsed={collapsed}
+      collapse={collapse}
+      expand={expand}
+      items={[
+        { label: '状态', value: reachable ? '在线' : '未连接' },
+        { label: '端口', value: String(DEFAULT_PORT) },
+      ]}
+    >
+      <div className="piweb-side">
+        <p className="piweb-side-line">本机 Pi agent，浏览器里直接使用会话、工具与终端。</p>
+        <p className="piweb-side-line">与 CLI 共享 ~/.pi/agent 的模型、会话、技能与 MCP 配置。</p>
+        <button type="button" className="piweb-retry" onClick={retry}>
+          重试连接
+        </button>
+      </div>
+    </SidebarFrame>
+  )
+}
+
+function PiWebWorkspace({ url }: { url: string }) {
+  const { reachable, attempt, retry } = usePiWebStatus()
   return (
     <div className="piweb-panel">
       <iframe
@@ -63,15 +122,14 @@ function PiWebPanel({ url }: { url: string }) {
         src={embedUrl(url)}
         title="pi-web"
         allow="fullscreen; clipboard-read; clipboard-write"
-        onLoad={() => setReachable(true)}
       />
       {!reachable && (
         <div className="piweb-offline" role="status">
           <span className="piweb-offline-title">pi-web 未启动</span>
           <span className="piweb-offline-text">
-            请在 apps/pi-web 运行 <code>npm run dev:lan</code>（0.0.0.0:30141）。
+            请在 apps/pi-web 运行 <code>npm run dev:lan</code>（0.0.0.0:{DEFAULT_PORT}）。
           </span>
-          <button type="button" className="piweb-retry" onClick={() => setAttempt((n) => n + 1)}>
+          <button type="button" className="piweb-retry" onClick={retry}>
             重试
           </button>
         </div>
@@ -82,22 +140,28 @@ function PiWebPanel({ url }: { url: string }) {
 
 export function createPiWebModule(options: PiWebModuleOptions = {}): WorkspaceModule {
   const url = resolveUrl(options.url)
+  const Provider = ({ children }: { children: ReactNode }) => (
+    <PiWebStatusProvider url={url}>{children}</PiWebStatusProvider>
+  )
+  const Workspace = () => <PiWebWorkspace url={url} />
+
   return {
     id: 'pi-web',
     title: 'pi-web',
-    /** pi-web 自带顶栏与侧边栏，外壳不再画标题行。 */
-    hideHeader: true,
-    /** 折叠时保留 iframe 挂载，避免会话、终端、草稿被重置。 */
+    Provider,
+    Sidebar: PiWebSidebar,
+    Workspace,
+    context: {
+      Status: () => {
+        const { reachable } = usePiWebStatus()
+        return <span>pi-web {reachable ? '在线' : '未连接'}</span>
+      },
+    },
+    /** 折叠时保留 iframe，避免会话、终端、草稿被重置。 */
     keepMounted: true,
-    defaultSize: 560,
-    minSize: 360,
-    /** iframe 内容需要更宽的可用空间。 */
-    maxSize: 1100,
-    Panel: () => <PiWebPanel url={url} />,
-    useCollapsedSummary: (): CollapsedSummary => ({
-      title: 'pi-web',
-      items: [{ label: 'port', value: String(DEFAULT_PORT) }],
-    }),
+    sidebarDefaultSize: 200,
+    sidebarMinSize: 120,
+    sidebarMaxSize: 360,
     actions: [],
   }
 }

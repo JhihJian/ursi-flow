@@ -124,11 +124,24 @@
   .sbx-app > .sbx-page-shell {
     @apply min-h-0 flex-1 overflow-auto;
   }
-  .sbx-app .sbx-instance-layout {
-    @apply grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)];
+  .sbx-app .sbx-sidebar {
+    @apply flex min-h-0 min-w-0 flex-1 flex-col bg-surface;
+  }
+  .sbx-app .sbx-sidebar-config {
+    @apply min-h-0 flex-1 overflow-auto p-3;
+  }
+  .sbx-app .sbx-sidebar-nav {
+    @apply flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-sbx-line px-3 py-1;
+  }
+  .sbx-app .sbx-sidebar-gateway {
+    @apply ml-auto whitespace-nowrap;
+  }
+  .sbx-app .sbx-workspace-content {
+    @apply min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain;
+    container: sbx-instance-content / inline-size;
   }
   .sbx-app .sbx-instance-sidebar {
-    @apply flex min-h-0 min-w-0 flex-col bg-surface;
+    @apply flex min-h-0 min-w-0 flex-1 flex-col bg-surface;
   }
   .sbx-app .sbx-instance-sidebar-head {
     @apply shrink-0 space-y-2 border-b border-sbx-line p-3;
@@ -148,10 +161,6 @@
   .sbx-app .sbx-instance-link:focus-visible {
     outline-offset: -2px;
   }
-  .sbx-app .sbx-instance-content {
-    @apply min-h-0 min-w-0 overflow-auto overscroll-contain;
-    container: sbx-instance-content / inline-size;
-  }
   .sbx-app .sbx-instance-overview {
     @apply flex min-h-full flex-col items-center justify-center gap-3 p-4 text-sbx-txt2;
   }
@@ -160,20 +169,6 @@
   }
   .sbx-app .sbx-detail-inspector {
     @apply min-w-0 self-start border-t border-sbx-line pt-2;
-  }
-  @media (max-width: 767px) {
-    .sbx-app .sbx-instance-layout[data-detail='true'] > .sbx-instance-sidebar,
-    .sbx-app .sbx-instance-layout[data-detail='false'] > .sbx-instance-content {
-      display: none;
-    }
-  }
-  @media (min-width: 768px) {
-    .sbx-app .sbx-instance-layout {
-      grid-template-columns: clamp(14rem, 21vw, 17rem) minmax(0, 1fr);
-    }
-    .sbx-app .sbx-instance-sidebar {
-      @apply border-r border-sbx-line;
-    }
   }
   @container sbx-instance-content (min-width: 56rem) {
     .sbx-app .sbx-detail-grid {

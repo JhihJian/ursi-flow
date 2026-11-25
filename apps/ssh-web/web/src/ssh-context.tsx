@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 import { useStore, type StoreApi, type UseBoundStore } from 'zustand'
 import { SshApi } from './api/client'
 import type { TerminalEvent } from './terminal/bridge'
@@ -45,6 +45,35 @@ export function useSshController(): SshController {
 export function useSshStore<T>(selector: (state: SshStoreState) => T): T {
   const { store } = useSshController()
   return useStore(store, selector)
+}
+
+/**
+ * 模块 Provider：一个 controller + 一次连接列表加载，侧边栏与工作区共用。
+ * 必须是纯上下文组件，不能渲染布局 DOM。
+ */
+export function SshModuleProvider({
+  controller,
+  children,
+}: {
+  controller: SshController
+  children?: ReactNode
+}) {
+  return (
+    <SshControllerProvider controller={controller}>
+      <SshBootstrap>{children}</SshBootstrap>
+    </SshControllerProvider>
+  )
+}
+
+function SshBootstrap({ children }: { children?: ReactNode }) {
+  const { store } = useSshController()
+  const loadConnections = store((state) => state.loadConnections)
+  useEffect(() => {
+    void loadConnections().catch((error: unknown) =>
+      store.getState().setNotice(error instanceof Error ? error.message : String(error)),
+    )
+  }, [loadConnections, store])
+  return <>{children}</>
 }
 
 /** 模块根容器（.ssh-embed）：右键菜单的 portal 目标与绝对定位坐标系。 */

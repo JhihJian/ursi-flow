@@ -1,158 +1,73 @@
+---
+parent: ../..
+references:
+  - ../../../packages/workspace-shell/SPEC.md
+  - ../../../packages/workspace-shell/MODULE-CONTRACT.md
+---
+
 # 工作区外壳与模块组合
 
-目标是让「任务看板」这类模块能被组合进同一个工作区：每个模块占一栏、可折叠，共享一块工作区区域，选中状态集中管理，右侧放上下文操作。这份文档只定契约与推进节奏，不引入运行时代码。
+工作区外壳把 todo、文件、终端、沙箱、pi-web 组合到一个固定页面里。本文记录当前结构与决定；契约为准的验收条件见 [外壳 SPEC](../../../packages/workspace-shell/SPEC.md) 与 [模块接入规范](../../../packages/workspace-shell/MODULE-CONTRACT.md)。
 
 ## 结论
 
-方向对，但**现在不抽包**。仓库现状是只有一个真实模块（todo-web），执行与运行详情还是外部产品。先按这套契约在 todo-web 内部把「栏」和「选中」拆出来，等第二个真实模块出现，再把内部实现提升为 `packages/workspace-shell`。提前做通用外壳，会得到一套没有第二个使用者的抽象。
+页面骨架固定，模块只声明侧边栏、工作区与上下文。
 
-外壳与模块的分工：
+早先版本按「一模块一栏」横向平铺，栏宽下限之和超过 1920px 屏宽，于是加了 profile 与区域声明。结果是 profile 承担了布局细节，页面结构继续发散。现在改为固定五区：
 
-| 能力 | 归属 |
+| 区域 | 归属 |
 | --- | --- |
-| 分栏布局、宽度、折叠、窄条 | 外壳 |
-| 全局选中（选中的任务、运行、会话） | 外壳的选择总线 |
-| 工作区区域渲染哪个视图 | 外壳按选中类型分派 |
-| 右侧上下文操作面板的骨架 | 外壳 |
-| 具体数据、请求、字段、业务动作 | 各模块 |
-| 操作项（如「执行这个任务」）的声明与实现 | 模块注册，外壳只渲染 |
+| 标题栏、状态栏 | 外壳 |
+| 侧边栏堆叠、折叠交互、高度持久化 | 外壳 |
+| 工作区多列与列宽持久化 | 外壳 |
+| 右侧控制面板骨架与操作执行 | 外壳，操作由模块声明 |
+| 侧边栏内容与折叠形态 | 模块 |
+| 工作区内容 | 模块 |
+| 选中、状态栏信息 | 模块发布，外壳展示 |
 
-## 契约
-
-### 面板
+## 模块声明
 
 ```ts
-interface PanelContribution {
-  id: string                         // 全局唯一，用于持久化宽度与折叠状态
+interface WorkspaceModule {
+  id: string
   title: string
-  order: number
-  Component: React.ComponentType      // 展开态内容，自带数据获取
-  Rail?: React.ComponentType<{ onExpand: () => void }>  // 折叠态窄条，缺省用 title
-  defaultSize?: number
-  minSize?: number
-  maxSize?: number                   // 拖拽上限，缺省 760
-  collapsible?: boolean
-  keepMounted?: boolean               // 折叠时不卸载，保留内部状态
+  Provider?: React.ComponentType<{ children: React.ReactNode }> // 纯上下文
+  Sidebar: React.ComponentType<{ collapsed: boolean; collapse: () => void; expand: () => void }>
+  Workspace: React.ComponentType
+  context: {
+    kind?: string
+    summary?: (selection: Selection) => string
+    Status?: React.ComponentType
+  }
+  sidebarDefaultSize?: number
+  sidebarMinSize?: number
+  sidebarMaxSize?: number
+  collapsedSidebarSize?: number
+  defaultExpanded?: boolean
+  keepMounted?: boolean
+  actions?: WorkspaceAction[]
 }
 ```
 
-外壳负责 `react-resizable-panels` 的 Group/Panel、折叠到 32px、宽度记忆。模块不接触布局。
+profile 只剩 `{ id, title, modules: string[] }`：启用哪些模块、按什么顺序堆叠。
 
-### 选中
+## 关键实现
 
-```ts
-type Selection = { kind: string; id: string; label?: string } | null
+- **跨区域上下文。** 侧边栏与工作区在 DOM 上分开，但模块只挂载一次：外壳用 `ModuleHost` 在侧边栏面板里声明模块的 `Provider`，再通过 portal 把 `Sidebar`、`Workspace`、`Status` 投递到三个区域。同一模块的三块内容共享 React 上下文，todo 的 `DndContext`、沙箱的 `MemoryRouter`、ssh 的 controller 都靠这条路径工作。
+- **堆叠侧边栏。** 展开模块用 `flex-grow` 权重分享侧栏高度，折叠模块固定为窄条；相邻展开节之间是自绘的横向拖拽条，按像素调整上下两节，受 `sidebarMinSize` / `sidebarMaxSize` 约束。没有使用嵌套的可拖拽 Group，避免和外壳的宽度计算打架。
+- **工作区只看展开态。** `expandedIds` 决定工作区列集合；折叠即移除该列（`keepMounted` 的模块改投隐藏槽位，iframe 与终端不重置）。设置、注册表这类宿主页面通过 `views` 注册，选中时占用整个工作区。
+- **状态栏由模块提供。** 展开模块声明 `context.Status` 时外壳给它留槽位；否则在选中属于该模块时显示 `summary`。
+- **持久化。** 展开集合 `${storageKey}:<profile>:expanded`、侧栏高度权重 `${storageKey}:<profile>:sidebar-sizes`、工作区列宽 `${storageKey}:<profile>:workspace:<moduleId>`；当前 profile 存于 `${storageKey}:profile`。
 
-interface SelectionKind {
-  kind: string                       // 例如 'todo.task'、'run.attempt'
-  summary: (selection: Selection) => string   // 窄条与工作区标题用
-  workspaceView?: React.ComponentType<{ selection: Selection }>
-}
+## 已否决的方案
 
-useWorkspaceShell().select({ kind: 'todo.task', id })
-```
+- **继续按 profile 声明区域与条目。** 布局细节压在 profile 里，新增模块要改 profile 的每个变体；固定骨架后 profile 只做启用与排序。
+- **模块自绘整块三栏布局。** 每个模块都要重新实现折叠、工作区、操作栏，页面风格无法统一。
+- **折叠摘要由外壳排版（旧契约）。** 不同模块要展示的信息差异太大，外壳排版只能做成最小公倍数；现在折叠形态归模块，外壳提供 `SidebarFrame` 作为可选外框。
+- **多个工作区叠在一个 Panel 里用选中切换。** 终端与文件需要并排；只要侧边栏展开就给出对应列，符合「展开即显示」的直觉。
 
-规则：
+## 已知缺口
 
-- 全局只有一个选中；模块内部不要另存一份「当前选中任务」。
-- 选中只存 `kind + id`，实体由模块按 id 自己取，避免跨模块传对象。
-- 工作区区域由外壳按 `kind` 找 `workspaceView`；没有匹配视图时显示占位说明（现在就是这么做的）。
-
-### 操作
-
-```ts
-interface ActionContribution {
-  id: string
-  label: string
-  group?: 'primary' | 'secondary'
-  appliesTo: (selection: Selection) => boolean
-  run: (selection: Selection) => Promise<void>
-  disabledReason?: (selection: Selection) => string | null
-}
-```
-
-「基于某个任务运行执行器」是 todo 模块（或未来的执行模块）注册的一项操作，外壳不认领域概念。这样右侧面板不用改代码就能多出别的操作，例如「打开会话」「复制 Markdown」。
-
-### 工作区视图
-
-```ts
-interface WorkspaceViewContribution {
-  id: string
-  matches: (selection: Selection) => boolean
-  Component: React.ComponentType<{ selection: Selection }>
-}
-```
-
-todo 模块注册的 `TodoWorkspaceView` 是其中一种实现：`matches` 判断选中的是任务，`Component` 渲染该任务的项目、状态、优先级、标签、workdir 与会话。外部页面用 `iframe`、自有页面用源码组件都可以再注册一种视图，外壳不需要区分。
-
-## 已实现的第一版
-
-`packages/workspace-shell` 与 `shell-web` 已经落地，形态是一个独立入口把 todo 作为**一栏**接入：
-
-- 外壳：`WorkspaceShell` 接收 `modules`，渲染模块栏 + 工作区区域 + 右侧操作栏，提供 `useWorkspace()` 的选中与写入。栏宽与折叠状态用 `useDefaultLayout` 记住。
-- 区域与页面 profile：外壳接收 `profiles`（`{ id, title, regions }`），根布局横向排区域，区域内条目按声明方向叠放；条目可以是模块栏、工作区或操作栏。提供 ≥2 个 profile 时标题栏出现下拉切换器，布局与折叠状态按 `${storageKey}:${profile.id}` 隔离持久化，当前 profile 存于 `${storageKey}:profile`。未传 `profiles` 时保持单横向平铺的历史行为。设计权衡见下文「被否决的方案」。
-- 模块契约：`WorkspaceModule`（`id`、`title`、`Panel`、`Rail?`、`hideHeader?`、`selection`、`actions`）与 `WorkspaceAction`（`appliesTo`、`run`、`disabledReason`、`confirm`）。
-- 折叠由外壳负责，模块不写折叠 UI：模块实现 `useCollapsedSummary()` 公布 `{ title, items }`，外壳按书脊式排版渲染。todo 公布当前任务标题、`status` 与 `project`，未选中时公布 `Tasks` 与任务数；信息变化时窄条自动更新。窄条按 18px 间距分行，标题用衬线体、标签用小号大写、值用等宽体，避免堆在一起。
-- 模块内部还能驱动栏宽：`useModuleColumn()` 提供 `width`、`resize`、`collapse`、`expand`。子面板需要更多空间时（例如以后的运行详情），模块自己调 `resize`，外壳不需要知道模块内部有几层。把外壳做成「逐层管理子面板」会让它认识每个模块的内部结构，那样的耦合不划算。
-- 模块自带标题或工具条时声明 `hideHeader: true`：外壳不画标题行，内容贴住栏顶；折叠按钮挪到分隔线顶部（18×34 的 `‹`，纵向加大命中区）并常驻显示，避开拖拽中段，也不压住模块自己的控件。`react-resizable-panels` 在悬停分隔线时会往页面注入 `*, *:hover { cursor: ew-resize !important }`，所以按钮上的 `cursor: pointer !important` 必须带 `!important` 并且选择器特异度高于 `*`，否则悬停到按钮上光标仍会变成拖拽箭头；按钮的 `pointerdown` 也做了阻止冒泡，避免误触拖拽。todo 用这条路径，否则会出现「外壳标题 + todo 统计栏」两层抬头。
-- 纵向分三层：40px 标题栏（左侧 `title`、右侧设置入口）、主区、24px 状态栏（左侧选中摘要、右侧宿主 `status`）。标题栏与状态栏固定高度、不可拖拽，中间仍是横向的模块栏 / 工作区区域 / 操作栏。
-- 设置这类不占栏的页面用 `views` 注册成 `{ kind, summary, Component }`，选中后占用工作区区域，模块栏不受影响。
-- todo 模块：`shell-web/src/modules/todo.tsx` 直接挂载 todo 现有应用，订阅 todo store 的选中并写入外壳选中；工作区区域显示该任务的项目、状态、优先级、标签、workdir 与会话；操作栏注册「Copy as Markdown」。
-
-第一版的取舍：todo 仍是**一整栏**，内部的「项目 / 任务」两栏还压在 520px 里，下一步才是把它拆成独立面板。todo 接入代码已归位到 `todo-web/web/src/module.tsx`，并以 npm workspace 包（`@ursi/todo-web`）导出 `./module` 与 `./styles.css`，宿主 `shell-web` 声明包依赖并调用工厂；宿主仅保留 `@/` 别名以编译 todo 源码内部导入，这是组合縫而非临时方案。彻底抽包时按清单清理。
-
-## 现在就在 todo-web 里做的三步
-
-1. 把 `Workspace.tsx` 里的两栏改成数据驱动：模块内维护一份 `panels[]` 常量喂给外壳组件，外壳组件仍放在 `todo-web/web/src`，不发布成包。
-2. 把「当前选中任务」从 `detail` 里拆出来，进 `selection`（`{kind: 'todo.task', id}`），详情面板、工作区都从 `selection` 读，去掉重复的真值。
-3. 把复制 Markdown、未来的「执行」写成 `actions[]`，右侧面板按 `appliesTo` 渲染。
-
-三条都做在同一份代码里，接口形状与将来抽包一致，届时是搬运而不是重写。
-
-## 抽包的门槛
-
-满足其中一条再动：
-
-- 出现第二个真实模块（例如运行记录、会话查看）并且确实要和任务并排。
-- 有宿主项目要把这些栏嵌进自己的布局，而不是链接过去。
-
-抽包时按上一份文档的清单清理：`@/` 别名、全局 CSS 重置、单例 store、全局 `keydown`、`alert/prompt`、硬编码 `/api` 与配置文件路径；`react`/`react-dom` 转 peerDependencies；宿主设置 `dedupe` 与 `ursi-source` 条件。样式统一挂容器类并用 `@layer`，必要时 Shadow DOM。
-
-## 与现有包的关系
-
-## 与 ui-slots、ui-layout 的关系
-
-两个包都继续用，但都不参与外壳的栏组合：
-
-- `ui-slots` 的抽象是「插槽 → 贡献」的运行时注册，用于门户插件按位置出现。外壳的模块是构建期传入的静态数组，顺序就是栏序，不需要运行时注册，因此不依赖 `ui-slots`。若将来模块需要运行时增删（例如按权限隐藏），再把 `createSlotRegistry` 接进来即可，契约不用改。
-- `ui-layout` 的 `PageFrame` 管页面骨架（header/main/aside/navigation），外壳是它 `main` 里的一块。宿主若需要页头与导航，用 `PageFrame` 包住 `<WorkspaceShell />`；todo、门户继续各用各的。三者职责不重叠：`ui-layout` 管页面，`workspace-shell` 管栏，`ui-slots` 管贡献注册。
-
-## 不做的
-
-- 不做运行时插件加载、动态 import 远程包、微前端框架。模块仍是构建期登记，和门户插件现在的做法一致。
-- 不让每个模块自带路由；地址由宿主决定，模块只接收选中。
-- 不让外壳认识任务、运行、会话这些领域概念，也不让它发请求。
-- 不在现在抽 `packages/workspace-shell`。
-
-## 开放面暂缓清单
-
-以下扩展面都有明确形态，但在触发条件出现前不建，避免零使用者的抽象。宿主组合根（shell-web 的 `registry.tsx`）先行顶住：
-
-| 开放面 | 形态 | 触发条件 |
-| --- | --- | --- |
-| commands | 不依赖选中的跨模块命令，挂标题栏命令面板 | 出现 2 个不依赖选中的真实命令（当前唯一的动作 Copy as Markdown 是选中作用域，属 action） |
-| statusContributions | 模块往状态栏贡献位 | 宿主在组合根手写 `status` 组合出现真实痛点 |
-| settings 贡献 | 模块往全局设置页贡献分节 | 出现第一个真实模块设置项（当前设置页仍是占位） |
-| onSelectionChanged 钩子 | 专用响应钩子 | 现有 `useWorkspace()` 订阅写法被证明繁琐（fs 模块已在用订阅方式响应选中，暂无新钩子必要） |
-| 外壳级 services | 模块间服务契约进入外壳契约 | 出现第二对需要跨模块服务调用的模块（第一对用宿主胶水解决，见下） |
-
-## 区域与 profile 的选型记录
-
-模块增多后单横向排布放不下（各模块 minSize 之和已超 1920px 屏宽），引入「区域」层与页面 profile。布局选型上保留 `Group/Panel` 两层结构（根横向排区域、区域内可横可纵），另两个方案被否决：
-
-- `Grid`：无折叠与像素约束语义，模块契约的 min/max/collapsed 字段无法映射，需要另写一层约束系统。
-- `Workspace` tabset：无拖拽 dock 需求却要重写整个契约；tabset 表头横向与折叠窄条纵向形态冲突；且该库在 Safari 缺 `moveBefore` 时 tab 切换会导致 iframe 重载，与 pi-web 的 keepMounted 目标相悳。
-
-v1 明确不做：用户自定义 profile、切换动画、跨 profile 携带选中、跨 profile 保留 iframe 状态。切换 profile 会重挂布局表面，iframe 重载一次属可接受代价。
-
-跨模块联动（如「todo 选中任务，fs 打开其 workdir」）的第一对用宿主胶水解决：需要实体解析（selection 只带 `{kind, id}`，fs 无法凭 id 解析出任务的工作目录），由宿主在组合根实现解析并提供给消费方模块；外壳契约不新增面。
+- todo 的样式表仍带 `:root` 变量（`--gray-*`），全局重置已移到独立入口的 `standalone.css`，但变量命名尚未加前缀。
+- 沙箱暂不发布选中，实例导航由路由承担；跨模块操作出现时再注册 `sandbox.instance` 与 `actions`。
+- 工作区多列同时展开时总宽度可能超过屏幕，需要用户折叠不用的模块；没有自动收敛策略。

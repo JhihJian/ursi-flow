@@ -94,7 +94,7 @@ test('查询可重试，管理配置保存后刷新且草稿不参与显示', as
   await page.goto('./#/registry')
   await expect(page.getByRole('alert')).toContainText('读取镜像清单失败')
   await page.getByRole('button', { name: '刷新镜像' }).click()
-  await expect(page.getByRole('status')).toContainText('暂无本机')
+  await expect(page.getByRole('main').getByRole('status')).toContainText('暂无本机')
   await page.getByRole('button', { name: '编辑 Gateway 注册表' }).click()
   await expect(page.getByLabel('Gateway registry JSON')).toHaveValue(/bundles/)
   await page.getByLabel('Gateway registry JSON').fill(JSON.stringify(registry))

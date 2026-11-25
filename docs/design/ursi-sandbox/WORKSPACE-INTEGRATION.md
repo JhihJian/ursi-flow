@@ -17,6 +17,18 @@
 
 筛选留在列表，独立入口的当前实例由路由决定。Workspace 接入后，当前实例由外壳选中决定，两种入口都不需要 Todo 式的全局 store 或挂载时同步选中的逻辑。其他功能文件继续留在原位，服务端、鉴权和界面行为保持原样。
 
+## 固定骨架下的实现形态
+
+外壳改为固定五区后，沙箱模块按下面的形态接入：
+
+- `SandboxSidebar.tsx`：模块导航（沙箱 / 能力注册表 / 接入配置）、Gateway 权限徽标、实例列表与状态筛选；折叠窄条显示实例数与运行数。点击实例通过共享 `MemoryRouter` 切换路由。
+- `SandboxWorkspace.tsx`：只渲染路由内容（实例详情、注册表、接入配置、网络观测），不含模块标题与导航。
+- `module.tsx` 的 Provider 是 `MemoryRouter` + `SandboxDataProvider`：配置、实例列表与筛选状态只加载一份，侧边栏与工作区共用，路由变化时自动刷新列表。
+- 每个区域各包一层 `AppRoot`，`sbx-app` 样式作用域与 Radix 浮层容器都按区域分开，弹窗不会飞到另一个区域。
+- 当前不发布 `sandbox.instance` 选中，也不注册 actions；实例导航由路由承担，右侧控制面板在该模块下为空态。管理操作留在详情页内，后续需要跨模块操作时再注册。
+
+下面各节保留目标设计，和上面实现形态冲突处以本节为准。
+
 ## 界面分工
 
 | 位置 | 交互 |
@@ -35,7 +47,7 @@
 | --- | --- |
 | `apps/ursi-sandbox/web/src/features/instances/` | Workspace 复用前置重构产出的列表和详情视图。管理和观测开放时，再将对应页面的导航改为由入口提供的回调。 |
 | `apps/ursi-sandbox/web/src/api/` | Workspace 注入 `/api/sandbox/`。探活、观测下载和工作台 WebSocket 随各自功能接入同一基址规则；独立入口继续使用相对于部署目录的基址。 |
-| [`shell-web`](../../../apps/shell-web) | 新增 `src/modules/sandbox.tsx`，负责模块注册、视图映射和宿主导航。沿用 Todo 和文件模块的源码别名模式。构建前分别按仓库根目录和 `apps/ursi-sandbox/web` 的锁文件安装依赖，Workspace 构建去重 `react` 和 `react-dom`。终端、远程画面与 PCAP Worker 随对应功能按需加载。 |
+| [`shell-web`](../../../apps/shell-web) | 在 `src/registry.tsx` 调用 `createSandboxModule({ apiBase: '/sbx' })` 并写进 profile。构建前分别按仓库根目录和 `apps/ursi-sandbox/web` 的锁文件安装依赖，Workspace 构建去重 `react` 和 `react-dom`。终端、远程画面与 PCAP Worker 随对应功能按需加载。 |
 
 嵌入样式使用 `.sbx-app` 局部规则和语义变量，跟随宿主的灰度与字体基线。Sandbox 自己编译一份带作用域的嵌入样式，保留组件所需的局部基础样式。Tailwind 全局 Preflight 和视口高度只用于独立入口。嵌入版按栏宽切换布局，滚动留在栏内。Radix 浮层挂到当前视图的容器，替换按全局查询取第一个 `.sbx-app` 的方式。
 

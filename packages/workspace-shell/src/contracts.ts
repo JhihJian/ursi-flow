@@ -7,41 +7,56 @@ export interface Selection {
   label?: string
 }
 
-/** 折叠态由模块公布的关键信息，外壳负责排版，模块不写折叠 UI。 */
-export interface CollapsedSummary {
-  title: string
-  items: Array<{ label: string; value: string }>
+/** 侧边栏组件收到的折叠状态与控制。折叠态由模块自己渲染，外壳只负责高度与交互调用。 */
+export interface ModuleSidebarProps {
+  collapsed: boolean
+  collapse: () => void
+  expand: () => void
 }
 
-/** 一栏模块。外壳只负责布局、折叠与选中，内容与数据归模块自己。 */
+/**
+ * 模块对外发布的上下文。
+ * 选中信息是全局那份；这里声明本模块占用的 kind、摘要，以及状态栏内容。
+ */
+export interface ModuleContext {
+  /** 本模块对外发布的选中类型，形如 `<域>.<实体>`；不发布选中时省略。 */
+  kind?: string
+  /** 选中摘要，状态栏与右侧控制面板用它。 */
+  summary?: (selection: Selection) => string
+  /** 状态栏组件；省略时状态栏只在选中属于本模块时显示 summary。 */
+  Status?: ComponentType
+}
+
+/** 子模块的完整声明：侧边栏、工作区、上下文。 */
 export interface WorkspaceModule {
   id: string
   title: string
-  /** 展开态内容，自带数据获取。 */
-  Panel: ComponentType
-  /** 折叠态要展示的关键信息；缺省只显示模块标题。 */
-  useCollapsedSummary?: () => CollapsedSummary
-  defaultSize?: number
-  /** 栏宽下限，缺省 240px。 */
-  minSize?: number
-  /** 栏宽上限，缺省 760px；iframe、编辑器这类需要宽内容的模块可调大。 */
-  maxSize?: number
-  /** 折叠后的宽度，缺省 32px；模块用自己的内部最小宽度时按需覆盖。 */
-  collapsedSize?: number
-  /** 模块自身已有标题或工具条时隐藏外壳的标题行，折叠按钮改为右上角悬浮。 */
-  hideHeader?: boolean
-  /** 折叠时保留 Panel 挂载，仅用 CSS 隐藏；适合 iframe 等需要保持运行状态的模块。缺省 false（折叠即卸载）。 */
+  /**
+   * 该模块三块内容的共同 React 上下文根（dnd、路由、controller 等）。
+   * 必须是纯上下文组件：不渲染 DOM、不参与布局，否则侧边栏与工作区会各拿一份。
+   */
+  Provider?: ComponentType<{ children: ReactNode }>
+  /** 侧边栏内容。折叠态也由它渲染，外壳只把这一节压到 collapsedSidebarSize。 */
+  Sidebar: ComponentType<ModuleSidebarProps>
+  /** 工作区内容。不得包含模块标题区，标题在侧边栏。 */
+  Workspace: ComponentType
+  context: ModuleContext
+  /** 侧边栏展开高度，缺省 260px。 */
+  sidebarDefaultSize?: number
+  /** 侧边栏最小高度，缺省 120px。 */
+  sidebarMinSize?: number
+  /** 侧边栏最大高度（占侧栏总高的上限），缺省 620px。 */
+  sidebarMaxSize?: number
+  /** 侧边栏折叠后的高度，缺省 32px。 */
+  collapsedSidebarSize?: number
+  /** 默认展开侧边栏；profile 里没有任何模块声明时默认展开第一个。 */
+  defaultExpanded?: boolean
+  /** 侧边栏折叠时保留 Workspace 挂载（iframe、终端等需要保持运行状态的模块）。 */
   keepMounted?: boolean
-  /** 该模块对外暴露的选中类型，供工作区区域匹配视图。 */
-  selection?: {
-    kind: string
-    summary: (selection: Selection) => string
-    WorkspaceView?: ComponentType<{ selection: Selection }>
-  }
   actions?: WorkspaceAction[]
 }
 
-/** 上下文操作：由模块声明，外壳只按选中渲染按钮。 */
+/** 上下文操作：由模块声明，外壳只在右侧控制面板按选中渲染。 */
 export interface WorkspaceAction {
   id: string
   label: string
@@ -51,50 +66,34 @@ export interface WorkspaceAction {
   confirm?: string
 }
 
-/** 不占栏的视图，例如全局设置页；按选中类型匹配。 */
+/** 不占侧边栏的宿主页面，例如全局设置；选中这类 kind 时占用整个工作区。 */
 export interface WorkspaceView {
   kind: string
   summary: (selection: Selection) => string
   Component: ComponentType<{ selection: Selection }>
 }
 
-/** 区域条目：模块栏、工作区区域或操作栏。 */
-export type WorkspaceRegionItem =
-  | { type: 'module'; moduleId: string }
-  | { type: 'workspace' }
-  | { type: 'actions' }
-
-/** 区域：一组条目按同一方向叠放。 */
-export interface WorkspaceRegionSpec {
-  id: string
-  /** 条目排列方向，缺省 'vertical' 自上而下；此时模块的尺寸契约字段（defaultSize/minSize/maxSize/collapsedSize）作用于高度。 */
-  direction?: 'horizontal' | 'vertical'
-  /** 区域默认宽度（px），只在多区域 profile 的根布局生效，缺省 720。 */
-  defaultSize?: number
-  items: WorkspaceRegionItem[]
-}
-
-/** 页面 profile：一份区域布局与模块集合声明，由组合根提供。 */
+/** 页面 profile：声明启用哪些模块，顺序即侧边栏堆叠顺序与工作区列顺序。 */
 export interface WorkspaceProfile {
   id: string
   title: string
-  regions: WorkspaceRegionSpec[]
+  modules: string[]
 }
 
 export interface WorkspaceShellProps {
   modules: WorkspaceModule[]
-  /** 页面 profile：切换区域布局与模块集合，≥2 个时标题栏出现切换器。缺省单横向平铺全部模块（与历史行为一致）。 */
+  /** 页面 profile：切换启用模块与顺序，≥2 个时标题栏出现切换器。缺省启用全部模块。 */
   profiles?: WorkspaceProfile[]
   /** 标题栏文字。 */
   title?: string
-  /** 标题栏右侧内容，通常放设置按钮；省略且提供 onSettings 时用默认按钮。 */
+  /** 标题栏右侧内容；省略且提供 onSettings 时用默认设置按钮。 */
   settings?: ReactNode
   onSettings?: () => void
   /** 状态栏右侧内容。 */
   status?: ReactNode
-  /** 不占栏的视图，例如全局设置。 */
+  /** 宿主页面（设置、注册表等）。 */
   views?: WorkspaceView[]
-  /** 布局与折叠状态的存储键；当前 profile 存在 `${storageKey}:profile`。 */
+  /** 侧边栏高度、工作区宽度与展开状态的存储前缀。 */
   storageKey?: string
   /** 操作失败时的提示，缺省 console.error。 */
   onError?: (error: unknown) => void

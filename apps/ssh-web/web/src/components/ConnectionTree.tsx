@@ -133,7 +133,6 @@ export function ConnectionTree() {
   return (
     <div className="ssh-tree" onContextMenu={(event) => openContextMenu(event, null)}>
       <div className="ssh-sidebar-head">
-        <div className="ssh-sidebar-title">SSH</div>
         <button
           type="button"
           className="ssh-mini-btn"

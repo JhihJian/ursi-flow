@@ -11,3 +11,32 @@ body,
 body {
   margin: 0;
 }
+
+/* 独立部署布局：左侧模块导航与实例列表，右侧路由内容。 */
+.sbx-standalone,
+.sbx-standalone * {
+  box-sizing: border-box;
+}
+
+.sbx-standalone {
+  display: flex;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.sbx-standalone-side {
+  flex: 0 0 320px;
+  min-width: 0;
+  height: 100%;
+  border-right: 1px solid #e5e5e5;
+}
+
+.sbx-standalone.is-collapsed .sbx-standalone-side {
+  flex-basis: 32px;
+}
+
+.sbx-standalone-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}

@@ -16,55 +16,6 @@
   --space-xl: 32px;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  overflow-y: hidden;
-}
-
-/* 保留滚动能力，隐藏滚动条以维持出版物式版面。 */
-* {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-*::-webkit-scrollbar {
-  display: none;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  height: 100dvh;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--gray-900);
-  background: var(--white);
-}
-
-#root {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-
-button {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-}
-
 /* Resizable workspace */
 .workspace {
   flex: 1;
@@ -1215,4 +1166,20 @@ button {
   .day-filter {
     display: none;
   }
+}
+
+/* ---- 嵌入工作区外壳时的模块分区 ---- */
+
+/* 工作区：任务列表 + 两个贴底浮层，自己撑满外壳给的高度。 */
+.todo-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 侧边栏由 ProjectSidebar 自带标题与折叠书脊，这里只补高度。 */
+.todo-workspace > .tasks-section {
+  flex: 1;
+  min-height: 0;
 }

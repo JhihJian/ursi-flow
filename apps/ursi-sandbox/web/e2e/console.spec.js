@@ -332,9 +332,10 @@ test('Gateway 失败时显示错误，重试后识别空列表', async ({ page }
     return r.fulfill({ status, json: { sandboxes: [] } })
   })
   await page.goto('./#/sandboxes')
-  await expect(page.getByRole('status')).toContainText('Gateway 暂不可用')
+  const sidebarStatus = page.locator('.sbx-instance-sidebar').getByRole('status')
+  await expect(sidebarStatus).toContainText('Gateway 暂不可用')
   await page.getByRole('button', { name: '重试' }).click()
-  await expect(page.getByRole('status')).toHaveText('暂无沙箱实例')
+  await expect(sidebarStatus).toHaveText('暂无沙箱实例')
 })
 
 test('长实例列表独立滚动，详情也能读到底部', async ({ page }) => {

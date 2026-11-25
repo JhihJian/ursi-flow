@@ -12,12 +12,12 @@
     "strict": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "noEmit": true,
     "types": [
       "vite/client",
       "node"
     ],
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "../todo-web/web/src/*"
@@ -28,6 +28,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "vite.config.ts"
+    "vite.config.ts",
+    "../ursi-sandbox/web/src/novnc.d.ts"
   ]
 }

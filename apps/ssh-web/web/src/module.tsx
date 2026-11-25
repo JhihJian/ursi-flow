@@ -1,14 +1,23 @@
+import type { ReactNode } from 'react'
 import type { WorkspaceModule } from '@ursi/workspace-shell'
-import { SshWorkspace } from './SshWorkspace'
-import { createSshController, type SshControllerOptions } from './ssh-context'
+import { SshSidebar } from './SshSidebar'
+import { SshWorkspaceArea } from './SshWorkspaceArea'
+import { createSshController, SshModuleProvider, useSshStore, type SshControllerOptions } from './ssh-context'
+import { STATE_LABEL } from './terminal-state'
 
-/** 折叠窄条上显示的终端状态文案。 */
-const STATE_LABEL: Record<string, string> = {
-  connecting: '连接中',
-  live: '已连接',
-  ended: '已退出',
-  error: '出错',
-  closed: '未连接',
+/** 状态栏：激活终端的会话名与生命周期。 */
+function SshStatus() {
+  const terminals = useSshStore((state) => state.terminals)
+  const activeTerminalKey = useSshStore((state) => state.activeTerminalKey)
+  const activeTab = terminals.find((tab) => tab.key === activeTerminalKey)
+  const label = activeTab?.tmuxSession ?? 'ssh-main'
+  return (
+    <span>
+      SSH {activeTab ? `${label} · ` : ''}
+      {STATE_LABEL[activeTab?.state ?? 'closed']}
+      {terminals.length > 1 ? ` · 标签 ${terminals.length}` : ''}
+    </span>
+  )
 }
 
 export interface SshWebModuleOptions extends SshControllerOptions {}
@@ -21,31 +30,21 @@ export interface SshWebModuleOptions extends SshControllerOptions {}
 export function createSshModule(options: SshWebModuleOptions = {}): WorkspaceModule {
   const controller = createSshController(options)
 
-  /** 折叠窄条摘要：激活标签的会话名 + 终端生命周期 + 打开数。 */
-  const useCollapsedSummary: WorkspaceModule['useCollapsedSummary'] = () => {
-    const connections = controller.store((state) => state.connections)
-    const terminals = controller.store((state) => state.terminals)
-    const activeTerminalKey = controller.store((state) => state.activeTerminalKey)
-    const activeTab = terminals.find((tab) => tab.key === activeTerminalKey)
-    const connection = activeTab
-      ? connections.find((item) => item.id === activeTab.connectionId)
-      : undefined
-    const items: { label: string; value: string }[] = []
-    if (activeTab) items.push({ label: '会话', value: activeTab.tmuxSession ?? 'ssh-main' })
-    items.push({ label: '状态', value: STATE_LABEL[activeTab?.state ?? 'closed'] ?? '未连接' })
-    if (terminals.length > 1) items.push({ label: '标签', value: String(terminals.length) })
-    return { title: connection?.name ?? 'SSH', items }
-  }
+  const Provider = ({ children }: { children: ReactNode }) => (
+    <SshModuleProvider controller={controller}>{children}</SshModuleProvider>
+  )
 
   return {
     id: 'ssh',
     title: 'SSH',
-    // 侧栏自带标题、终端区即内容，外壳不再画标题行。
-    hideHeader: true,
-    defaultSize: 560,
-    minSize: 420,
-    collapsedSize: 32,
-    Panel: () => <SshWorkspace controller={controller} />,
-    useCollapsedSummary,
+    Provider,
+    Sidebar: SshSidebar,
+    Workspace: SshWorkspaceArea,
+    context: { Status: SshStatus },
+    sidebarDefaultSize: 320,
+    sidebarMinSize: 160,
+    sidebarMaxSize: 620,
+    /** 折叠即卸载，远端 tmux 会话继续运行；重新展开后按会话重新 attach。 */
+    keepMounted: false,
   }
 }

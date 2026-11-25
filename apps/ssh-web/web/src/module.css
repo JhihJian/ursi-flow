@@ -805,3 +805,28 @@
 .ssh-menu-item.danger:hover {
   background: rgb(180 60 60 / 0.1);
 }
+
+/* ── 模块外框：侧边栏与工作区各一份根容器 ─────────────── */
+
+.ssh-embed-col {
+  flex-direction: column;
+}
+
+/* 独立入口的分隔条（嵌入外壳时由外壳提供分隔条） */
+.ssh-standalone-separator {
+  flex: 0 0 6px;
+  width: 6px;
+  background: none;
+  position: relative;
+}
+
+.ssh-standalone-separator::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--ssh-gray-200);
+}

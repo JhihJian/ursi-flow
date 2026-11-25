@@ -92,7 +92,7 @@ references:
 
 #### 验收
 
-- 包导出 `@ursi/sandbox-web/module` 与 `./module.css`；`createSandboxModule({ apiBase })` 返回 `WorkspaceModule`（id `sandbox`、`hideHeader`），宿主只登记一条栏位即可嵌入，不改动本包服务端。
-- 独立入口与嵌入入口共用同一控制台：`src/main.tsx` 提供 HashRouter 与视口承载（`src/standalone.css`），`src/module.tsx` 用 MemoryRouter 承载原有路由，实例列表与详情都在本栏内完成，不向外壳发布选中项。
+- 包导出 `@ursi/sandbox-web/module` 与 `./module.css`；`createSandboxModule({ apiBase })` 返回 `WorkspaceModule`（id `sandbox`，侧边栏是导航与实例列表，工作区是路由内容），宿主只登记一个模块即可嵌入，不改动本包服务端。
+- 独立入口与嵌入入口共用同一控制台：`src/main.tsx` 用 HashRouter + 共享数据层 + 两栏布局，`src/module.tsx` 用 MemoryRouter + 共享数据层，侧边栏是模块导航与实例列表、工作区是路由内容；实例导航由路由承担，不向外壳发布选中项。
 - API 基准由宿主注入（嵌入时 `/sbx`），缺省为相对路径；HTTP 请求与工作台 WebSocket 地址同源换算，直接部署不依赖前缀。
 - 模块样式产物只含 `.sbx-app` 作用域内规则：不输出 `html`/`body`/`:root` 全局重置，不生成脱离容器的定位规则；浮层（对话框、下拉菜单）经 Portal 挂回模块根节点，随栏位滚动与裁剪。

@@ -1,115 +1,148 @@
 # 子模块接入规范
 
-给 `shell-web` 写新模块（fs-web、executor-web 等）时按这份规范做。外壳只负责一栏的宽度、折叠、全局选中与右侧操作栏，其余都归模块。
+给 `shell-web` 写模块时按这份规范做。外壳固定为「标题栏 / 堆叠侧边栏 / 工作区 / 控制面板 / 状态栏」，模块只声明三块内容：侧边栏、工作区、上下文。
 
 ## 1. 导出一个模块对象
 
-```ts
-import type { WorkspaceModule } from '@ursi/workspace-shell'
+```tsx
+import type { ModuleSidebarProps, WorkspaceModule } from '@ursi/workspace-shell'
 
 export function createExecutorModule(): WorkspaceModule {
   return {
-    id: 'executor',                       // 小写短横线，全局唯一，用于布局持久化
-    title: 'Executor',                    // 折叠摘要与无障碍标签用
-    Panel: ExecutorPanel,                 // 展开态内容，自己取数据
-    defaultSize: 420,
-    minSize: 280,                         // 低于此宽度外壳会折叠，别写大于实际需要的值
-    hideHeader: false,                    // 模块自带标题/工具条时设 true
-    useCollapsedSummary: useExecutorSummary,
-    selection: { kind: 'run.attempt', summary, WorkspaceView },
+    id: 'executor',                        // 小写短横线，全局唯一，用于持久化键
+    title: 'Executor',
+    Provider: ExecutorProvider,            // 可选：包住侧边栏 / 工作区 / 状态栏的纯上下文根
+    Sidebar: ExecutorSidebar,              // ({ collapsed, collapse, expand }) => UI
+    Workspace: ExecutorWorkspace,          // 工作区内容，不带模块标题区
+    context: {
+      kind: 'run.attempt',                 // 本模块发布的选中类型
+      summary: (selection) => selection.label ?? selection.id,
+      Status: ExecutorStatus,              // 可选：状态栏组件
+    },
+    sidebarDefaultSize: 280,
+    sidebarMinSize: 160,
+    sidebarMaxSize: 560,
+    collapsedSidebarSize: 32,
+    keepMounted: false,
     actions: [...],
   }
 }
 ```
 
-必填只有 `id`、`title`、`Panel`。其余按需。
+必填只有 `id`、`title`、`Sidebar`、`Workspace`、`context`。
 
-## 2. 选中：只发布 ID，不另存真值
+## 2. 侧边栏：两种形态都由模块渲染
 
-- 用 `useWorkspace().select({ kind, id, label })` 发布，`kind` 形如 `<域>.<实体>`，避免与别的模块撞名。
-- 只传 `kind` 与 `id`；实体由模块按 id 自取，不要把对象塞进选中里。
-- 模块内部不要再维护一份「当前选中」并双写；外壳的 `selection` 就是唯一真值。
-- 卸载或清空时 `select(null)`。
+- `Sidebar` 收到 `{ collapsed, collapse, expand }`。折叠时渲染一条横向窄条，展开时渲染完整内容。
+- 窄条上给出标题与 2–3 项关键信息（状态、数量），整条可点击展开，并带 `aria-label`。
+- 折叠态不要依赖折叠时的高度值，外壳会把这一节压到 `collapsedSidebarSize`（缺省 32px）。
+- 可以用外壳导出的 `SidebarFrame` 省掉重复的标题行与窄条：
 
-## 3. 折叠：只公布数据，不写折叠 UI
+```tsx
+<SidebarFrame
+  title="文件"
+  collapsed={collapsed}
+  collapse={collapse}
+  expand={expand}
+  items={[{ label: '打开', value: String(open) }]}
+>
+  <FileExplorer />
+</SidebarFrame>
+```
 
-- 折叠由外壳负责。模块实现 `useCollapsedSummary()`，返回 `{ title, items: [{ label, value }] }`。
-- `items` 控制在 2–4 项，值是短字符串（状态、项目、数量），不要放大段文本或长 ID。
-- 不要导出 `Rail` 之类的自绘折叠组件，也不要在模块内另做一套收放逻辑。
-- 需要「展开后更宽」时用 `useModuleColumn().resize(px)` 主动请求，不要自己套一层可拖拽布局。
+- 侧边栏内部可以有自己的二级折叠（例如文件目录列表），但不要再嵌套可拖拽的整页分栏。
+- 不要在工作区重复放模块标题。
 
-## 4. 布局：一栏之内自适应
+## 3. 工作区：只放内容
 
-- **不要嵌套 `react-resizable-panels` 的 `Group`**：外壳已经管一栏，里面再套一层会出现栏里套栏、宽度打架。
-- 不要写死超过栏宽的像素默认值；用 `flex` 与 `min-width: 0`，表格允许横向滚动或收列。
-- 需要固定宽度只用在小块（图标栏、列表），并给栏留出 `minSize` 的余量。
-- 滚动放在栏内自己的容器上，不要让整页滚动；外壳已固定标题栏与状态栏。
-- 模块被放进纵向区域（`direction: 'vertical'`，多条目上下叠放）时，契约里的 `defaultSize`/`minSize`/`maxSize`/`collapsedSize` 作用于高度而非宽度；`minSize` 应按内容的最小高度取值，折叠窄条由外壳转为横排书脊，模块无需感知方向。
+- `Workspace` 是模块的主体，不含标题区、不含「折叠 / 展开」入口。
+- 工作区只在侧边栏展开时显示。声明 `keepMounted: true` 时折叠后仍挂载（隐藏），适合 iframe、终端这类不能重置的模块；否则折叠即卸载，重新展开从头开始。
+- 不要假设工作区一定有确定宽度：多模块同时展开时一列可能只有 300–500px。用 `flex`、`min-width: 0`，表格允许横向滚动或收列。
+- 滚动放在模块自己的容器上，不要让整页滚动。
 
-## 5. 样式：进容器作用域
+## 4. 上下文：选中与状态栏
 
-- 所有样式挂模块根类（如 `.executor-app`），必要时用 `@layer`，变量挂在该容器上。
-- 禁止写 `html`、`body`、`:root`、`#root`、全局 `*` 重置、`overflow` 之类的全局规则；嵌入后会污染宿主。
-- 避免 `position: fixed`；需要浮层时用 `position: absolute` 挂在容器内。
+- 选中发布到外壳唯一那份：`useWorkspace().select({ kind, id, label })`。
+- `context.kind` 必须是全局唯一的类型名，形如 `<域>.<实体>`。多个模块不能声明同一个 kind。
+- 只传 `kind` 与 `id`，实体由模块按 id 自取；不要把对象塞进选中里。
+- 模块内部不要再维护一份「当前选中」并双写。
+- 清空时只清除属于自己 kind 的选中，避免模块挂载时抹掉别的模块的选择。
+- `context.summary(selection)` 用于状态栏与控制面板的摘要；`context.Status` 是可选的状态栏组件，侧边栏展开时外壳为它留槽位并渲染。
+
+## 5. Provider：跨区域的共享状态
+
+- 侧边栏和工作区在 DOM 上是分开的两块，但外壳会把同一个 `Provider` 包住二者（通过 portal 保留上下文）。
+- `Provider` 只放纯上下文：`DndContext`、`MemoryRouter`、controller provider、数据 provider。不得渲染布局 DOM（`<div className="x-app">` 会落到侧边栏面板里）。
+- 需要样式作用域时，在 `Sidebar` 和 `Workspace` 内部各包一层模块根类，不要指望 `Provider` 提供 DOM。
+- 浮层容器（右键菜单、Radix Portal 目标）按区域各建一份：侧边栏里的菜单挂侧边栏容器，工作区里的浮层挂工作区容器。
+
+## 6. 样式：进容器作用域
+
+- 所有模块样式挂模块根类（如 `.executor-app`），变量挂在该容器上。
+- 禁止写 `html`、`body`、`:root`、`#root`、全局 `*` 重置。独立入口需要时另建 `standalone.css`，只在独立入口导入。
+- 避免 `position: fixed`；需要浮层时用 `position: absolute` 挂在模块容器内。
 - 视觉沿用外壳的灰度、衬线标题 + 等宽数据；不要引入彩色主题。
 
-## 6. 副作用：可关闭、可注入
+## 7. 副作用：可关闭、可注入
 
 - 接口地址由宿主注入（`apiBaseUrl`），不要硬编码 `/api`。
 - 轮询、通知、声音、桌面通知这类全局行为要有开关，默认在嵌入模式下关闭。
 - `window` 上的键盘监听要么挂容器，要么在失焦/卸载时移除；不要抢占宿主的 `Esc`。
-- 不要用 `alert` / `prompt` / `confirm`；错误交给 `onNotify`（或操作栏的错误位）展示。
+- 不要用 `alert` / `prompt` / `confirm`；错误交给 `onNotify`（或控制面板的错误位）展示。
 - `localStorage` 键加模块前缀（`executor.xxx`），并允许宿主注入 `storageKey`，避免两个实例互相覆盖。
 
-## 7. 操作：注册，不自造按钮
+## 8. 操作：注册，不自造按钮
 
-- 「执行」「取消」「打开会话」这类动作注册成 `actions[]`，外壳按 `appliesTo(selection)` 渲染在右侧操作栏。
+- 「执行」「取消」「打开会话」这类动作注册成 `actions[]`，外壳按 `appliesTo(selection)` 渲染在右侧控制面板。
 - `run` 抛错由外壳展示；耗时操作自己维护进行中状态并禁用重复点击。
 - 有破坏性的操作给 `confirm` 文案；不可执行时用 `disabledReason` 返回原因，而不是静默失败。
 - 不要在面板里重复放同样的按钮，那会让同一次操作出现两个入口。
 
-## 8. 性能与加载
+## 9. 性能与加载
 
 - 面板内容按需 `lazy` 加载，重依赖（编辑器、图表、ProseMirror 这类）单独分块，别进首屏包。
 - 单模块首屏同步代码控制在几百 KB 量级；超出的部分切块。
 - 列表超过约 200 行时考虑虚拟化或分页。
+- `Provider` 在模块启用时就会挂载，注意别在里面做重请求；列表加载放在 `Provider` 或侧边栏里按需触发。
 
-## 9. 无障碍
+## 10. 无障碍
 
-- 折叠摘要整条可点击，带 `aria-label` 描述「什么 · 状态 · 展开某栏」。
+- 折叠窄条整条可点击，带 `aria-label` 描述「什么 · 状态 · 展开某栏」。
 - 操作按钮的禁用原因写进 `title`，不要只靠颜色。
-- 键盘操作与鼠标等价：折叠、展开、选择都要能用键盘完成。
+- 折叠、展开、选择都要能用键盘完成。
 
-## 10. 交付物
+## 11. 交付物
 
 每个模块至少包含：
 
 - `SPEC.md`：功能意图、关键功能与可验收的行为（结构见仓库其他模块）。
-- 与外壳契约的接入代码（模块对象 + 折叠摘要 + 操作），以及不依赖外壳也能跑的独立入口或独立部署说明。
-- 单元测试覆盖选中映射、折叠摘要、操作可用性判断；有 API 交互的补 e2e。
+- 与外壳契约的接入代码（模块对象 + 侧边栏 + 工作区 + context），以及不依赖外壳也能跑的独立入口或独立部署说明。
+- 单元测试覆盖选中映射、侧边栏折叠态文案、操作可用性判断；有 API 交互的补 e2e。
 - 文档里写明：依赖哪些服务、需要哪些环境变量、数据归属在哪。
 
-## 11. 反面清单（都踩过）
+## 12. 反面清单（都踩过）
 
 | 反例 | 后果 |
 | --- | --- |
-| 模块内部再套一层可拖拽 `Group` | 栏里套栏，520px 的栏里子栏被压到 25px |
-| 写死 `defaultSize=240/300` 的像素宽度 | 嵌入窄栏时内容被挤没 |
-| 用底部 sheet 放详情，同时外壳也有工作区 | 两处详情、两份选中真值 |
+| 模块内部再套一层可拖拽 `Group` 当主布局 | 与外壳的分栏打架，出现栏里套栏 |
+| `Provider` 里渲染 `<div className="x-app">` | 根类落到侧边栏面板，工作区样式全丢 |
+| 工作区组件里再画一遍模块标题 | 与侧边栏标题重复，占掉内容高度 |
+| 侧边栏折叠态只靠 CSS 隐藏内容 | 高度仍占着，堆叠失效 |
+| 模块挂载时无条件 `select(null)` | 抹掉别的模块发布的选中 |
 | `styles.css` 里写 `html/body/#root` | 污染宿主布局 |
 | 面板内放「执行」按钮，同时注册 action | 同一操作两个入口 |
-| 折叠自己实现一套窄条 UI | 与外壳形态重复，还多一套需要维护的状态 |
-| 折叠按钮放在分隔线中点且不设光标 | 悬停被库强制成拖拽光标，误触拖拽 |
+| 浮层用全局 `position: fixed` | 多区域布局下坐标错位 |
+| 依赖 `keepMounted` 之外的方式保活 | 折叠即卸载，iframe 与终端状态丢失 |
 
-## 12. 检查清单
+## 13. 检查清单
 
 - [ ] `id` 唯一、小写短横线；`title` 简短
-- [ ] `Panel` 自己取数据，不依赖宿主注入的 store
-- [ ] 选中只发 `{ kind, id }`，模块内没有第二份选中
-- [ ] `useCollapsedSummary` 返回 ≤4 项短值
+- [ ] `Sidebar` 同时处理展开与折叠两种形态
+- [ ] `Workspace` 不含模块标题区
+- [ ] `context.kind` 全局唯一；只清除自己的选中
+- [ ] `Provider` 不渲染 DOM；样式作用域在 `Sidebar` / `Workspace` 内部
 - [ ] 没有嵌套可拖拽 Group，宽度自适应
-- [ ] 样式全部在容器作用域内
 - [ ] 轮询/通知/键盘监听可关闭或可移除
 - [ ] 动作注册在 `actions`，有 `disabledReason` / `confirm`
-- [ ] 重依赖按需加载
+- [ ] 需要保活的模块声明 `keepMounted`
 - [ ] 有 `SPEC.md`、单测、独立运行说明

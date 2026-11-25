@@ -41,6 +41,17 @@ shell-web 栏（.ssh-embed）
 5. **样式全量作用域化。** 现有 styles.css 的 `:root` 变量、`*` reset、`html/body/#root`、全局隐藏滚动条全部违反契约 §5。拆两份：`module.css` 作用域到 `.ssh-embed`（组件样式加前缀，变量挂根类，`.xterm` 覆盖带前缀），`standalone.css` 仅独立入口导入（全局高度与 reset）。宿主已有 todo-web 提供的同类变量，模块内用 `var(--x, 兜底值)` 取值，不重复定义 `:root`。
 6. **浮层与快捷键服从宿主。** ContextMenu 从 `createPortal(document.body)` + `position: fixed` 改为 portal 进 `.ssh-embed` 容器 + `position: absolute`，坐标按 `clientX/Y − 容器 rect 原点` 换算、按容器 rect 钳制（窄栏左翻）；关闭监听仍挂 window（卸载即清理）。Ctrl/Cmd+F 搜索监听从 window 级改到 `.ssh-embed` 容器级，命中时 `preventDefault + stopPropagation`，焦点在模块外时不拦截。删除连接的 `window.prompt` 二次确认改为侧栏内联确认行（输入名称 + 确认/取消），契约禁止原生弹窗。
 
+## 固定骨架下的实现形态
+
+外壳改为「标题栏 / 堆叠侧边栏 / 工作区 / 控制面板 / 状态栏」后，ssh 模块拆成两块，由 `SshModuleProvider` 一次包住：
+
+- `SshSidebar.tsx`：连接树 + 折叠窄条（当前连接、tmux 会话、生命周期）。容器 ref 只覆盖侧边栏，右键菜单坐标以侧边栏为原点。
+- `SshWorkspaceArea.tsx`：会话标签栏 + 终端栈 + 连接编辑浮层；Ctrl+F 只挂这一块，不抢宿主快捷键。
+- `SshModuleProvider`：controller（API + store）与一次 `loadConnections`，侧边栏与工作区共享。
+- 折叠即卸载，远端 tmux 会话继续运行；重新展开后按会话重新 attach。`keepMounted` 保持 false。
+
+独立入口 `App.tsx` 用同一对组件配一栏可折叠侧边栏；`main.tsx` 只创建 controller。
+
 ## 详细改动
 
 ### Rust 服务（不动）
@@ -51,7 +62,7 @@ shell-web 栏（.ssh-embed）
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/module.tsx`（新增） | `createSshModule({ apiBaseUrl?, storageKey? })`：创建 api client 与 store，返回 `WorkspaceModule`：`id: 'ssh'`、`title: 'SSH'`、`hideHeader: true`、`defaultSize: 560`、`minSize: 420`、`collapsedSize: 32`、`useCollapsedSummary`。不设 `selection`、`actions`。 |
+| `src/module.tsx`（新增） | `createSshModule({ apiBaseUrl?, storageKey? })`：创建 controller，返回 `WorkspaceModule`：`id: 'ssh'`、`Provider: SshModuleProvider`、`Sidebar: SshSidebar`、`Workspace: SshWorkspaceArea`、`context.Status`。侧栏尺寸走 `sidebarDefaultSize` 等字段。不设 `selection`、`actions`。 |
 | `src/SshWorkspace.tsx`（新增） | flex 布局容器：180px 合并侧栏（上连接、下 tmux 会话）+ 终端区 `flex: 1`。挂 Ctrl/Cmd+F 容器级监听。ConnectionEditorSheet 改挂模块根，作为 absolute 底部浮层。 |
 | `src/App.tsx` | 改薄壳：`<SshWorkspace />` 外包独立入口的全局容器。 |
 | `src/api/client.ts` | 构造函数接受 baseUrl（缺省 `/api`）；`terminalWsUrl` 从 base 推导（相对 base 同 host 换协议，绝对 base 解析 URL 换协议）。 |
@@ -66,7 +77,7 @@ shell-web 栏（.ssh-embed）
 - 折叠 SSH 栏后远端 tmux 会话保活；重新展开点同一会话，屏幕内容恢复。
 - 宿主其他栏（todo、fs、pi-web）不受 SSH 样式、快捷键、浮层影响；SSH 栏内 Ctrl+F 打开终端搜索且不触发浏览器查找。
 - 焦点在连接名输入框时 Ctrl+F 仍能打开终端搜索（容器级监听）。
-- 折叠摘要显示当前连接、tmux 会话与连接状态。
+- 折叠窄条显示当前连接、tmux 会话与连接状态。
 
 ### shell-web（宿主）
 

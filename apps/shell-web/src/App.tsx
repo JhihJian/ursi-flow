@@ -1,20 +1,11 @@
 import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
 import { useShellRegistry, SETTINGS, REGISTRY } from './registry'
 
-function SettingsButton() {
+function HostButton({ kind, label }: { kind: { kind: string; id: string }; label: string }) {
   const { select } = useWorkspace()
   return (
-    <button type="button" className="ws-settings" onClick={() => select(SETTINGS)}>
-      Settings
-    </button>
-  )
-}
-
-function RegistryButton() {
-  const { select } = useWorkspace()
-  return (
-    <button type="button" className="ws-settings" onClick={() => select(REGISTRY)}>
-      Registry
+    <button type="button" className="ws-settings" onClick={() => select(kind)}>
+      {label}
     </button>
   )
 }
@@ -29,8 +20,8 @@ export default function App() {
       title="ursi workspace"
       settings={
         <>
-          <RegistryButton />
-          <SettingsButton />
+          <HostButton kind={REGISTRY} label="Registry" />
+          <HostButton kind={SETTINGS} label="Settings" />
         </>
       }
       status="todo · 8090"
