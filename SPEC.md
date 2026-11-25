@@ -3,6 +3,7 @@ references:
   - ARCHITECHTURE.md
   - workbench/README.md
   - flow-core/docs/flow-spec.md
+  - docs/design/pi-web/INTEGRATION.md
 ---
 
 # ursi-flow
@@ -11,11 +12,19 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。Flow Runtime 校验并执行包，根据节点报告的结果选择下一步，保存每次运行的历史。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。工作台与 Runtime 使用各自的凭证消费同一修订。
 
-独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。
+独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 
 ## 关键功能与验收
+
+### 通过浏览器使用 Pi Agent
+
+#### 验收
+
+- `apps/pi-web` 独立安装依赖并构建后，以 `start:lan` 监听 `0.0.0.0:30141`，浏览器打开首页可列出并继续 `~/.pi/agent/sessions` 下的会话。
+- 新建会话并提交提示词后，进程内 AgentSession 真实调用模型并执行工具，内置终端可用。
+- 暴露到非回环地址前必须设置 `PI_WEB_PASSWORD`；未认证的 API 请求返回 401。
 
 ### 查看本机待办看板
 
