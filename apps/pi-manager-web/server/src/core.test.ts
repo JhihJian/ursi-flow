@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseJsonc, stripJsonComments } from './jsonc.ts'
@@ -322,4 +322,22 @@ test('models 合并写回：原样提交掩码还原原文', async () => {
   const raw = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8')) as { providers: { p1: { apiKey: string; baseUrl: string } } }
   assert.equal(raw.providers.p1.apiKey, 'key-abcdef99')
   assert.equal(raw.providers.p1.baseUrl, 'https://y')
+})
+
+test('home 解析：~ 展开为当前用户主目录', async () => {
+  const { resolveRequestedHome } = await import('./pi-home.ts')
+  const { homedir } = await import('node:os')
+  // 造一个合法 home 在 ~/ 下
+  const base = join(homedir(), '.pi-manager-test-home')
+  mkdirSync(base, { recursive: true })
+  writeFileSync(join(base, 'settings.json'), '{}')
+  try {
+    const real = await resolveRequestedHome('~/.pi-manager-test-home')
+    assert.equal(real, base)
+    const single = await resolveRequestedHome('~/.pi-manager-test-home/')
+    assert.equal(single, base)
+    await assert.rejects(resolveRequestedHome('~nonuser/x'), /绝对路径/)
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
 })

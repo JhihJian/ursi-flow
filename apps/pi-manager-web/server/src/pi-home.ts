@@ -47,22 +47,26 @@ export async function resolveRequestedHome(raw: unknown): Promise<string> {
     throw new HomeError('home 参数必须是目录绝对路径', 400, 'invalid_home')
   }
   const trimmed = raw.trim()
-  if (!trimmed.startsWith('/')) {
+  // 允许 ~ 开头（展开为当前用户主目录），~user 形式不支持。
+  const expanded = trimmed === '~' || trimmed.startsWith('~/')
+    ? join(homedir(), trimmed.slice(1))
+    : trimmed
+  if (!expanded.startsWith('/')) {
     throw new HomeError('home 必须是绝对路径', 400, 'invalid_home')
   }
   let real: string
   try {
-    real = await realpath(trimmed)
+    real = await realpath(expanded)
   } catch {
-    throw new HomeError(`目录不存在: ${trimmed}`, 404, 'home_not_found')
+    throw new HomeError(`目录不存在: ${expanded}`, 404, 'home_not_found')
   }
   const info = await stat(real)
   if (!info.isDirectory()) {
-    throw new HomeError(`不是目录: ${trimmed}`, 400, 'invalid_home')
+    throw new HomeError(`不是目录: ${expanded}`, 400, 'invalid_home')
   }
   if (!looksLikePiHome(real)) {
     throw new HomeError(
-      `目录里没有 settings.json，不像是 pi home: ${real}`,
+      `目录里没有 settings.json，不像是 pi home: ${expanded}`,
       400,
       'not_a_pi_home',
     )

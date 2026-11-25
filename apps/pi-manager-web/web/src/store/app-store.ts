@@ -82,12 +82,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ homeChecking: true, homeError: null })
     try {
       const check = await api.homeCheck(trimmed)
+      // 服务端展开 ~ 后回传真实路径，统一存绝对路径。
+      const resolved = check.home || trimmed
       try {
-        localStorage.setItem(HOME_KEY, trimmed)
+        localStorage.setItem(HOME_KEY, resolved)
       } catch {
         /* ignore */
       }
-      set({ homePath: trimmed, homeValid: check.valid, homeChecking: false })
+      set({ homePath: resolved, homeValid: check.valid, homeChecking: false })
       return true
     } catch (error) {
       set({ homeChecking: false, homeValid: false, homeError: describeError(error) })
