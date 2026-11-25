@@ -21,31 +21,12 @@ export const SETTINGS = { kind: 'app.settings', id: 'settings' } as const
 /** 注册信息页不占栏，同样由标题栏按钮选中。 */
 export const REGISTRY = { kind: 'app.registry', id: 'registry' } as const
 
-/** 模块在组合根登记时声明装配元数据，注册信息页展示这些内容。 */
-export interface ModuleRegistration {
-  moduleId: string
-  title: string
-  source: string
-  selectionKind?: string
-  actions: string[]
+/** 模块来源标注：包名或仓库内路径。id 撞上未登记来源时显式报错。 */
+const SOURCES: Record<string, string> = {
+  'todo': '@ursi/todo-web/module',
+  'fs-web': '@ursi/fs-web/module',
+  'pi-web': './pi-web-panel/module',
 }
-
-const REGISTRATIONS: ModuleRegistration[] = [
-  {
-    moduleId: 'todo',
-    title: 'Todo',
-    source: '@ursi/todo-web/module',
-    selectionKind: 'todo.task',
-    actions: ['Copy as Markdown'],
-  },
-  {
-    moduleId: 'fs-web',
-    title: '文件',
-    source: '@ursi/fs-web/module',
-    selectionKind: 'workspace.file',
-    actions: [],
-  },
-]
 
 function SettingsView() {
   return (
@@ -56,28 +37,33 @@ function SettingsView() {
   )
 }
 
-function RegistryView() {
+/** 注册信息从活的 modules 数组派生，不另存一份手工清单，避免漂移。 */
+function RegistryView({ modules }: { modules: WorkspaceModule[] }) {
   return (
     <div className="app-settings">
       <h2 className="app-settings-title">Registry</h2>
       <p>组合根登记的模块清单，栏序即数组顺序。</p>
-      {REGISTRATIONS.map((registration) => (
-        <div key={registration.moduleId} className="app-registry-item">
+      {modules.map((module) => (
+        <div key={module.id} className="app-registry-item">
           <div className="app-registry-head">
-            <span className="app-registry-title">{registration.title}</span>
-            <span className="app-registry-id">{registration.moduleId}</span>
+            <span className="app-registry-title">{module.title}</span>
+            <span className="app-registry-id">{module.id}</span>
           </div>
           <div className="app-registry-row">
             <dt>source</dt>
-            <dd>{registration.source}</dd>
+            <dd>{SOURCES[module.id] ?? '未登记来源'}</dd>
           </div>
           <div className="app-registry-row">
             <dt>selection</dt>
-            <dd>{registration.selectionKind ?? '-'}</dd>
+            <dd>{module.selection?.kind ?? '-'}</dd>
           </div>
           <div className="app-registry-row">
             <dt>actions</dt>
-            <dd>{registration.actions.length ? registration.actions.join('、') : '-'}</dd>
+            <dd>
+              {module.actions?.length
+                ? module.actions.map((action) => action.label).join('、')
+                : '-'}
+            </dd>
           </div>
         </div>
       ))}
@@ -113,8 +99,13 @@ export function buildRegistry(): ShellRegistry {
   ]
   const views: WorkspaceView[] = [
     { kind: SETTINGS.kind, summary: () => 'Settings', Component: SettingsView },
-    { kind: REGISTRY.kind, summary: () => 'Registry', Component: RegistryView },
+    { kind: REGISTRY.kind, summary: () => 'Registry', Component: () => <RegistryView modules={modules} /> },
   ]
-  if (import.meta.env.DEV) assertRegistry(modules, views)
+  if (import.meta.env.DEV) {
+    assertRegistry(modules, views)
+    for (const module of modules) {
+      if (!SOURCES[module.id]) throw new Error(`[shell-web] 模块 ${module.id} 未登记来源`)
+    }
+  }
   return { modules, views }
 }
