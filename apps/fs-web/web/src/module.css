@@ -534,9 +534,11 @@
 }
 
 .wsx-wslist-item {
+  /* 两行条目：第一行名称 + 右侧状态，第二行路径（点击复制）。 */
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
   padding: 3px 6px;
   border-left: 2px solid transparent;
   font-size: 12px;
@@ -560,22 +562,41 @@
 }
 
 .wsx-wslist-name {
-  flex: none;
-  max-width: 60%;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
 }
 
-.wsx-wslist-desc {
-  flex: 1;
+/* 名称行右侧：复制提示与未就绪感叹号。 */
+.wsx-wslist-rowtail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.wsx-wslist-flash {
+  font-size: 10px;
+  color: var(--wsx-dim, var(--ws-dim, #666666));
+}
+
+/* 第二行：完整路径，小字、悬停强调，点击复制。 */
+.wsx-wslist-path {
+  flex: 1 1 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--wsx-muted, var(--ws-muted, #999999));
+  cursor: copy;
+}
+
+.wsx-wslist-item:hover .wsx-wslist-path {
+  color: var(--wsx-dim, var(--ws-dim, #666666));
 }
 
 .wsx-wslist-broken {
@@ -584,7 +605,7 @@
   font-weight: 700;
 }
 
-/* 折叠 rail：书脊式竖排当前目录名（todo-web 同款） */
+/* 折叠 rail：书脊式竖排选中目录名（todo-web 同款） */
 .wsx-wslist-collapsed {
   display: flex;
   flex-direction: column;

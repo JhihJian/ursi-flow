@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
 import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
+import { copyText } from './lib/clipboard.ts'
 
 type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
 
@@ -57,9 +58,19 @@ function InlineInput({
   )
 }
 
-/** 说明统一「目录名 · 路径 · 说明」拼接，tooltip 与折叠态共用。 */
+/** 悬停 tooltip：名称 · 路径 · 说明，折叠态书脊共用。 */
 function itemSummary(workspace: WorkspaceInfo): string {
   return [workspace.label, workspace.root, workspace.description].filter(Boolean).join(' · ')
+}
+
+/** 行内轻提示：复制成功/失败后短暂显示。 */
+function useFlash(): [string, (message: string) => void] {
+  const [flash, setFlash] = useState('')
+  const show = (message: string): void => {
+    setFlash(message)
+    window.setTimeout(() => setFlash(''), 1200)
+  }
+  return [flash, show]
 }
 
 interface WorkspaceItemProps {
@@ -74,6 +85,15 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   const renameWorkspace = useTreeStore((state) => state.renameWorkspace)
   const removeWorkspace = useTreeStore((state) => state.removeWorkspace)
   const [editing, setEditing] = useState<'label' | 'description' | null>(null)
+  const [flash, showFlash] = useFlash()
+
+  const copyRoot = (event: React.MouseEvent): void => {
+    // 只处理路径按钮自己的点击，不让冒泡切换选中目录。
+    event.stopPropagation()
+    void copyText(workspace.root)
+      .then(() => showFlash('已复制'))
+      .catch(() => showFlash('复制失败'))
+  }
 
   const menuItems: MenuItem[] = [
     { label: '重命名', onSelect: () => setEditing('label') },
@@ -136,8 +156,17 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
       }}
     >
       <span className="wsx-wslist-name">{workspace.label}</span>
-      {workspace.description ? <span className="wsx-wslist-desc">{workspace.description}</span> : null}
-      {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
+      <span className="wsx-wslist-rowtail">
+        {flash ? <span className="wsx-wslist-flash">{flash}</span> : null}
+        {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
+      </span>
+      <span
+        className="wsx-wslist-path"
+        title={`${workspace.root}（点击复制）`}
+        onClick={copyRoot}
+      >
+        {workspace.root}
+      </span>
     </li>
   )
 }
@@ -160,7 +189,7 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
   const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
 
   if (collapsed) {
-    // 折叠 rail：书脊式竖排当前目录名（todo-web 同款），点击展开。
+    // 折叠 rail：书脊式竖排选中目录名（todo-web 同款），点击展开。
     return (
       <div className="wsx-wslist-collapsed">
         <button type="button" className="wsx-rail-toggle" title="展开目录列表" aria-label="展开目录列表" onClick={onExpand}>

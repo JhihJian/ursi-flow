@@ -279,13 +279,13 @@ export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConf
 export function loadWorkspaceConfig(env: NodeJS.ProcessEnv): WorkspaceConfig[] {
   const file = env.FS_WEB_CONFIG
   if (!file) {
+    const root = process.cwd()
     return [
       {
         id: 'default',
-        label: '当前目录',
-        description: '启动 fs-web 时的工作目录，未手动添加目录时的默认入口',
+        label: path.basename(root) || root,
         provider: 'local',
-        root: process.cwd(),
+        root,
       },
     ]
   }
