@@ -243,7 +243,18 @@ button {
 
 .terminal-surface {
   position: relative;
+  display: flex;
+  flex-direction: column;
   padding: var(--space-sm) var(--space-md);
+  overflow: hidden;
+}
+
+/* xterm 的度量宿主：自身不留内边距，padding 全在 .terminal-surface 上，fit 时统一扣除。 */
+.terminal-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 终端内搜索：浮在右上角，出版物风格。 */
@@ -271,6 +282,14 @@ button {
   background: transparent;
 }
 
+.terminal-search-status {
+  min-width: 44px;
+  color: var(--gray-400);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .terminal-search button {
   border: none;
   background: transparent;
@@ -281,12 +300,100 @@ button {
   padding: 2px 4px;
 }
 
+.terminal-search button.active {
+  background: var(--gray-200);
+  color: var(--gray-900);
+}
+
 .terminal-search button:hover {
   color: var(--black);
 }
 
 .terminal-surface .xterm {
   height: 100%;
+}
+
+/* 覆盖 xterm.css 的黑色视口底色：亮色主题下会漏出 1px 黑边。 */
+.xterm .xterm-viewport {
+  background-color: transparent;
+}
+
+/* 始终保留滚动条槽位，避免 Linux 上滑条忽隐忽现引起列宽抖动。 */
+.xterm .xterm-viewport {
+  overflow-y: scroll;
+}
+
+/* xterm 默认的方形滑块没有配置项，只能从 CSS 收圆角。 */
+.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {
+  border-radius: 4px;
+}
+
+/* 显式 left:0：xterm 的 left:auto 会让浏览器把输入法候选框错位到光标之外。 */
+.xterm .xterm-helpers {
+  left: 0;
+}
+
+/* Chromium 会在 xterm 隐藏的输入框上画出原生光标，重绘时看起来像旧光标残留。 */
+.xterm .xterm-helper-textarea {
+  caret-color: transparent;
+}
+
+/* 链接悬停提示：贴住面板左下角，与 orca 的 pane-link-tooltip 位置一致。 */
+.terminal-link-tooltip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  max-width: 80%;
+  padding: 4px var(--space-sm);
+  border: 1px solid var(--gray-200);
+  border-bottom: 0;
+  border-left: 0;
+  background: var(--white);
+  color: var(--gray-600);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.terminal-surface:not(.light) .terminal-link-tooltip {
+  border-color: #3f3f46;
+  background: rgb(24 24 27 / 0.85);
+  color: #a1a1aa;
+}
+
+/* 服务端事件条：贴底一条，不遮挡终端内容也不算占位。 */
+.terminal-banner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 15;
+  padding: var(--space-xs) var(--space-md);
+  border-top: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 11px;
+  color: var(--gray-600);
+  overflow-wrap: anywhere;
+}
+
+.terminal-banner-error {
+  border-top-color: var(--danger);
+  color: var(--danger);
+}
+
+.terminal-surface:not(.light) .terminal-banner {
+  border-top-color: #3f3f46;
+  background: var(--terminal-bg);
+  color: var(--gray-400);
+}
+
+.terminal-surface:not(.light) .terminal-banner-error {
+  border-top-color: var(--danger);
+  color: #d46a6a;
 }
 
 /* 亮色终端：面板背景随主题切白，xterm 自身 theme 由 JS 设置。 */

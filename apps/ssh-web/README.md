@@ -5,7 +5,18 @@
 ## 组成
 
 - `server/`：Rust 服务（axum + portable-pty + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表与 WebSocket 终端桥；WS 握手即在本地 PTY 中启动系统 `ssh -tt` 子进程并 attach 远端 tmux，服务端不维护会话状态，认证、跳板、`~/.ssh/config` 全部交给 OpenSSH 自身。接口契约见 [server/HTTP.md](server/HTTP.md)。
-- `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。
+- `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。终端渲染层在 `web/src/terminal/`：主题与最小对比度、实测 cell 尺寸的 fit 调度、WebGL 策略、Unicode 宽度与链接解析。
+
+## 渲染层来源
+
+终端渲染细节移植自 [orca](https://github.com/stablyai/orca) 的 `src/renderer`（MIT，Copyright (c) 2026 Lovecast Inc.），针对浏览器环境做了裁剪：
+
+- `terminal/fit.ts`：`StableCellFitAddon` 与 `terminalGridSizeForBox` 来自 `pane-manager/terminal-fit`，另加两帧稳定的 fit 调度。
+- `terminal/renderer.ts`：WebGL 可用性判定、上下文丢失降级与 DPR 修复来自 `pane-manager/terminal-rendering`。
+- `terminal/unicode.ts`：Unicode 11 + ZWJ 宽度 provider，来自 `shared/terminal/appearance/terminal-unicode-provider.ts`。
+- `terminal/theme.ts`、`terminal/color.ts`：滚动条按前景对比度染色与最小对比度取值，来自 `terminal-themes` 与 `appearance/terminal-appearance.ts`。
+- `terminal/search.tsx`：搜索面板交互与装饰高亮，来自 `components/terminal-pane/search`。
+- `terminal/links.ts`、`terminal/http-url.ts`、`terminal/prose-url.ts`：跨行 URL 识别与悬停提示，来自 `components/terminal-pane/links` 与 `shared/terminal/links`（去掉了 orca 的硬换行启发式）。
 
 ## 运行
 
