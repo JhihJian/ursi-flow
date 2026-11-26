@@ -332,6 +332,9 @@ export function ChatProvider({
   }, [])
 
   const selectChat = useCallback((sessionId: string | null) => {
+    // 点中的就是当前对话时什么都不做：选中值不变，事件流不会重连，
+    // 清了轨迹就再也回不来了。
+    if (sessionId && sessionId === activeIdRef.current) return
     setActiveId(sessionId)
     setTranscript('')
     setPartial('')
@@ -699,10 +702,13 @@ export function ChatProvider({
         writeLocal(homeKey, chat.home)
         setHomeState(chat.home)
         setChats((current) => [chat, ...current.filter((item) => item.sessionId !== chat.sessionId)])
+        // 和 selectChat 同理：已经选中的对话不清轨迹，否则事件流不重连就看不到内容。
+        if (chat.sessionId !== activeIdRef.current) {
+          setTranscript('')
+          setPartial('')
+          setThinking('')
+        }
         setActiveId(chat.sessionId)
-        setTranscript('')
-        setPartial('')
-        setThinking('')
         setError(null)
         if (chat.fallbackMessage) notify({ kind: 'info', message: chat.fallbackMessage })
         return chat
