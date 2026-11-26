@@ -87,12 +87,59 @@ export function matchesQuery(row: SessionRow, query: string): boolean {
 }
 
 /**
+ * 会话的本地日历日，`YYYY-MM-DD`。按天聚合与筛选都用它，
+ * 因此界面显示的日期与聚合用的日期始终一致。
+ */
+export function dayKey(modified: number): string {
+  const date = new Date(modified)
+  const pad = (value: number) => `${value}`.padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+export interface DayBucket {
+  /** `YYYY-MM-DD`，筛选用的键 */
+  key: string
+  /** 界面上的短标签 `MM-DD` */
+  label: string
+  count: number
+}
+
+/** 条形区最多显示这么多个「有会话的日子」，从最近的往前取。 */
+export const DAY_BUCKET_LIMIT = 30
+
+/**
+ * 按天聚合会话数量，返回从旧到新排好的日子（条形图从左往右读时间）。
+ * 只含有会话的日子，零会话的日子不占宽度；超过 `limit` 时保留最近的，
+ * 否则一年多的历史会压成几十个 3px 宽的条，谁也点不中。
+ */
+export function dailyBuckets(rows: readonly SessionRow[], limit = DAY_BUCKET_LIMIT): DayBucket[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const key = dayKey(row.modified)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const keys = [...counts.keys()].sort().slice(-Math.max(1, limit))
+  return keys.map((key) => ({ key, label: key.slice(5), count: counts.get(key) ?? 0 }))
+}
+
+/** 会话是否落在选中的某一天；没有选中任何一天时不筛。 */
+export function matchesDays(row: SessionRow, days: ReadonlySet<string>): boolean {
+  if (days.size === 0) return true
+  return days.has(dayKey(row.modified))
+}
+
+/**
  * 按项目分组：组按组内最新活动倒序，组内会话同样倒序，命不中搜索的会话和
  * 因此空掉的组都不出现。
  */
-export function groupSessions(rows: readonly SessionRow[], query = ''): SessionGroup[] {
+export function groupSessions(
+  rows: readonly SessionRow[],
+  query = '',
+  days: ReadonlySet<string> = new Set(),
+): SessionGroup[] {
   const groups = new Map<string, SessionGroup>()
   for (const row of rows) {
+    if (!matchesDays(row, days)) continue
     if (!matchesQuery(row, query)) continue
     const group = groups.get(row.projectKey)
     if (group) {

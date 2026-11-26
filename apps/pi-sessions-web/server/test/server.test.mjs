@@ -209,8 +209,6 @@ test('config 与 browse 给出初始根与子目录导航', async (t) => {
   assert.equal(config.defaultRoot, root)
   assert.ok(Array.isArray(config.suggestedRoots))
   assert.equal(typeof config.maxTextBytes, 'number')
-  // 测试走 127.0.0.1，写操作应当放行
-  assert.equal(config.canWrite, true)
 
   const browse = await (await fetch(`${instance.base}/api/browse?path=${encodeURIComponent(root)}`)).json()
   assert.equal(browse.path, root)

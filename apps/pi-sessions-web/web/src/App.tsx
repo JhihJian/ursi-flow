@@ -129,7 +129,6 @@ export default function App() {
       pinnedProjects={pinnedProjects}
       onTogglePin={togglePin}
       onDeleteSession={removeSession}
-      canWrite={config?.canWrite ?? false}
     />
   )
 }

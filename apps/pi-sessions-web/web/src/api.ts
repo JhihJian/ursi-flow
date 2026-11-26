@@ -47,8 +47,6 @@ export interface ServerConfig {
   defaultRoot: string
   suggestedRoots: string[]
   maxTextBytes: number
-  /** 当前来源能否删除会话、改偏好；局域网访问为 false，界面据此禁用写操作。 */
-  canWrite: boolean
 }
 
 export interface Prefs {

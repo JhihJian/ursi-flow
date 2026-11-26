@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
-import { createAccess, isLoopbackAddress } from '../src/access.mjs'
 import { deleteSessionFile } from '../src/delete.mjs'
 import { applyPinnedChange, createPrefs, normalizePinned } from '../src/prefs.mjs'
 import { CANONICAL_ID, makeFixtureRoot } from './fixtures.mjs'
@@ -95,26 +94,4 @@ test('根目录之外的路径与非 jsonl 文件都拒绝删除', async (t) => 
   const notes = await deleteSessionFile({ path: join(root, 'proj-gamma', 'notes.md'), root })
   assert.equal(notes.error[0], 400)
   assert.ok(await stat(join(root, 'proj-gamma', 'notes.md')))
-})
-
-test('只有回环地址能写：IPv4、IPv6 与其映射形式放行，其余一律拒绝', () => {
-  for (const address of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
-    assert.equal(isLoopbackAddress(address), true, address)
-  }
-  for (const address of ['192.168.1.135', '10.144.144.2', '::ffff:192.168.1.135', '', undefined, null]) {
-    assert.equal(isLoopbackAddress(address), false, String(address))
-  }
-})
-
-test('access.canWrite 只看 socket 对端地址，不读任何请求头', () => {
-  const access = createAccess()
-  const socket = (remoteAddress) => ({ socket: { remoteAddress } })
-  assert.equal(access.canWrite(socket('127.0.0.1')), true)
-  assert.equal(access.canWrite(socket('192.168.1.135')), false)
-  // 伪造的转发头不改变判断
-  assert.equal(
-    access.canWrite({ socket: { remoteAddress: '192.168.1.135' }, headers: { 'x-forwarded-for': '127.0.0.1' } }),
-    false,
-  )
-  assert.equal(access.canWrite(undefined), false)
 })

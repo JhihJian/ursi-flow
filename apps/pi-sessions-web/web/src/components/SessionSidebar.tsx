@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'r
 import type { Listing, SessionRow } from '@/api'
 import type { SessionGroup } from '@/lib/format'
 import {
+  dailyBuckets,
   defaultFoldedGroups,
   formatAge,
   groupSessions,
@@ -16,6 +17,8 @@ import { RootPicker } from './RootPicker'
 /** 每个项目组默认显示这么多条会话，「显示更多」一次再放 20 条。 */
 const GROUP_VISIBLE = 8
 const SHOW_MORE_STEP = 20
+/** 列表还没到时用的空数组：保持引用稳定，免得每次渲染都重算条形。 */
+const NO_ROWS: SessionRow[] = []
 
 interface SessionSidebarProps {
   root: string
@@ -35,14 +38,10 @@ interface SessionSidebarProps {
   pinnedProjects: string[]
   onTogglePin: (projectKey: string, pinned: boolean) => void
   onDeleteSession: (row: SessionRow) => void
-  /** 局域网访问时为 false：删除与改偏好都不可用。 */
-  canWrite: boolean
   collapsed: boolean
   onCollapse: () => void
   onExpand: () => void
 }
-
-const WRITE_REASON = '删除与关注只能在服务所在机器上操作'
 
 /**
  * 会话侧面板：上方是根目录与搜索，下面是按项目分组的会话，
@@ -66,7 +65,6 @@ export function SessionSidebar({
   pinnedProjects,
   onTogglePin,
   onDeleteSession,
-  canWrite,
   collapsed,
   onCollapse,
   onExpand,
@@ -75,10 +73,16 @@ export function SessionSidebar({
   const [more, setMore] = useState<Record<string, number>>({})
   const [picking, setPicking] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  // 搜索默认收起成图标，点开才显示输入框；收起时清空，避免看不见的过滤条件。
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedDays, setSelectedDays] = useState<ReadonlySet<string>>(new Set())
   // 确认菜单要落在原菜单位置上：菜单关闭后 state 已清空，位置另存一份。
   const menuAt = useRef({ x: 0, y: 0 })
 
-  const groups = groupSessions(listing?.sessions ?? [], query)
+  // 条形按整份列表统计，不跟着搜索与筛选变，否则选一天后其它天就消失了。
+  const allRows = listing?.sessions ?? NO_ROWS
+  const buckets = useMemo(() => dailyBuckets(allRows), [allRows])
+  const groups = groupSessions(allRows, query, selectedDays)
   const { pinned, rest } = splitPinnedGroups(groups, pinnedProjects)
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
   // 用户点过的组按用户选择，没点过的按默认规则（第一组与选中会话所在的组展开）。
@@ -110,8 +114,6 @@ export function SessionSidebar({
     openMenu(event, [
       {
         label: isPinned ? '取消特别关注' : '设为特别关注',
-        disabled: !canWrite,
-        reason: WRITE_REASON,
         onSelect: () => onTogglePin(group.key, !isPinned),
       },
     ], group.name)
@@ -125,13 +127,7 @@ export function SessionSidebar({
         { label: '打开', onSelect: () => onSelect(row) },
         { label: '复制会话 ID', onSelect: () => void navigator.clipboard?.writeText(row.id) },
         { label: '复制文件路径', onSelect: () => void navigator.clipboard?.writeText(row.path) },
-        {
-          label: '删除会话…',
-          danger: true,
-          disabled: !canWrite,
-          reason: WRITE_REASON,
-          onSelect: () => confirmDelete(row),
-        },
+        { label: '删除会话…', danger: true, onSelect: () => confirmDelete(row) },
       ],
       sessionTitle(row),
     )
@@ -259,6 +255,21 @@ export function SessionSidebar({
         <h2 className="sidebar-title">Sessions</h2>
         <button
           type="button"
+          className={searchOpen ? 'rail-toggle active' : 'rail-toggle'}
+          title={searchOpen ? '收起搜索' : '搜索会话'}
+          aria-label={searchOpen ? '收起搜索' : '搜索会话'}
+          aria-expanded={searchOpen}
+          onClick={() => {
+            const next = !searchOpen
+            setSearchOpen(next)
+            // 收起就清空：看不见的过滤条件比失去它更糟。
+            if (!next && query) onQueryChange('')
+          }}
+        >
+          ⌕
+        </button>
+        <button
+          type="button"
           className="rail-toggle"
           title="折叠会话列表"
           aria-label="折叠会话列表"
@@ -285,22 +296,75 @@ export function SessionSidebar({
         </button>
       </div>
 
-      <div className="sidebar-search">
-        <input
-          type="search"
-          value={query}
-          placeholder="搜索会话"
-          aria-label="搜索会话"
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </div>
+      {buckets.length > 0 ? (
+        <div className="time-filter">
+          <div className="time-filter-head">
+            <span className="time-filter-label">按日筛选</span>
+            <span className="time-filter-span">
+              {buckets[0].key.slice(5)} — {buckets[buckets.length - 1].key.slice(5)}
+            </span>
+            {selectedDays.size > 0 ? (
+              <button
+                type="button"
+                className="time-filter-clear"
+                onClick={() => setSelectedDays(new Set())}
+              >
+                清除
+              </button>
+            ) : null}
+          </div>
+          <div className="time-bars" role="group" aria-label="按会话日期筛选">
+            {buckets.map((bucket) => {
+              const active = selectedDays.has(bucket.key)
+              return (
+                <button
+                  key={bucket.key}
+                  type="button"
+                  className={active ? 'time-bar active' : 'time-bar'}
+                  // 宽度按当天会话数占全部的比例分配，最少留 3px 以便点中。
+                  style={{ flexGrow: bucket.count }}
+                  title={`${bucket.key} · ${bucket.count} 个会话${active ? '（已选中）' : ''}`}
+                  aria-pressed={active}
+                  onClick={() =>
+                    setSelectedDays((current) => {
+                      const next = new Set(current)
+                      // 再点一次就是反选
+                      if (next.has(bucket.key)) next.delete(bucket.key)
+                      else next.add(bucket.key)
+                      return next
+                    })
+                  }
+                />
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {searchOpen ? (
+        <div className="sidebar-search">
+          <input
+            type="search"
+            value={query}
+            placeholder="搜索会话"
+            aria-label="搜索会话"
+            autoFocus
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              onQueryChange('')
+              setSearchOpen(false)
+            }}
+          />
+        </div>
+      ) : null}
 
       <div className="session-list">
         {error ? <p className="sidebar-note error">{error}</p> : null}
         {!error && loading && groups.length === 0 ? <p className="sidebar-note">读取中…</p> : null}
         {!error && !loading && groups.length === 0 ? (
           <p className="sidebar-note">
-            {query ? '没有命中的会话' : '这个目录下没有 .jsonl 会话文件'}
+            {query || selectedDays.size > 0 ? '没有命中的会话' : '这个目录下没有 .jsonl 会话文件'}
           </p>
         ) : null}
 
@@ -322,7 +386,7 @@ export function SessionSidebar({
         {listing ? `${listing.sessions.length} 个会话 · ${groups.length} 个项目` : '—'}
         {listing && listing.pendingDetails > 0 ? ` · 补明细 ${listing.pendingDetails}` : ''}
         {listing?.truncated ? ' · 已截断' : ''}
-        {canWrite ? '' : ' · 只读'}
+        {selectedDays.size > 0 ? ` · 筛选 ${selectedDays.size} 天` : ''}
       </p>
 
       {picking ? (

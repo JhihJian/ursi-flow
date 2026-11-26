@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import type { SessionRow } from '@/api'
 import {
+  DAY_BUCKET_LIMIT,
+  dailyBuckets,
+  dayKey,
   defaultFoldedGroups,
   formatAge,
   formatBytes,
   formatWhen,
   groupSessions,
+  matchesDays,
   matchesQuery,
   sessionMeta,
   sessionTitle,
@@ -163,5 +167,55 @@ describe('splitPinnedGroups', () => {
     const split = splitPinnedGroups(groups, [])
     expect(split.pinned).toEqual([])
     expect(split.rest).toHaveLength(3)
+  })
+})
+
+describe('dayKey', () => {
+  test('按本地日历日给出 YYYY-MM-DD，个位补零', () => {
+    expect(dayKey(new Date(2026, 0, 5, 9, 7).getTime())).toBe('2026-01-05')
+    // 同一天的不同时刻落在同一个键上
+    expect(dayKey(new Date(2026, 0, 5, 23, 59).getTime())).toBe('2026-01-05')
+    expect(dayKey(new Date(2026, 11, 31, 0, 0).getTime())).toBe('2026-12-31')
+  })
+})
+
+describe('dailyBuckets', () => {
+  const at = (day: number, hour = 12) => new Date(2026, 0, day, hour).getTime()
+
+  test('按天计数并从旧到新排序，只含有会话的日子', () => {
+    const rows = [
+      row({ id: 'a', modified: at(5) }),
+      row({ id: 'b', modified: at(5, 18) }),
+      row({ id: 'c', modified: at(7) }),
+      row({ id: 'd', modified: at(3) }),
+    ]
+    expect(dailyBuckets(rows)).toEqual([
+      { key: '2026-01-03', label: '01-03', count: 1 },
+      { key: '2026-01-05', label: '01-05', count: 2 },
+      { key: '2026-01-07', label: '01-07', count: 1 },
+    ])
+  })
+
+  test('超过上限时保留最近的若干个日子', () => {
+    const rows = Array.from({ length: 40 }, (_, index) => row({ id: `s${index}`, modified: at(1) + index * 86_400_000 }))
+    const buckets = dailyBuckets(rows)
+    expect(buckets).toHaveLength(DAY_BUCKET_LIMIT)
+    // 最后一个是最新的那天
+    expect(buckets.at(-1)?.key).toBe(dayKey(at(1) + 39 * 86_400_000))
+  })
+
+  test('空列表与 limit 为 0 都不崩', () => {
+    expect(dailyBuckets([])).toEqual([])
+    expect(dailyBuckets([row({})], 0)).toHaveLength(1)
+  })
+})
+
+describe('matchesDays', () => {
+  const item = row({ modified: new Date(2026, 0, 5, 12).getTime() })
+  test('没有选中任何一天时不筛，选中时按日历日匹配', () => {
+    expect(matchesDays(item, new Set())).toBe(true)
+    expect(matchesDays(item, new Set(['2026-01-05']))).toBe(true)
+    expect(matchesDays(item, new Set(['2026-01-06']))).toBe(false)
+    expect(matchesDays(item, new Set(['2026-01-04', '2026-01-05']))).toBe(true)
   })
 })

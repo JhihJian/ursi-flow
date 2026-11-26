@@ -193,6 +193,11 @@ button {
   background: var(--gray-200);
 }
 
+.rail-toggle.active {
+  color: var(--gray-900);
+  background: var(--gray-200);
+}
+
 .rail-toggle:disabled {
   cursor: default;
   opacity: 0.4;
@@ -316,6 +321,80 @@ button {
 
 .pinned-section .section-label {
   padding-top: 0;
+}
+
+/* 时间筛选区：整幅宽度给条形，各天宽度按当天会话数占比分配 */
+
+.time-filter {
+  flex: none;
+  padding: var(--space-sm) 0 var(--space-xs);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.time-filter-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+}
+
+.time-filter-label {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+  letter-spacing: 0.3px;
+}
+
+.time-filter-span {
+  font-size: 10px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.time-filter-clear {
+  margin-left: auto;
+  padding: 0 var(--space-xs);
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.time-filter-clear:hover {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+/* 6px 让细条也点得中，视觉上仍是一条细线：各条按当天会话数占比分宽 */
+.time-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 14px;
+}
+
+.time-bar {
+  flex: 0 1 0;
+  min-width: 3px;
+  padding: 0;
+  border: 0;
+  background: var(--gray-200);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.time-bar:hover {
+  background: var(--gray-400);
+}
+
+.time-bar.active {
+  background: var(--gray-900);
+}
+
+.time-bar.active:hover {
+  background: var(--black);
 }
 
 /* 项目分组 */

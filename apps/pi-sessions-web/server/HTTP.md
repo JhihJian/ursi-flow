@@ -2,7 +2,7 @@
 
 零依赖 Node 24 服务，默认监听 `0.0.0.0:30200`，同时托管 `web/dist`。
 
-除 `DELETE /api/sessions/:id` 与 `PUT /api/prefs` 外全部只读。这两个写接口只接受来自回环地址的请求，判定依据是连接的对端地址，不看任何转发头；其它来源返回 403。
+除 `DELETE /api/sessions/:id` 与 `PUT /api/prefs` 外全部只读。服务假定运行在可信局域网，两个写接口对任何能连上服务的来源都放行；收紧的边界是当前根目录，删除只能落在它内部。
 
 所有接口的响应都是 `application/json; charset=utf-8` 或 `text/plain; charset=utf-8`，并带 `Cache-Control: no-store`。
 
@@ -51,12 +51,9 @@
 {
   "defaultRoot": "/home/me/.pi/agent/sessions",
   "suggestedRoots": ["/home/me/.pi/agent/sessions", "/home/me/.pi/agent"],
-  "maxTextBytes": 67108864,
-  "canWrite": true
+  "maxTextBytes": 67108864
 }
 ```
-
-`canWrite` 表示当前来源能否调用下面两个写接口。界面据此把「设为特别关注」与「删除会话」置灰，侧栏脚注显示「只读」。
 
 ## `GET /api/sessions?root=<绝对路径>`
 
@@ -107,7 +104,6 @@
 { "id": "01a21590-5cd1-7494-aed0-9a08165a9321", "removed": ["/path/session.jsonl", "/path/session"] }
 ```
 
-- 非回环来源返回 403。
 - 定位到的路径不在当前根目录内，或不是 `.jsonl` 时返回 400；文件已不存在返回 404。
 - 客户端只传会话 id 与根目录，路径由服务端自己定位，因此不能借此删除根目录以外的文件。
 
@@ -125,7 +121,7 @@
 
 - `pin` 把项目放到列表最前，已经在列表里就只调整位置，不产生第二项。
 - 返回更新后的完整列表：`{ "pinnedProjects": [...] }`。
-- 非回环来源返回 403；请求体不是 JSON 对象、缺少两个字段之一、或值不是字符串时返回 400。
+- 请求体不是 JSON 对象、缺少两个字段之一、或值不是字符串时返回 400。
 - 列表最多保留 100 个项目键，空串、超长键（>4096 字符）与重复项被丢掉。
 - 落盘在 `PI_SESSIONS_PREFS`，默认 `~/.cache/pi-sessions-web/prefs.json`（0600，临时文件写完后改名）；内容损坏时退回空列表，不影响浏览。
 

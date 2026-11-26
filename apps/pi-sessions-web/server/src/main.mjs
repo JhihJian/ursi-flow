@@ -4,7 +4,6 @@ import { createServer } from 'node:http'
 import { dirname, extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { createGzip } from 'node:zlib'
-import { createAccess } from './access.mjs'
 import { createTransformer } from './canonicalize.mjs'
 import { loadConfig } from './config.mjs'
 import { deleteSessionFile } from './delete.mjs'
@@ -100,7 +99,8 @@ function createPersister({ stateFile, scanner }) {
 }
 
 /**
- * 只读服务：列任意根目录下的会话、给单个会话的元信息与文本。
+ * 会话目录服务：列任意根目录下的会话、给单个会话的元信息与文本，
+ * 另有删除会话与保存侧边栏偏好两个写接口。
  * 解析与渲染都在浏览器里由组件库完成，这里不做分页。
  */
 export async function createApp(config = loadConfig()) {
@@ -113,18 +113,11 @@ export async function createApp(config = loadConfig()) {
   const prefs = createPrefs({ file: config.prefsFile })
   await prefs.load()
 
-  const access = createAccess()
 
-  /** 写操作统一在这里拦一道，局域网访问拿到 403 而不是静默失败。 */
-  const refuseWrite = (request, response) => {
-    if (access.canWrite(request)) return false
-    json(response, 403, { error: '删除与偏好只能在服务所在机器上操作（局域网访问为只读）' })
-    return true
-  }
 
   /**
    * 根路径由浏览器给出，这里只做三件事：展开 `~`、要求绝对路径、要求是目录。
-   * 指向哪里由用户决定，服务默认只听回环地址。
+   * 指向哪里由用户决定；删除只能落在当前根目录内，因此这个入口也是删除的边界。
    */
   const resolveRoot = async (input) => {
     const raw = typeof input === 'string' ? input.trim() : ''
@@ -219,14 +212,11 @@ export async function createApp(config = loadConfig()) {
           defaultRoot: config.defaultRoot,
           suggestedRoots: config.suggestedRoots,
           maxTextBytes: config.maxTextBytes,
-          /** 当前来源能否删除会话、改偏好；界面据此禁用菜单项并给出原因。 */
-          canWrite: access.canWrite(request),
         })
       }
 
       if (pathname === '/api/prefs') {
         if (request.method === 'PUT') {
-          if (refuseWrite(request, response)) return undefined
           const body = await readJsonBody(request)
           if (!body) return json(response, 400, { error: '请求体必须是 JSON 对象' })
           const pin = body.pin === undefined ? undefined : body.pin
@@ -272,7 +262,6 @@ export async function createApp(config = loadConfig()) {
 
       const metaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/)
       if (metaMatch && request.method === 'DELETE') {
-        if (refuseWrite(request, response)) return undefined
         const root = await resolveRoot(url.searchParams.get('root'))
         if (root.error) return json(response, root.error[0], { error: root.error[1] })
         const record = await scanner.find(root.path, decodeURIComponent(metaMatch[1]))

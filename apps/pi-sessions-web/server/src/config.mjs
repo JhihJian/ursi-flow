@@ -11,9 +11,9 @@ const positive = (value, fallback) => {
 
 /**
  * 环境配置。默认根只是初始值，浏览器里输入的任意绝对路径都能覆盖它。
- * 默认监听所有网卡，方便局域网里直接打开；删除会话与改偏好这类写操作只在
- * 回环来源放行，局域网访问是只读的。完全不想对外时可把
- * `PI_SESSIONS_HOST` 设成 `127.0.0.1`。
+ * 服务默认监听所有网卡，并假定运行在可信局域网里：删除会话与改偏好对任何
+ * 能连上它的来源都放行，因此不要把它挂到不受信任的网络上。
+ * 只想本机使用时把 `PI_SESSIONS_HOST` 设成 `127.0.0.1`。
  */
 export function loadConfig(env = process.env, cwd = process.cwd()) {
   const defaultRoot = expandHome(env.PI_SESSIONS_ROOT?.trim() || '~/.pi/agent/sessions')
