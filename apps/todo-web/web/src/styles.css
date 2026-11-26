@@ -725,26 +725,35 @@
   flex: none;
 }
 
-/* 左侧端点：拖到另一个节点上建立前置依赖。 */
+/* 左侧端点：方形加号，和圆形状态图标区分；拖到另一个任务上把它设为自己的前置。 */
 .task-graph-port {
   position: absolute;
-  left: -6px;
+  left: -7px;
   top: 50%;
-  width: 11px;
-  height: 11px;
-  margin-top: -6px;
+  width: 13px;
+  height: 13px;
+  margin-top: -7px;
   padding: 0;
   border: 1px solid var(--gray-400);
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--white);
+  color: var(--gray-400);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
   cursor: crosshair;
   touch-action: none;
+}
+
+.task-graph-port::before {
+  content: "+";
 }
 
 .task-graph-port:hover,
 .task-graph-port:focus-visible {
   border-color: var(--gray-900);
   background: var(--gray-900);
+  color: var(--white);
 }
 
 .task-graph-node.is-movable {

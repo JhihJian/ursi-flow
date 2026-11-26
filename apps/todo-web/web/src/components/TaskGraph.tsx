@@ -52,7 +52,8 @@ function targetAt(x: number, y: number): string | null {
 /**
  * 任务关系图：`parent_id` 显示为包含子任务的分组节点，`pre_id` 显示为前置依赖连线。
  * 拖动顶层节点调整位置并保存在浏览器本地；按住 Shift 拖到另一个节点上设父任务，
- * 从节点左侧端点拖到目标设前置任务；连线右键删除前置依赖，节点右键解除父子关系。
+ * 从节点左侧端点拖到另一个任务，把它设为自己的前置（连成 目标 → 自己）；
+ * 连线右键删除前置依赖，节点右键解除父子关系。
  */
 export function TaskGraph() {
   const tasks = useTodoStore((state) => state.graphTasks)
@@ -137,7 +138,7 @@ export function TaskGraph() {
       const action =
         session.mode === 'parent'
           ? store.setTaskParent(session.sourceId, targetId)
-          : store.setTaskPredecessor(targetId, session.sourceId)
+          : store.setTaskPredecessor(session.sourceId, targetId)
       void action.catch((error) =>
         alert(`Failed to update task relation: ${errorMessage(error)}`),
       )
@@ -202,7 +203,7 @@ export function TaskGraph() {
     if (node.parentId) {
       const store = useTodoStore.getState()
       items.push({
-        label: 'Remove parent link',
+        label: 'Remove parent',
         onSelect: () => removeRelation(store.setTaskParent(node.id, null)),
       })
     }
@@ -273,6 +274,8 @@ export function TaskGraph() {
               <path
                 d={edge.path}
                 className="task-graph-edge-hit"
+                data-edge-from={edge.from}
+                data-edge-to={edge.to}
                 onContextMenu={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -282,7 +285,7 @@ export function TaskGraph() {
                     y: event.clientY,
                     items: [
                       {
-                        label: 'Remove prerequisite link',
+                        label: 'remove',
                         onSelect: () =>
                           removeRelation(store.setTaskPredecessor(edge.to, null)),
                       },
@@ -360,8 +363,8 @@ export function TaskGraph() {
               <button
                 type="button"
                 className="task-graph-port"
-                aria-label={`拖动以把 ${node.title} 设为另一个任务的前置`}
-                title="拖到另一个任务上，把这个任务设为它的前置"
+                aria-label={`拖动到另一个任务上，把它设为 ${node.title} 的前置`}
+                title="拖到另一个任务上，把它设为这个任务的前置"
                 onPointerDown={(event) => {
                   event.stopPropagation()
                   beginLink(event, node.id, 'pre', true)
@@ -399,5 +402,7 @@ function pendingPath(
   const y2 = drag.pointerY - rect.top
   const x1 = drag.mode === 'parent' ? source.x + source.width : source.x
   const y1 = source.y + source.headerHeight / 2
+  // 前置依赖的拖拽方向表示“目标 -> 自己”，预览箭头画在节点这一端。
+  if (drag.mode === 'pre') return `M ${x2} ${y2} L ${x1} ${y1}`
   return `M ${x1} ${y1} L ${x2} ${y2}`
 }

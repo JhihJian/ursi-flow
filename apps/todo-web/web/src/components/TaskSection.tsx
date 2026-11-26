@@ -202,7 +202,7 @@ export function TaskSection() {
           {view === 'graph' ? (
             <p className="task-graph-hint">
               <span>分组是子任务 · 虚线是前置依赖 · 完成项仅在与未完成任务相关时出现</span>
-              <span>拖节点调整位置（保存在本机），按住 Shift 拖到另一个节点设父任务，左侧圆点拖到目标设前置</span>
+              <span>拖节点调整位置（保存在本机）；Shift 拖到目标设父任务；左侧方形加号拖到目标，把目标设为自己的前置</span>
             </p>
           ) : (
             <DayFilter />
