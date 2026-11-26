@@ -53,7 +53,7 @@ cd ../server && npm start
 | `GET /api/config` | 读取 flow home、状态目录、运行根目录与当前执行器 |
 | `PUT /api/config` | 保存 flow home（绝对路径，目录不存在时创建） |
 | `GET /api/flows` | 扫描 flow home，返回每个包的摘要 |
-| `GET /api/flows/:id` | 单个包的变量、节点、结果边与并行结构 |
+| `GET /api/flows/:id` | 单个包的起始节点、变量、节点、结果边与并行结构 |
 | `GET /api/runs` | 运行清单，按开始时间倒序 |
 | `POST /api/runs` | 用启动变量开始一次运行，返回 `runId` |
 | `GET /api/runs/:runId` | 运行状态、待决确认、过程事件与变量 |
@@ -62,6 +62,14 @@ cd ../server && npm start
 | `POST /api/runs/:runId/stop` | 把未结束的运行标记为停止 |
 
 启动变量与 Flow 定义在开跑前校验；非法输入同步返回 400，不留下半截运行。正在执行的运行不能停止，避免与推进竞争。
+
+## 结构图
+
+工作区的结构区默认画成左到右的分层图，不依赖图形库：
+
+- 布局是纯函数（`web/src/lib/graph.ts`）：先深度优先找环，回边不参与分层，避免「返工」边把层级越推越深；再按最长路径分层、同层居中。
+- 渲染是自绘 SVG（`components/FlowGraph.tsx`）：节点框、连线、箭头与边标签都用现有 CSS 变量的灰阶，回边用虚线绕行。
+- 结构区可以切回逐条列表看提示与命令；点图上节点会在下方展开该节点内容；运行中最后进入的节点标为「当前」。
 
 ## 执行器
 

@@ -7,7 +7,8 @@ import {
   statusTone,
 } from '../lib/flow'
 import { useFlowStore } from '../store'
-import { RunDetail, Structure } from './RunDetail'
+import { RunDetail } from './RunDetail'
+import { Structure } from './Structure'
 
 /**
  * 工作区：一次运行的前半段是「选 Flow、填变量、启动」，
@@ -44,6 +45,10 @@ export function FlowWorkspace() {
     return map
   }, [flows])
   const canStart = availability === null && missing.length === 0 && busy === null
+  // 运行进度：取最后一条带节点的事件，只用来在结构图上标注。
+  const currentRef = run?.events
+    .filter((event) => event.nodeRef !== undefined)
+    .at(-1)?.nodeRef
   const startReason =
     availability ?? (missing.length > 0 ? `必填变量未填写：${missing.join('、')}` : null)
 
@@ -154,7 +159,12 @@ export function FlowWorkspace() {
 
               </div>
             </section>
-            {detail.valid ? <Structure detail={detail} /> : null}
+            {detail.valid ? (
+              <Structure
+                detail={detail}
+                {...(currentRef === undefined ? {} : { currentRef })}
+              />
+            ) : null}
           </div>
 
           <div className="flow-column">

@@ -644,3 +644,126 @@
   color: var(--flow-muted);
   overflow-wrap: anywhere;
 }
+
+/* ---- 结构图 ---- */
+
+.flow-structure-actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--flow-space-sm);
+}
+
+.flow-tab {
+  padding: 0 var(--flow-space-xs);
+  border: 1px solid var(--flow-line);
+  background: none;
+  color: var(--flow-muted);
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.flow-tab.is-active {
+  border-color: var(--flow-ink);
+  background: var(--flow-ink);
+  color: var(--flow-paper);
+}
+
+.flow-graph {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--flow-line);
+  background: var(--flow-paper);
+  padding: var(--flow-space-sm);
+}
+
+.flow-graph-canvas {
+  display: block;
+  max-width: none;
+}
+
+.flow-graph-edge {
+  fill: none;
+  stroke: var(--flow-line-strong);
+  stroke-width: 1;
+}
+
+.flow-graph-edge.is-back {
+  stroke-dasharray: 4 3;
+}
+
+.flow-graph-arrow {
+  fill: var(--flow-line-strong);
+}
+
+.flow-graph-label-bg {
+  fill: var(--flow-paper);
+}
+
+.flow-graph-edge-label {
+  font-family: var(--flow-mono);
+  font-size: 10px;
+  fill: var(--flow-muted);
+}
+
+.flow-graph-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.flow-graph-box {
+  fill: var(--flow-paper);
+  stroke: var(--flow-line-strong);
+  stroke-width: 1;
+}
+
+.flow-graph-node.kind-confirm .flow-graph-box,
+.flow-graph-node.kind-parallel .flow-graph-box {
+  stroke-dasharray: 3 2;
+}
+
+.flow-graph-node:hover .flow-graph-box,
+.flow-graph-node:focus-visible .flow-graph-box {
+  stroke: var(--flow-ink);
+}
+
+.flow-graph-node.is-current .flow-graph-box {
+  stroke: var(--flow-ink);
+  stroke-width: 1.5;
+  fill: var(--flow-wash);
+}
+
+.flow-graph-node.is-selected .flow-graph-box {
+  fill: var(--flow-wash);
+  stroke: var(--flow-ink);
+  stroke-width: 1.5;
+}
+
+.flow-graph-kind {
+  font-family: var(--flow-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  fill: var(--flow-faint);
+}
+
+.flow-graph-name {
+  font-family: var(--flow-serif);
+  font-size: 12px;
+  fill: var(--flow-ink);
+}
+
+.flow-graph-marker {
+  font-family: var(--flow-mono);
+  font-size: 9px;
+  fill: var(--flow-ink);
+}
+
+.flow-graph-hint {
+  margin: var(--flow-space-xs) 0 0;
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+.flow-node.is-floating {
+  margin-top: var(--flow-space-sm);
+}

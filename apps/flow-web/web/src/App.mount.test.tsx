@@ -52,6 +52,7 @@ describe('独立入口挂载', () => {
           id: 'code-change',
           dir: '/home/me/.ursi/flow/code-change',
           path: '/home/me/.ursi/flow/code-change/FLOW.md',
+          startNodeRef: 'change',
           name: '代码修改与验证',
           description: '改完再验证',
           nodeCount: 1,
@@ -92,6 +93,16 @@ describe('独立入口挂载', () => {
     expect(text).toContain('broken')
     expect(text).toContain('启动变量')
     expect(text).toContain('完成修改')
+    // 结构默认画成图：有 SVG、有节点与切回列表的入口。
+    const svg = container.querySelector('svg.flow-graph-canvas')
+    expect(svg).not.toBeNull()
+    expect(svg?.textContent).toContain('完成修改')
+    expect(svg?.textContent).toContain('结束')
+    expect(
+      Array.from(container.querySelectorAll('button')).some(
+        (button) => button.textContent === '列表',
+      ),
+    ).toBe(true)
     expect(text).toContain('还没有运行记录')
     expect(text).toContain('Fake 执行器（fake）')
     expect(text).toContain('Pi 执行器（pi）')
@@ -109,6 +120,7 @@ describe('启动运行与人工确认', () => {
       id: 'gate',
       dir: '/home/me/.ursi/flow/gate',
       path: '/home/me/.ursi/flow/gate/FLOW.md',
+      startNodeRef: 'prepare',
       name: '确认门禁',
       description: '',
       nodeCount: 2,

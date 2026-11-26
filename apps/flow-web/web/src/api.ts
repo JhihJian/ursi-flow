@@ -45,6 +45,8 @@ export interface FlowSummary {
 
 export interface FlowDetail extends FlowSummary {
   path: string
+  /** 起始节点引用，图从它开始排。 */
+  startNodeRef: string
   variables: FlowVariableView[]
   nodes: FlowNodeView[]
   parallels: FlowParallelView[]

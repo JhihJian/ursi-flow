@@ -55,6 +55,8 @@ export interface FlowSummary {
 
 export interface FlowDetail extends FlowSummary {
   path: string
+  /** 起始节点引用，图从它开始排。 */
+  startNodeRef: string
   variables: FlowVariableView[]
   nodes: FlowNodeView[]
   parallels: FlowParallelView[]
@@ -96,6 +98,7 @@ export async function readFlow(home: string, id: string): Promise<FlowDetail> {
     id,
     dir,
     path,
+    startNodeRef: '',
     name: id,
     description: '',
     nodeCount: 0,
@@ -152,6 +155,7 @@ function describe(flow: FlowDefinition, base: FlowDetail): FlowDetail {
   )
   return {
     ...base,
+    startNodeRef: flow.startNodeRef,
     name: flow.name,
     description: flow.description,
     valid: true,

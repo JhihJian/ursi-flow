@@ -21,6 +21,7 @@ const detail = (overrides: Partial<FlowDetail> = {}): FlowDetail => ({
   id: 'code-change',
   dir: '/home/me/.ursi/flow/code-change',
   path: '/home/me/.ursi/flow/code-change/FLOW.md',
+  startNodeRef: 'change',
   name: '代码修改',
   description: '改完再验证',
   nodeCount: 1,

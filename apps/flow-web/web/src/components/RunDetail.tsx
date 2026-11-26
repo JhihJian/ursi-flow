@@ -3,8 +3,6 @@ import type { FlowDetail, RunView } from '../api'
 import {
   eventSummary,
   formatTime,
-  nodeKindLabel,
-  outcomeLabel,
   resumeDisabledReason,
   statusLabel,
   statusTone,
@@ -116,48 +114,6 @@ export function RunDetail({ run, detail }: { run: RunView; detail?: FlowDetail }
           </dl>
         </div>
       ) : null}
-    </section>
-  )
-}
-
-/** 结构区的节点条目：动作类型、可读的请求与结果边去向。 */
-export function Structure({ detail }: { detail: FlowDetail }) {
-  return (
-    <section className="flow-structure">
-      <div className="flow-section-head">
-        <span>结构</span>
-        <span className="flow-count">
-          {detail.nodeCount} 节点 · {detail.parallels.length} 并行
-        </span>
-      </div>
-      <ol className="flow-nodes">
-        {detail.nodes.map((node, index) => (
-          <li key={node.ref} className="flow-node">
-            <div className="flow-node-head">
-              <span className="flow-node-index">{index + 1}</span>
-              <span className="flow-node-name">{node.name}</span>
-              <span className={`flow-chip kind-${node.kind}`}>{nodeKindLabel(node.kind)}</span>
-            </div>
-            <div className="flow-node-body">
-              {node.kind === 'command' ? (
-                <code className="flow-command">
-                  {node.request?.command ?? ''} {(node.request?.args ?? []).join(' ')}
-                  {node.request?.output === 'variables' ? ' → 变量' : ''}
-                </code>
-              ) : (
-                <p className="flow-prompt">{node.prompt}</p>
-              )}
-              <ul className="flow-outcomes">
-                {node.outcomes.map((outcome) => (
-                  <li key={outcome.name} className="flow-outcome" title={outcome.description}>
-                    {outcomeLabel(outcome)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </li>
-        ))}
-      </ol>
     </section>
   )
 }
