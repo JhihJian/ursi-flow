@@ -89,7 +89,7 @@ export function FlowWorkspace() {
         </p>
       ) : (
         <div className="flow-columns">
-          <div className="flow-column">
+          <div className="flow-column flow-column-config">
             <section className="flow-config">
               <div className="flow-section-head">
                 <span>启动变量</span>
@@ -160,15 +160,20 @@ export function FlowWorkspace() {
 
               </div>
             </section>
+          </div>
+
+          <div className="flow-column flow-column-structure">
             {detail.valid ? (
               <Structure
                 detail={detail}
                 {...(currentRef === undefined ? {} : { currentRef })}
               />
-            ) : null}
+            ) : (
+              <p className="flow-empty">这份 Flow 还没解析成功，先修正 FLOW.md。</p>
+            )}
           </div>
 
-          <div className="flow-column">
+          <div className="flow-column flow-column-runs">
             <section className="flow-runs">
               <div className="flow-section-head">
                 <span>运行记录</span>
@@ -206,7 +211,13 @@ export function FlowWorkspace() {
                 </ul>
               )}
             </section>
-            {run === undefined ? null : <RunDetail run={run} detail={detail} />}
+            {run === undefined ? (
+              <p className="flow-empty flow-run-placeholder">
+                点一条运行记录，在这里看状态、过程事件和最终变量。
+              </p>
+            ) : (
+              <RunDetail run={run} detail={detail} />
+            )}
           </div>
         </div>
       )}

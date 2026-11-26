@@ -303,8 +303,10 @@
 }
 
 .flow-columns {
+  /* 三块固定位置：左边启动变量、中间结构图、右边运行记录与详情。
+     列宽按内容给出上下限，切换 Flow 时不会随内容伸缩。 */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(280px, 340px);
   gap: var(--flow-space-lg);
   min-height: 0;
   flex: 1;
@@ -313,20 +315,86 @@
 .flow-column {
   display: flex;
   flex-direction: column;
-  gap: var(--flow-space-lg);
+  gap: var(--flow-space-md);
   min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  padding-right: var(--flow-space-xs);
+  min-height: 0;
+  overflow: hidden;
 }
 
-@container flow (max-width: 820px) {
+.flow-column-config {
+  overflow: hidden;
+}
+
+.flow-column-config .flow-config {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.flow-column-config .flow-start {
+  position: sticky;
+  bottom: 0;
+  background: var(--flow-paper);
+  padding-top: var(--flow-space-sm);
+}
+
+.flow-column-structure {
+  gap: 0;
+}
+
+.flow-column-structure .flow-structure {
+  flex: 1;
+  min-height: 0;
+}
+
+.flow-column-structure .flow-graph {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.flow-column-runs .flow-runs {
+  flex: 0 1 38%;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.flow-column-runs .flow-run {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.flow-run-placeholder {
+  padding-top: var(--flow-space-sm);
+}
+
+@container flow (max-width: 900px) {
   .flow-columns {
     grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;
   }
 
-  .flow-column {
+  .flow-column,
+  .flow-column-config {
+    overflow: visible;
+  }
+
+  .flow-column-structure .flow-graph {
+    flex: none;
+    max-height: 420px;
+  }
+
+  .flow-column-runs .flow-runs {
+    flex: none;
+    overflow: visible;
+  }
+
+  .flow-column-runs .flow-run {
+    flex: none;
     overflow: visible;
   }
 }
@@ -683,8 +751,10 @@
 }
 
 .flow-graph {
-  max-height: 520px;
-  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   /* 图可以滚动，但不占滚动条宽度：结构区已经有边框与留白分隔。 */
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -696,7 +766,11 @@
 
 .flow-graph-canvas {
   display: block;
-  max-width: none;
+  /* 小图按原始尺寸居中，大图等比缩到容器内，不出现滚动条。 */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .flow-graph-edge {
