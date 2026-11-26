@@ -104,8 +104,8 @@ pub struct TasksQuery {
     pub project: Option<String>,
     pub status: Option<String>,
     pub period: Option<String>,
-    /// `YYYY-MM-DD`，按创建日期过滤。与 `period` 互斥，由调用方决定用哪个。
-    pub date: Option<String>,
+    /// 逗号分隔的 `YYYY-MM-DD`，按创建日期过滤，可多选。与 `period` 互斥，由调用方决定用哪个。
+    pub dates: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,7 +132,7 @@ pub async fn get_tasks(Query(query): Query<TasksQuery>) -> ApiResult<Json<TasksR
         query.project.as_deref(),
         query.status.as_deref(),
         query.period.as_deref(),
-        query.date.as_deref(),
+        query.dates.as_deref(),
     )?;
     Ok(Json(TasksResponse { tasks }))
 }
@@ -248,7 +248,7 @@ pub fn fetch_tasks(
     project: Option<&str>,
     status: Option<&str>,
     period: Option<&str>,
-    date: Option<&str>,
+    dates: Option<&str>,
 ) -> ApiResult<Vec<Task>> {
     let status = match status {
         Some(value) => Some(Status::from_str(value)?),
@@ -272,10 +272,20 @@ pub fn fetch_tasks(
         params.push(Box::new(status.to_string()));
     }
 
-    if let Some(date) = date {
-        let date = parse_date(date)?;
-        sql.push_str(" AND date(datetime(replace(created_at, 'T', ' '))) = date(?)");
-        params.push(Box::new(date.to_string()));
+    if let Some(dates) = dates {
+        let mut days = Vec::new();
+        for value in dates.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+            days.push(parse_date(value)?.to_string());
+        }
+        if !days.is_empty() {
+            let placeholders = vec!["?"; days.len()].join(", ");
+            sql.push_str(&format!(
+                " AND date(datetime(replace(created_at, 'T', ' '))) IN ({placeholders})"
+            ));
+            for day in days {
+                params.push(Box::new(day));
+            }
+        }
     }
 
     if let Some(range) = period.and_then(period_range) {

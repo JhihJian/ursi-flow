@@ -5,6 +5,7 @@ import { formatTaskTime, prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { DayFilter } from './DayFilter'
 import { StatusIcon } from './StatusIcon'
 
 type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
@@ -138,9 +139,7 @@ export function TaskSection() {
   const tasksLoading = useTodoStore((state) => state.tasksLoading)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
   const statusFilter = useTodoStore((state) => state.statusFilter)
-  const dayCounts = useTodoStore((state) => state.dayCounts)
   const dayFilter = useTodoStore((state) => state.dayFilter)
-  const toggleDayFilter = useTodoStore((state) => state.toggleDayFilter)
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -166,25 +165,7 @@ export function TaskSection() {
     >
       {selectedProjectId ? (
         <div className="tasks-header">
-          <div className="day-filter">
-            <span className="day-filter-label">{dayFilter ? dayFilter.slice(5) : ''}</span>
-            <div className="day-bars" role="group" aria-label="Tasks created in the last 7 days">
-              {dayCounts.map(({ date, count }) => (
-                <button
-                  key={date}
-                  type="button"
-                  className={cx('day-bar', dayFilter === date && 'is-active')}
-                  style={{ flexGrow: count }}
-                  title={`${date} · ${count} ${count === 1 ? 'task' : 'tasks'}`}
-                  aria-label={`${date}, ${count} tasks`}
-                  aria-pressed={dayFilter === date}
-                  onClick={() => {
-                    void toggleDayFilter(date).catch((error) => alert(errorMessage(error)))
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+          <DayFilter />
           <div className="tasks-header-right">
             <div className="status-targets">
               {statuses.map((status) => (
@@ -223,9 +204,11 @@ export function TaskSection() {
                   ? 'Select a project'
                   : statusFilter
                     ? `No ${statusFilter} tasks`
-                    : dayFilter
-                      ? `No tasks created on ${dayFilter}`
-                      : 'No tasks'}
+                    : dayFilter.length > 1
+                      ? `No tasks created in the selected ${dayFilter.length} days`
+                      : dayFilter.length === 1
+                        ? `No tasks created on ${dayFilter[0]}`
+                        : 'No tasks'}
               </td>
             </tr>
           ) : null}

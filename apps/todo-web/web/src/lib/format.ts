@@ -71,3 +71,11 @@ export function taskTimeInfo(task: Task): string {
   if (task.finished_at) parts.push(`Finished: ${formatDate(task.finished_at)}`)
   return parts.join(' | ')
 }
+
+/** 今天（本地日历日）的键，形如 `2026-11-26`，与后端按创建日期筛选的格式一致。 */
+export function todayKey(now: number = Date.now()): string {
+  const date = new Date(now)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}

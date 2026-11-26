@@ -8,6 +8,7 @@ import {
   formatTime,
   prioritySymbol,
   taskTimeInfo,
+  todayKey,
 } from './format'
 
 const baseTask: Task = {
@@ -80,5 +81,12 @@ describe('symbols', () => {
     expect(prioritySymbol('high')).toBe('!')
     expect(prioritySymbol('medium')).toBe('-')
     expect(prioritySymbol('low')).toBe('○')
+  })
+})
+
+describe('todayKey', () => {
+  it('formats the local calendar day as YYYY-MM-DD', () => {
+    expect(todayKey(new Date(2026, 10, 26, 23, 30).getTime())).toBe('2026-11-26')
+    expect(todayKey(new Date(2026, 0, 5, 0, 1).getTime())).toBe('2026-01-05')
   })
 })

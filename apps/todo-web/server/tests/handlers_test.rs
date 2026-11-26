@@ -670,7 +670,16 @@ fn tasks_filter_by_creation_date() {
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].id, "older");
 
+    // 逗号分隔的多个日期取并集，重复日期不会重复返回任务。
+    let both = format!("{older}, {today}, {today}");
+    let filtered = fetch_tasks(&conn, None, None, None, Some(&both)).unwrap();
+    assert_eq!(filtered.len(), 2);
+
+    // 空串与只有逗号的日期列表视为不筛。
+    assert_eq!(fetch_tasks(&conn, None, None, None, Some(" , ")).unwrap().len(), 2);
+
     assert!(fetch_tasks(&conn, None, None, None, Some("nope")).is_err());
+    assert!(fetch_tasks(&conn, None, None, None, Some(&format!("{today},nope"))).is_err());
 }
 
 #[test]

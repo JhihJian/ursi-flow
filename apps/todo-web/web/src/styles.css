@@ -389,41 +389,79 @@
 
 .tasks-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-md);
 }
 
+/* 按日筛选：一行说明（范围、全部、今天）加一行分布条，与 pi-sessions 同形。 */
 .day-filter {
   display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-sm);
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  /* 内容区很宽时也不让条形拉满整行，右侧留给状态标签。 */
+  max-width: 320px;
+}
+
+.day-filter-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  white-space: nowrap;
 }
 
 .day-filter-label {
-  width: 36px;
   flex: none;
+  font-family: var(--font-serif);
   font-size: 11px;
-  color: var(--gray-400);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+  font-weight: 600;
+  color: var(--gray-600);
+  letter-spacing: 0.3px;
 }
 
-/* 总宽固定，各天按数量占比分宽度，零数量仍保留 3px 可点区域。 */
+.day-filter-span {
+  margin-right: auto;
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.day-filter-clear {
+  flex: none;
+  padding: 0 var(--space-xs);
+  border: 0;
+  background: none;
+  font-size: 10px;
+  color: var(--gray-400);
+  cursor: pointer;
+}
+
+.day-filter-clear:hover {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+/* 「全部」生效时保持高亮，表示当前没有按日期筛选 */
+.day-filter-clear.is-active {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+/* 各条按当天任务数占比分宽，零数量仍保留 3px 可点区域。 */
 .day-bars {
   display: flex;
-  flex: none;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
-  width: 112px;
-  height: 12px;
+  height: 14px;
 }
 
 .day-bar {
   flex: 0 1 0;
   min-width: 3px;
-  height: 100%;
   padding: 0;
   border: 0;
   background: var(--gray-200);
@@ -437,6 +475,10 @@
 
 .day-bar.is-active {
   background: var(--gray-900);
+}
+
+.day-bar.is-active:hover {
+  background: var(--black);
 }
 .status-targets {
   display: flex;

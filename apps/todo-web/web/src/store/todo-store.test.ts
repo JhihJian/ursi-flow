@@ -66,7 +66,7 @@ function resetStore() {
     projectEditing: null,
     statusFilter: null,
     dayCounts: [],
-    dayFilter: null,
+    dayFilter: [],
   })
 }
 
@@ -87,7 +87,7 @@ describe('bootstrap', () => {
     expect(state.selectedProjectId).toBe('p1')
     expect(state.tasks).toEqual([task])
     expect(state.projectsLoading).toBe(false)
-    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', date: null })
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1', dates: [] })
   })
 
   it('reports a project loading error', async () => {
@@ -158,21 +158,45 @@ describe('task actions', () => {
 })
 
 describe('status filter', () => {
-  it('toggles a day filter and reloads tasks with the date', async () => {
+  it('toggles selected days and reloads tasks with the whole selection', async () => {
     useTodoStore.setState({ selectedProjectId: 'p1' })
-    await useTodoStore.getState().toggleDayFilter('2026-11-24')
-    expect(useTodoStore.getState().dayFilter).toBe('2026-11-24')
-    expect(mocked.listTasks).toHaveBeenLastCalledWith({
-      project: 'p1',
-      date: '2026-11-24',
-    })
 
     await useTodoStore.getState().toggleDayFilter('2026-11-24')
-    expect(useTodoStore.getState().dayFilter).toBeNull()
+    expect(useTodoStore.getState().dayFilter).toEqual(['2026-11-24'])
     expect(mocked.listTasks).toHaveBeenLastCalledWith({
       project: 'p1',
-      date: null,
+      dates: ['2026-11-24'],
     })
+
+    await useTodoStore.getState().toggleDayFilter('2026-11-25')
+    expect(useTodoStore.getState().dayFilter).toEqual(['2026-11-24', '2026-11-25'])
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({
+      project: 'p1',
+      dates: ['2026-11-24', '2026-11-25'],
+    })
+
+    // 再点一次就是反选，全部取消后回到不过滤。
+    await useTodoStore.getState().toggleDayFilter('2026-11-24')
+    await useTodoStore.getState().toggleDayFilter('2026-11-25')
+    expect(useTodoStore.getState().dayFilter).toEqual([])
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({ project: 'p1', dates: [] })
+  })
+
+  it('replaces the whole day selection from shortcuts', async () => {
+    useTodoStore.setState({ selectedProjectId: 'p1' })
+
+    await useTodoStore.getState().setDayFilter(['2026-11-20', '2026-11-21'])
+    expect(useTodoStore.getState().dayFilter).toEqual(['2026-11-20', '2026-11-21'])
+
+    await useTodoStore.getState().setDayFilter(['2026-11-26'])
+    expect(useTodoStore.getState().dayFilter).toEqual(['2026-11-26'])
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({
+      project: 'p1',
+      dates: ['2026-11-26'],
+    })
+
+    await useTodoStore.getState().setDayFilter([])
+    expect(useTodoStore.getState().dayFilter).toEqual([])
   })
 
   it('toggles the filter and clears it when the same status is picked twice', () => {
