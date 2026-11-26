@@ -161,6 +161,35 @@ describe('结构图布局', () => {
     }
     const labels = layout.edges.filter((edge) => edge.label !== undefined).map(rect)
     expect(labels.length).toBeGreaterThan(10)
+
+    // 任何两条边的线段都不重合：同一条水平线或垂直线上的重叠区段即失败。
+    const segmentsOf = (path: string) => {
+      const points = [...path.matchAll(/[ML]\s+(-?[\d.]+)\s+(-?[\d.]+)/g)].map((match) => ({
+        x: Number(match[1]),
+        y: Number(match[2]),
+      }))
+      const segments: Array<{ axis: 'h' | 'v'; at: number; from: number; to: number; edge: string }> = []
+      for (let index = 1; index < points.length; index += 1) {
+        const a = points[index - 1]
+        const b = points[index]
+        const id = `${layout.edges.filter((edge) => edge.path === path)[0]?.from}->${layout.edges.filter((edge) => edge.path === path)[0]?.to}`
+        if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5)
+          segments.push({ axis: 'v', at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y), edge: id })
+        else if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5)
+          segments.push({ axis: 'h', at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x), edge: id })
+      }
+      return segments
+    }
+    const segments = layout.edges.flatMap((edge) => segmentsOf(edge.path))
+    for (let first = 0; first < segments.length; first += 1) {
+      for (let second = first + 1; second < segments.length; second += 1) {
+        const a = segments[first]
+        const b = segments[second]
+        if (a.axis !== b.axis || Math.abs(a.at - b.at) > 0.5) continue
+        const overlap = Math.min(a.to, b.to) - Math.max(a.from, b.from)
+        expect(overlap, `${a.edge} 与 ${b.edge} 在 ${a.axis} 方向重合`).toBeLessThanOrEqual(0.5)
+      }
+    }
     for (let first = 0; first < labels.length; first += 1) {
       for (let second = first + 1; second < labels.length; second += 1) {
         const a = labels[first]

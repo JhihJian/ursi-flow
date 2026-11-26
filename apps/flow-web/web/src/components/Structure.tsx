@@ -59,7 +59,7 @@ export function Structure({
             }
           />
           <p className="flow-graph-hint">
-            点节点看提示词或命令。虚线是回到前面节点的结果边。
+            点节点看提示词或命令，并高亮它的出边；再点一次取消。虚线是回到前面节点的结果边。
           </p>
           {selected === undefined ? null : (
             <div className="flow-node is-floating">

@@ -26,11 +26,14 @@ export function FlowGraph({
   selectedRef?: string
   onSelect?: (ref: string) => void
 }) {
-  const marker = `flow-arrow-${useId()}`
+  const id = useId()
+  const marker = `flow-arrow-${id}`
+  const activeMarker = `flow-arrow-active-${id}`
+  const hasSelection = selectedRef !== undefined
   return (
     <div className="flow-graph">
       <svg
-        className="flow-graph-canvas"
+        className={`flow-graph-canvas${hasSelection ? ' has-selection' : ''}`}
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         width={layout.width}
         height={layout.height}
@@ -38,24 +41,42 @@ export function FlowGraph({
         aria-label="Flow 结构图"
       >
         <defs>
-          <marker
-            id={marker}
-            viewBox="0 0 8 8"
-            refX="7"
-            refY="4"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 8 4 L 0 8 z" className="flow-graph-arrow" />
-          </marker>
+          {[marker, activeMarker].map((current) => (
+            <marker
+              key={current}
+              id={current}
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path
+                d="M 0 0 L 8 4 L 0 8 z"
+                className={`flow-graph-arrow${current === activeMarker ? ' is-active' : ''}`}
+              />
+            </marker>
+          ))}
         </defs>
-        {layout.edges.map((edge) => (
-          <g key={`${edge.from}->${edge.to}:${edge.label ?? ''}`}>
+        {layout.edges.map((edge) => {
+          const outgoing = edge.from === selectedRef
+          const classes = [
+            'flow-graph-edge',
+            edge.back ? 'is-back' : '',
+            outgoing ? 'is-active' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+          return (
+          <g
+            key={`${edge.from}->${edge.to}:${edge.label ?? ''}`}
+            className={`flow-graph-link${outgoing ? ' is-active' : ''}`}
+          >
             <path
               d={edge.path}
-              className={`flow-graph-edge${edge.back ? ' is-back' : ''}`}
-              markerEnd={`url(#${marker})`}
+              className={classes}
+              markerEnd={`url(#${outgoing ? activeMarker : marker})`}
             />
             {edge.label === undefined ? null : (
               <>
@@ -83,7 +104,8 @@ export function FlowGraph({
               </>
             )}
           </g>
-        ))}
+          )
+        })}
         {layout.nodes.map((node) => {
           const current = node.key === currentRef
           const selected = node.key === selectedRef

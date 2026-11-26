@@ -103,6 +103,22 @@ describe('独立入口挂载', () => {
         (button) => button.textContent === '列表',
       ),
     ).toBe(true)
+
+    // 点节点：出边高亮，其余边淡出。
+    const node = Array.from(container.querySelectorAll('.flow-graph-node')).find(
+      (element) => element.getAttribute('aria-label')?.includes('完成修改'),
+    )
+    expect(node).toBeDefined()
+    await act(async () => {
+      node!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(container.querySelectorAll('.flow-graph-edge.is-active').length).toBeGreaterThan(0)
+    expect(container.querySelector('.flow-graph-canvas')?.classList.contains('has-selection')).toBe(true)
+
+    await act(async () => {
+      node!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(container.querySelectorAll('.flow-graph-edge.is-active').length).toBe(0)
     expect(text).toContain('还没有运行记录')
     expect(text).toContain('Fake 执行器（fake）')
     expect(text).toContain('Pi 执行器（pi）')

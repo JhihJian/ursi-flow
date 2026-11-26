@@ -718,6 +718,23 @@
   stroke-width: 1;
 }
 
+.flow-graph-canvas.has-selection .flow-graph-link:not(.is-active) {
+  opacity: 0.35;
+}
+
+.flow-graph-edge.is-active {
+  stroke: var(--flow-ink);
+  stroke-width: 1.5;
+}
+
+.flow-graph-arrow.is-active {
+  fill: var(--flow-ink);
+}
+
+.flow-graph-link.is-active .flow-graph-edge-label {
+  fill: var(--flow-ink);
+}
+
 .flow-graph-node.kind-confirm .flow-graph-box,
 .flow-graph-node.kind-parallel .flow-graph-box {
   stroke-dasharray: 3 2;
