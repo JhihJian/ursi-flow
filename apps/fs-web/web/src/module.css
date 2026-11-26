@@ -266,11 +266,11 @@
   font-size: 10px;
 }
 
-/* 推送/拉取按钮组：靠右贴齐摘要条尾部，两个按钮共用一层边框，省掉中间的两条边与内边距 */
+/* 推送/拉取按钮组：与其它 chip 同间距顺排（不再用 auto 外边距顶到尾部，否则这处间距会比前面大），
+   两个按钮共用一层边框，省掉中间的两条边与内边距 */
 .wsx-git-sync {
   display: inline-flex;
   flex: none;
-  margin-left: auto;
   border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
