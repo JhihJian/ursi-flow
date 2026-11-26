@@ -53,13 +53,15 @@ export interface TaskGraphLayout {
 const NODE_WIDTH = 200
 const HEADER_HEIGHT = 40
 /** 分组节点里子节点之间的纵向间距。 */
-const CHILD_GAP = 10
+const CHILD_GAP = 16
 /** 子节点相对父节点左边的缩进。 */
-const CHILD_INDENT = 14
+const CHILD_INDENT = 18
 /** 子节点与分组底边的留白。 */
-const GROUP_PAD = 12
-const COLUMN_GAP = 64
-const PADDING = 16
+const GROUP_PAD = 16
+const COLUMN_GAP = 96
+/** 同一列里不相关的根节点之间的间距，比组内子任务更松。 */
+const ROOT_GAP = 24
+const PADDING = 24
 /** 回边绕到节点下方，底线之外要留出的空间。 */
 const BACK_EDGE_ROOM = 32
 
@@ -211,7 +213,7 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     const column = columns.get(depth)!
     const height =
       column.reduce((sum, id) => sum + nodes.get(id)!.height, 0) +
-      Math.max(0, column.length - 1) * CHILD_GAP
+      Math.max(0, column.length - 1) * ROOT_GAP
     columnHeights.set(depth, height)
   }
   const tallest = Math.max(...depths.map((depth) => columnHeights.get(depth)!))
@@ -239,12 +241,11 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     let y = PADDING + Math.max(0, (tallest - columnHeights.get(depth)!) / 2)
     for (const id of column) {
       place(id, xOf.get(depth)!, y)
-      y += nodes.get(id)!.height + CHILD_GAP
+      y += nodes.get(id)!.height + ROOT_GAP
     }
   }
 
-  const edges: TaskGraphEdge[] = []
-  let hasBack = false
+  const plans: EdgePlan[] = []
   for (const edge of preEdges) {
     const from = nodes.get(edge.from)
     const to = nodes.get(edge.to)
@@ -254,29 +255,62 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     const fromBox = topLevelNode(from, nodes)
     const toBox = topLevelNode(to, nodes)
     if (fromBox.id === toBox.id) {
-      edges.push({ from: from.id, to: to.id, back: false, path: siblingPath(from, to) })
-      continue
+      plans.push({ from, to, fromAnchor: from, toAnchor: to, kind: 'sibling' })
+    } else if (toBox.x >= fromBox.x + fromBox.width) {
+      plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'forward' })
+    } else if (toBox.x === fromBox.x && toBox.y > fromBox.y) {
+      plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'vertical' })
+    } else {
+      plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'back' })
     }
-    if (toBox.x >= fromBox.x + fromBox.width) {
+  }
+
+  // 同一个锚点上的多条线错开位置，避免叠成一条粗线看不清。
+  const outSlots = anchorSlots(plans, 'from')
+  const inSlots = anchorSlots(plans, 'to')
+  const edges: TaskGraphEdge[] = []
+  let hasBack = false
+  for (const plan of plans) {
+    const out = outSlots(plan.fromAnchor.id)
+    const inc = inSlots(plan.toAnchor.id)
+    const outY = spreadY(plan.fromAnchor, out.index, out.count)
+    const inY = spreadY(plan.toAnchor, inc.index, inc.count)
+    const outX = spreadX(plan.fromAnchor, out.index, out.count)
+    const inX = spreadX(plan.toAnchor, inc.index, inc.count)
+    if (plan.kind === 'sibling') {
       edges.push({
-        from: from.id,
-        to: to.id,
+        from: plan.from.id,
+        to: plan.to.id,
         back: false,
-        path: forwardPath(fromBox, toBox),
+        path: siblingPath(plan.from, plan.to, outX, inX),
       })
       continue
     }
-    if (toBox.x === fromBox.x && toBox.y > fromBox.y) {
+    if (plan.kind === 'forward') {
       edges.push({
-        from: from.id,
-        to: to.id,
+        from: plan.from.id,
+        to: plan.to.id,
         back: false,
-        path: verticalPath(fromBox, toBox),
+        path: forwardPath(plan.fromAnchor, plan.toAnchor, outY, inY),
+      })
+      continue
+    }
+    if (plan.kind === 'vertical') {
+      edges.push({
+        from: plan.from.id,
+        to: plan.to.id,
+        back: false,
+        path: verticalPath(plan.fromAnchor, plan.toAnchor, outX, inX),
       })
       continue
     }
     hasBack = true
-    edges.push({ from: from.id, to: to.id, back: true, path: backPath(fromBox, toBox) })
+    edges.push({
+      from: plan.from.id,
+      to: plan.to.id,
+      back: true,
+      path: backPath(plan.fromAnchor, plan.toAnchor, outY, inX),
+    })
   }
 
   return {
@@ -389,9 +423,12 @@ function orderSiblings(
 }
 
 /** 同组兄弟之间的前置依赖：相邻时竖直连线，隔着其它兄弟时绕到右侧。 */
-function siblingPath(from: TaskGraphNode, to: TaskGraphNode): string {
-  const fromX = from.x + from.width / 2
-  const toX = to.x + to.width / 2
+function siblingPath(
+  from: TaskGraphNode,
+  to: TaskGraphNode,
+  fromX: number,
+  toX: number,
+): string {
   const fromY = from.y + from.height
   const toY = to.y
   if (toY >= fromY) {
@@ -433,30 +470,78 @@ function topLevelNode(
   return current
 }
 
-function forwardPath(from: TaskGraphNode, to: TaskGraphNode): string {
+interface EdgePlan {
+  from: TaskGraphNode
+  to: TaskGraphNode
+  fromAnchor: TaskGraphNode
+  toAnchor: TaskGraphNode
+  kind: 'sibling' | 'forward' | 'vertical' | 'back'
+}
+
+/** 统计每个锚点上的入线、出线，以及当前这条线是第几条。 */
+function anchorSlots(plans: EdgePlan[], side: 'from' | 'to') {
+  const totals = new Map<string, number>()
+  for (const plan of plans) {
+    const id = (side === 'from' ? plan.fromAnchor : plan.toAnchor).id
+    totals.set(id, (totals.get(id) ?? 0) + 1)
+  }
+  const used = new Map<string, number>()
+  return (id: string) => {
+    const index = used.get(id) ?? 0
+    used.set(id, index + 1)
+    return { index, count: totals.get(id) ?? 1 }
+  }
+}
+
+/** 同一个锚点上的多条线在标题条高度内均匀错开。 */
+function spreadY(node: TaskGraphNode, index: number, count: number): number {
+  const center = node.y + HEADER_HEIGHT / 2
+  if (count <= 1) return center
+  const step = Math.min(12, (HEADER_HEIGHT - 16) / (count - 1))
+  return center + (index - (count - 1) / 2) * step
+}
+
+/** 竖直连线的锚点在节点宽度内错开。 */
+function spreadX(node: TaskGraphNode, index: number, count: number): number {
+  const center = node.x + node.width / 2
+  if (count <= 1) return center
+  const step = Math.min(24, (node.width - 40) / (count - 1))
+  return center + (index - (count - 1) / 2) * step
+}
+
+function forwardPath(
+  from: TaskGraphNode,
+  to: TaskGraphNode,
+  y1: number,
+  y2: number,
+): string {
   const x1 = from.x + from.width
-  const y1 = from.y + HEADER_HEIGHT / 2
   const x2 = to.x
-  const y2 = to.y + HEADER_HEIGHT / 2
   const mid = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
 }
 
 /** 同一列上下相邻的两个分组，用竖线连接，箭头指向下面那个。 */
-function verticalPath(from: TaskGraphNode, to: TaskGraphNode): string {
-  const fromX = from.x + from.width / 2
-  const toX = to.x + to.width / 2
+function verticalPath(
+  from: TaskGraphNode,
+  to: TaskGraphNode,
+  x1: number,
+  x2: number,
+): string {
   const fromY = from.y + from.height
   const toY = to.y
-  return `M ${fromX} ${fromY} C ${fromX} ${fromY + 10}, ${toX} ${toY - 10}, ${toX} ${toY}`
+  return `M ${x1} ${fromY} C ${x1} ${fromY + 12}, ${x2} ${toY - 12}, ${x2} ${toY}`
 }
 
 /** 目标在当前列的上面或左边，绕到底部再回来。 */
-function backPath(from: TaskGraphNode, to: TaskGraphNode): string {
+function backPath(
+  from: TaskGraphNode,
+  to: TaskGraphNode,
+  y1: number,
+  x2: number,
+): string {
   const x1 = from.x + from.width
-  const y1 = from.y + HEADER_HEIGHT / 2
-  const x2 = to.x + to.width / 2
   const bottom = Math.max(from.y + from.height, to.y + to.height)
-  const exitX = x1 + 24
-  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 20}, ${x2} ${bottom + 20} L ${x2} ${to.y + to.height}`
+  const exitX = x1 + 28
+  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 24}, ${x2} ${bottom + 24} L ${x2} ${to.y + to.height}`
 }
