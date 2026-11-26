@@ -8,11 +8,11 @@ references:
 
 ## 功能意图
 
-pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个文件里：`settings.json`（默认模型、思考级别、默认工具、插件条目）、`skills/`（技能与 frontmatter 开关）、`agents/`（subagent profile 与内置开关）、`mcp.json`（MCP server 条目）、`models.json`（自定义提供商与模型）、`auth.json`（凭据）。pi-web 提供完整会话界面但不做配置编辑；CLI 只能手动改文件。管理台补上这一块：给任意给定的 pi home 一个只做配置管理的页面，页面结构与样式沿用 pi-web Settings 体系，模块形态沿用 dae-web（零依赖 Node 服务托管 React 页面）。
+pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个文件里：`settings.json`（默认模型、思考级别、默认工具、插件条目）、`skills/`（技能与 frontmatter 开关）、`agents/`（subagent profile 与内置开关）、`mcp.json`（MCP server 条目）、`models.json`（自定义提供商与模型）、`auth.json`（凭据）。CLI 只能手动改文件，会话界面由 Pi 交互对话与 Pi 会话浏览承担。管理台补上配置编辑这一块：给任意给定的 pi home 一个只做配置管理的页面，页面结构与样式沿用上游 Pi Web 的 Settings 体系，模块形态沿用 dae-web（零依赖 Node 服务托管 React 页面）。
 
-管理台以读写配置文件为主：除下面「执行一次性会话任务」外，不加载扩展、不 spawn MCP server、不执行安装。它与 pi CLI 及 pi-web 共享同一份 pi home，是它们之间的第三入口。凭据永不原样回传浏览器；写操作只对本机开放；文件级乐观锁防止覆盖 pi CLI 的并发修改。
+管理台以读写配置文件为主：除下面「执行一次性会话任务」外，不加载扩展、不 spawn MCP server、不执行安装。它与 pi CLI 共享同一份 pi home。凭据永不原样回传浏览器；写操作只对本机开放；文件级乐观锁防止覆盖 pi CLI 的并发修改。
 
-「执行一次性会话任务」是一项明确划界的执行能力：调用方给一个 agent profile 与一句指令，服务端用 pi SDK 在该 home 下起一个会话跑完一轮就结束，不提供交互界面，也不驻留会话。它与 pi-web 的完整交互式 UI 互补：pi-web 是人在用 Pi，这里是程序用 Pi。运行中会话与交互对话是它的两块运行时能力：运行态数据供 [Pi 会话浏览](../pi-sessions-web/SPEC.md) 叠加展示，对话运行时供 [Pi 交互对话](../pi-chat-web/SPEC.md) 使用。
+「执行一次性会话任务」是一项明确划界的执行能力：调用方给一个 agent profile 与一句指令，服务端用 pi SDK 在该 home 下起一个会话跑完一轮就结束，不提供交互界面，也不驻留会话。它与 CLI 的分工是：CLI 是人在终端里用 Pi，这里是程序用 Pi。运行中会话与交互对话是它的两块运行时能力：运行态数据供 [Pi 会话浏览](../pi-sessions-web/SPEC.md) 叠加展示，对话运行时供 [Pi 交互对话](../pi-chat-web/SPEC.md) 使用。
 
 ## 关键功能与验收
 
@@ -106,7 +106,7 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 #### 验收
 
 - 「Subagent」分区列出 `agents/` 目录的 subagent 定义（name、description、启用状态）——这些就是会话内 Agent 工具的 `subagent_type` 取值；删除有确认。
-- profile 表单按 pi-web 的受管 key 结构化编辑：`display_name`、`model`、`thinking`、`tools`（内置工具勾选加 `ext:` 等扩展工具）、`load_skills`、`load_extensions`、`codemode`（off/inherit/on）、`mcp`（off/on）、`enabled`、`inherit_context`、`run_in_background`、`prompt_mode`、`max_turns`、`color`、`isolation`、`persist_session`，正文是系统提示词。
+- profile 表单按上游 Pi Web 的受管 key 结构化编辑：`display_name`、`model`、`thinking`、`tools`（内置工具勾选加 `ext:` 等扩展工具）、`load_skills`、`load_extensions`、`codemode`（off/inherit/on）、`mcp`（off/on）、`enabled`、`inherit_context`、`run_in_background`、`prompt_mode`、`max_turns`、`color`、`isolation`、`persist_session`，正文是系统提示词。
 - 未受管的 frontmatter key 按根级块逐行原样保留（含缩进续行）；`skills:` / `extensions:` 白名单只读展示、保存不改写，开关只写 `load_skills` / `load_extensions`。新增 profile 不为默认值补写多余 key。
 - 内置 agent 开关（builtInEnabled、disabledBuiltIns、maxConcurrent）写入 `agents/settings.json`，不触碰主 `settings.json`。
 - profile 写入走同一乐观锁与备份机制；项目级 `.pi/agents/` 不在本页范围。
@@ -147,7 +147,7 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - **subagent 是 `agents/*.md` 定义的一种「特别的工具」**：会话里的 Agent 工具按 `subagent_type` 派生一个子会话，profile 文件就是该取值的定义——正文是子会话的系统提示，frontmatter 约束工具集（`tools`）、模型（`model`）与思考级别（`thinking`）。它不是可选人设，而是工具的参数枚举。
 - `POST /api/session/prompt` 请求体 `{ agent, instruct, subagent?, cwd?, model?, thinkingLevel? }`，返回 `{ sessionId, sessionFile, state, agent, subagent, startedAt }`。`agent` 填 pi home 的 `name`（也接受清单 `id` 与绝对路径，便于脚本）；接口不需要 `home` 参数。
 - 可选的 `subagent` 表示「直接以该 subagent 的定义起一个会话」，等价于父会话调用一次 Agent 工具：解析该 home 的 `agents/<name>.md`（按文件名或 frontmatter 的 `name` 匹配，不区分大小写），正文作为系统提示，`tools` 作为该会话的工具集。省略则起普通主会话，由它自己决定是否派生 subagent。
-- 会话用该 agent（home）的模型、凭据、skills、agents 设置；`cwd` 决定工具与项目级资源发现，省略时用服务进程当前目录。会话按 pi 的默认分组规则写入 `<home>/sessions/--<cwd>--/`，pi CLI 与 pi-web 能看到并接着聊。
+- 会话用该 agent（home）的模型、凭据、skills、agents 设置；`cwd` 决定工具与项目级资源发现，省略时用服务进程当前目录。会话按 pi 的默认分组规则写入 `<home>/sessions/--<cwd>--/`，pi CLI 能看到并接着聊。
 - 会话创建在接口返回前完成，因此 agent 不存在（404）、subagent 不存在（404）、模型不存在（404）、`instruct` 为空（400）、`thinkingLevel` 非法（400）、`cwd` 不存在（404）都直接报给调用方；`prompt` 本身在后台执行。
 - 执行会在该 home 下留下 pi 自己的运行产物：`sessions/` 里的会话文件，以及 SDK 首次运行初始化的空 `auth.json`、`models-store.json`（与 pi CLI 行为一致）。管理台不额外写入配置。
 - `GET /api/session/task?sessionId=<id>` 返回该任务状态（`running` / `done` / `error` / `cancelled`）、agent 与 subagent、最后一条助手文本、错误说明与累计输出长度；`GET /api/session/tasks` 列出全部任务，`?agent=<name>` 按 agent 过滤；`POST /api/session/cancel` 中止运行中的任务。

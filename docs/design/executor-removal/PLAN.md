@@ -48,7 +48,7 @@ Workbench 删除后，`ursi-executor-platform` 不再有代码消费者，因此
 
 ## 验证
 
-- 全仓搜索 `executor-platform`、`executor-sdk`、`planweave-demo`、`docs/design/workbench`、`workbench/`，除本文件与 `apps/pi-web/.next` 构建缓存外无命中。
+- 全仓搜索 `executor-platform`、`executor-sdk`、`planweave-demo`、`docs/design/workbench`、`workbench/`，除本文件与构建缓存外无命中。
 - `apps/mcp-web/server` 的 `cargo test` 通过，`apps/mcp-web/app` 编译通过。
 - `apps/mcp-web/web` 的 `npm test` 与 `npm run typecheck` 通过。
 - 根 `package.json` 的 workspaces 不包含被删目录，无需调整锁文件。

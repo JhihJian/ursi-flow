@@ -9,7 +9,6 @@ import { createPiSessionsModule } from '@ursi/pi-sessions-web/module'
 import { createPiChatModule, type PiChatCommands } from '@ursi/pi-chat-web/module'
 import { createApiClient } from '@ursi/pi-manager-web/client'
 import { createPiManagerModule } from '@ursi/pi-manager-web/module'
-import { createPiWebModule } from './pi-web-panel/module'
 import '@ursi/fs-web/module.css'
 import '@ursi/ssh-web/module.css'
 import '@ursi/sandbox-web/module.css'
@@ -19,7 +18,6 @@ import '@ursi/pi-manager-web/module.css'
 import '@ursi/flow-web/styles.css'
 // 轨迹组件库的样式是全局前缀类（dsw- / trajectory-*），在这里引一次即可。
 import 'pi-agent-trajectory-viewer/style.css'
-import './pi-web-panel/module.css'
 
 /**
  * 组合根：整个应用唯一允许出现宿主胶水代码的地方。
@@ -50,7 +48,6 @@ const SOURCES: Record<string, string> = {
   'fs-web': '@ursi/fs-web/module',
   'ssh': '@ursi/ssh-web/module',
   'sandbox': '@ursi/sandbox-web/module',
-  'pi-web': './pi-web-panel/module',
   'flow': '@ursi/flow-web/module',
   'pi-sessions': '@ursi/pi-sessions-web/module',
   'pi-chat': '@ursi/pi-chat-web/module',
@@ -215,7 +212,6 @@ const MODULES: WorkspaceModule[] = [
   sessionsModule,
   chatModule,
   configModule,
-  createPiWebModule(),
 ]
 
 /** 跨模块依赖的说明，Registry 页直接展示，避免边藏在代码里。 */
@@ -253,7 +249,6 @@ const DEFAULT_PROFILES: WorkspaceProfile[] = [
   { id: 'work', title: '工作', modules: ['todo', 'fs-web', 'ssh'] },
   { id: 'terminal', title: '终端', modules: ['ssh', 'fs-web'] },
   { id: 'sandbox', title: '沙箱', modules: ['sandbox', 'ssh'] },
-  { id: 'assistant', title: '助手', modules: ['pi-web', 'fs-web'] },
   { id: 'flow', title: 'Flow', modules: ['flow', 'fs-web'] },
   { id: 'history', title: '会话', modules: ['pi-sessions', 'fs-web'] },
   { id: 'pi', title: 'Pi 控制台', modules: ['pi-chat', 'pi-sessions', 'pi-config', 'fs-web'] },

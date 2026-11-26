@@ -13,11 +13,11 @@ references:
 
 在浏览器里与 pi agent 多轮对话：流式输出、工具调用可见、可打断、可续聊。运行时归 [Pi 管理台](../pi-manager-web/SPEC.md)（它持有 pi SDK、pi home 校验、凭据、模型目录与并发控制），本模块只做界面，通过管理台公开的客户端 `@ursi/pi-manager-web/client` 使用其接口。
 
-一场对话绑定一个 pi home：选 home 就是选整套配置（模型清单与默认模型、凭据、skills、agents、MCP、工具策略）。会话文件写进该 home 的 `sessions/`，pi CLI 与 pi-web 能接着聊，[Pi 会话浏览](../pi-sessions-web/SPEC.md) 能看到完整轨迹。
+一场对话绑定一个 pi home：选 home 就是选整套配置（模型清单与默认模型、凭据、skills、agents、MCP、工具策略）。会话文件写进该 home 的 `sessions/`，pi CLI 能接着聊，[Pi 会话浏览](../pi-sessions-web/SPEC.md) 能看到完整轨迹。
 
-建立对话的顺序对齐 pi-web：先在工作区的输入区选好模型与思考级别，发出第一条消息时才向管理台建会话，建完立刻接上事件流。没有「新建空对话」这个动作，因此不会留下没有消息的会话文件。
+建立对话的顺序对齐上游 Pi Web：先在工作区的输入区选好模型与思考级别，发出第一条消息时才向管理台建会话，建完立刻接上事件流。没有「新建空对话」这个动作，因此不会留下没有消息的会话文件。
 
-边界：不做配置编辑、不做历史会话扫描与轨迹浏览、不做终端与文件浏览、不做多用户共享会话与鉴权。不复用 pi-web 的对话组件（Next + Tailwind 的上游代码，拆不出来）。
+边界：不做配置编辑、不做历史会话扫描与轨迹浏览、不做终端与文件浏览、不做多用户共享会话与鉴权。不复用上游 Pi Web 的对话组件（Next + Tailwind 代码，拆不出来）。
 
 ## 关键功能与验收
 
@@ -81,7 +81,7 @@ references:
 
 - `createPiChatModule({ managerApiBaseUrl, storageKey, openSessionInSessions?, onNotice? })` 返回 `WorkspaceModule & { commands }`；`managerApiBaseUrl` 只能是同源路径前缀。
 - 侧栏用平台的 `SidebarFrame`：展开态是 home 选择、新对话的工作目录与 subagent、本模块打开的对话列表；折叠态一条窄条显示运行中数量与当前 home。
-- 工作区只放对话：顶部一行状态与操作，中间轨迹、流式块与工具状态，底部输入区；模型与思考级别在输入区的工具条上，跟 pi-web 的 composer 一致；不含模块标题。
+- 工作区只放对话：顶部一行状态与操作，中间轨迹、流式块与工具状态，底部输入区；模型与思考级别在输入区的工具条上，跟上游 Pi Web 的 composer 一致；不含模块标题。
 - 版面与灰阶沿用 `apps/todo-web`：衬线小标题、等宽正文、方角、选中靠左侧竖线；轨迹组件库的配色映射与会话模块同一份。
 - 重型依赖（轨迹组件库）由工作区 `lazy` 加载，侧栏与首屏不背它；`localStorage` 键以 `storageKey` 为前缀。
 - 独立入口与嵌入模式共用同一对组件与同一份状态；独立入口的接口前缀默认同源，开发时由代理转发到管理台（开发端口 5193）。

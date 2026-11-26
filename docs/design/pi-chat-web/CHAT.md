@@ -4,20 +4,19 @@ references:
   - ../../../apps/pi-manager-web/SPEC.md
   - ../../../apps/pi-sessions-web/SPEC.md
   - ../../../packages/workspace-shell/MODULE-CONTRACT.md
-  - ../pi-web/SPLIT-AND-AGGREGATION.md
 ---
 
 # Pi 交互对话
 
 ## 功能意图
 
-拆分之后，pi-web 剩下的唯一核心能力是交互式对话：多轮、流式、工具调用可见、可打断、可续聊。管理台只有"跑一轮就结束"的一次性任务，会话浏览只有只读渲染。
+拆分之后，上游 Pi Web 剩下的唯一核心能力是交互式对话：多轮、流式、工具调用可见、可打断、可续聊。管理台只有"跑一轮就结束"的一次性任务，会话浏览只有只读渲染。
 
 本模块补上这块，并明确它依赖 pi-manager-web：
 
 - **运行时归管理台**。会话要真实加载某个 pi home 的模型、凭据、skills、subagent 与 MCP，还要受并发、超时、限流约束——这些都是管理台已经拥有的（`sdk.ts`、`session-task.ts`、home 清单、模型目录、agent 定义）。
 - **界面是独立模块** `@ursi/pi-chat-web`。编译期依赖管理台公开客户端 `@ursi/pi-manager-web/client`，运行期依赖管理台服务；不 import 管理台的组件与 store，也不读写配置文件。
-- **一场对话绑定一个 pi home**。选 home 就是选整套配置：模型清单与默认模型、凭据、skills、agents、MCP、工具策略。会话文件仍写进该 home 的 `sessions/`，pi CLI 与 pi-web 能接着聊，会话浏览模块能看到完整轨迹。
+- **一场对话绑定一个 pi home**。选 home 就是选整套配置：模型清单与默认模型、凭据、skills、agents、MCP、工具策略。会话文件仍写进该 home 的 `sessions/`，pi CLI 能接着聊，会话浏览模块能看到完整轨迹。
 
 边界（不做）：
 
@@ -25,7 +24,7 @@ references:
 - 不做历史会话扫描与轨迹浏览（会话模块的活）。本模块侧栏只列自己打开的对话。
 - 不做终端、文件浏览、git、worktrees、推送、附件与图片输入。
 - 不做多用户共享会话、不做鉴权（沿用管理台的可信局域网边界）。
-- 不复用 pi-web 的对话组件：它属于 Next + Tailwind 的上游代码，拆不出来。
+- 不复用上游 Pi Web 的对话组件：它属于 Next + Tailwind 的代码，拆不出来。
 
 ## 依赖与契约
 
@@ -107,7 +106,7 @@ pi-sessions ──组合根注入──▶ pi-chat 的 resumeSession 命令（�
 ### 侧栏
 
 - **pi home 选择器**：数据来自管理台公开客户端（`listHomes`），与管理台模块用同一份清单，不另存 home 注册表。切换 home 后模型、思考级别、工作目录与 subagent 选项刷新，对话列表按当前 home 过滤；没有可用 home 时提示去管理台新增并 `shell.reveal('pi-config')`。
-- **新对话的落点**：工作目录与 subagent 在侧栏；模型与思考级别在输入区的工具条上，跟 pi-web 的 composer 一致。
+- **新对话的落点**：工作目录与 subagent 在侧栏；模型与思考级别在输入区的工具条上，跟上游 Pi Web 的 composer 一致。
 - **对话列表**：服务端 `GET /api/chat/sessions?home=` 的快照，显示状态、模型、思考级别与最近活动；「结束当前对话」释放运行时。
 - 折叠态显示运行中数量与当前 home，符合外壳窄条约定。
 
@@ -197,5 +196,5 @@ profile：`{ id: 'pi', title: 'Pi 控制台', modules: ['pi-chat', 'pi-config', 
 - **重复打开同一会话直接接到已有对话**：同一份 JSONL 不允许两个运行时并行追加；新装配的会话被释放，返回已有对话。
 - **thinking level 补上 `high`**：原 `session-task` 的档位列表漏了 `high`，会让默认级别为 high 的 home 直接报 400；现在任务与对话共用 `agents.ts` 的那份定义。
 - **目录缓存补充能力字段**：`RuntimeCatalog` 的每个模型记录 `thinkingLevels` 与 `thinkingLevelMap`，目录带 provider 显示名；老缓存缺字段时按 `reasoning` 退回基础档位，不影响读取。
-- **前端从「先建空对话」改为「首条消息建对话」**：pi-web 的 `ensure_session` + `prompt` 顺序被压成一次「建会话 → 立刻发首条消息」，失败时把文本放回输入框。
+- **前端从「先建空对话」改为「首条消息建对话」**：上游 Pi Web 的 `ensure_session` + `prompt` 顺序被压成一次「建会话 → 立刻发首条消息」，失败时把文本放回输入框。
 - **刷新接回**：浏览器只记最近一条 `{ sessionId, sessionFile, home }`；`sessionId` 接不上时按 `sessionFile` 让管理台重新装配。事件流在服务端释放后不会重连成功，前端确认 404 后收尾并提示。

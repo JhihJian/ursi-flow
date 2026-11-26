@@ -12,7 +12,7 @@ references:
 
 ssh-web 目前是 5193 端口的独立站点：自己的 Rust 服务（8091）、自己的三级面板布局、自己的全局样式。用户要在 shell-web 工作区里同时用 todo、fs、终端，就要在多个窗口间切换。
 
-本次集成把 ssh-web 接入 shell-web 的侧边栏堆叠，与 todo、fs、pi-web 并列在同一列里：展开终端时工作区让给终端，点别的窄条就切成文件或待办；右键、搜索、亮暗主题等行为不变。独立入口保留，两种形态共用同一套组件与 store。
+本次集成把 ssh-web 接入 shell-web 的侧边栏堆叠，与 todo、fs 等栏并列在同一列里：展开终端时工作区让给终端，点别的窄条就切成文件或待办；右键、搜索、亮暗主题等行为不变。独立入口保留，两种形态共用同一套组件与 store。
 
 不做的边界：
 
@@ -75,7 +75,7 @@ shell-web 栏（.ssh-embed）
 
 - shell-web 出现 SSH 栏，建连、选连接列 tmux 会话、点会话 attach、输入输出、缩放自适应全部可用，行为与独立入口一致。
 - 折叠 SSH 栏后远端 tmux 会话保活；重新展开点同一会话，屏幕内容恢复。
-- 宿主其他栏（todo、fs、pi-web）不受 SSH 样式、快捷键、浮层影响；SSH 栏内 Ctrl+F 打开终端搜索且不触发浏览器查找。
+- 宿主其他栏（todo、fs 等）不受 SSH 样式、快捷键、浮层影响；SSH 栏内 Ctrl+F 打开终端搜索且不触发浏览器查找。
 - 焦点在连接名输入框时 Ctrl+F 仍能打开终端搜索（容器级监听）。
 - 折叠窄条显示当前连接、tmux 会话与连接状态。
 
@@ -87,7 +87,7 @@ shell-web 栏（.ssh-embed）
 | `vite.config.ts` | proxy 加 `'/api/ssh-web': { target: env SSH_WEB_API ?? 8091, ws: true, rewrite: 去掉 /ssh-web 段 }`，排在通用 `/api` 之前；`preview` 同。 |
 | `src/registry.tsx` | SOURCES 加 `'ssh': '@ursi/ssh-web/module'`；BASE_MODULES 加 `createSshModule({ apiBaseUrl: '/api/ssh-web' })`；导入 `@ursi/ssh-web/module.css`。 |
 
-栏序采用 todo、fs、ssh、pi-web：终端是文件操作的下游，放在 fs 之后、pi-web 之前。
+栏序采用 todo、fs、ssh：终端是文件操作的下游，放在 fs 之后。
 
 ### 文档
 

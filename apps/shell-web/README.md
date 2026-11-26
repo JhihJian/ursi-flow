@@ -1,6 +1,6 @@
 # 工作区入口
 
-把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、flow、fs、ssh、沙箱、pi 会话与 pi-web 七个模块。
+把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、flow、fs、ssh、沙箱、pi 会话、pi 对话与 pi 配置八个模块。
 
 ## 页面结构
 
@@ -34,13 +34,15 @@ profile 只声明启用哪些模块与顺序，不再描述区域布局：
 | 工作（`work`） | todo、fs-web、ssh |
 | 终端（`terminal`） | ssh、fs-web |
 | 沙箱（`sandbox`） | 沙箱、ssh |
-| 助手（`assistant`） | pi-web、fs-web |
 | 会话（`history`） | pi-sessions、fs-web |
 | Flow（`flow`） | flow、fs-web |
+| Pi 控制台（`pi`） | pi-chat、pi-sessions、pi-config、fs-web |
+| 对话（`chat`） | pi-chat |
+| Pi 配置（`pi-config`） | pi-config、fs-web |
 
 上表是 `registry.tsx` 里的默认值。标题栏的 **Profiles** 页可编辑：新建、改名、删除 profile，并用「＋ 未启用模块 / 移除 / ↑ ↓」决定每个 profile 启用哪些模块与堆叠顺序。改动即时生效并写入 `ursi.workspace:profiles`，标题栏切换器同步更新；「恢复默认」丢弃自定义配置回到上表。
 
-默认只展开第一个模块；展开的是哪一节按 `ursi.workspace:<profile>:expanded` 持久化，当前 profile 存于 `ursi.workspace:profile`。切换 profile 会重挂布局表面，iframe 类模块（pi-web）会重载一次，属可接受的低频行为。
+默认只展开第一个模块；展开的是哪一节按 `ursi.workspace:<profile>:expanded` 持久化，当前 profile 存于 `ursi.workspace:profile`。切换 profile 会重挂布局表面，属可接受的低频行为。
 
 编辑 profile 不会重挂布局表面：改完模块集合后侧边栏与工作区就地刷新，被移除的模块卸载，展开项已失效时回退到第一个启用模块。删掉当前 profile 时切换器回退到第一个，不留空白选择。至少保留一个 profile，最后一个的删除按钮禁用。
 

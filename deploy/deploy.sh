@@ -9,7 +9,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NODE="${NODE:-$(command -v node || true)}"
 CADDY="${CADDY:-$(command -v caddy || true)}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-ENV_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ursi-flow"
 UNITS=(
   ursi-entry
   ursi-todo-web
@@ -18,7 +17,6 @@ UNITS=(
   ursi-pi-manager-web
   ursi-pi-sessions-web
   ursi-fs-web
-  pi-web
 )
 LOOPBACK_PORTS=(8090 8091 8093 8094 8199 30200)
 
@@ -48,10 +46,6 @@ preflight() {
     [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
     fail "工作区有未提交改动，确认后加 --force"
   fi
-  if [ ! -f "$ENV_DIR/pi-web.env" ] ||
-    ! grep -q '^PI_WEB_PASSWORD=' "$ENV_DIR/pi-web.env"; then
-    fail "$ENV_DIR/pi-web.env 缺少 PI_WEB_PASSWORD，Pi Web 会以无密码状态暴露到局域网"
-  fi
   echo "node=$NODE caddy=$CADDY root=$ROOT"
 }
 
@@ -69,10 +63,6 @@ build() {
   (cd "$ROOT/apps/ursi-flow" && npm run build)
   cargo build --release --manifest-path "$ROOT/apps/todo-web/Cargo.toml"
   cargo build --release --manifest-path "$ROOT/apps/ssh-web/Cargo.toml"
-  if [ "$ROOT/apps/pi-web/package-lock.json" -nt "$ROOT/apps/pi-web/node_modules/.package-lock.json" ]; then
-    (cd "$ROOT/apps/pi-web" && npm ci)
-  fi
-  (cd "$ROOT/apps/pi-web" && npm run build)
 }
 
 install_units() {
@@ -109,7 +99,6 @@ smoke() {
     wait_http "$base$path"
     echo "ok $path"
   done
-  wait_http "http://127.0.0.1:30141/"
 
   for port in "${LOOPBACK_PORTS[@]}"; do
     while read -r addr; do

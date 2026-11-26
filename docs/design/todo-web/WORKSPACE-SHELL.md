@@ -7,7 +7,7 @@ references:
 
 # 工作区外壳与模块组合
 
-工作区外壳把 todo、文件、终端、沙箱、pi-web 组合到一个固定页面里。本文记录当前结构与决定；契约为准的验收条件见 [外壳 SPEC](../../../packages/workspace-shell/SPEC.md) 与 [模块接入规范](../../../packages/workspace-shell/MODULE-CONTRACT.md)。
+工作区外壳把 todo、文件、终端、沙箱与 pi 系列模块组合到一个固定页面里。本文记录当前结构与决定；契约为准的验收条件见 [外壳 SPEC](../../../packages/workspace-shell/SPEC.md) 与 [模块接入规范](../../../packages/workspace-shell/MODULE-CONTRACT.md)。
 
 ## 结论
 

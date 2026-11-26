@@ -3,7 +3,7 @@ references:
   - ARCHITECHTURE.md
   - apps/ursi-flow/docs/flow-spec.md
   - apps/flow-web/README.md
-  - docs/design/pi-web/INTEGRATION.md
+  - docs/design/deployment/DEPLOYMENT.md
 ---
 
 # ursi-flow
@@ -12,19 +12,11 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[ursi-flow](apps/ursi-flow/SPEC.md) 是这部分能力的交付包：其中的 [Flow Core](apps/ursi-flow/core/SPEC.md) 是无状态推进 SDK，[Flow Executor](apps/ursi-flow/executor/SPEC.md) 定义执行器的两个方法，[Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。包自带命令行，装上就能执行一个 Flow 包。
 
-[Flow 工作台](apps/flow-web/SPEC.md) 用浏览器浏览 flow home 里的包、启动运行、回答人工确认并查看过程日志。独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），也能按 agent 执行一次性会话任务、提供会话运行态并驻留交互对话的运行时，与 Pi Web 和 CLI 互补。[Pi 会话浏览](apps/pi-sessions-web/SPEC.md) 除了读磁盘会话，还会叠加管理台提供的运行态、并把会话交给对话继续；[Pi 交互对话](apps/pi-chat-web/SPEC.md) 是浏览器里的多轮对话界面，一场对话绑定一份 pi home 配置。三者都能独立部署，也可以在同一工作台里组合使用。
+[Flow 工作台](apps/flow-web/SPEC.md) 用浏览器浏览 flow home 里的包、启动运行、回答人工确认并查看过程日志。独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），也能按 agent 执行一次性会话任务、提供会话运行态并驻留交互对话的运行时，与 CLI 互补。[Pi 会话浏览](apps/pi-sessions-web/SPEC.md) 除了读磁盘会话，还会叠加管理台提供的运行态、并把会话交给对话继续；[Pi 交互对话](apps/pi-chat-web/SPEC.md) 是浏览器里的多轮对话界面，一场对话绑定一份 pi home 配置。三者都能独立部署，也可以在同一工作台里组合使用。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 
 ## 关键功能与验收
-
-### 通过浏览器使用 Pi Agent
-
-#### 验收
-
-- `apps/pi-web` 独立安装依赖并构建后，以 `start:lan` 监听 `0.0.0.0:30141`，浏览器打开首页可列出并继续 `~/.pi/agent/sessions` 下的会话。
-- 新建会话并提交提示词后，进程内 AgentSession 真实调用模型并执行工具，内置终端可用。
-- 暴露到非回环地址前必须设置 `PI_WEB_PASSWORD`；未认证的 API 请求返回 401。
 
 ### 查看本机待办看板
 
