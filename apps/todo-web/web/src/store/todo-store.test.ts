@@ -250,6 +250,17 @@ describe('task relations', () => {
     expect(mocked.updateTask).not.toHaveBeenCalled()
   })
 
+  it('clears a relation when the target is null', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [{ ...child, parent_id: 'p', pre_id: 'p' }] })
+
+    await useTodoStore.getState().setTaskParent('c', null)
+    await useTodoStore.getState().setTaskPredecessor('c', null)
+
+    expect(mocked.updateTask).toHaveBeenCalledWith('c', { parent_id: null })
+    expect(mocked.updateTask).toHaveBeenCalledWith('c', { pre_id: null })
+  })
+
   it('skips writing when the relation is already set', async () => {
     useTodoStore.setState({ graphTasks: [{ ...child, parent_id: 'p' }] })
 

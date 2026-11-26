@@ -1,8 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { prioritySymbol, STATUS_LABELS } from '@/lib/format'
-import { buildTaskGraph, type TaskGraphEdgeKind, type TaskGraphNode } from '@/lib/task-graph'
+import {
+  buildTaskGraph,
+  type TaskGraphEdgeKind,
+  type TaskGraphNode,
+} from '@/lib/task-graph'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 import { StatusIcon } from './StatusIcon'
 
 interface LinkSession {
@@ -34,27 +39,33 @@ function targetAt(x: number, y: number): string | null {
 }
 
 /**
- * 任务关系图：`parent_id` 画成实线父子边，`pre_id` 画成虚线前置边。
- * 布局在 `lib/task-graph.ts` 算好，这里负责画节点、连线，以及两种建立关系的拖拽：
- * 拖动节点叠到另一个节点上设父任务，从节点左侧端点拖到目标设前置任务。
+ * 任务关系图：`parent_id` 显示为包含子任务的分组节点，`pre_id` 显示为前置依赖连线。
+ * 拖动节点叠到另一个节点上设父任务，从节点左侧端点拖到目标设前置任务；
+ * 连线上右键可以删除前置依赖，节点上右键可以解除父子关系。
  */
 export function TaskGraph() {
   const tasks = useTodoStore((state) => state.graphTasks)
   const loading = useTodoStore((state) => state.graphLoading)
   const hasProject = useTodoStore((state) => state.selectedProjectId !== null)
   const openTask = useTodoStore((state) => state.openTask)
+  const openNewTask = useTodoStore((state) => state.openNewTask)
   const selectedId = useTodoStore((state) =>
     state.detail?.mode === 'view' ? state.detail.task.id : null,
   )
 
   const layout = useMemo(() => buildTaskGraph(tasks), [tasks])
   const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks])
+  const nodesById = useMemo(
+    () => new Map(layout.nodes.map((node) => [node.id, node])),
+    [layout],
+  )
   const markerId = `task-graph-arrow-${useId().replace(/:/g, '')}`
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<LinkSession | null>(null)
   const suppressClickUntil = useRef(0)
   const [drag, setDrag] = useState<LinkDrag | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -136,7 +147,28 @@ export function TaskGraph() {
     })
   }
 
-  const pending = pendingPath(drag, layout.nodes, canvasRef.current)
+  const removeRelation = (action: Promise<void>) => {
+    void action.catch((error) =>
+      alert(`Failed to remove task relation: ${errorMessage(error)}`),
+    )
+  }
+
+  const openNodeMenu = (event: React.MouseEvent, node: TaskGraphNode) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const items: MenuItem[] = []
+    if (node.parentId) {
+      const store = useTodoStore.getState()
+      items.push({
+        label: 'Remove parent link',
+        onSelect: () => removeRelation(store.setTaskParent(node.id, null)),
+      })
+    }
+    items.push({ label: 'New task', onSelect: openNewTask })
+    setMenu({ x: event.clientX, y: event.clientY, items })
+  }
+
+  const pending = pendingPath(drag, nodesById, canvasRef.current)
 
   return (
     <div className="task-graph" role="group" aria-label="任务关系图">
@@ -145,6 +177,25 @@ export function TaskGraph() {
         className="task-graph-canvas"
         style={{ width: layout.width, height: layout.height }}
       >
+        {layout.nodes
+          .filter((node) => node.childIds.length > 0)
+          .map((node) => (
+            <div
+              key={`frame-${node.id}`}
+              data-task-node={node.id}
+              className={cx(
+                'task-graph-frame',
+                drag?.targetId === node.id && 'is-drop-target',
+              )}
+              style={{
+                left: node.x,
+                top: node.y,
+                width: node.width,
+                height: node.height,
+              }}
+              onContextMenu={(event) => openNodeMenu(event, node)}
+            />
+          ))}
         <svg
           className="task-graph-edges"
           width={layout.width}
@@ -165,16 +216,33 @@ export function TaskGraph() {
             </marker>
           </defs>
           {layout.edges.map((edge) => (
-            <path
-              key={`${edge.kind}:${edge.from}->${edge.to}`}
-              d={edge.path}
-              className={cx(
-                'task-graph-edge',
-                `edge-${edge.kind}`,
-                edge.back && 'is-back',
-              )}
-              markerEnd={`url(#${markerId})`}
-            />
+            <g key={`${edge.from}->${edge.to}`}>
+              <path
+                d={edge.path}
+                className={cx('task-graph-edge', edge.back && 'is-back')}
+                markerEnd={`url(#${markerId})`}
+              />
+              <path
+                d={edge.path}
+                className="task-graph-edge-hit"
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const store = useTodoStore.getState()
+                  setMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    items: [
+                      {
+                        label: 'Remove prerequisite link',
+                        onSelect: () =>
+                          removeRelation(store.setTaskPredecessor(edge.to, null)),
+                      },
+                    ],
+                  })
+                }}
+              />
+            </g>
           ))}
           {pending === null ? null : (
             <path
@@ -192,6 +260,7 @@ export function TaskGraph() {
               data-task-node={node.id}
               className={cx(
                 'task-graph-node',
+                node.childIds.length > 0 ? 'is-group' : 'is-leaf',
                 `is-${node.status}`,
                 selectedId === node.id && 'is-selected',
                 drag?.sourceId === node.id && 'is-linking',
@@ -201,7 +270,7 @@ export function TaskGraph() {
                 left: node.x,
                 top: node.y,
                 width: node.width,
-                height: node.height,
+                height: node.headerHeight,
               }}
               role="button"
               tabIndex={0}
@@ -215,6 +284,7 @@ export function TaskGraph() {
                 event.preventDefault()
                 if (task) openTask(task)
               }}
+              onContextMenu={(event) => openNodeMenu(event, node)}
               onPointerDown={(event) => beginLink(event, node.id, 'parent', false)}
             >
               <button
@@ -232,28 +302,32 @@ export function TaskGraph() {
                 {prioritySymbol(node.priority)}
               </span>
               <span className="task-graph-title">{node.label}</span>
+              {node.childIds.length > 0 ? (
+                <span className="task-graph-count">{node.childIds.length}</span>
+              ) : null}
               <StatusIcon status={node.status} size={11} />
             </div>
           )
         })}
       </div>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )
 }
 
-/** 拖拽过程中的临时连线：父子从节点右侧拉出，前瞻从左侧端点拉出。 */
+/** 拖拽过程中的临时连线：父子从节点右侧拉出，前置从左侧端点拉出。 */
 function pendingPath(
   drag: LinkDrag | null,
-  nodes: TaskGraphNode[],
+  nodes: Map<string, TaskGraphNode>,
   canvas: HTMLDivElement | null,
 ): string | null {
   if (!drag || !canvas) return null
-  const source = nodes.find((node) => node.id === drag.sourceId)
+  const source = nodes.get(drag.sourceId)
   if (!source) return null
   const rect = canvas.getBoundingClientRect()
   const x2 = drag.pointerX - rect.left
   const y2 = drag.pointerY - rect.top
   const x1 = drag.kind === 'parent' ? source.x + source.width : source.x
-  const y1 = source.y + source.height / 2
+  const y1 = source.y + source.headerHeight / 2
   return `M ${x1} ${y1} L ${x2} ${y2}`
 }

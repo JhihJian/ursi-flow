@@ -4,7 +4,7 @@ import type { Priority, Task, TaskStatus } from '@/api/types'
  * 把当前项目的任务排成一张从左到右的关系图。
  * 这里只算节点、连线与坐标，不碰 DOM，渲染层把结果画成节点与 SVG 路径。
  *
- * 图的两种关系都来自任务已有的字段：`parent_id` 是层级，`pre_id` 是顺序依赖。
+ * 两种关系分开表示：`parent_id` 变成嵌套的分组节点，`pre_id` 画成前置依赖连线。
  */
 
 export type TaskGraphEdgeKind = 'parent' | 'pre'
@@ -12,22 +12,27 @@ export type TaskGraphEdgeKind = 'parent' | 'pre'
 export interface TaskGraphNode {
   id: string
   title: string
-  /** 画在节点里的短标题，完整标题留在 `title`。 */
   label: string
   status: TaskStatus
   priority: Priority
-  /** 层级：前置任务与父任务算作更浅的一层。 */
+  /** 层级：只由前置依赖决定，分组的子节点跟随父节点摆放。 */
   depth: number
+  /** 节点自身标题条的绝对坐标。 */
   x: number
   y: number
+  /** 节点整体尺寸：分组节点包含所有子节点。 */
   width: number
   height: number
+  /** 标题条高度，连线与命中都用这条。 */
+  headerHeight: number
+  /** 可见的父任务；父子关系已经变成嵌套，不再画线。 */
+  parentId: string | null
+  childIds: string[]
 }
 
 export interface TaskGraphEdge {
   from: string
   to: string
-  kind: TaskGraphEdgeKind
   /** 回边：目标层级不深于来源，绕到下方避免压住主链。 */
   back: boolean
   path: string
@@ -35,6 +40,8 @@ export interface TaskGraphEdge {
 
 export interface TaskGraphLayout {
   nodes: TaskGraphNode[]
+  /** 根节点 id，按层级从左到右排列。 */
+  roots: string[]
   edges: TaskGraphEdge[]
   width: number
   height: number
@@ -42,10 +49,15 @@ export interface TaskGraphLayout {
   hidden: number
 }
 
-/** 节点尺寸固定，标题过长时由 CSS 截断，不靠文字长度撑大节点。 */
+/** 节点宽度固定，标题过长时由 CSS 截断，不用文字长度撑大节点。 */
 const NODE_WIDTH = 200
-const NODE_HEIGHT = 40
-const ROW_GAP = 12
+const HEADER_HEIGHT = 40
+/** 分组节点里子节点之间的纵向间距。 */
+const CHILD_GAP = 10
+/** 子节点相对父节点左边的缩进。 */
+const CHILD_INDENT = 14
+/** 子节点与分组底边的留白。 */
+const GROUP_PAD = 12
 const COLUMN_GAP = 64
 const PADDING = 16
 /** 回边绕到节点下方，底线之外要留出的空间。 */
@@ -87,7 +99,45 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
   }
 
   const shown = tasks.filter((task) => keep.has(task.id))
+  if (shown.length === 0) {
+    return { nodes: [], roots: [], edges: [], width: 0, height: 0, hidden: tasks.length }
+  }
   const visible = new Set(shown.map((task) => task.id))
+  const ids = shown.map((task) => task.id)
+
+  // 父子关系变成嵌套：先取可见父节点，父子成环时在重复处断开，避免无限嵌套。
+  const parentOf = new Map<string, string | null>()
+  for (const task of shown) {
+    const parent = task.parent_id
+    parentOf.set(task.id, parent && visible.has(parent) && parent !== task.id ? parent : null)
+  }
+  for (const id of ids) {
+    const seen = new Set<string>()
+    let current: string | null = id
+    while (current) {
+      if (seen.has(current)) {
+        parentOf.set(current, null)
+        break
+      }
+      seen.add(current)
+      current = parentOf.get(current) ?? null
+    }
+  }
+
+  const childrenOf = new Map<string, string[]>()
+  for (const id of ids) childrenOf.set(id, [])
+  const roots: string[] = []
+  for (const id of ids) {
+    const parent = parentOf.get(id) ?? null
+    if (parent) childrenOf.get(parent)!.push(id)
+    else roots.push(id)
+  }
+
+  const preOf = new Map<string, string | null>()
+  for (const task of shown) {
+    const pre = task.pre_id
+    preOf.set(task.id, pre && visible.has(pre) && pre !== task.id ? pre : null)
+  }
 
   const nodes = new Map<string, TaskGraphNode>()
   for (const task of shown) {
@@ -101,23 +151,142 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
       x: 0,
       y: 0,
       width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      height: HEADER_HEIGHT,
+      headerHeight: HEADER_HEIGHT,
+      parentId: parentOf.get(task.id) ?? null,
+      childIds: [],
     })
   }
+  const compareIds = (left: string, right: string) =>
+    compareNodes(nodes.get(left)!, nodes.get(right)!)
+  // 同一组里的子任务按前置关系排序，前置在上，兄弟之间的依赖就能用竖线表示。
+  for (const list of childrenOf.values()) list.splice(0, list.length, ...orderSiblings(list, nodes, preOf))
+  roots.sort(compareIds)
+  for (const node of nodes.values()) node.childIds = childrenOf.get(node.id) ?? []
 
-  const rawEdges: Array<{ from: string; to: string; kind: TaskGraphEdgeKind }> = []
-  for (const task of shown) {
-    if (task.parent_id && visible.has(task.parent_id) && task.parent_id !== task.id) {
-      rawEdges.push({ from: task.parent_id, to: task.id, kind: 'parent' })
+  const preEdges: Array<{ from: string; to: string }> = []
+  for (const [id, pre] of preOf) if (pre) preEdges.push({ from: pre, to: id })
+  assignDepths(nodes, preEdges)
+
+  // 自底向上量出分组节点的大小：标题条 + 子节点堆叠。
+  const sizes = new Map<string, { width: number; height: number }>()
+  const measure = (id: string): { width: number; height: number } => {
+    const cached = sizes.get(id)
+    if (cached) return cached
+    const kids = nodes.get(id)!.childIds
+    let result = { width: NODE_WIDTH, height: HEADER_HEIGHT }
+    if (kids.length > 0) {
+      let widest = 0
+      let total = 0
+      kids.forEach((kid, index) => {
+        const size = measure(kid)
+        widest = Math.max(widest, size.width)
+        total += size.height + (index === 0 ? 0 : CHILD_GAP)
+      })
+      result = {
+        width: Math.max(NODE_WIDTH, CHILD_INDENT + widest + GROUP_PAD),
+        height: HEADER_HEIGHT + CHILD_GAP + total + GROUP_PAD,
+      }
     }
-    if (task.pre_id && visible.has(task.pre_id) && task.pre_id !== task.id) {
-      rawEdges.push({ from: task.pre_id, to: task.id, kind: 'pre' })
+    sizes.set(id, result)
+    return result
+  }
+  for (const node of nodes.values()) {
+    const size = measure(node.id)
+    node.width = size.width
+    node.height = size.height
+  }
+
+  // 根节点只按前置依赖分列，子节点跟随父节点缩进。
+  const columns = new Map<number, string[]>()
+  for (const id of roots) {
+    const depth = nodes.get(id)!.depth
+    const column = columns.get(depth)
+    if (column) column.push(id)
+    else columns.set(depth, [id])
+  }
+  const depths = [...columns.keys()].sort((left, right) => left - right)
+  const columnHeights = new Map<number, number>()
+  for (const depth of depths) {
+    const column = columns.get(depth)!
+    const height =
+      column.reduce((sum, id) => sum + nodes.get(id)!.height, 0) +
+      Math.max(0, column.length - 1) * CHILD_GAP
+    columnHeights.set(depth, height)
+  }
+  const tallest = Math.max(...depths.map((depth) => columnHeights.get(depth)!))
+
+  const place = (id: string, x: number, y: number) => {
+    const node = nodes.get(id)!
+    node.x = x
+    node.y = y
+    let childY = y + HEADER_HEIGHT + CHILD_GAP
+    for (const kid of node.childIds) {
+      place(kid, x + CHILD_INDENT, childY)
+      childY += nodes.get(kid)!.height + CHILD_GAP
     }
   }
 
-  assignDepths(nodes, rawEdges)
-  const placed = place(nodes, rawEdges)
-  return { ...placed, hidden: tasks.length - shown.length }
+  const xOf = new Map<number, number>()
+  let x = PADDING
+  for (const depth of depths) {
+    xOf.set(depth, x)
+    const widest = Math.max(...columns.get(depth)!.map((id) => nodes.get(id)!.width))
+    x += widest + COLUMN_GAP
+  }
+  for (const depth of depths) {
+    const column = columns.get(depth)!
+    let y = PADDING + Math.max(0, (tallest - columnHeights.get(depth)!) / 2)
+    for (const id of column) {
+      place(id, xOf.get(depth)!, y)
+      y += nodes.get(id)!.height + CHILD_GAP
+    }
+  }
+
+  const edges: TaskGraphEdge[] = []
+  let hasBack = false
+  for (const edge of preEdges) {
+    const from = nodes.get(edge.from)
+    const to = nodes.get(edge.to)
+    if (!from || !to) continue
+    // 跨组的依赖连线画在分组外框上，箭头指向目标任务所在的分组；
+    // 同组内的依赖仍连到具体任务，前置在上、依赖在下。
+    const fromBox = topLevelNode(from, nodes)
+    const toBox = topLevelNode(to, nodes)
+    if (fromBox.id === toBox.id) {
+      edges.push({ from: from.id, to: to.id, back: false, path: siblingPath(from, to) })
+      continue
+    }
+    if (toBox.x >= fromBox.x + fromBox.width) {
+      edges.push({
+        from: from.id,
+        to: to.id,
+        back: false,
+        path: forwardPath(fromBox, toBox),
+      })
+      continue
+    }
+    if (toBox.x === fromBox.x && toBox.y > fromBox.y) {
+      edges.push({
+        from: from.id,
+        to: to.id,
+        back: false,
+        path: verticalPath(fromBox, toBox),
+      })
+      continue
+    }
+    hasBack = true
+    edges.push({ from: from.id, to: to.id, back: true, path: backPath(fromBox, toBox) })
+  }
+
+  return {
+    nodes: [...nodes.values()],
+    roots,
+    edges,
+    width: x - COLUMN_GAP + PADDING,
+    height: PADDING * 2 + tallest + (hasBack ? BACK_EDGE_ROOM : 0),
+    hidden: tasks.length - shown.length,
+  }
 }
 
 /**
@@ -189,6 +358,57 @@ export function relationCreatesCycle(
   return false
 }
 
+/** 兄弟节点排序：先按状态、优先级，再让前置任务排在依赖它的任务之前。 */
+function orderSiblings(
+  ids: string[],
+  nodes: Map<string, TaskGraphNode>,
+  preOf: Map<string, string | null>,
+): string[] {
+  const base = [...ids].sort((left, right) =>
+    compareNodes(nodes.get(left)!, nodes.get(right)!),
+  )
+  const members = new Set(ids)
+  const placed = new Set<string>()
+  const ordered: string[] = []
+  const predecessorOf = (id: string) => {
+    const pre = preOf.get(id)
+    return pre && members.has(pre) ? pre : null
+  }
+  while (ordered.length < base.length) {
+    const next = base.find((id) => {
+      if (placed.has(id)) return false
+      const pre = predecessorOf(id)
+      return pre === null || placed.has(pre)
+    })
+    // 前置成环时剩余节点按原顺序收尾，避免死循环。
+    const pick = next ?? base.find((id) => !placed.has(id))!
+    placed.add(pick)
+    ordered.push(pick)
+  }
+  return ordered
+}
+
+/** 同组兄弟之间的前置依赖：相邻时竖直连线，隔着其它兄弟时绕到右侧。 */
+function siblingPath(from: TaskGraphNode, to: TaskGraphNode): string {
+  const fromX = from.x + from.width / 2
+  const toX = to.x + to.width / 2
+  const fromY = from.y + from.height
+  const toY = to.y
+  if (toY >= fromY) {
+    const gap = toY - fromY
+    if (gap <= CHILD_GAP + 2) {
+      return `M ${fromX} ${fromY} C ${fromX} ${fromY + gap / 2}, ${toX} ${toY - gap / 2}, ${toX} ${toY}`
+    }
+    // 中间隔着别的兄弟：从子节点右侧的留白绕过去，不穿过中间的节点。
+    const right = Math.max(from.x + from.width, to.x + to.width) + 6
+    const mid = (fromY + toY) / 2
+    return `M ${fromX} ${fromY} C ${fromX} ${fromY + 6}, ${right} ${fromY + 6}, ${right} ${mid} C ${right} ${toY - 6}, ${toX} ${toY - 6}, ${toX} ${toY}`
+  }
+  // 反过来时绕到右侧，别穿过同组的其它节点。
+  const right = Math.max(from.x + from.width, to.x + to.width) + 18
+  return `M ${fromX} ${fromY} C ${right} ${fromY}, ${right} ${toY}, ${toX} ${toY}`
+}
+
 function compareNodes(left: TaskGraphNode, right: TaskGraphNode): number {
   const status = STATUS_RANK[left.status] - STATUS_RANK[right.status]
   if (status !== 0) return status
@@ -197,86 +417,46 @@ function compareNodes(left: TaskGraphNode, right: TaskGraphNode): number {
   return left.title.localeCompare(right.title) || left.id.localeCompare(right.id)
 }
 
-function place(
+/** 跨组连线的起点与终点用最外层的分组外框，避免线条钻进分组内部。 */
+function topLevelNode(
+  node: TaskGraphNode,
   nodes: Map<string, TaskGraphNode>,
-  rawEdges: Array<{ from: string; to: string; kind: TaskGraphEdgeKind }>,
-): Omit<TaskGraphLayout, 'hidden'> {
-  if (nodes.size === 0) return { nodes: [], edges: [], width: 0, height: 0 }
-
-  const rows = new Map<number, TaskGraphNode[]>()
-  for (const node of nodes.values()) {
-    const row = rows.get(node.depth)
-    if (row) row.push(node)
-    else rows.set(node.depth, [node])
+): TaskGraphNode {
+  let current = node
+  const seen = new Set<string>([node.id])
+  while (current.parentId) {
+    const parent = nodes.get(current.parentId)
+    if (!parent || seen.has(parent.id)) break
+    seen.add(parent.id)
+    current = parent
   }
-  const depths = [...rows.keys()].sort((left, right) => left - right)
-  for (const depth of depths) rows.get(depth)!.sort(compareNodes)
-
-  const xOf = new Map<number, number>()
-  let x = PADDING
-  for (const depth of depths) {
-    xOf.set(depth, x)
-    x += NODE_WIDTH + COLUMN_GAP
-  }
-
-  const tallest = Math.max(...depths.map((depth) => rows.get(depth)!.length))
-  const stackHeight = tallest * NODE_HEIGHT + Math.max(0, tallest - 1) * ROW_GAP
-  for (const depth of depths) {
-    const row = rows.get(depth)!
-    const stack = row.length * NODE_HEIGHT + Math.max(0, row.length - 1) * ROW_GAP
-    let y = PADDING + Math.max(0, (stackHeight - stack) / 2)
-    for (const node of row) {
-      node.x = xOf.get(depth)!
-      node.y = y
-      y += NODE_HEIGHT + ROW_GAP
-    }
-  }
-
-  const edges: TaskGraphEdge[] = []
-  let hasBack = false
-  for (const edge of rawEdges) {
-    const from = nodes.get(edge.from)
-    const to = nodes.get(edge.to)
-    if (!from || !to) continue
-    const back = to.depth <= from.depth
-    if (back) hasBack = true
-    const geometry = to.depth === from.depth ? 'same' : back ? 'back' : 'forward'
-    edges.push({
-      from: from.id,
-      to: to.id,
-      kind: edge.kind,
-      back,
-      path: edgePath(from, to, geometry),
-    })
-  }
-
-  return {
-    nodes: [...nodes.values()],
-    edges,
-    width: x - COLUMN_GAP + PADDING,
-    height: PADDING * 2 + stackHeight + (hasBack ? BACK_EDGE_ROOM : 0),
-  }
+  return current
 }
 
-function edgePath(
-  from: TaskGraphNode,
-  to: TaskGraphNode,
-  geometry: 'forward' | 'same' | 'back',
-): string {
+function forwardPath(from: TaskGraphNode, to: TaskGraphNode): string {
   const x1 = from.x + from.width
-  const y1 = from.y + NODE_HEIGHT / 2
+  const y1 = from.y + HEADER_HEIGHT / 2
   const x2 = to.x
-  const y2 = to.y + NODE_HEIGHT / 2
-  if (geometry === 'forward') {
-    const mid = (x1 + x2) / 2
-    return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
-  }
-  if (geometry === 'same') {
-    const midY = Math.max(from.y, to.y) + NODE_HEIGHT + ROW_GAP / 2
-    return `M ${x1} ${y1} C ${x1 + 32} ${midY}, ${x2 - 32} ${midY}, ${x2} ${y2}`
-  }
-  const bottom = Math.max(from.y, to.y) + NODE_HEIGHT
+  const y2 = to.y + HEADER_HEIGHT / 2
+  const mid = (x1 + x2) / 2
+  return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
+}
+
+/** 同一列上下相邻的两个分组，用竖线连接，箭头指向下面那个。 */
+function verticalPath(from: TaskGraphNode, to: TaskGraphNode): string {
+  const fromX = from.x + from.width / 2
+  const toX = to.x + to.width / 2
+  const fromY = from.y + from.height
+  const toY = to.y
+  return `M ${fromX} ${fromY} C ${fromX} ${fromY + 10}, ${toX} ${toY - 10}, ${toX} ${toY}`
+}
+
+/** 目标在当前列的上面或左边，绕到底部再回来。 */
+function backPath(from: TaskGraphNode, to: TaskGraphNode): string {
+  const x1 = from.x + from.width
+  const y1 = from.y + HEADER_HEIGHT / 2
+  const x2 = to.x + to.width / 2
+  const bottom = Math.max(from.y + from.height, to.y + to.height)
   const exitX = x1 + 24
-  const entryX = to.x + to.width / 2
-  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 20}, ${entryX} ${bottom + 20} L ${entryX} ${to.y + NODE_HEIGHT}`
+  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 20}, ${x2} ${bottom + 20} L ${x2} ${to.y + to.height}`
 }
