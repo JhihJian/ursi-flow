@@ -57,6 +57,13 @@ export interface GeneralListing {
   managed: Record<string, unknown>
   keyCount: number
   unmanagedKeys: string[]
+  /** defaultTools 实际启用的内置工具（设置页开关的初始状态）。 */
+  builtinTools: string[]
+  builtinToolNames: string[]
+  /** defaultTools 解析后的实际工具集。 */
+  resolvedTools: string[]
+  isWindows: boolean
+  powerShellEnabled: boolean
 }
 
 export type CatalogSource =
@@ -130,12 +137,57 @@ export interface SkillsListing {
   warnings: string[]
 }
 
-export interface AgentProfileSummary {
+export interface SkillFrontmatterEntry {
+  key: string
+  value: string
+}
+
+export interface SkillContent {
+  relDir: string
+  filePath: string
+  raw: string
+  frontmatter: SkillFrontmatterEntry[]
+  body: string
+  bytes: number
+  revision: string
+}
+
+export interface AgentProfileFields {
+  displayName: string | null
+  model: string | null
+  thinking: string | null
+  /** null 表示文件未写 tools（跟随 pi 默认）。 */
+  tools: string[] | null
+  loadSkills: boolean
+  loadExtensions: boolean
+  codemode: 'off' | 'inherit' | 'on'
+  mcp: 'off' | 'on'
+  enabled: boolean
+  inheritContext: boolean
+  runInBackground: boolean
+  promptMode: 'append' | 'replace'
+  maxTurns: number | null
+  color: string | null
+  isolation: 'worktree' | 'off' | null
+  persistSession: boolean | null
+  /** 只读展示：文件里 skills: / extensions: 的白名单。 */
+  skillsAlias: string[] | null
+  extensionsAlias: string[] | null
+}
+
+export interface AgentProfile {
   file: string
   name: string
   description: string
+  fields: AgentProfileFields
+  /** frontmatter 里实际出现的受管 key。 */
+  presentKeys: string[]
+  /** 未受管 key 的原样文本行。 */
   extraKeys: string[]
-  bodyPreview: string
+  /** 值不是标准写法、保存时原样保留的受管 key。 */
+  unparsedKeys: string[]
+  body: string
+  revision: string
   bytes: number
 }
 
@@ -149,14 +201,8 @@ export interface AgentsSettingsView {
 }
 
 export interface AgentsListing {
-  profiles: AgentProfileSummary[]
+  profiles: AgentProfile[]
   settings: AgentsSettingsView
-}
-
-export interface AgentProfileDetail {
-  file: string
-  content: string
-  revision: string
 }
 
 export interface McpServerView {
@@ -165,6 +211,14 @@ export interface McpServerView {
   maskedFields: string[]
   varRefs: string[]
   commandValues: string[]
+  /** 含不可见/控制字符的字段路径。 */
+  hiddenChars: string[]
+  transport: 'stdio' | 'http' | 'unknown'
+  enabled: boolean
+  exposure: 'direct' | 'deferred' | 'codemode'
+  cwd: string | null
+  envNames: string[]
+  headerNames: string[]
 }
 
 export interface McpListing {
@@ -189,6 +243,29 @@ export interface ModelsListing {
   revision: string
   providers: ProviderView[]
   hadComments: boolean
+}
+
+export interface ProbeResult {
+  ok: boolean
+  error?: string
+  latencyMs?: number
+  status?: number
+  responseText?: string
+}
+
+export interface DiscoveredModel {
+  id: string
+  name?: string
+  reasoning?: true
+  thinkingLevelMap?: Record<string, string | null>
+  input?: string[]
+  contextWindow?: number
+  maxTokens?: number
+}
+
+export interface DiscoveryResult {
+  models: DiscoveredModel[]
+  endpoint: string
 }
 
 export type AuthEntryType = 'oauth' | 'api_key' | 'unknown'

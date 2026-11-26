@@ -2,7 +2,8 @@ import type {
   HomeCreateInput,
   HomeSummary,
   HomesListing,
-  AgentProfileDetail,
+  AgentProfile,
+  AgentProfileFields,
   AgentsListing,
   AuthListing,
   GeneralListing,
@@ -14,6 +15,9 @@ import type {
   ModelsListing,
   MutationResult,
   PluginsListing,
+  ProbeResult,
+  DiscoveryResult,
+  SkillContent,
   SkillsListing,
 } from './types'
 
@@ -99,19 +103,37 @@ export const api = {
   getGeneral: (home: string) => request<GeneralListing>('GET', '/api/general', home),
   putGeneralKey: (home: string, key: string, value: unknown, revision: string) =>
     request<MutationResult>('PUT', '/api/general/key', home, { key, value, revision }),
+  /** 内置工具开关：服务端按 pi 的 +/- 修饰语义写回 defaultTools。 */
+  putGeneralTools: (home: string, builtinTools: string[], revision: string) =>
+    request<MutationResult>('PUT', '/api/general/tools', home, { builtinTools, revision }),
+  /** Windows：PowerShell 代替 bash（服务端写普通名字工具集）。 */
+  putGeneralShell: (home: string, powerShell: boolean, revision: string) =>
+    request<MutationResult>('PUT', '/api/general/shell', home, { powerShell, revision }),
   /** 默认模型同时由 defaultProvider 与 defaultModel 两个 key 组成，必须一次写完。 */
   putGeneralModel: (home: string, provider: string, modelId: string, revision: string) =>
     request<MutationResult>('PUT', '/api/general/model', home, { provider, modelId, revision }),
   getSkills: (home: string) => request<SkillsListing>('GET', '/api/skills', home),
+  /** 单个 skill 的完整内容：frontmatter 原条目 + 正文。 */
+  getSkillContent: (home: string, relDir: string) =>
+    request<SkillContent>('GET', `/api/skills/content?relDir=${encodeURIComponent(relDir)}`, home),
   toggleSkill: (home: string, relDir: string, disabled: boolean) =>
     request<{ ok: true; disabled: boolean }>('POST', '/api/skills/toggle', home, { relDir, disabled }),
   getAgents: (home: string) => request<AgentsListing>('GET', '/api/agents', home),
   getAgentProfile: (home: string, file: string) =>
-    request<AgentProfileDetail>('GET', `/api/agents/profile?file=${encodeURIComponent(file)}`, home),
+    request<AgentProfile>('GET', `/api/agents/profile?file=${encodeURIComponent(file)}`, home),
   putAgentProfile: (
     home: string,
-    payload: { file: string; name: string; description: string; extraKeys: string[]; body: string; revision: string },
-  ) => request<MutationResult & { file: string }>('PUT', '/api/agents/profile', home, payload),
+    payload: {
+      file: string
+      name: string
+      description: string
+      fields: AgentProfileFields
+      presentKeys: string[]
+      extraKeys: string[]
+      body: string
+      revision: string
+    },
+  ) => request<MutationResult & { file: string; profile: AgentProfile }>('PUT', '/api/agents/profile', home, payload),
   deleteAgentProfile: (home: string, file: string) =>
     request<{ ok: true }>('DELETE', '/api/agents/profile', home, { file }),
   putAgentsSettings: (
@@ -122,12 +144,25 @@ export const api = {
   getMcp: (home: string) => request<McpListing>('GET', '/api/mcp', home),
   putMcpServers: (home: string, servers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/mcp/servers', home, { servers, revision }),
+  /** 只改一个 server 的 enabled / exposure。 */
+  putMcpServerState: (
+    home: string,
+    name: string,
+    patch: { enabled?: boolean; exposure?: 'direct' | 'deferred' | 'codemode' },
+    revision: string,
+  ) => request<MutationResult>('PUT', '/api/mcp/server', home, { name, ...patch, revision }),
   getModels: (home: string) => request<ModelsListing>('GET', '/api/models', home),
   getModelCatalog: (home: string) => request<ModelCatalog>('GET', '/api/models/catalog', home),
   /** 重新采集运行时模型目录（会加载该 home 的扩展，只在用户点刷新时调用）。 */
   refreshModelCatalog: (home: string) => request<ModelCatalog>('POST', '/api/models/catalog/refresh', home),
   putModelProviders: (home: string, providers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/models/providers', home, { providers, revision }),
+  /** 测一个草稿模型（会发一次真实请求，凭据来自该 home 的 auth.json）。 */
+  testModel: (home: string, providerName: string, provider: Record<string, unknown>, model: Record<string, unknown>) =>
+    request<ProbeResult>('POST', '/api/models/test', home, { providerName, provider, model }),
+  /** 拉取上游 /models 列表（不写文件）。 */
+  discoverModels: (home: string, providerName: string, provider: Record<string, unknown>) =>
+    request<DiscoveryResult>('POST', '/api/models/discover', home, { providerName, provider }),
   /** 写单个模型的 modelOverrides（null 表示删除覆盖），只改 models.json 的这一个键。 */
   putModelOverride: (
     home: string,

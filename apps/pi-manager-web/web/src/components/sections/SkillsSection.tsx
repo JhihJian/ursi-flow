@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { SkillItem, SkillsListing } from '../../api/types'
+import type { SkillContent, SkillItem, SkillsListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { EmptyState, ErrorBanner, Loading } from '../ui'
 
@@ -120,6 +120,7 @@ export function SkillsSection({ home }: { home: string }) {
               </span>
             </div>
             <p className="detail-desc">{selectedSkill.description || '（无描述）'}</p>
+            <SkillContentView home={home} relDir={selectedSkill.relDir} />
             <div className="detail-actions">
               {selectedSkill.disableModelInvocation ? (
                 <button type="button" className="btn btn-primary" onClick={() => void toggle(selectedSkill, false)}>
@@ -138,5 +139,55 @@ export function SkillsSection({ home }: { home: string }) {
         </div>
       ) : null}
     </section>
+  )
+}
+
+/**
+ * 选中 skill 的只读内容：frontmatter 原条目 + 正文。
+ * 与 pi-web 的 Skills 详情一致，开关只改 frontmatter 的一行，正文逐字节不变，
+ * 因此正文预览就是文件真实内容。
+ */
+function SkillContentView({ home, relDir }: { home: string; relDir: string }) {
+  const [content, setContent] = useState<SkillContent | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setContent(null)
+    setError(null)
+    api
+      .getSkillContent(home, relDir)
+      .then((data) => {
+        if (!cancelled) setContent(data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(describeError(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [home, relDir])
+
+  if (error) return <ErrorBanner message={error} />
+  if (!content) return <Loading label="读取 SKILL.md" />
+
+  return (
+    <div className="skill-content">
+      {content.frontmatter.length > 0 ? (
+        <table className="skill-frontmatter">
+          <tbody>
+            {content.frontmatter.map((entry) => (
+              <tr key={entry.key}>
+                <th>{entry.key}</th>
+                <td>{entry.value || '（空）'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="section-warn">该文件没有 frontmatter；禁用模型调用会失败，需要先补 frontmatter。</p>
+      )}
+      <pre className="skill-body">{content.body.trim() || '（正文为空）'}</pre>
+    </div>
   )
 }

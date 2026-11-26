@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { McpListing, McpServerView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading, Switch } from '../ui'
 
 /**
  * MCP（mcp.json）：server 列表 + JSON 详情编辑，合并写回语义同 models。
@@ -47,6 +47,17 @@ export function McpSection({ home }: { home: string }) {
     })
   }
 
+  async function patchState(
+    server: McpServerView,
+    patch: { enabled?: boolean; exposure?: McpServerView['exposure'] },
+    label: string,
+  ) {
+    await runWrite(label, async () => {
+      await api.putMcpServerState(home, server.name, patch, listing!.revision)
+      await reload()
+    })
+  }
+
   return (
     <section className="section">
       <header className="section-head">
@@ -62,7 +73,7 @@ export function McpSection({ home }: { home: string }) {
         <table className="item-table">
           <thead>
             <tr>
-              <th className="col-state">Mask</th>
+              <th className="col-state">State</th>
               <th>Server</th>
               <th className="col-size">Transport</th>
             </tr>
@@ -78,13 +89,15 @@ export function McpSection({ home }: { home: string }) {
                 }}
               >
                 <td className="col-state">
-                  <span className={`state-mark${server.maskedFields.length > 0 ? ' off' : ''}`}>
-                    {server.maskedFields.length > 0 ? `${server.maskedFields.length}` : '—'}
+                  <span className={`state-mark${server.enabled ? '' : ' off'}`}>
+                    {server.enabled ? '✓' : '×'}
                   </span>
                 </td>
                 <td>
                   <div className="cell-title">{server.name}</div>
-                  <div className="cell-sub">{server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : ''}</div>
+                  <div className="cell-sub">
+                    {server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : server.exposure === 'codemode' ? '' : `exposure: ${server.exposure}`}
+                  </div>
                 </td>
                 <td className="col-size">{describeTransport(server)}</td>
               </tr>
@@ -102,7 +115,20 @@ export function McpSection({ home }: { home: string }) {
       {creating ? (
         <ServerEditor
           key="__new__"
-          server={{ name: '', entry: { command: '', args: [] }, maskedFields: [], varRefs: [], commandValues: [] }}
+          server={{
+            name: '',
+            entry: { command: '', args: [] },
+            maskedFields: [],
+            varRefs: [],
+            commandValues: [],
+            hiddenChars: [],
+            transport: 'stdio',
+            enabled: true,
+            exposure: 'codemode',
+            cwd: null,
+            envNames: [],
+            headerNames: [],
+          }}
           isNew
           onSave={(name, entry) => saveOne(name, entry, `新增 server ${name}`)}
           onCancel={() => setCreating(false)}
@@ -114,6 +140,7 @@ export function McpSection({ home }: { home: string }) {
           isNew={false}
           onSave={(name, entry) => saveOne(name, entry, `保存 server ${name}`)}
           onDelete={() => saveOne(selectedServer.name, null, `删除 server ${selectedServer.name}`)}
+          onPatchState={(patch, label) => patchState(selectedServer, patch, label)}
         />
       ) : null}
     </section>
@@ -121,10 +148,22 @@ export function McpSection({ home }: { home: string }) {
 }
 
 function describeTransport(server: McpServerView): string {
-  const entry = server.entry as { type?: unknown; url?: unknown; command?: unknown }
+  const entry = server.entry as { url?: unknown; command?: unknown }
   if (typeof entry.url === 'string') return `http · ${entry.url}`
   if (typeof entry.command === 'string') return `stdio · ${entry.command}`
-  return typeof entry.type === 'string' ? entry.type : '（传输方式未标注）'
+  return '（传输方式未标注）'
+}
+
+function ServerTarget({ server }: { server: McpServerView }) {
+  const entry = server.entry as { url?: unknown; command?: unknown; args?: unknown }
+  const args = Array.isArray(entry.args)
+    ? entry.args.filter((item): item is string => typeof item === 'string')
+    : []
+  if (typeof entry.url === 'string') return <code className="mcp-target">{entry.url}</code>
+  if (typeof entry.command === 'string') {
+    return <code className="mcp-target">{[entry.command, ...args].join(' ')}</code>
+  }
+  return <span className="mono-dim">（未标注传输方式）</span>
 }
 
 function ServerEditor({
@@ -133,12 +172,17 @@ function ServerEditor({
   onSave,
   onDelete,
   onCancel,
+  onPatchState,
 }: {
   server: McpServerView
   isNew: boolean
   onSave: (name: string, entry: Record<string, unknown>) => Promise<boolean>
   onDelete?: () => Promise<boolean>
   onCancel?: () => void
+  onPatchState?: (
+    patch: { enabled?: boolean; exposure?: McpServerView['exposure'] },
+    label: string,
+  ) => Promise<void>
 }) {
   const [name, setName] = useState(server.name)
   const [text, setText] = useState(() => JSON.stringify(server.entry, null, 2))
@@ -166,6 +210,29 @@ function ServerEditor({
     await onSave(name, entry)
   }
 
+  /**
+   * 开关写的是同一个条目的 enabled/exposure：先把这两个键同步到本地草稿，
+   * 否则下一次「保存」会用旧草稿把它们覆盖掉。
+   */
+  function applyStatePatch(
+    patch: { enabled?: boolean; exposure?: McpServerView['exposure'] },
+    label: string,
+  ) {
+    const entry = parseDraft()
+    if (!entry || !onPatchState) return
+    const next = { ...entry }
+    if (patch.enabled !== undefined) {
+      if (patch.enabled) delete next.enabled
+      else next.enabled = false
+    }
+    if (patch.exposure !== undefined) {
+      if (patch.exposure === 'codemode') delete next.exposure
+      else next.exposure = patch.exposure
+    }
+    setText(JSON.stringify(next, null, 2))
+    void onPatchState(patch, label)
+  }
+
   return (
     <div className="detail-sheet">
       <div className="detail-grip" aria-hidden />
@@ -175,6 +242,71 @@ function ServerEditor({
           <span className="detail-meta">stdio：command/args/env · http：url/headers · 密钥字段显示掩码</span>
         </div>
         <div className="detail-form">
+          {!isNew && onPatchState ? (
+            <div className="detail-grid">
+              <Field label="启用" hint="enabled: false 时 pi 不连接该 server；打开会删除该 key。">
+                <Switch
+                  pressed={server.enabled}
+                  label={server.enabled ? '已启用' : '已停用'}
+                  onChange={(next) =>
+                    applyStatePatch({ enabled: next }, `${next ? '启用' : '停用'} server ${server.name}`)
+                  }
+                />
+              </Field>
+              <Field label="exposure" hint="codemode（默认）会删键；direct/deferred 写入条目。">
+                <select
+                  className="select"
+                  value={server.exposure}
+                  onChange={(e) =>
+                    applyStatePatch(
+                      { exposure: e.target.value as McpServerView['exposure'] },
+                      `设置 ${server.name} 的 exposure`,
+                    )
+                  }
+                >
+                  <option value="codemode">codemode（默认）</option>
+                  <option value="direct">direct</option>
+                  <option value="deferred">deferred</option>
+                </select>
+              </Field>
+            </div>
+          ) : null}
+
+          <div className="mcp-summary">
+            <div className="mcp-summary-row">
+              <span className="cell-sub">目标</span>
+              <ServerTarget server={server} />
+            </div>
+            {server.cwd ? (
+              <div className="mcp-summary-row">
+                <span className="cell-sub">cwd</span>
+                <span className="cell-title">{server.cwd}</span>
+              </div>
+            ) : null}
+            {server.envNames.length > 0 ? (
+              <div className="mcp-summary-row">
+                <span className="cell-sub">env</span>
+                <span className="cell-title">{server.envNames.join('、')}</span>
+              </div>
+            ) : null}
+            {server.headerNames.length > 0 ? (
+              <div className="mcp-summary-row">
+                <span className="cell-sub">headers</span>
+                <span className="cell-title">{server.headerNames.join('、')}</span>
+              </div>
+            ) : null}
+          </div>
+
+          {server.maskedFields.length > 0 ? (
+            <p className="detail-hint">
+              密钥已遮蔽：{server.maskedFields.join('、')}。原样保存会写回磁盘原文；改成新值则写新值。
+            </p>
+          ) : null}
+          {server.hiddenChars.length > 0 ? (
+            <p className="section-warn">
+              这些字段含不可见字符（{server.hiddenChars.join('、')}），可能是显示欺骗，请核对原文。
+            </p>
+          ) : null}
           {server.varRefs.length > 0 ? (
             <p className="detail-hint">值引用了环境变量：{server.varRefs.join('、')}。引用原样保留，不展开。</p>
           ) : null}

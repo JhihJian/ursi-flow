@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { ConflictError } from './rw.ts'
 
 /**
  * skills/ 目录扫描与 SKILL.md frontmatter 的外科式开关。
@@ -22,7 +23,7 @@ export interface SkillInfo {
   bytes: number
 }
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
+const FRONTMATTER_RE = /^(?:\uFEFF)?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
 
 function fileRevision(path: string): string {
   const info = statSync(path)
@@ -112,6 +113,85 @@ export interface SkillsListing {
   skills: SkillInfo[]
   /** settings.json 里声明但本目录不存在的额外 skill 路径数。 */
   warnings: string[]
+}
+
+export interface SkillFrontmatterEntry {
+  key: string
+  /** 原样值（缩进续行已合并为多行）。 */
+  value: string
+}
+
+export interface SkillContent {
+  relDir: string
+  filePath: string
+  raw: string
+  /** 按原顺序的根级 frontmatter 条目；没有 frontmatter 为空数组。 */
+  frontmatter: SkillFrontmatterEntry[]
+  /** frontmatter 之后的 Markdown 正文。 */
+  body: string
+  bytes: number
+  revision: string
+}
+
+/** relDir 只能是 skills/ 下的相对目录；同时兼容 / 与 \ 分隔符。 */
+function skillFilePath(home: string, relDir: string): string {
+  if (!relDir || isAbsolute(relDir) || relDir.split(/[\\/]/).some((part) => part === '' || part === '..')) {
+    throw new ConflictError('relDir 越界')
+  }
+  const root = join(home, 'skills')
+  const full = join(root, relDir, 'SKILL.md')
+  const rel = relative(root, full)
+  if (rel.startsWith('..') || isAbsolute(rel)) throw new ConflictError('relDir 越界')
+  return full
+}
+
+/** 外科式切换一个 skill 的 disable-model-invocation，写前备份。 */
+export async function toggleSkill(home: string, relDir: string, disabled: boolean): Promise<boolean> {
+  const path = skillFilePath(home, relDir)
+  const text = await readFile(path, 'utf8')
+  const next = toggleDisableModelInvocation(text, disabled)
+  if (next !== text) {
+    const { copyFile, rename, writeFile } = await import('node:fs/promises')
+    const { randomUUID } = await import('node:crypto')
+    await copyFile(path, `${path}.bak-manager`)
+    const tmp = `${path}.${process.pid}.${randomUUID()}.manager-tmp`
+    await writeFile(tmp, next, { mode: 0o600 })
+    await rename(tmp, path)
+  }
+  return readDisableModelInvocation(path)
+}
+
+/** 读取一个 skill 的完整内容：frontmatter 原条目 + 正文。 */
+export async function readSkillContent(home: string, relDir: string): Promise<SkillContent> {
+  const full = skillFilePath(home, relDir)
+  const text = await readFile(full, 'utf8')
+  const m = FRONTMATTER_RE.exec(text)
+  return {
+    relDir,
+    filePath: join('skills', relDir, 'SKILL.md'),
+    raw: text,
+    frontmatter: m ? parseFrontmatterEntries(m[1]) : [],
+    body: m ? text.slice(m[0].length) : text,
+    bytes: Buffer.byteLength(text),
+    revision: fileRevision(full),
+  }
+}
+
+/** 根级 key 成组：缩进的续行属于上一个 key 的值。 */
+function parseFrontmatterEntries(frontmatter: string): SkillFrontmatterEntry[] {
+  const entries: SkillFrontmatterEntry[] = []
+  for (const line of frontmatter.split(/\r?\n/)) {
+    const rm = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(line)
+    if (rm) {
+      entries.push({ key: rm[1], value: rm[2].trim() })
+      continue
+    }
+    if (entries.length > 0 && /^\s+\S/.test(line)) {
+      const last = entries[entries.length - 1]
+      last.value = `${last.value}\n${line.trim()}`
+    }
+  }
+  return entries
 }
 
 export async function listSkills(home: string): Promise<SkillsListing> {

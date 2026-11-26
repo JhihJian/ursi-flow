@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { GeneralListing, ModelCatalog } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
-import { ErrorBanner, Field, Loading } from '../ui'
+import { ErrorBanner, Field, Loading, Switch } from '../ui'
 import { ScopedModelsPanel } from './ScopedModelsPanel'
 
 /**
@@ -20,6 +20,7 @@ export function GeneralSection({ home }: { home: string }) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [toolsBusy, setToolsBusy] = useState(false)
   const runWrite = useAppStore((s) => s.runWrite)
   const setFooter = useAppStore((s) => s.setFooter)
 
@@ -71,6 +72,7 @@ export function GeneralSection({ home }: { home: string }) {
   const codemode = listing.managed.codemode as { mode?: unknown; inlineBudget?: unknown } | undefined
   const codemodeMode = typeof codemode?.mode === 'string' ? codemode.mode : ''
   const codemodeBudget = typeof codemode?.inlineBudget === 'number' ? String(codemode.inlineBudget) : ''
+  const cacheMissNotices = listing.managed.showCacheMissNotices === true
 
   async function writeKey(key: string, value: unknown, label: string) {
     await runWrite(label, async () => {
@@ -109,6 +111,23 @@ export function GeneralSection({ home }: { home: string }) {
     const parsed = Number(budget)
     if (budget && Number.isFinite(parsed) && parsed >= 0) value.inlineBudget = parsed
     return writeKey('codemode', value, '保存 codemode')
+  }
+
+  /** 内置工具开关：服务端按 pi 的 +/- 修饰语义写回，等于默认组合时删除 key。 */
+  async function writeBuiltinTools(next: string[]) {
+    // 连点开关会让第二次请求带旧 revision：写入期间禁用开关，完成后按新状态重绘。
+    setToolsBusy(true)
+    await runWrite(`保存内置工具（已选 ${next.length} 个）`, async () => {
+      const result = await api.putGeneralTools(home, next, listing!.revision)
+      if (result.changed) await reload()
+    })
+    setToolsBusy(false)
+  }
+
+  function toggleBuiltinTool(name: string, enabled: boolean) {
+    const current = listing!.builtinTools
+    const next = enabled ? [...current, name] : current.filter((item) => item !== name)
+    void writeBuiltinTools(next)
   }
 
   return (
@@ -167,13 +186,61 @@ export function GeneralSection({ home }: { home: string }) {
         </Field>
 
         <Field
+          label="内置工具"
+          hint="defaultTools 解析出的实际工具集；与 pi / settings 的 +name / -name 语义一致，默认组合会删除该 key。"
+        >
+          <div className="tool-switches">
+            {listing.builtinToolNames.map((name) => (
+              <label key={name} className="tool-switch">
+                <input
+                  type="checkbox"
+                  checked={listing.builtinTools.includes(name)}
+                  disabled={toolsBusy}
+                  onChange={(e) => toggleBuiltinTool(name, e.target.checked)}
+                />
+                <span>{name}</span>
+              </label>
+            ))}
+          </div>
+        </Field>
+
+        {listing.isWindows ? (
+          <Field label="Shell 工具" hint="PowerShell 打开时用 powershell 代替 bash。">
+            <Switch
+              pressed={listing.powerShellEnabled}
+              label={listing.powerShellEnabled ? '使用 powershell' : '使用 bash'}
+              onChange={(next) =>
+                void runWrite('切换 Shell 工具', async () => {
+                  await api.putGeneralShell(home, next, listing!.revision)
+                  await reload()
+                })
+              }
+            />
+          </Field>
+        ) : null}
+
+        <Field
           label="默认工具（defaultTools）"
-          hint="逗号分隔的 +name / -name 修饰，例如 +codemode,-read。留空清除。"
+          hint={`已解析工具集：${listing.resolvedTools.join(', ') || '（空）'}。这里直接编辑 +name / -name 原文，留空清除。`}
         >
           <ToolListInput
+            key={defaultTools.join(',')}
             initial={defaultTools}
             onCommit={(next) =>
               void writeKey('defaultTools', next.length > 0 ? next : null, '保存默认工具')
+            }
+          />
+        </Field>
+
+        <Field
+          label="缓存未命中提示"
+          hint="showCacheMissNotices：会话里显示 provider 缓存未命中的提示，写入 settings.json。"
+        >
+          <Switch
+            pressed={cacheMissNotices}
+            label={cacheMissNotices ? '已开启' : '已关闭'}
+            onChange={(next) =>
+              void writeKey('showCacheMissNotices', next ? true : null, '保存缓存未命中提示')
             }
           />
         </Field>
