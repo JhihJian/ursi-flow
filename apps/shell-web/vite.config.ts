@@ -15,6 +15,8 @@ const fsApi = process.env.FS_WEB_API ?? 'http://127.0.0.1:8199'
 const sshApi = process.env.SSH_WEB_API ?? 'http://127.0.0.1:8091'
 /** 沙箱 Gateway 控制台（server.mjs，含 HTTP Basic 认证代理）。 */
 const sbxApi = process.env.SBX_WEB_API ?? 'http://127.0.0.1:4180'
+/** flow-web 的同源 API；前缀在代理层重写，服务端路由保持 /api 不动。 */
+const flowApi = process.env.FLOW_WEB_API ?? 'http://127.0.0.1:8094'
 /** pi 会话目录服务；前缀在代理层重写，服务端路由保持 /api 不动。 */
 const piSessionsApi = process.env.PI_SESSIONS_API ?? 'http://127.0.0.1:30200'
 
@@ -26,6 +28,11 @@ const proxy = {
     changeOrigin: false,
     ws: true,
     rewrite: (path: string) => path.replace(/^\/api\/ssh-web/, '/api'),
+  },
+  '/api/flow-web': {
+    target: flowApi,
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/api\/flow-web/, '/api'),
   },
   '/api/pi-sessions': {
     target: piSessionsApi,

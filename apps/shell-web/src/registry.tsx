@@ -1,6 +1,7 @@
 import type { WorkspaceModule, WorkspaceProfile, WorkspaceView } from '@ursi/workspace-shell'
 import { ProfilesEditor, createProfilesStore, useProfiles } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
+import { createFlowModule } from '@ursi/flow-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
 import { createSshModule } from '@ursi/ssh-web/module'
 import { createSandboxModule } from '@ursi/sandbox-web/module'
@@ -10,6 +11,7 @@ import '@ursi/fs-web/module.css'
 import '@ursi/ssh-web/module.css'
 import '@ursi/sandbox-web/module.css'
 import '@ursi/pi-sessions-web/module.css'
+import '@ursi/flow-web/styles.css'
 // 轨迹组件库的样式是全局前缀类（dsw- / trajectory-*），在这里引一次即可。
 import 'pi-agent-trajectory-viewer/style.css'
 import './pi-web-panel/module.css'
@@ -44,6 +46,7 @@ const SOURCES: Record<string, string> = {
   'ssh': '@ursi/ssh-web/module',
   'sandbox': '@ursi/sandbox-web/module',
   'pi-web': './pi-web-panel/module',
+  'flow': '@ursi/flow-web/module',
   'pi-sessions': '@ursi/pi-sessions-web/module',
 }
 
@@ -110,8 +113,8 @@ function RegistryView({
             <div className="app-registry-row">
               <dt>sidebar</dt>
               <dd>
-                折叠条 {module.collapsedSidebarSize ?? 32}px · 默认
-                {module.defaultExpanded ? '展开' : '折叠'} · 工作区
+                折叠条 {module.collapsedSidebarSize ?? 32}px · 最小宽度 {module.minSidebarSize ?? 200}px ·
+                默认{module.defaultExpanded ? '展开' : '折叠'} · 工作区
                 {module.keepMounted ? '常驻' : '折叠即卸载'}
               </dd>
             </div>
@@ -164,6 +167,10 @@ const files = createFsModule({ apiBaseUrl: '/api/fs-web' })
 /** 工厂在模块级只调一次，保持组件引用稳定，避免宿主重渲染时重挂模块内部状态。 */
 const MODULES: WorkspaceModule[] = [
   createTodoModule({ openRootInFiles: files.commands.openRoot }),
+  createFlowModule({
+    apiBaseUrl: '/api/flow-web',
+    openRootInFiles: files.commands.openRoot,
+  }),
   files,
   createSshModule({ apiBaseUrl: '/api/ssh-web' }),
   createSandboxModule({ apiBase: '/sbx' }),
@@ -174,6 +181,7 @@ const MODULES: WorkspaceModule[] = [
 /** 跨模块依赖的说明，Registry 页直接展示，避免边藏在代码里。 */
 const WIRES: Array<{ from: string; to: string; capability: string }> = [
   { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
+  { from: 'flow', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
 ]
 
 /**
@@ -186,6 +194,7 @@ const DEFAULT_PROFILES: WorkspaceProfile[] = [
   { id: 'terminal', title: '终端', modules: ['ssh', 'fs-web'] },
   { id: 'sandbox', title: '沙箱', modules: ['sandbox', 'ssh'] },
   { id: 'assistant', title: '助手', modules: ['pi-web', 'fs-web'] },
+  { id: 'flow', title: 'Flow', modules: ['flow', 'fs-web'] },
   { id: 'history', title: '会话', modules: ['pi-sessions', 'fs-web'] },
 ]
 

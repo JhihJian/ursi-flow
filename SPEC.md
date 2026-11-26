@@ -3,6 +3,7 @@ references:
   - ARCHITECHTURE.md
   - workbench/README.md
   - apps/ursi-flow/docs/flow-spec.md
+  - apps/flow-web/README.md
   - docs/design/pi-web/INTEGRATION.md
 ---
 
@@ -12,7 +13,7 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[ursi-flow](apps/ursi-flow/SPEC.md) 是这部分能力的交付包：其中的 [Flow Core](apps/ursi-flow/core/SPEC.md) 是无状态推进 SDK，[Flow Executor](apps/ursi-flow/executor/SPEC.md) 定义执行器的两个方法，[Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。包自带命令行，装上就能执行一个 Flow 包。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。
 
-独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），也能按 agent 执行一次性会话任务并查看该 home 的运行中会话，与 Pi Web 和 CLI 互补。
+[Flow 工作台](apps/flow-web/SPEC.md) 用浏览器浏览 flow home 里的包、启动运行、回答人工确认并查看过程日志。独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），也能按 agent 执行一次性会话任务并查看该 home 的运行中会话，与 Pi Web 和 CLI 互补。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 
@@ -63,6 +64,15 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[ursi
 - 引擎接收 `FLOW.md` 原文与启动变量，返回 `completed`、`awaiting_input` 或 `failed`，并保留每一步的结果与变量。
 - 执行 Agent 只需实现 `prompt(agentName, instruct)`，执行命令只需实现 `command(invocation)`；引擎不读取模型配置、不启动子进程、不接触网络。
 - 过程日志按运行写入文件，事件序号单调递增，快照可恢复；`respond` 对等待中的确认步骤提交结果，`resume` 从快照继续。
+
+### 在浏览器里运行 Flow
+
+#### 验收
+
+- 侧边栏列出 flow home（默认 `~/.ursi/flow`）下的 Flow 包，可改成任意本机绝对路径，改完立即重扫。
+- 选中包后工作区显示变量表单与结构，变量填好后启动一次运行；出现人工确认时在页面上选一条结果边继续，完成或失败都能看到结果与逐条过程事件。
+- 解析失败的包照样列出并标明原因，不阻塞其它包；同一个工作台可以停止未结束的运行、从快照继续、复制运行摘要。
+- 作为 `flow` 模块接入工作区外壳后，注册「在文件模块打开 Flow 目录」这条跨模块操作，目标模块未启用时给出禁用原因。
 
 ### 拿到 FLOW.md 就能执行
 

@@ -1,0 +1,16 @@
+{
+  "name": "@ursi/flow-web-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "description": "flow-web 服务端：托管静态页面，并提供 flow home 扫描、Flow 详情、运行、确认与运行日志的同源 API",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test src/*.test.ts"
+  },
+  "dependencies": {
+    "ursi-flow": "file:../../ursi-flow"
+  }
+}

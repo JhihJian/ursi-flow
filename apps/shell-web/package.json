@@ -24,7 +24,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-resizable-panels": "^4.24.1",
-    "zustand": "^5.1.0"
+    "zustand": "^5.1.0",
+    "@ursi/flow-web": "*"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

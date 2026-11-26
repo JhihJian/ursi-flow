@@ -10,6 +10,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | [SUMM-Todo 看板](apps/todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，服务端启动系统 OpenSSH 子进程（`ssh -tt`）建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite，可按 [工作区接入设计](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) 作为一栏接入 shell-web。 |
 | [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API 并注入 Bearer token（dae 只监听 loopback、拒绝外部 Origin、启用 api.secret），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并按配置源编排校验与写入。 |
+| [Flow 工作台](apps/flow-web/SPEC.md) | 浏览器里的 Flow 工作台。Node 服务用 `apps/ursi-flow` 推进流程、把运行写入自己的状态目录，并托管 React 页面；页面可独立打开，也作为 `flow` 模块接入工作区外壳。 |
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web](docs/design/pi-web/INTEGRATION.md) | 上游 pi coding agent 的完整 Web UI，以 git subtree 从 fork `JhihJian/pi-web` 接入 `apps/pi-web`，内容不改造。进程内驱动 AgentSession，与 CLI 共享 `~/.pi/agent`，浏览器里完整使用 Pi agent。 |
@@ -29,6 +30,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 - **连上主机。** SSH 终端由自己的 Rust 服务托管页面并提供同源 API 与 WS 桥，读写 `~/.ursi/ssh/ssh.db`，同样不依赖 ursi-flow 的其他模块。它也以 `@ursi/ssh-web/module` 接入 [工作区外壳](packages/workspace-shell/SPEC.md) 成为独立一栏，服务与数据归属不变。
 - **看清出站路由。** dae 路由观察台由零依赖 Node 服务托管页面，按 dae native API 读取本机代理状态，不持有自己的数据；连接与流记录留在 dae 进程内存，重启即丢。配置采用 dae 的 managed layout，写入由 dae 自己完成，本服务只注入 token、编排校验与等待热加载。
 - **推进一次 Flow。** [Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md，把每一步渲染好的提示词交给执行器，校验回执后交给 Flow Core 选边，并把过程写成日志实体与可恢复快照。
+- **在浏览器里跑 Flow。** [Flow 工作台](apps/flow-web/SPEC.md) 的服务端读用户 flow home 里的 `FLOW.md`，用 `apps/ursi-flow` 的引擎开跑并保存运行；页面负责选包、填变量、回答人工确认与看过程日志。运行事实归工作台状态目录，Flow 包本身只读。它同时是工作区外壳里的 `flow` 模块，通过组合根注入的文件模块命令打开 Flow 目录。
 - **执行一个 Flow 包。** [ursi-flow](apps/ursi-flow/SPEC.md) 把 Core、执行器与 Runtime 装配成一次运行：`runFlow` 负责装配与确认问答，命令行负责加载包、传变量与打印结果。执行器只实现 `prompt` 与 `command` 两个方法，换成真实 Agent 时其他模块不动。
 - **执行一次工作。** Workbench 用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。
 - **回看历史会话。** Pi 会话浏览读磁盘上的 `.jsonl`，根目录当场指定，因此本机会话、备份和别人的导出都能看；它不启动 agent，登录、配置与会话写入都不在它的职责内，写操作只有用户主动删除会话文件与记录特别关注的项目，服务假定运行在可信局域网。
@@ -54,6 +56,7 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | Pi Web | [迁移与集成](docs/design/pi-web/INTEGRATION.md) |
 | Flow Core | [Flow Core SDK 设计](docs/design/flow-runtime/FLOW-CORE.md) |
 | ursi-flow 交付包 | [引擎、日志实体与日志存储](docs/design/flow-runtime/RUNTIME.md) |
+| Flow 工作台 | [接口、页面与数据归属](apps/flow-web/README.md) |
 | Flow 能力 | [Agent 会话](docs/design/flow-runtime/ability/agent-harness.md) · [运行时工具](docs/design/flow-runtime/ability/runtime-tools.md) · [命令执行](docs/design/flow-runtime/ability/command-execution.md) · [并行执行](docs/design/flow-runtime/ability/parallel-execution.md) · [用户确认门禁](docs/design/flow-runtime/ability/user-confirmation.md)（[实现改动](docs/design/flow-runtime/ability/user-confirmation-impl.md)） |
 | MCP 服务管理 | [独立模块与宿主边界](docs/design/mcp-web/MCP-MODULE-DESIGN.md) · [执行器协议发现与标签](docs/design/mcp-web/EXECUTOR-DISCOVERY-DESIGN.md) |
 | 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) · [控制台接入工作区](docs/design/ursi-sandbox/WORKSPACE-INTEGRATION.md) |

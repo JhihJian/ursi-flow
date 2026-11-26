@@ -1,0 +1,49 @@
+/* 只在独立入口导入：给两块区域一个最小页面骨架，嵌入外壳时这份样式不生效。 */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #ffffff;
+  color: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.flow-standalone {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.flow-standalone-side {
+  border-right: 1px solid #e5e5e5;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.flow-standalone-side .ws-section {
+  height: 100%;
+}
+
+.flow-standalone-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .flow-standalone {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .flow-standalone-side {
+    border-right: none;
+    border-bottom: 1px solid #e5e5e5;
+  }
+}

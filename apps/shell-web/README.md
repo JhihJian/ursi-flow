@@ -1,6 +1,6 @@
 # 工作区入口
 
-把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、fs、ssh、沙箱、pi 会话与 pi-web 六个模块。
+把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、flow、fs、ssh、沙箱、pi 会话与 pi-web 七个模块。
 
 ## 页面结构
 
@@ -36,6 +36,7 @@ profile 只声明启用哪些模块与顺序，不再描述区域布局：
 | 沙箱（`sandbox`） | 沙箱、ssh |
 | 助手（`assistant`） | pi-web、fs-web |
 | 会话（`history`） | pi-sessions、fs-web |
+| Flow（`flow`） | flow、fs-web |
 
 上表是 `registry.tsx` 里的默认值。标题栏的 **Profiles** 页可编辑：新建、改名、删除 profile，并用「＋ 未启用模块 / 移除 / ↑ ↓」决定每个 profile 启用哪些模块与堆叠顺序。改动即时生效并写入 `ursi.workspace:profiles`，标题栏切换器同步更新；「恢复默认」丢弃自定义配置回到上表。
 
@@ -50,13 +51,14 @@ npm install
 npm run dev:shell-web        # http://localhost:5191
 ```
 
-`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`）、`/api/pi-sessions` 代理到会话目录服务并重写回 `/api`（`PI_SESSIONS_API`，默认 `http://127.0.0.1:30200`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
+`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`）、`/api/pi-sessions` 代理到会话目录服务并重写回 `/api`（`PI_SESSIONS_API`，默认 `http://127.0.0.1:30200`），把 `/api/flow-web` 代理到 flow-web 服务并重写回 `/api`（`FLOW_WEB_API`，默认 `http://127.0.0.1:8094`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
 
 ```sh
 cd apps/todo-web/server && cargo run        # 或已有实例
 cd apps/fs-web/server && ...                # 8199
 cd apps/ssh-web/server && ...               # 8091
 cd apps/pi-sessions-web/server && npm start  # 30200
+cd apps/flow-web/server && npm start        # 8094（先构建 apps/ursi-flow）
 ```
 
 ## 模块怎么加
@@ -79,7 +81,7 @@ cd apps/pi-sessions-web/server && npm start  # 30200
 2. 发送方只声明它需要的函数形状，例如 `createTodoModule({ openRootInFiles })`，不认识文件模块的任何代码。
 3. 组合根 `registry.tsx` 把两者接起来，并在注册表页列出这条依赖边。
 
-当前有一条真实的边：任务模块的「在文件模块打开项目目录」会调用文件模块的 `openRoot`，登记并激活该目录，然后 `shell.reveal('fs-web')` 展开文件模块。目标模块不在当前 profile 时，该操作显示禁用原因而不是消失。
+当前有两条真实的边：任务模块的「在文件模块打开项目目录」与 Flow 模块的「在文件模块打开 Flow 目录」都调用文件模块的 `openRoot`，登记并激活该目录，然后 `shell.reveal('fs-web')` 展开文件模块。目标模块不在当前 profile 时，该操作显示禁用原因而不是消失。
 
 会改变接收方持久状态的操作必须带 `confirm`，确认文案里带出实际路径，避免一次误点就把任意目录登记成可浏览的文件根。
 

@@ -1,0 +1,633 @@
+/* flow 模块样式：全部挂在 .flow-* 容器上，不写 html/body/#root。
+   视觉沿用外壳的灰度、衬线标题 + 等宽数据。 */
+
+.flow-sidebar,
+.flow-workspace {
+  --flow-ink: #1a1a1a;
+  --flow-muted: #666666;
+  --flow-faint: #999999;
+  --flow-line: #e5e5e5;
+  --flow-line-strong: #cfcfcf;
+  --flow-paper: #ffffff;
+  --flow-wash: #fafafa;
+  --flow-serif: Georgia, 'Times New Roman', serif;
+  --flow-mono: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  --flow-space-xs: 4px;
+  --flow-space-sm: 8px;
+  --flow-space-md: 16px;
+  --flow-space-lg: 24px;
+  color: var(--flow-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---- 侧边栏 ---- */
+
+.flow-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-md);
+  padding: var(--flow-space-sm) var(--flow-space-md) var(--flow-space-md);
+  min-height: 0;
+}
+
+.flow-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--flow-space-sm);
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flow-faint);
+}
+
+.flow-home-path {
+  display: block;
+  margin-top: var(--flow-space-xs);
+  padding: var(--flow-space-xs) 0;
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  color: var(--flow-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.flow-home-form {
+  display: flex;
+  gap: var(--flow-space-xs);
+  margin-top: var(--flow-space-xs);
+}
+
+.flow-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--flow-space-xs) var(--flow-space-sm);
+  border: 1px solid var(--flow-line-strong);
+  background: var(--flow-paper);
+  color: var(--flow-ink);
+  font-family: var(--flow-mono);
+  font-size: 12px;
+}
+
+.flow-input:focus {
+  outline: none;
+  border-color: var(--flow-ink);
+}
+
+.flow-flows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-xs);
+  min-height: 0;
+  flex: 1;
+}
+
+.flow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  min-height: 0;
+}
+
+.flow-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--flow-space-sm);
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.flow-item:hover {
+  background: var(--flow-wash);
+}
+
+.flow-item.is-selected {
+  border-left-color: var(--flow-ink);
+  background: var(--flow-wash);
+}
+
+.flow-item-name {
+  font-family: var(--flow-serif);
+  font-size: 14px;
+}
+
+.flow-item-meta {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+.flow-item.is-broken .flow-item-name {
+  color: var(--flow-muted);
+  text-decoration: line-through;
+}
+
+.flow-item.is-broken .flow-item-meta {
+  color: var(--flow-ink);
+}
+
+/* ---- 通用小件 ---- */
+
+.flow-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--flow-muted);
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.flow-link:disabled {
+  color: var(--flow-line-strong);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.flow-button {
+  padding: var(--flow-space-xs) var(--flow-space-md);
+  border: 1px solid var(--flow-ink);
+  background: var(--flow-paper);
+  color: var(--flow-ink);
+  font-family: var(--flow-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.flow-button.is-primary {
+  background: var(--flow-ink);
+  color: var(--flow-paper);
+}
+
+.flow-button:disabled {
+  border-color: var(--flow-line-strong);
+  background: var(--flow-paper);
+  color: var(--flow-line-strong);
+  cursor: not-allowed;
+}
+
+.flow-chip {
+  display: inline-block;
+  padding: 0 var(--flow-space-xs);
+  border: 1px solid var(--flow-line-strong);
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--flow-muted);
+  white-space: nowrap;
+}
+
+.flow-chip.tone-live {
+  border-style: dashed;
+  border-color: var(--flow-ink);
+  color: var(--flow-ink);
+}
+
+.flow-chip.tone-wait {
+  border-color: var(--flow-ink);
+  color: var(--flow-ink);
+}
+
+.flow-chip.tone-done {
+  border-color: var(--flow-ink);
+  background: var(--flow-ink);
+  color: var(--flow-paper);
+}
+
+.flow-chip.tone-fail {
+  border-color: var(--flow-ink);
+  border-style: double;
+  color: var(--flow-ink);
+}
+
+.flow-chip.kind-agent,
+.flow-chip.kind-confirm,
+.flow-chip.kind-command {
+  border-style: dotted;
+}
+
+.flow-empty {
+  margin: 0;
+  color: var(--flow-faint);
+  font-size: 12px;
+}
+
+.flow-count {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+/* ---- 工作区 ---- */
+
+.flow-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-md);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--flow-space-md) var(--flow-space-lg) var(--flow-space-lg);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: flow;
+}
+
+.flow-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--flow-space-md);
+  border-bottom: 1px solid var(--flow-line);
+  padding-bottom: var(--flow-space-sm);
+}
+
+.flow-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.flow-title {
+  margin: 0;
+  font-family: var(--flow-serif);
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.flow-description {
+  margin: 2px 0 0;
+  color: var(--flow-muted);
+  font-size: 12px;
+}
+
+.flow-path {
+  display: block;
+  margin-top: var(--flow-space-xs);
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-error-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--flow-space-sm);
+  padding: var(--flow-space-xs) var(--flow-space-sm);
+  border: 1px solid var(--flow-ink);
+  font-size: 12px;
+}
+
+.flow-error {
+  margin: var(--flow-space-sm) 0 0;
+  font-family: var(--flow-mono);
+  font-size: 11.5px;
+  border-left: 2px solid var(--flow-ink);
+  padding-left: var(--flow-space-sm);
+}
+
+.flow-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: var(--flow-space-lg);
+  min-height: 0;
+  flex: 1;
+}
+
+.flow-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-lg);
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-right: var(--flow-space-xs);
+}
+
+@container flow (max-width: 820px) {
+  .flow-columns {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .flow-column {
+    overflow: visible;
+  }
+}
+
+.flow-config,
+.flow-structure,
+.flow-runs,
+.flow-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-sm);
+}
+
+.flow-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-sm);
+}
+
+.flow-field {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--flow-space-xs) var(--flow-space-sm);
+  align-items: center;
+}
+
+.flow-field-name {
+  font-family: var(--flow-mono);
+  font-size: 11.5px;
+}
+
+.flow-required {
+  margin-left: 2px;
+  color: var(--flow-ink);
+}
+
+.flow-field-hint {
+  grid-column: 2;
+  color: var(--flow-faint);
+  font-size: 10.5px;
+}
+
+.flow-start {
+  display: flex;
+  align-items: center;
+  gap: var(--flow-space-sm);
+  flex-wrap: wrap;
+  padding-top: var(--flow-space-xs);
+}
+
+.flow-start-reason {
+  color: var(--flow-muted);
+  font-size: 11px;
+}
+
+.flow-start-note {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+/* ---- 结构 ---- */
+
+.flow-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--flow-space-sm);
+}
+
+.flow-node {
+  border: 1px solid var(--flow-line);
+  padding: var(--flow-space-sm);
+}
+
+.flow-node-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--flow-space-sm);
+}
+
+.flow-node-index {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+.flow-node-name {
+  font-family: var(--flow-serif);
+  font-size: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-node-body {
+  margin-top: var(--flow-space-xs);
+  padding-left: calc(var(--flow-space-md) + var(--flow-space-xs));
+}
+
+.flow-prompt {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--flow-muted);
+  font-size: 11.5px;
+  max-height: 6em;
+  overflow: hidden;
+}
+
+.flow-command {
+  display: block;
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  color: var(--flow-muted);
+  word-break: break-all;
+}
+
+.flow-outcomes {
+  list-style: none;
+  margin: var(--flow-space-xs) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flow-space-xs);
+}
+
+.flow-outcome {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-ink);
+  border-bottom: 1px solid var(--flow-line-strong);
+}
+
+/* ---- 运行清单 ---- */
+
+.flow-run-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-run-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--flow-space-sm);
+  width: 100%;
+  padding: var(--flow-space-xs) var(--flow-space-sm);
+  border: none;
+  border-bottom: 1px solid var(--flow-line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.flow-run-item:hover,
+.flow-run-item.is-selected {
+  background: var(--flow-wash);
+}
+
+.flow-run-flow {
+  font-family: var(--flow-serif);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-run-steps,
+.flow-run-time {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+  white-space: nowrap;
+}
+
+/* ---- 运行详情 ---- */
+
+.flow-run {
+  border-top: 1px solid var(--flow-line);
+  padding-top: var(--flow-space-sm);
+}
+
+.flow-run-id {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flow-space-md);
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-muted);
+}
+
+.flow-run-actions {
+  display: flex;
+  gap: var(--flow-space-md);
+}
+
+.flow-gate {
+  border: 1px solid var(--flow-ink);
+  padding: var(--flow-space-sm) var(--flow-space-md);
+  background: var(--flow-wash);
+}
+
+.flow-gate-head {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.flow-gate-text {
+  margin: var(--flow-space-xs) 0 var(--flow-space-sm);
+  white-space: pre-wrap;
+  font-size: 12.5px;
+}
+
+.flow-gate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flow-space-sm);
+}
+
+.flow-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  border-top: 1px solid var(--flow-line);
+}
+
+.flow-event {
+  display: grid;
+  grid-template-columns: 28px 96px minmax(0, 1fr);
+  gap: var(--flow-space-sm);
+  padding: 2px 0;
+  font-size: 11.5px;
+  border-bottom: 1px dotted var(--flow-line);
+}
+
+.flow-event-seq,
+.flow-event-time {
+  font-family: var(--flow-mono);
+  font-size: 10px;
+  color: var(--flow-faint);
+}
+
+.flow-event-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flow-event-node {
+  color: var(--flow-faint);
+}
+
+.flow-subhead {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flow-faint);
+  margin-bottom: var(--flow-space-xs);
+}
+
+.flow-variable-out-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-variable-out {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--flow-space-sm);
+}
+
+.flow-variable-out dt {
+  font-family: var(--flow-mono);
+  font-size: 11px;
+}
+
+.flow-variable-out dd {
+  margin: 0;
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  color: var(--flow-muted);
+  overflow-wrap: anywhere;
+}
