@@ -39,6 +39,27 @@ describe('buildTaskGraph', () => {
     expect(nodes.get('c')!.height).toBe(40)
   })
 
+  it('orders siblings by update time, oldest first', () => {
+    const tasks = [
+      task('p'),
+      task('newest', { parent_id: 'p', updated_at: '2026-03-03T10:00:00Z' }),
+      task('oldest', { parent_id: 'p', updated_at: '2026-03-02T10:00:00Z' }),
+      task('middle', { parent_id: 'p', updated_at: '2026-03-02T18:00:00Z' }),
+    ]
+    const layout = buildTaskGraph(tasks)
+    const parent = layout.nodes.find((node) => node.id === 'p')!
+
+    expect(parent.childIds).toEqual(['oldest', 'middle', 'newest'])
+  })
+
+  it('falls back to creation time and id when updates are missing', () => {
+    const tasks = [task('p'), task('b', { parent_id: 'p' }), task('a', { parent_id: 'p' })]
+    const layout = buildTaskGraph(tasks)
+    const parent = layout.nodes.find((node) => node.id === 'p')!
+
+    expect(parent.childIds).toEqual(['a', 'b'])
+  })
+
   it('orders siblings by prerequisite and links them vertically', () => {
     const tasks = [
       task('p'),

@@ -390,6 +390,8 @@ fn task_create_update_and_delete() {
     let id = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Write spec".into(),
             priority: Some(Priority::High),
             tags: Some(vec!["docs".into()]),
@@ -462,6 +464,8 @@ fn status_changes_follow_core_state_machine() {
     let id = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Ship".into(),
             priority: None,
             tags: None,
@@ -563,6 +567,8 @@ fn process_record_survives_completion_and_can_be_cleared() {
     let id = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Record".into(),
             priority: None,
             tags: None,
@@ -617,6 +623,8 @@ fn append_result_joins_markdown_and_rejects_blank_text() {
     let id = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Append".into(),
             priority: None,
             tags: None,
@@ -654,6 +662,8 @@ fn null_clears_optional_fields_and_omitted_fields_keep_values() {
     let id = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Probe".into(),
             priority: None,
             tags: None,
@@ -792,6 +802,8 @@ fn invalid_input_and_missing_rows_are_reported() {
     let unknown_project = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Task".into(),
             priority: None,
             tags: None,
@@ -821,6 +833,8 @@ fn create_task_can_start_as_a_subtask() {
     let parent = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Parent".into(),
             priority: None,
             tags: None,
@@ -833,6 +847,8 @@ fn create_task_can_start_as_a_subtask() {
     let child = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Child".into(),
             priority: None,
             tags: None,
@@ -849,6 +865,8 @@ fn create_task_can_start_as_a_subtask() {
     let missing = create_task(
         &conn,
         &CreateTaskRequest {
+            log: None,
+            result: None,
             title: "Orphan".into(),
             priority: None,
             tags: None,
@@ -857,4 +875,167 @@ fn create_task_can_start_as_a_subtask() {
         },
     );
     assert!(matches!(missing, Err(AppError::NotFound(_))));
+}
+
+#[test]
+fn task_create_saves_record_and_result() {
+    let conn = setup();
+    let id = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "With record".into(),
+            priority: None,
+            tags: None,
+            project_id: None,
+            parent_id: None,
+            log: Some("- 复现步骤\n- 修复".into()),
+            result: Some("已完成".into()),
+        },
+    )
+    .unwrap();
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
+    assert_eq!(task.id, id);
+    assert_eq!(task.log.as_deref(), Some("- 复现步骤\n- 修复"));
+    assert_eq!(task.result.as_deref(), Some("已完成"));
+
+    // 空文本与留空都视为未填写。
+    let blank = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Blank record".into(),
+            priority: None,
+            tags: None,
+            project_id: None,
+            parent_id: None,
+            log: Some("   ".into()),
+            result: None,
+        },
+    )
+    .unwrap();
+    let task = fetch_tasks(&conn, None, None, None, None)
+        .unwrap()
+        .into_iter()
+        .find(|task| task.id == blank)
+        .unwrap();
+    assert!(task.log.is_none());
+    assert!(task.result.is_none());
+}
+
+#[test]
+fn child_in_progress_promotes_ancestors() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    let grandparent = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Grandparent".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: None,
+            log: None,
+            result: None,
+        },
+    )
+    .unwrap();
+    let parent = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Parent".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: Some(grandparent.clone()),
+            log: None,
+            result: None,
+        },
+    )
+    .unwrap();
+    let child = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Child".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: Some(parent.clone()),
+            log: None,
+            result: None,
+        },
+    )
+    .unwrap();
+
+    update_task(
+        &conn,
+        &child,
+        &UpdateTaskRequest {
+            status: Some(Status::InProgress),
+            ..update(&child)
+        },
+    )
+    .unwrap();
+
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
+    let by_id = |id: &str| tasks.iter().find(|task| task.id == id).unwrap().clone();
+    assert_eq!(by_id(&child).status, Status::InProgress);
+    assert_eq!(by_id(&parent).status, Status::InProgress);
+    assert_eq!(by_id(&grandparent).status, Status::InProgress);
+    assert!(by_id(&parent).started_at.is_some());
+}
+
+#[test]
+fn cancelled_ancestor_is_left_alone() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    let parent = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Parent".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: None,
+            log: None,
+            result: None,
+        },
+    )
+    .unwrap();
+    let child = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Child".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: Some(parent.clone()),
+            log: None,
+            result: None,
+        },
+    )
+    .unwrap();
+    update_task(
+        &conn,
+        &parent,
+        &UpdateTaskRequest {
+            status: Some(Status::Cancelled),
+            ..update(&parent)
+        },
+    )
+    .unwrap();
+
+    update_task(
+        &conn,
+        &child,
+        &UpdateTaskRequest {
+            status: Some(Status::InProgress),
+            ..update(&child)
+        },
+    )
+    .unwrap();
+
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
+    let parent_task = tasks.iter().find(|task| task.id == parent).unwrap();
+    let child_task = tasks.iter().find(|task| task.id == child).unwrap();
+    assert_eq!(parent_task.status, Status::Cancelled);
+    assert_eq!(child_task.status, Status::InProgress);
 }

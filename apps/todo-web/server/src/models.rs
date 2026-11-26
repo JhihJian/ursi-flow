@@ -11,6 +11,10 @@ pub struct CreateTaskRequest {
     pub project_id: Option<String>,
     /// 直接建成某任务的子任务。
     pub parent_id: Option<String>,
+    /// 新建时一并写入的过程记录，空文本视为未填写。
+    pub log: Option<String>,
+    /// 新建时一并写入的工作结果，空文本视为未填写。
+    pub result: Option<String>,
 }
 
 /// 省略字段表示不改，显式 `null` 表示清空。

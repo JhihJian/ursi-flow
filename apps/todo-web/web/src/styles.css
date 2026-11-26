@@ -844,6 +844,24 @@
   background: var(--gray-200);
 }
 
+/* 节点下边上的标签色块：颜色由标签名哈希决定，同一标签颜色恒定。 */
+.task-graph-tags {
+  position: absolute;
+  top: 100%;
+  left: 10px;
+  display: flex;
+  gap: 3px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.task-graph-tag {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
 .task-graph-priority {
   flex: none;
   font-family: var(--font-mono);
@@ -1338,9 +1356,13 @@
   color: var(--gray-600);
 }
 
-.markdown-editor .ProseMirror ul,
-.markdown-editor .ProseMirror ol {
+.markdown-editor .ProseMirror ul {
   padding-left: var(--space-lg);
+}
+
+/* 有序列表的序号能到两位数，预留更宽的缩进，序号不会被编辑区裁成只剩个位。 */
+.markdown-editor .ProseMirror ol {
+  padding-left: 36px;
 }
 
 .markdown-editor .ProseMirror li > p {

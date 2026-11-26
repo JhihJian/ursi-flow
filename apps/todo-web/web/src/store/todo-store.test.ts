@@ -70,6 +70,7 @@ function resetStore() {
     detail: null,
     projectEditing: null,
     textPrompt: null,
+    graphUndo: [],
     statusFilter: null,
     dayCounts: [],
     dayFilter: [],
@@ -393,6 +394,129 @@ describe('task relations', () => {
     await useTodoStore.getState().setTaskParent('c', 'p')
 
     expect(mocked.updateTask).not.toHaveBeenCalled()
+  })
+})
+
+describe('save task with record', () => {
+  it('sends record and result when creating a task', async () => {
+    mocked.createTask.mockResolvedValue({ id: 't9' })
+    useTodoStore.setState({ selectedProjectId: 'p1', detail: { mode: 'new', parentId: null } })
+
+    await useTodoStore.getState().saveTask({
+      id: null,
+      title: 'New task',
+      priority: 'medium',
+      status: 'pending',
+      tags: [],
+      log: '- 复现步骤',
+      result: '已完成',
+    })
+
+    expect(mocked.createTask).toHaveBeenCalledWith({
+      title: 'New task',
+      priority: 'medium',
+      tags: [],
+      project_id: 'p1',
+      log: '- 复现步骤',
+      result: '已完成',
+    })
+  })
+
+  it('omits empty record and result on create', async () => {
+    mocked.createTask.mockResolvedValue({ id: 't9' })
+    useTodoStore.setState({ selectedProjectId: 'p1', detail: { mode: 'new', parentId: null } })
+
+    await useTodoStore.getState().saveTask({
+      id: null,
+      title: 'New task',
+      priority: 'medium',
+      status: 'pending',
+      tags: [],
+      log: null,
+      result: null,
+    })
+
+    const payload = mocked.createTask.mock.calls[0][0]
+    expect(payload.log).toBeUndefined()
+    expect(payload.result).toBeUndefined()
+  })
+})
+
+describe('graph undo', () => {
+  const parent = { ...task, id: 'p', title: 'Parent' }
+  const child = { ...task, id: 'c', title: 'Child' }
+
+  it('undoes a parent relation change', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [{ ...child, parent_id: 'p' }] })
+
+    await useTodoStore.getState().setTaskParent('c', null)
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('c', { parent_id: null })
+
+    await useTodoStore.getState().undoGraphAction()
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('c', { parent_id: 'p' })
+  })
+
+  it('undoes a prerequisite change', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [parent, child] })
+
+    await useTodoStore.getState().setTaskPredecessor('c', 'p')
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('c', { pre_id: 'p' })
+
+    await useTodoStore.getState().undoGraphAction()
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('c', { pre_id: null })
+  })
+
+  it('undoes a status change without touching required fields', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [{ ...task, status: 'in_progress' }] })
+
+    await useTodoStore.getState().setTaskStatus('t1', 'blocked', { blockedReason: 'waiting' })
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('t1', {
+      status: 'blocked',
+      blocked_reason: 'waiting',
+    })
+
+    await useTodoStore.getState().undoGraphAction()
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('t1', { status: 'in_progress' })
+  })
+
+  it('restores the previous blocked reason when undoing a resume', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({
+      graphTasks: [{ ...task, status: 'blocked', blocked_reason: 'waiting' }],
+    })
+
+    await useTodoStore.getState().setTaskStatus('t1', 'in_progress')
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('t1', { status: 'in_progress' })
+
+    await useTodoStore.getState().undoGraphAction()
+    expect(mocked.updateTask).toHaveBeenLastCalledWith('t1', {
+      status: 'blocked',
+      blocked_reason: 'waiting',
+    })
+  })
+
+  it('does not record undo entries for cancelled transitions', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [{ ...task, status: 'pending' }] })
+
+    await useTodoStore.getState().setTaskStatus('t1', 'cancelled')
+    const calls = mocked.updateTask.mock.calls.length
+    await useTodoStore.getState().undoGraphAction()
+
+    expect(mocked.updateTask.mock.calls.length).toBe(calls)
+  })
+
+  it('stops undoing when the stack is empty', async () => {
+    // 消费掉之前用例累积的撤销项，直到栈空。
+    for (let round = 0; round < 100; round += 1) {
+      await useTodoStore.getState().undoGraphAction()
+    }
+    const calls = mocked.updateTask.mock.calls.length
+    await useTodoStore.getState().undoGraphAction()
+    expect(mocked.updateTask.mock.calls.length).toBe(calls)
   })
 })
 

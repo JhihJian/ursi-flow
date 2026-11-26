@@ -18,6 +18,9 @@ export interface TaskGraphNode {
   priority: Priority
   /** 层级：只由前置依赖决定，分组的子节点跟随父节点摆放。 */
   depth: number
+  /** 排序用的创建与更新时间，兄弟任务按更新时间从旧到新排列。 */
+  createdAt: string
+  updatedAt: string | null
   /** 节点自身标题条的绝对坐标。 */
   x: number
   y: number
@@ -53,8 +56,8 @@ export interface TaskGraphLayout {
 /** 节点宽度固定，标题过长时由 CSS 截断，不用文字长度撑大节点。 */
 const NODE_WIDTH = 200
 const HEADER_HEIGHT = 40
-/** 分组节点里子节点之间的纵向间距。 */
-const CHILD_GAP = 16
+/** 分组节点里子节点之间的纵向间距；相邻兄弟的前置竖线画在这里，不能太窄。 */
+const CHILD_GAP = 28
 /** 子节点相对父节点左边的缩进。 */
 const CHILD_INDENT = 18
 /** 子节点与分组底边的留白。 */
@@ -156,6 +159,8 @@ export function buildTaskGraph(
       status: task.status,
       priority: task.priority,
       depth: 0,
+      createdAt: task.created_at,
+      updatedAt: task.updated_at ?? null,
       x: 0,
       y: 0,
       width: NODE_WIDTH,
@@ -478,14 +483,22 @@ export function relationCreatesCycle(
   return false
 }
 
-/** 兄弟节点排序：先按状态、优先级，再让前置任务排在依赖它的任务之前。 */
+/** 兄弟节点的基础顺序：按更新时间从旧到新，没有更新时间时按创建时间。 */
+function compareByUpdate(left: TaskGraphNode, right: TaskGraphNode): number {
+  const leftAt = left.updatedAt ?? left.createdAt
+  const rightAt = right.updatedAt ?? right.createdAt
+  if (leftAt !== rightAt) return leftAt < rightAt ? -1 : 1
+  return left.id.localeCompare(right.id)
+}
+
+/** 兄弟节点排序：先按更新时间，再让前置任务排在依赖它的任务之前。 */
 function orderSiblings(
   ids: string[],
   nodes: Map<string, TaskGraphNode>,
   preOf: Map<string, string | null>,
 ): string[] {
   const base = [...ids].sort((left, right) =>
-    compareNodes(nodes.get(left)!, nodes.get(right)!),
+    compareByUpdate(nodes.get(left)!, nodes.get(right)!),
   )
   const members = new Set(ids)
   const placed = new Set<string>()

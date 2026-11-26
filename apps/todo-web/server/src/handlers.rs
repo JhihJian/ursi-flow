@@ -481,6 +481,8 @@ pub fn create_task(conn: &Connection, request: &CreateTaskRequest) -> ApiResult<
     task.priority = request.priority.clone().unwrap_or(Priority::Medium);
     task.tags = request.tags.clone().unwrap_or_default();
     task.project_id = request.project_id.clone();
+    task.log = optional_text(request.log.as_deref()).map(str::to_string);
+    task.result = optional_text(request.result.as_deref()).map(str::to_string);
     if let Some(parent_id) = &request.parent_id {
         task.parent_id = relation_target(conn, &columns, "parent_id", &task.id, Some(parent_id))?;
     }
@@ -539,7 +541,39 @@ pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> 
     }
 
     db::update_task_row(conn, &task, &columns)?;
+    promote_ancestors_in_progress(conn, &columns, &task);
     Ok(())
+}
+
+/// 子任务进入进行中时，把还没有进行中的祖先任务也推进到进行中。
+/// 迁移规则仍由 `todo-core` 状态机裁决：已取消的祖先不可迁移，跳过即可；
+/// 传播是尽力而为，失败不影响子任务本身的写入。
+fn promote_ancestors_in_progress(conn: &Connection, columns: &Columns, task: &Task) {
+    if task.status != Status::InProgress {
+        return;
+    }
+    let mut current = task.parent_id.clone();
+    let mut visited = std::collections::HashSet::new();
+    while let Some(parent_id) = current {
+        if !visited.insert(parent_id.clone()) {
+            break;
+        }
+        let Ok(mut parent) = read_task_by_id(conn, columns, &parent_id) else {
+            break;
+        };
+        current = parent.parent_id.clone();
+        if parent.status == Status::InProgress {
+            continue;
+        }
+        if parent
+            .transition(Status::InProgress, TransitionContext::default())
+            .is_ok()
+        {
+            if db::update_task_row(conn, &parent, columns).is_err() {
+                break;
+            }
+        }
+    }
 }
 
 /// 追加工作结果，拼接规则由 `todo_core::Task::append_result` 定义。

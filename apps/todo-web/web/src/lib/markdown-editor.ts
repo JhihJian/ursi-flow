@@ -7,7 +7,7 @@ import { MarkdownParser, MarkdownSerializer, defaultMarkdownSerializer } from 'p
 import { Schema, type MarkType, type Node as ProseNode } from 'prosemirror-model'
 import { schema as basicSchema } from 'prosemirror-schema-basic'
 import { addListNodes, liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list'
-import { EditorState, Plugin } from 'prosemirror-state'
+import { EditorState, Plugin, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
 
 /**
@@ -112,6 +112,22 @@ function blockInputRules(schema: Schema): InputRule[] {
   ]
 }
 
+/**
+ * 光标在非段落文字块开头按 Backspace 时，把该块还原成普通段落。
+ * 例如标题行首的 `##` 不再无法删除：退格直接退掉标题格式。
+ */
+export function backspaceToParagraph(schema: Schema) {
+  return (state: EditorState, dispatch?: (tr: Transaction) => void): boolean => {
+    const { $from, empty } = state.selection
+    if (!empty || $from.parentOffset !== 0) return false
+    if ($from.parent.type === schema.nodes.paragraph) return false
+    if (dispatch) {
+      dispatch(state.tr.setBlockType($from.pos, $from.pos, schema.nodes.paragraph))
+    }
+    return true
+  }
+}
+
 function buildPlugins(schema: Schema, placeholder: string): Plugin[] {
   return [
     inputRules({
@@ -127,6 +143,7 @@ function buildPlugins(schema: Schema, placeholder: string): Plugin[] {
       'Mod-b': toggleMark(schema.marks.strong),
       'Mod-i': toggleMark(schema.marks.em),
       'Mod-`': toggleMark(schema.marks.code),
+      Backspace: backspaceToParagraph(schema),
       Enter: splitListItem(schema.nodes.list_item),
       Tab: sinkListItem(schema.nodes.list_item),
       'Shift-Tab': liftListItem(schema.nodes.list_item),

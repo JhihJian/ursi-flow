@@ -83,6 +83,8 @@ export function createTask(input: {
   tags: string[]
   project_id: string | null
   parent_id?: string | null
+  log?: string | null
+  result?: string | null
 }): Promise<{ id: string }> {
   return request('/tasks', { method: 'POST', body: JSON.stringify(input) })
 }

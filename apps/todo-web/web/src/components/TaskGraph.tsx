@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from '@/api/types'
 import { prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import type { GraphPositions } from '@/lib/graph-positions'
 import { STATUS_ORDER, nextStatuses, requiredInput } from '@/lib/task-status'
+import { tagColor } from '@/lib/tag-color'
 import type { StatusInput } from '@/store/todo-store'
 import {
   buildTaskGraph,
@@ -192,6 +193,31 @@ export function TaskGraph() {
     }
   }, [])
 
+  useEffect(() => {
+    // Ctrl+Z 撤销上一次图操作：焦点在输入框或编辑器里时不接管。
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+      if (event.key.toLowerCase() !== 'z') return
+      const target = event.target as HTMLElement | null
+      if (target?.isContentEditable) return
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return
+      }
+      event.preventDefault()
+      void useTodoStore
+        .getState()
+        .undoGraphAction()
+        .catch((error) => alert(`Failed to undo: ${errorMessage(error)}`))
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   if (!hasProject) return <p className="empty-state">Select a project</p>
   if (loading && layout.nodes.length === 0) return <p className="empty-state">Loading...</p>
   if (layout.nodes.length === 0) return <p className="empty-state">No open tasks</p>
@@ -304,6 +330,32 @@ export function TaskGraph() {
       })
     }
     items.push({ label: 'new subtask', onSelect: () => openNewTaskUnder(node.id) })
+    items.push({
+      label: 'delete task',
+      danger: true,
+      onSelect: () => {
+        // 删除不可恢复，用同一菜单做二次确认。
+        setMenu({
+          x: event.clientX,
+          y: event.clientY,
+          heading: `Delete "${node.title}"?`,
+          items: [
+            {
+              label: 'delete task',
+              danger: true,
+              onSelect: () =>
+                void useTodoStore
+                  .getState()
+                  .removeTask(node.id)
+                  .catch((error) =>
+                    alert(`Failed to delete task: ${errorMessage(error)}`),
+                  ),
+            },
+            { label: 'cancel', onSelect: () => {} },
+          ],
+        })
+      },
+    })
     setMenu({ x: event.clientX, y: event.clientY, items })
   }
 
@@ -484,6 +536,21 @@ export function TaskGraph() {
               >
                 <StatusIcon status={node.status} size={11} />
               </button>
+              {task && task.tags.length > 0 ? (
+                <span
+                  className="task-graph-tags"
+                  aria-label={`${node.title} 的标签：${task.tags.join(', ')}`}
+                >
+                  {task.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="task-graph-tag"
+                      style={{ background: tagColor(tag) }}
+                      title={tag}
+                    />
+                  ))}
+                </span>
+              ) : null}
             </div>
           )
         })}

@@ -105,6 +105,15 @@ export interface TodoState {
   /** 弹出输入框等一段文字；取消或关闭时得到 `null`。 */
   requestText: (options: TextPromptOptions) => Promise<string | null>
   settleTextPrompt: (value: string | null) => void
+  /** 图操作撤销栈：每项是能恢复上一次写入的异步动作，切换项目时清空。 */
+  graphUndo: Array<() => Promise<void>>
+  /** 关系图里按 Ctrl+Z 撤销上一次图操作（关系与状态写入）。 */
+  undoGraphAction: () => Promise<void>
+  /** 撤销回放用的直接写入：不做环检查，也不记录撤销。 */
+  applyGraphUpdate: (
+    id: string,
+    input: Parameters<typeof api.updateTask>[1],
+  ) => Promise<void>
   /** 关系图里的关系写入，`null` 表示解除；`parent_id` 与 `pre_id` 都走这里。 */
   setTaskParent: (id: string, parentId: string | null) => Promise<void>
   setTaskPredecessor: (id: string, preId: string | null) => Promise<void>
@@ -121,6 +130,8 @@ export interface TodoState {
 let tasksRequestId = 0
 let graphRequestId = 0
 let promptId = 0
+
+const GRAPH_UNDO_LIMIT = 30
 
 export const useTodoStore = create<TodoState>((set, get) => ({
   projects: [],
@@ -139,6 +150,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   detail: null,
   projectEditing: null,
   textPrompt: null,
+  graphUndo: [],
 
   bootstrap: async () => {
     await get().refreshProjects()
@@ -155,6 +167,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       selectedProjectId: id,
       graphTasks: [],
       graphPositions: {},
+      graphUndo: [],
       detail: null,
       projectEditing: null,
     })
@@ -297,6 +310,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         tags: draft.tags,
         project_id: get().selectedProjectId,
         ...(parentId === null ? {} : { parent_id: parentId }),
+        // 新建时详情面板里填的记录与结果一起提交，避免保存后再补一次。
+        ...(draft.log ? { log: draft.log } : {}),
+        ...(draft.result ? { result: draft.result } : {}),
       })
     }
     set({ detail: null })
@@ -338,6 +354,27 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       ...(status === 'done' ? { result: input.result ?? '' } : {}),
       ...(status === 'blocked' ? { blocked_reason: input.blockedReason ?? '' } : {}),
     })
+    // 撤销需要恢复原状态与对应的必填字段；涉及取消的迁移不可逆，不记录。
+    if (task.status !== 'cancelled' && status !== 'cancelled') {
+      const previous = {
+        status: task.status,
+        blockedReason: task.blocked_reason ?? '',
+        result: task.result ?? '',
+      }
+      set((state) => ({
+        graphUndo: [
+          ...state.graphUndo.slice(-(GRAPH_UNDO_LIMIT - 1)),
+          () =>
+            get().applyGraphUpdate(id, {
+              status: previous.status,
+              ...(previous.status === 'blocked'
+                ? { blocked_reason: previous.blockedReason }
+                : {}),
+              ...(previous.status === 'done' ? { result: previous.result } : {}),
+            }),
+        ],
+      }))
+    }
     const detail = get().detail
     if (detail?.mode === 'view' && detail.task.id === id) set({ detail: null })
     await get().refreshAll()
@@ -352,7 +389,14 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     if (parentId !== null && relationCreatesCycle(tasks, 'parent', parentId, id)) {
       throw new Error('That would create a loop in the parent chain')
     }
+    const previous = task.parent_id ?? null
     await api.updateTask(id, { parent_id: parentId })
+    set((state) => ({
+      graphUndo: [
+        ...state.graphUndo.slice(-(GRAPH_UNDO_LIMIT - 1)),
+        () => get().applyGraphUpdate(id, { parent_id: previous }),
+      ],
+    }))
     await get().refreshAll()
   },
 
@@ -365,7 +409,26 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     if (preId !== null && relationCreatesCycle(tasks, 'pre', preId, id)) {
       throw new Error('That would create a loop in the prerequisites')
     }
+    const previous = task.pre_id ?? null
     await api.updateTask(id, { pre_id: preId })
+    set((state) => ({
+      graphUndo: [
+        ...state.graphUndo.slice(-(GRAPH_UNDO_LIMIT - 1)),
+        () => get().applyGraphUpdate(id, { pre_id: previous }),
+      ],
+    }))
+    await get().refreshAll()
+  },
+
+  undoGraphAction: async () => {
+    const stack = get().graphUndo
+    if (stack.length === 0) return
+    set({ graphUndo: stack.slice(0, -1) })
+    await stack[stack.length - 1]()
+  },
+
+  applyGraphUpdate: async (id, input) => {
+    await api.updateTask(id, input)
     await get().refreshAll()
   },
 
