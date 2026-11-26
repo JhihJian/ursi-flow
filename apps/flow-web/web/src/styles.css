@@ -350,7 +350,7 @@
 
 .flow-column-structure .flow-graph {
   flex: 1;
-  min-height: 0;
+  min-height: 140px;
   max-height: none;
 }
 
@@ -878,8 +878,21 @@
 }
 
 .flow-node.is-floating {
+  /* 详情与结构图共用中间这一列：图让出高度，详情不越过列底，超出在卡片内滚动。 */
+  flex: 0 1 auto;
+  min-height: 96px;
+  max-height: 62%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   margin-top: var(--flow-space-sm);
   padding: var(--flow-space-sm) var(--flow-space-md);
+}
+
+.flow-node.is-floating .flow-node-head {
+  position: sticky;
+  top: calc(-1 * var(--flow-space-sm));
+  background: var(--flow-paper);
+  padding: var(--flow-space-xs) 0;
 }
 
 /* 点开节点时是单条详情，不受列表里的 6em 截断限制。 */
