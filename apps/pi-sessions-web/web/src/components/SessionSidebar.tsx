@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { Listing, SessionRow } from '@/api'
 import type { SessionGroup } from '@/lib/format'
 import {
   dailyBuckets,
+  todayKey,
   defaultFoldedGroups,
   formatAge,
   groupSessions,
@@ -75,13 +76,23 @@ export function SessionSidebar({
   const [menu, setMenu] = useState<MenuState | null>(null)
   // 搜索默认收起成图标，点开才显示输入框；收起时清空，避免看不见的过滤条件。
   const [searchOpen, setSearchOpen] = useState(false)
-  const [selectedDays, setSelectedDays] = useState<ReadonlySet<string>>(new Set())
+  // 默认只看今天；换根目录时回到今天，避免沿用别处目录的日期选择。
+  const [selectedDays, setSelectedDays] = useState<ReadonlySet<string>>(() => new Set([todayKey()]))
+  useEffect(() => {
+    setSelectedDays(new Set([todayKey()]))
+  }, [root])
   // 确认菜单要落在原菜单位置上：菜单关闭后 state 已清空，位置另存一份。
   const menuAt = useRef({ x: 0, y: 0 })
 
   // 条形按整份列表统计，不跟着搜索与筛选变，否则选一天后其它天就消失了。
   const allRows = listing?.sessions ?? NO_ROWS
   const buckets = useMemo(() => dailyBuckets(allRows), [allRows])
+  // 筛选中某一天时把日期写进脚注，比「筛选 1 天」更有用。
+  const daySummary = useMemo(() => {
+    if (selectedDays.size === 0) return ''
+    if (selectedDays.size === 1) return `筛选 ${[...selectedDays][0].slice(5)}`
+    return `筛选 ${selectedDays.size} 天`
+  }, [selectedDays])
   const groups = groupSessions(allRows, query, selectedDays)
   const { pinned, rest } = splitPinnedGroups(groups, pinnedProjects)
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
@@ -296,22 +307,29 @@ export function SessionSidebar({
         </button>
       </div>
 
-      {buckets.length > 0 ? (
+      {listing && buckets.length > 0 ? (
         <div className="time-filter">
           <div className="time-filter-head">
             <span className="time-filter-label">按日筛选</span>
             <span className="time-filter-span">
               {buckets[0].key.slice(5)} — {buckets[buckets.length - 1].key.slice(5)}
             </span>
-            {selectedDays.size > 0 ? (
-              <button
-                type="button"
-                className="time-filter-clear"
-                onClick={() => setSelectedDays(new Set())}
-              >
-                清除
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className={selectedDays.size === 0 ? 'time-filter-clear active' : 'time-filter-clear'}
+              title="不按日期筛选，显示全部会话"
+              onClick={() => setSelectedDays(new Set())}
+            >
+              全部
+            </button>
+            <button
+              type="button"
+              className="time-filter-clear"
+              title="回到只看今天"
+              onClick={() => setSelectedDays(new Set([todayKey()]))}
+            >
+              今天
+            </button>
           </div>
           <div className="time-bars" role="group" aria-label="按会话日期筛选">
             {buckets.map((bucket) => {
@@ -364,7 +382,11 @@ export function SessionSidebar({
         {!error && loading && groups.length === 0 ? <p className="sidebar-note">读取中…</p> : null}
         {!error && !loading && groups.length === 0 ? (
           <p className="sidebar-note">
-            {query || selectedDays.size > 0 ? '没有命中的会话' : '这个目录下没有 .jsonl 会话文件'}
+            {query
+              ? '没有命中的会话'
+              : selectedDays.size > 0
+                ? `所选的 ${selectedDays.size} 天里没有会话`
+                : '这个目录下没有 .jsonl 会话文件'}
           </p>
         ) : null}
 
@@ -386,7 +408,7 @@ export function SessionSidebar({
         {listing ? `${listing.sessions.length} 个会话 · ${groups.length} 个项目` : '—'}
         {listing && listing.pendingDetails > 0 ? ` · 补明细 ${listing.pendingDetails}` : ''}
         {listing?.truncated ? ' · 已截断' : ''}
-        {selectedDays.size > 0 ? ` · 筛选 ${selectedDays.size} 天` : ''}
+        {daySummary ? ` · ${daySummary}` : ''}
       </p>
 
       {picking ? (

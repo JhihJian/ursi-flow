@@ -104,22 +104,46 @@ export interface DayBucket {
   count: number
 }
 
-/** 条形区最多显示这么多个「有会话的日子」，从最近的往前取。 */
-export const DAY_BUCKET_LIMIT = 30
+/** 条形区覆盖的天数：固定看最近这么多天，含今天。 */
+export const DAY_BUCKET_DAYS = 7
+
+/** 今天（本地日历日）的键，默认筛选与「回到今天」都用它。 */
+export function todayKey(now: number = Date.now()): string {
+  return dayKey(now)
+}
 
 /**
- * 按天聚合会话数量，返回从旧到新排好的日子（条形图从左往右读时间）。
- * 只含有会话的日子，零会话的日子不占宽度；超过 `limit` 时保留最近的，
- * 否则一年多的历史会压成几十个 3px 宽的条，谁也点不中。
+ * 从 `now` 所在的本地日历日往前数 `days` 天，最旧在前、今天在最后。
+ * 按年月日构造而不是按毫秒累减，跨月、跨年与夏令时都不会偏一天。
  */
-export function dailyBuckets(rows: readonly SessionRow[], limit = DAY_BUCKET_LIMIT): DayBucket[] {
+export function recentDayKeys(days = DAY_BUCKET_DAYS, now: number = Date.now()): string[] {
+  const today = new Date(now)
+  const keys: string[] = []
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    keys.push(dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset).getTime()))
+  }
+  return keys
+}
+
+/**
+ * 最近 `days` 天每天一个格子，最旧在前，条形图从左往右读时间。
+ * 没有会话的那天也保留（计数为 0、只占最小宽度）：这样七根条代表七个连续的
+ * 日子，而不是「七根有活动的条」，读起来才分得清哪天是空的。
+ */
+export function dailyBuckets(
+  rows: readonly SessionRow[],
+  { days = DAY_BUCKET_DAYS, now = Date.now() }: { days?: number; now?: number } = {},
+): DayBucket[] {
   const counts = new Map<string, number>()
   for (const row of rows) {
     const key = dayKey(row.modified)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
-  const keys = [...counts.keys()].sort().slice(-Math.max(1, limit))
-  return keys.map((key) => ({ key, label: key.slice(5), count: counts.get(key) ?? 0 }))
+  return recentDayKeys(days, now).map((key) => ({
+    key,
+    label: key.slice(5),
+    count: counts.get(key) ?? 0,
+  }))
 }
 
 /** 会话是否落在选中的某一天；没有选中任何一天时不筛。 */

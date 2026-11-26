@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { SessionRow } from '@/api'
 import {
-  DAY_BUCKET_LIMIT,
+  DAY_BUCKET_DAYS,
   dailyBuckets,
   dayKey,
   defaultFoldedGroups,
@@ -11,10 +11,12 @@ import {
   groupSessions,
   matchesDays,
   matchesQuery,
+  recentDayKeys,
   sessionMeta,
   sessionTitle,
   shortRoot,
   splitPinnedGroups,
+  todayKey,
 } from './format'
 
 const row = (over: Partial<SessionRow>): SessionRow => ({
@@ -179,34 +181,51 @@ describe('dayKey', () => {
   })
 })
 
-describe('dailyBuckets', () => {
-  const at = (day: number, hour = 12) => new Date(2026, 0, day, hour).getTime()
+describe('todayKey / recentDayKeys', () => {
+  const now = new Date(2026, 10, 26, 15, 30).getTime()
 
-  test('按天计数并从旧到新排序，只含有会话的日子', () => {
-    const rows = [
-      row({ id: 'a', modified: at(5) }),
-      row({ id: 'b', modified: at(5, 18) }),
-      row({ id: 'c', modified: at(7) }),
-      row({ id: 'd', modified: at(3) }),
-    ]
-    expect(dailyBuckets(rows)).toEqual([
-      { key: '2026-01-03', label: '01-03', count: 1 },
-      { key: '2026-01-05', label: '01-05', count: 2 },
-      { key: '2026-01-07', label: '01-07', count: 1 },
+  test('todayKey 取本地日历日', () => {
+    expect(todayKey(now)).toBe('2026-11-26')
+  })
+
+  test('recentDayKeys 给出连续七天，最旧在前、今天在最后', () => {
+    expect(recentDayKeys(7, now)).toEqual([
+      '2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23',
+      '2026-11-24', '2026-11-25', '2026-11-26',
     ])
   })
 
-  test('超过上限时保留最近的若干个日子', () => {
-    const rows = Array.from({ length: 40 }, (_, index) => row({ id: `s${index}`, modified: at(1) + index * 86_400_000 }))
-    const buckets = dailyBuckets(rows)
-    expect(buckets).toHaveLength(DAY_BUCKET_LIMIT)
-    // 最后一个是最新的那天
-    expect(buckets.at(-1)?.key).toBe(dayKey(at(1) + 39 * 86_400_000))
+  test('跨月与跨年按日历日往前数，不按毫秒累减', () => {
+    expect(recentDayKeys(3, new Date(2026, 0, 1, 9).getTime())).toEqual(['2025-12-30', '2025-12-31', '2026-01-01'])
+    expect(recentDayKeys(1, now)).toEqual(['2026-11-26'])
+  })
+})
+
+describe('dailyBuckets', () => {
+  const now = new Date(2026, 10, 26, 15, 30).getTime()
+  const at = (day: number, hour = 12) => new Date(2026, 10, day, hour).getTime()
+
+  test('固定七格，含没有会话的日子，最旧在前', () => {
+    const rows = [
+      row({ id: 'a', modified: at(26, 9) }),
+      row({ id: 'b', modified: at(26, 20) }),
+      row({ id: 'c', modified: at(24) }),
+    ]
+    const buckets = dailyBuckets(rows, { now })
+    expect(buckets).toHaveLength(DAY_BUCKET_DAYS)
+    expect(buckets.map((bucket) => bucket.key)).toEqual(recentDayKeys(7, now))
+    expect(buckets.map((bucket) => bucket.count)).toEqual([0, 0, 0, 0, 1, 0, 2])
   })
 
-  test('空列表与 limit 为 0 都不崩', () => {
-    expect(dailyBuckets([])).toEqual([])
-    expect(dailyBuckets([row({})], 0)).toHaveLength(1)
+  test('七天之外的会话不计入任何格子', () => {
+    const buckets = dailyBuckets([row({ id: 'old', modified: at(1) })], { now })
+    expect(buckets.reduce((total, bucket) => total + bucket.count, 0)).toBe(0)
+  })
+
+  test('标签是 MM-DD，空列表也给出七格', () => {
+    expect(dailyBuckets([], { now }).map((bucket) => bucket.label)).toEqual([
+      '11-20', '11-21', '11-22', '11-23', '11-24', '11-25', '11-26',
+    ])
   })
 })
 

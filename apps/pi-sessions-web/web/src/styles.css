@@ -347,13 +347,14 @@ button {
 }
 
 .time-filter-span {
+  margin-right: auto;
   font-size: 10px;
   color: var(--gray-400);
   font-variant-numeric: tabular-nums;
 }
 
 .time-filter-clear {
-  margin-left: auto;
+  margin-left: var(--space-xs);
   padding: 0 var(--space-xs);
   border: 0;
   background: none;
@@ -363,6 +364,12 @@ button {
 }
 
 .time-filter-clear:hover {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+/* 「全部」生效时保持高亮，表示当前没有按日期筛选 */
+.time-filter-clear.active {
   color: var(--gray-900);
   text-decoration: underline;
 }
