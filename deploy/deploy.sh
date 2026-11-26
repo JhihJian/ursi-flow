@@ -17,8 +17,7 @@ BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 TODO_PORT="${TODO_PORT:-8090}"
 SSH_PORT="${SSH_PORT:-8091}"
 FLOW_PORT="${FLOW_PORT:-8094}"
-PI_MANAGER_PORT="${PI_MANAGER_PORT:-8093}"
-PI_SESSIONS_PORT="${PI_SESSIONS_PORT:-30200}"
+PI_WEB_PORT="${PI_WEB_PORT:-8093}"
 FS_PORT="${FS_PORT:-8199}"
 
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
@@ -28,11 +27,10 @@ UNITS=(
   ursi-todo-web
   ursi-ssh-web
   ursi-flow-web
-  ursi-pi-manager-web
-  ursi-pi-sessions-web
+  ursi-pi-web
   ursi-fs-web
 )
-BACKEND_PORTS=("$TODO_PORT" "$SSH_PORT" "$FLOW_PORT" "$PI_MANAGER_PORT" "$PI_SESSIONS_PORT" "$FS_PORT")
+BACKEND_PORTS=("$TODO_PORT" "$SSH_PORT" "$FLOW_PORT" "$PI_WEB_PORT" "$FS_PORT")
 
 NO_BUILD=0
 FORCE=0
@@ -61,8 +59,7 @@ render() {
     -e "s|@TODO_PORT@|$TODO_PORT|g" \
     -e "s|@SSH_PORT@|$SSH_PORT|g" \
     -e "s|@FLOW_PORT@|$FLOW_PORT|g" \
-    -e "s|@PI_MANAGER_PORT@|$PI_MANAGER_PORT|g" \
-    -e "s|@PI_SESSIONS_PORT@|$PI_SESSIONS_PORT|g" \
+    -e "s|@PI_WEB_PORT@|$PI_WEB_PORT|g" \
     -e "s|@FS_PORT@|$FS_PORT|g" \
     "$src" >"$dst"
 }
@@ -109,10 +106,25 @@ build() {
   cargo build --release --manifest-path "$ROOT/apps/ssh-web/Cargo.toml"
 }
 
+# 一次性状态迁移：旧的两个状态目录并进 pi-web，已在目标位置的不覆盖。
+migrate_state() {
+  local target="$URSI_HOME/pi-web"
+  mkdir -p "$target/sessions"
+  if [ -f "$URSI_HOME/pi-manager/homes.json" ] && [ ! -f "$target/homes.json" ]; then
+    cp "$URSI_HOME/pi-manager/homes.json" "$target/homes.json"
+    log "迁移 homes.json"
+  fi
+  if [ -f "$URSI_HOME/pi-sessions/prefs.json" ] && [ ! -f "$target/sessions/prefs.json" ]; then
+    cp "$URSI_HOME/pi-sessions/prefs.json" "$target/sessions/prefs.json"
+    log "迁移 sessions/prefs.json"
+  fi
+}
+
 install_units() {
   log "渲染配置并安装单元"
   mkdir -p "$UNIT_DIR" "$(dirname "$ENTRY_CONFIG")"
-  mkdir -p "$URSI_HOME"/{todo,ssh,flow,flow-web,fs-web,pi-manager,pi-sessions}
+  mkdir -p "$URSI_HOME"/{todo,ssh,flow,flow-web,fs-web,pi-web/sessions}
+  migrate_state
   render "$ROOT/deploy/Caddyfile.tmpl" "$ENTRY_CONFIG"
   "$CADDY" validate --config "$ENTRY_CONFIG" --adapter caddyfile >/dev/null
   for unit in "${UNITS[@]}"; do
@@ -139,8 +151,7 @@ smoke() {
     /api/health \
     /api/ssh-web/health \
     /api/flow-web/flows \
-    /api/pi-sessions/health \
-    /api/pi-manager/healthz \
+    /api/pi/api/health \
     /api/fs-web/workspaces; do
     wait_http "$base$path"
     echo "ok $path"

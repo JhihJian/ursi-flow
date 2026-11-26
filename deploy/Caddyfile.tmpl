@@ -14,12 +14,10 @@
 		uri replace /api/flow-web /api
 		reverse_proxy @BACKEND_HOST@:@FLOW_PORT@
 	}
-	handle /api/pi-sessions/* {
-		uri replace /api/pi-sessions /api
-		reverse_proxy @BACKEND_HOST@:@PI_SESSIONS_PORT@
-	}
-	handle_path /api/pi-manager/* {
-		reverse_proxy @BACKEND_HOST@:@PI_MANAGER_PORT@ {
+	# Pi Web 一个进程管配置、对话运行时与会话浏览；切掉模块前缀后路由仍是 /api/*。
+	# 对话用 SSE，必须关掉响应缓冲。
+	handle_path /api/pi/* {
+		reverse_proxy @BACKEND_HOST@:@PI_WEB_PORT@ {
 			flush_interval -1
 		}
 	}

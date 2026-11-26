@@ -1,0 +1,17 @@
+[Unit]
+Description=ursi-flow pi-web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@/apps/pi-web/server
+Environment=PI_WEB_HOST=@BACKEND_HOST@
+Environment=PI_WEB_PORT=@PI_WEB_PORT@
+Environment=PI_WEB_STATE=@URSI_HOME@/pi-web
+Environment=PI_WEB_STATIC_DIR=@ROOT@/apps/pi-web/web/dist
+ExecStart=@NODE@ src/server.ts
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

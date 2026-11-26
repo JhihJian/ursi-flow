@@ -15,12 +15,10 @@
     "apps/shell-web",
     "apps/ssh-web/web",
     "packages/workspace-shell",
-    "apps/pi-manager-web/web",
-    "apps/pi-manager-web/server",
-    "apps/pi-sessions-web/web",
-    "apps/pi-chat-web/web",
     "apps/flow-web/web",
-    "apps/flow-web/server"
+    "apps/flow-web/server",
+    "apps/pi-web/server",
+    "apps/pi-web/web"
   ],
   "scripts": {
     "test": "node --test apps/fs-web/server/test/*.test.ts",

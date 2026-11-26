@@ -1,0 +1,70 @@
+/* 视图切换：一个模块里三段并列，沿用灰阶与方角，不加彩色主题。 */
+.pi-switch-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.pi-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-bottom: 1px solid #e5e5e5;
+  flex: 0 0 auto;
+}
+
+.pi-switch-tab {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid #e5e5e5;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+.pi-switch-tab:last-child {
+  border-right: 0;
+}
+
+.pi-switch-tab[aria-selected='true'] {
+  color: #1a1a1a;
+  box-shadow: inset 2px 0 0 #1a1a1a;
+  background: #fafafa;
+}
+
+.pi-switch-note {
+  margin: 6px 10px;
+  font-size: 12px;
+  color: #666;
+}
+
+.pi-switch-error {
+  color: #1a1a1a;
+}
+
+.pi-switch-workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+}
+
+.pi-switch-surface {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+}
+
+.pi-switch-surface.is-hidden {
+  display: none;
+}

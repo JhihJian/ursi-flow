@@ -1,0 +1,16 @@
+{
+  "name": "@ursi/pi-web-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "description": "pi-web 服务端：pi home 配置管理、对话运行时、一次性任务与任意根目录的会话浏览，共用一份会话实体表",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^1.6.0"
+  }
+}

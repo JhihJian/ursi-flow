@@ -27,12 +27,11 @@
 | --- | --- | --- |
 | `URSI_HOME` | `$HOME/.ursi` | 运行数据、渲染配置的唯一根目录 |
 | `ENTRY_ADDR` | `:8095` | Caddy 入口监听地址，端口冲突时改这里 |
-| `BACKEND_HOST` | `127.0.0.1` | 六个后端的监听地址 |
+| `BACKEND_HOST` | `127.0.0.1` | 五个后端的监听地址 |
 | `TODO_PORT` | `8090` | todo-web |
 | `SSH_PORT` | `8091` | ssh-web |
 | `FLOW_PORT` | `8094` | flow-web |
-| `PI_MANAGER_PORT` | `8093` | pi-manager-web |
-| `PI_SESSIONS_PORT` | `30200` | pi-sessions-web |
+| `PI_WEB_PORT` | `8093` | pi-web（配置、对话、会话浏览） |
 | `FS_PORT` | `8199` | fs-web |
 | `RUNS_RETENTION_DAYS` | `30` | flow-web 运行日志保留天数 |
 | `JOURNAL_RETENTION_DAYS` | `14` | systemd 用户日志保留天数 |
@@ -52,7 +51,7 @@
 
 ### 后端收敛到回环，另留 dae 观察台一个入口
 
-- 六个后端只服务入口，绑 `BACKEND_HOST`。Node 服务都已有 `*_HOST` 变量；两个 Rust 服务把 `0.0.0.0` 写死，需要补 `HOST` 变量（默认值保持 `0.0.0.0`，独立启动行为不变），部署时传回环地址。
+- 五个后端只服务入口，绑 `BACKEND_HOST`。Node 服务都已有 `*_HOST` 变量；两个 Rust 服务把 `0.0.0.0` 写死，需要补 `HOST` 变量（默认值保持 `0.0.0.0`，独立启动行为不变），部署时传回环地址。
 - dae-web 单独监听：它的配置写操作只认 `req.socket.remoteAddress` 是真实回环对端（`apps/dae-web/server/src/server.ts:38`），经反代后所有来源都变成回环地址，这道限制会失效。它本来也不在工作区里，独立成门没有损失。
 
 ### 运行期写入只有一个根目录
@@ -66,13 +65,12 @@
 | `$URSI_HOME/flow/` | Flow 包（用户编写） | 用户维护，不由服务写入 |
 | `$URSI_HOME/flow-web/` | 设置与运行日志 | 每次运行一个目录，需要按天清理 |
 | `$URSI_HOME/fs-web/workspaces.json` | 文件模块目录清单 | 很小 |
-| `$URSI_HOME/pi-manager/` | pi home 清单与模型目录缓存 | 缓存可重建 |
-| `$URSI_HOME/pi-sessions/` | 会话索引与侧栏偏好 | 索引可重建，偏好不可 |
+| `$URSI_HOME/pi-web/` | pi home 清单、扫描索引、侧栏偏好、模型目录缓存 | 索引与缓存可重建，清单与偏好不可 |
 | `$URSI_HOME/deploy/Caddyfile` | 渲染出的入口配置 | 固定一个文件 |
 
-各模块的状态位置由环境变量指定，单元里统一指向 `URSI_HOME`，因此换目录只需要改一个值：`URSI_DATA_DIR`、`FLOW_WEB_HOME`、`FLOW_WEB_STATE`、`FS_WEB_STATE`、`PI_MANAGER_STATE`、`PI_SESSIONS_STATE`、`PI_SESSIONS_PREFS`。
+各模块的状态位置由环境变量指定，单元里统一指向 `URSI_HOME`，因此换目录只需要改一个值：`URSI_DATA_DIR`、`FLOW_WEB_HOME`、`FLOW_WEB_STATE`、`FS_WEB_STATE`、`PI_WEB_STATE`。
 
-`~/.pi/agent` 是唯一在 `URSI_HOME` 之外的运行写入：它是 Pi 的 home，与 pi CLI 共用，pi-manager 与 pi-chat 按 Pi 自己的规则把会话写进其中的 `sessions/`。把它搬进 `URSI_HOME` 会让 CLI 与浏览器看到两份配置，因此保持原位，归属与清理都交给 Pi 使用者。
+`~/.pi/agent` 是唯一在 `URSI_HOME` 之外的运行写入：它是 Pi 的 home，与 pi CLI 共用，pi-web 按 Pi 自己的规则把会话写进其中的 `sessions/`。把它搬进 `URSI_HOME` 会让 CLI 与浏览器看到两份配置，因此保持原位，归属与清理都交给 Pi 使用者。
 
 构建产物留在仓库树内，不进入 `URSI_HOME`：它们可重建，身份是某个 git commit，不属于运行数据。
 
@@ -90,8 +88,7 @@
 | todo-web-server | `BACKEND_HOST:TODO_PORT` | `target/release/todo-web-server` | `$URSI_HOME/todo/todo.db` |
 | ssh-web-server | `BACKEND_HOST:SSH_PORT` | `target/release/ssh-web-server` | `$URSI_HOME/ssh/ssh.db`、`~/.ssh` |
 | flow-web | `BACKEND_HOST:FLOW_PORT` | `node src/main.ts` | `$URSI_HOME/flow`（只读）、`$URSI_HOME/flow-web` |
-| pi-manager-web | `BACKEND_HOST:PI_MANAGER_PORT` | `node src/server.ts` | `$URSI_HOME/pi-manager`、`~/.pi/agent` |
-| pi-sessions-web | `BACKEND_HOST:PI_SESSIONS_PORT` | `node src/main.mjs` | `$URSI_HOME/pi-sessions`、读 `~/.pi/agent/sessions` |
+| pi-web | `BACKEND_HOST:PI_WEB_PORT` | `node src/server.ts` | `$URSI_HOME/pi-web`、`~/.pi/agent` |
 | fs-web | `BACKEND_HOST:FS_PORT` | `node apps/fs-web/server/src/server.ts` | `$URSI_HOME/fs-web` |
 | dae-web | 独立端口，默认 `8092` | `node server/src/server.ts` | 无（dae 默认在 `127.0.0.1:9527`） |
 
@@ -103,8 +100,7 @@
 | `/api/fs-web/*` | fs-web | 保留（fs-web 服务自身认这个前缀） |
 | `/api/ssh-web/*` | ssh-web | 把 `/api/ssh-web` 换成 `/api`，含 WebSocket |
 | `/api/flow-web/*` | flow-web | 换成 `/api` |
-| `/api/pi-sessions/*` | pi-sessions-web | 换成 `/api` |
-| `/api/pi-manager/*` | pi-manager-web | 去掉前缀（该模块客户端自带 `/api`），关响应缓冲以直通 SSE |
+| `/api/pi/*` | pi-web | 去掉 `/api/pi` 前缀（服务端路由是 `/api/*`），关响应缓冲以直通 SSE |
 | `/api/*` | todo-web | 保留（todo-web 自身就是 `/api`） |
 
 前三家的路径处理不能一律用 `handle_path`：那几个服务端路由是 `/api/...`，工作台传入的前缀只是宿主约定，`vite.config.ts` 里的开发代理同样改写回 `/api`。
@@ -130,12 +126,8 @@ Host 头按原值透传。fs-web 用 `Origin` 与 `Host` 比对做跨站防护�
 		uri replace /api/flow-web /api
 		reverse_proxy @BACKEND_HOST@:@FLOW_PORT@
 	}
-	handle /api/pi-sessions/* {
-		uri replace /api/pi-sessions /api
-		reverse_proxy @BACKEND_HOST@:@PI_SESSIONS_PORT@
-	}
-	handle_path /api/pi-manager/* {
-		reverse_proxy @BACKEND_HOST@:@PI_MANAGER_PORT@ {
+	handle_path /api/pi/* {
+		reverse_proxy @BACKEND_HOST@:@PI_WEB_PORT@ {
 			flush_interval -1
 		}
 	}
@@ -169,13 +161,13 @@ Host 头按原值透传。fs-web 用 `Origin` 与 `Host` 比对做跨站防护�
 6. 建立 `URSI_HOME` 子目录，渲染 Caddy 配置与七个单元，`caddy validate` 通过后 `daemon-reload`、`enable --now`。
 7. 冒烟。
 
-冒烟项：入口 `/` 返回 200；`/api/health`、`/api/ssh-web/health`、`/api/flow-web/flows`、`/api/pi-sessions/health`、`/api/pi-manager/healthz`、`/api/fs-web/workspaces` 返回 200；`ss -ltn` 里六个后端只监听 `BACKEND_HOST`。
+冒烟项：入口 `/` 返回 200；`/api/health`、`/api/ssh-web/health`、`/api/flow-web/flows`、`/api/pi/api/health`、`/api/fs-web/workspaces` 返回 200；`ss -ltn` 里五个后端只监听 `BACKEND_HOST`。
 
 回滚：`git checkout <上一版提交>`，锁文件有变化时重跑 `npm ci`，再执行一次 `deploy.sh`。数据目录不动。冒烟任一关键项失败即判回滚。
 
 ## 服务管理
 
-七个 systemd 用户单元：`ursi-entry`、`ursi-todo-web`、`ursi-ssh-web`、`ursi-flow-web`、`ursi-pi-manager-web`、`ursi-pi-sessions-web`、`ursi-fs-web`。dae-web 用自己的单元，不在脚本管理范围内。公共约定：
+六个 systemd 用户单元：`ursi-entry`、`ursi-todo-web`、`ursi-ssh-web`、`ursi-flow-web`、`ursi-pi-web`、`ursi-fs-web`。dae-web 用自己的单元，不在脚本管理范围内。公共约定：
 
 - 单元模板里用 `@ROOT@`、`@NODE@`、`@CADDY@`、`@URSI_HOME@`、端口与监听地址占位符，安装时渲染，仓库或数据根移动后重跑脚本即可。
 - `Restart=always`、`RestartSec=2`，`WorkingDirectory` 指到各自的服务根（`apps/*/server` 或 Cargo 清单所在目录）；`WorkingDirectory` 不对，`node src/main.ts` 与静态目录解析都会失效。
@@ -209,7 +201,7 @@ WantedBy=default.target
 | --- | --- | --- | --- |
 | 构建产物 | 仓库内 `node_modules`、`apps/*/target`、各 `web/dist` | 视依赖而定，Rust 的 `target` 通常是 GB 级 | 可随时重建；`cargo clean` 或卸载脚本 `--purge-build` |
 | 运行数据 | `$URSI_HOME` | 通常 MB 级，`flow-web/runs` 随运行次数增长 | `deploy/prune.sh` 按天清理运行日志 |
-| 缓存 | `$URSI_HOME/pi-sessions/session-index.json`、`$URSI_HOME/pi-manager/model-catalog` | MB 级 | 删除后自动重建 |
+| 缓存 | `$URSI_HOME/pi-web/sessions/index.json`、`$URSI_HOME/pi-web/model-catalog` | MB 级 | 删除后自动重建 |
 | 服务日志 | systemd 用户 journal | 唯一不受 `URSI_HOME` 控制的增长源 | `deploy/prune.sh` 做 `--vacuum-time` 与 `--vacuum-size` |
 | Pi 数据 | `~/.pi/agent` | 由 Pi 自身增长 | 不归本方案管理，备份与清理由使用者决定 |
 
@@ -217,7 +209,7 @@ WantedBy=default.target
 
 ## 备份
 
-两个 SQLite 库用 `sqlite3 ... ".backup"` 取一致性快照，`$URSI_HOME/flow-web`、`$URSI_HOME/fs-web`、`$URSI_HOME/pi-manager`、`$URSI_HOME/pi-sessions` 直接打包。备份写到主机之外，避免和源数据抢同一块盘；本地临时中转可以放 `$URSI_HOME/backups`，用 `prune.sh` 或人工清理。`~/.pi/agent` 含 `auth.json`，按密钥材料单独处理。
+两个 SQLite 库用 `sqlite3 ... ".backup"` 取一致性快照，`$URSI_HOME/flow-web`、`$URSI_HOME/fs-web`、`$URSI_HOME/pi-web` 直接打包。备份写到主机之外，避免和源数据抢同一块盘；本地临时中转可以放 `$URSI_HOME/backups`，用 `prune.sh` 或人工清理。`~/.pi/agent` 含 `auth.json`，按密钥材料单独处理。
 
 ## 卸载
 
@@ -229,7 +221,7 @@ WantedBy=default.target
 | `uninstall.sh --purge-build` | 另删 `node_modules`、Rust `target`、各 `web/dist` |
 | `uninstall.sh --purge-data --yes` | 另删 `$URSI_HOME` 下的运行数据目录 |
 
-`--purge-data` 删除 `todo`、`ssh`、`flow-web`、`fs-web`、`pi-manager`、`pi-sessions`，保留 `$URSI_HOME/flow`（用户编写的 Flow 包）与 `$URSI_HOME/backups`。`~/.pi/agent` 与 CLI 共用，任何参数下都不删除。仓库目录本身也不在脚本处理范围内。
+`--purge-data` 删除 `todo`、`ssh`、`flow-web`、`fs-web`、`pi-web`，保留 `$URSI_HOME/flow`（用户编写的 Flow 包）与 `$URSI_HOME/backups`。`~/.pi/agent` 与 CLI 共用，任何参数下都不删除。仓库目录本身也不在脚本处理范围内。
 
 ## 首次部署
 
@@ -239,13 +231,13 @@ WantedBy=default.target
 4. 执行 `deploy/deploy.sh`，脚本完成构建、渲染、安装与启动。
 5. 冒烟通过后把本次部署写入使用者自己的部署记录目录。
 
-已有部署迁移到 `URSI_HOME` 时，先停单元，再把旧状态文件移到对应子目录：`~/.local/state/fs-web/workspaces.json`、`~/.local/state/pi-manager-web/`、`~/.cache/pi-sessions-web/`。`todo`、`ssh`、`flow`、`flow-web` 原本就在 `~/.ursi` 下，不需要移动。
+已有部署迁移到 `URSI_HOME` 时，先停单元，再把旧状态文件移到对应子目录：`~/.local/state/fs-web/workspaces.json`、`~/.local/state/pi-manager-web/`、`~/.local/state/pi-web/`。pi-manager 与 pi-sessions 的旧状态由 `deploy.sh` 一次性搬进 `pi-web/`（`homes.json` 与 `sessions/prefs.json`），扫描索引直接丢弃重扫。`todo`、`ssh`、`flow`、`flow-web` 原本就在 `~/.ursi` 下，不需要移动。
 
 ## 范围外与未决
 
 - 两个 Rust 服务（`apps/todo-web/server`、`apps/ssh-web/server`）目前把 `0.0.0.0` 写死在 `main.rs`，方案依赖补 `HOST` 变量才能绑回环。默认值保持 `0.0.0.0`，独立启动方式不变。
 - 沙箱已在 `shell-web` 注册，前缀是 `/sbx`，本方案不给它目标：Gateway 未部署时打开沙箱 profile 会报错。Gateway 就绪后补一条反代即可。
-- Pi 管理台的来源边界有一处文档与实现不一致：[apps/pi-manager-web/SPEC.md](../../../apps/pi-manager-web/SPEC.md) 写「写操作仅限本机来源，非回环请求返回 403」，实现里没有任何来源限制，`server.ts` 注释写明「部署在可信局域网内，读写接口均不限制来源」。决定按实现行为描述部署边界：可信局域网内不做应用鉴权，跨出可信网络时由前置代理统一认证。SPEC 那两条验收需要按此修正。
+- Pi Web 不做应用层鉴权：服务部署在可信局域网，读写接口对任何能连上入口的来源放行，跨出可信网络时由前置代理统一认证。
 - 入口是明文 HTTP，浏览器到入口的流量不加密。跨出可信网络时必须走 HTTPS 或 VPN，不在本方案内。
 - `~/.ursi/todo/todo.db` 可能同时被 SUMM-Todo 一侧的进程读写，并发写由 SQLite 自身加锁处理；本方案不引入第二个看板进程。
 - 入口静态产物含 4MB 级编辑器分块，静态分支必须保留 `encode`。

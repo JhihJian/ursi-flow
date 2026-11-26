@@ -16,8 +16,7 @@ UNITS=(
   ursi-todo-web
   ursi-ssh-web
   ursi-flow-web
-  ursi-pi-manager-web
-  ursi-pi-sessions-web
+  ursi-pi-web
   ursi-fs-web
 )
 DATA_DIRS=(
@@ -25,8 +24,7 @@ DATA_DIRS=(
   "$URSI_HOME/ssh"
   "$URSI_HOME/flow-web"
   "$URSI_HOME/fs-web"
-  "$URSI_HOME/pi-manager"
-  "$URSI_HOME/pi-sessions"
+  "$URSI_HOME/pi-web"
 )
 
 PURGE_BUILD=0

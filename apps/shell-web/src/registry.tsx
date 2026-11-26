@@ -5,16 +5,11 @@ import { createFlowModule } from '@ursi/flow-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
 import { createSshModule } from '@ursi/ssh-web/module'
 import { createSandboxModule } from '@ursi/sandbox-web/module'
-import { createPiSessionsModule } from '@ursi/pi-sessions-web/module'
-import { createPiChatModule, type PiChatCommands } from '@ursi/pi-chat-web/module'
-import { createApiClient } from '@ursi/pi-manager-web/client'
-import { createPiManagerModule } from '@ursi/pi-manager-web/module'
+import { createPiModule } from '@ursi/pi-web/module'
 import '@ursi/fs-web/module.css'
 import '@ursi/ssh-web/module.css'
 import '@ursi/sandbox-web/module.css'
-import '@ursi/pi-sessions-web/module.css'
-import '@ursi/pi-chat-web/module.css'
-import '@ursi/pi-manager-web/module.css'
+import '@ursi/pi-web/module.css'
 import '@ursi/flow-web/styles.css'
 // 轨迹组件库的样式是全局前缀类（dsw- / trajectory-*），在这里引一次即可。
 import 'pi-agent-trajectory-viewer/style.css'
@@ -49,9 +44,7 @@ const SOURCES: Record<string, string> = {
   'ssh': '@ursi/ssh-web/module',
   'sandbox': '@ursi/sandbox-web/module',
   'flow': '@ursi/flow-web/module',
-  'pi-sessions': '@ursi/pi-sessions-web/module',
-  'pi-chat': '@ursi/pi-chat-web/module',
-  'pi-config': '@ursi/pi-manager-web/module',
+  'pi': '@ursi/pi-web/module',
 }
 
 function SettingsView() {
@@ -168,36 +161,8 @@ function assertRegistry(modules: WorkspaceModule[], views: WorkspaceView[]): voi
  */
 const files = createFsModule({ apiBaseUrl: '/api/fs-web' })
 
-/** 管理台的运行态来源：会话模块只认普通值，不 import 管理台模块。 */
-const managerClient = createApiClient('/api/pi-manager')
-
-/**
- * 会话与对话互为入口（「在对话里继续」与「完整轨迹」），两个工厂需要对方的命令。
- * 会话先建，对话后建；会话侧的这条边用延迟引用，避免相互构造。
- */
-let chatModule: (WorkspaceModule & { commands: PiChatCommands }) | null = null
-
-const sessionsModule = createPiSessionsModule({
-  apiBaseUrl: '/api/pi-sessions',
-  storageKey: 'ursi.sessions',
-  liveSessions: { fetch: () => managerClient.getLiveFeed() },
-  resumeSessionInChat: async ({ sessionFile }) => {
-    if (!chatModule) throw new Error('对话模块未登记')
-    return chatModule.commands.resumeSession({ sessionFile })
-  },
-})
-
-chatModule = createPiChatModule({
-  managerApiBaseUrl: '/api/pi-manager',
-  storageKey: 'ursi.chat',
-  openSessionInSessions: sessionsModule.commands.openSession,
-})
-
-const configModule = createPiManagerModule({
-  apiBaseUrl: '/api/pi-manager',
-  storageKey: 'ursi.pi-config',
-  openRootInSessions: sessionsModule.commands.openRoot,
-})
+/** Pi Web 是一个模块：配置、对话、会话共用同一份 home 与会话实体。 */
+const piModule = createPiModule({ apiBaseUrl: '/api/pi', storageKey: 'ursi.pi' })
 
 /** 工厂在模块级只调一次，保持组件引用稳定，避免宿主重渲染时重挂模块内部状态。 */
 const MODULES: WorkspaceModule[] = [
@@ -209,35 +174,13 @@ const MODULES: WorkspaceModule[] = [
   files,
   createSshModule({ apiBaseUrl: '/api/ssh-web' }),
   createSandboxModule({ apiBase: '/sbx' }),
-  sessionsModule,
-  chatModule,
-  configModule,
+  piModule,
 ]
 
 /** 跨模块依赖的说明，Registry 页直接展示，避免边藏在代码里。 */
 const WIRES: Array<{ from: string; to: string; capability: string }> = [
   { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
   { from: 'flow', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
-  {
-    from: 'pi-chat',
-    to: 'pi-sessions',
-    capability: 'openSessionInSessions → pi-sessions.commands.openSession',
-  },
-  {
-    from: 'pi-sessions',
-    to: 'pi-chat',
-    capability: 'resumeSessionInChat → pi-chat.commands.resumeSession（延迟引用）',
-  },
-  {
-    from: 'pi-sessions',
-    to: 'pi-manager',
-    capability: 'liveSessions.fetch → /api/pi-manager 的会话运行态',
-  },
-  {
-    from: 'pi-config',
-    to: 'pi-sessions',
-    capability: 'openRootInSessions → pi-sessions.commands.openRoot',
-  },
 ]
 
 /**
@@ -250,10 +193,7 @@ const DEFAULT_PROFILES: WorkspaceProfile[] = [
   { id: 'terminal', title: '终端', modules: ['ssh', 'fs-web'] },
   { id: 'sandbox', title: '沙箱', modules: ['sandbox', 'ssh'] },
   { id: 'flow', title: 'Flow', modules: ['flow', 'fs-web'] },
-  { id: 'history', title: '会话', modules: ['pi-sessions', 'fs-web'] },
-  { id: 'pi', title: 'Pi 控制台', modules: ['pi-chat', 'pi-sessions', 'pi-config', 'fs-web'] },
-  { id: 'chat', title: '对话', modules: ['pi-chat'] },
-  { id: 'pi-config', title: 'Pi 配置', modules: ['pi-config', 'fs-web'] },
+  { id: 'pi', title: 'Pi', modules: ['pi', 'fs-web'] },
 ]
 
 /** profile 配置存在这里；编辑页与外壳读同一份快照，改配置不会重建编辑组件本身。 */

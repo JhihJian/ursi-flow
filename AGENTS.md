@@ -12,4 +12,4 @@ ursi-flow 是 npm workspaces 单仓：多个可独立部署的 Web 应用（`app
 
 - 改模块行为同步该模块的 `SPEC.md` 或 `README.md`；改部署方式同步 `DEPLOYMENT.md`；新增设计在 `ARCHITECHTURE.md` 的设计索引登记。
 - 模块之间不互相 import，跨模块协作走组合根。
-- 文件地图只记录重要的。
+- 除非特别许可，项目根目录下不准新建文件或目录

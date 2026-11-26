@@ -1,11 +1,9 @@
 ---
 parent: ../..
 references:
-  - ../../../apps/pi-manager-web/SPEC.md
-  - ../../../apps/pi-sessions-web/SPEC.md
-  - ../../../apps/pi-chat-web/SPEC.md
+  - ../../../apps/pi-web/SPEC.md
+  - ../../../apps/pi-web/HTTP.md
   - ../../../packages/workspace-shell/MODULE-CONTRACT.md
-  - ../pi-chat-web/CHAT.md
 ---
 
 # Pi Web 架构：领域建模先行

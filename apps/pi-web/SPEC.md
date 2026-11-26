@@ -1,0 +1,92 @@
+---
+parent: ../../SPEC.md
+references:
+  - HTTP.md
+  - ../../docs/design/pi-web/OVERVIEW.md
+  - ../../packages/workspace-shell/MODULE-CONTRACT.md
+---
+
+# Pi Web
+
+## 功能意图
+
+pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作同一套领域模型。
+
+一份 pi home 决定整套能力（模型、凭据、skills、agents、MCP、工具策略），因此 home 是全应用唯一的上下文轴：配置写它的注册表字段，对话用它装配运行时，会话浏览的默认根是 `<home>/sessions`。
+
+会话只有一个身份 `sessionId`（会话头 `SessionHeader.id`）。磁盘上的历史文件、内存里加载的会话、正在收发的对话、一次性任务、子会话，都是同一个 `PiSession` 实体的不同状态投影；运行态（本进程与其它进程的心跳）挂在实体的 `runtimes` 上，不再有独立的运行态接口。
+
+交付形态：
+
+- `server/`：一个零依赖 Node 24 进程，托管 `/api/*` 与独立页面；pi SDK 按需加载。
+- `web/`：一个工作区模块 `pi`，侧栏三段切换（对话 / 会话 / 配置），三个视图只是同一份实体的不同投影。
+- 数据与状态：`$URSI_HOME/pi-web`（home 清单、扫描索引、特别关注、模型目录缓存）；会话文件仍写在各自 pi home 的 `sessions/`。
+
+边界：不做多用户与鉴权（部署在可信局域网，入口防护由前置层承担）；不做终端、文件浏览、附件与图片输入；不改写别人的会话内容（唯一写操作是删除会话文件与记录特别关注）。
+
+## 关键功能与验收
+
+### pi home 实体
+
+#### 验收
+
+- `GET /api/homes` 的每条记录都带 `sessionsRoot`、`profileRevision` 与 `capabilities`（skill / agent / mcp / 插件数量、默认模型、是否有可用凭据），前端不自己拼路径或统计。
+- home 清单原子落盘到 `$PI_WEB_STATE/homes.json`；条目 id 是 realpath 的 sha256 前 16 位，跨重启稳定。
+- 创建支持初始化、复制、登记三种模式，只创建最后一级目录，目标已存在且非空返回 409。
+- `GET /api/homes/:id/runtime-profile` 返回服务端解析好的模型候选（`enabledModels` 范围、provider 与显示名、支持的思考档位与映射）、subagent 清单、默认 cwd 与会话根；前端不重算匹配规则。
+- 配置写入返回新的 `profileRevision`；该 home 下已加载的会话据此标记 `stale`。
+
+### 会话实体
+
+#### 验收
+
+- 会话 id 取会话头 `id`；服务端创建时用 uuidv7 铸造并经 `SessionManager.create(cwd, dir, { id })` 写入文件头，内存态与磁盘态同键。
+- 无头部老文件按 `(filePath, 首行内容)` 哈希派生 id，`identitySource = 'derived'`，不改写磁盘；这类会话只读（`canRun=false`，原因码 `legacy_without_header`）。
+- `GET /api/sessions` 支持 `home`（home 路径或 id）与 `root`（任意绝对目录）两种作用域，返回同一份实体；带 `since` 时未变化回 `notModified`，变化回完整列表（epoch 不匹配时要求整份重取）。
+- 外部目录按 LRU 维护（默认 4 个）并带空闲 TTL（默认 30 分钟），过期即移出扫描目标，其下 `discovered` 实体被移除，文件不动。
+- 状态机：`discovered → loading → ready ⇄ running`，旁支 `failed`，`evicted` 回流 `discovered`，`deleted` 终态。`loading` 与 `running` 的删改分别返回 409 `session_loading` / `session_busy`。
+- 同一 `sessionId` 的装配单飞：并发「继续」拿到同一个运行时，不出现并行追加同一份 JSONL。
+- 上游 `sessionFile` 不再是跨接口的键：删除只按实体定位，客户端不传路径。
+
+### 轨迹
+
+#### 验收
+
+- `GET /api/sessions/:id/trajectory` 返回该会话唯一的轨迹：首行补齐 `type: "session"`、老写法映射成 `message` 行、坏行丢弃并计数；这是会话视图与对话视图共用的同一份权威。
+- 文件存在本地运行时且已落盘内容时以运行时为准，其它情况以文件为准；接口形态一致。
+- 体积超过上限返回 413 与中文说明；支持 gzip 协商。
+- 事件流 `GET /api/sessions/:id/events` 只对存在本地运行时的会话开放，帧带 `revision`，重连按 `since` 续接。
+
+### 三个视图
+
+#### 验收
+
+- 侧栏顶部是视图切换（对话 / 会话 / 配置），下面是当前视图自己的侧栏；切换视图不重建其他视图的实体状态。
+- 视图首次激活才挂载：打开工作台不会立刻扫描目录或连接事件流。
+- home 只有一份真源：任一视图里切 home，其余视图跟随；会话视图的根默认取该 home 的 `sessions/`，用户显式改成任意目录即进入外部目录浏览（不改 home）。
+- 对话视图：建会话/续聊、流式输出、工具调用可见、可打断、排队数与扩展 UI 回执；会话内换模型只影响本会话。
+- 会话视图：按项目分组、日期条、搜索、特别关注、删除、查看轨迹；进入时能续聊同一实体（不新建会话）。
+- 配置视图：settings 受管项、启用模型列表、skills、subagent、插件、MCP、自定义模型、凭据；写配置文件带乐观锁与 `.bak-manager` 备份，凭据读接口一律遮蔽。
+- 状态栏按活动视图给出摘要（对话运行态 / 会话数与选中项 / 当前 home）。
+
+### 运行与任务
+
+#### 验收
+
+- 对话上限 `PI_WEB_MAX_CHATS`（默认 8），空闲 30 分钟自动释放并保留文件；进程退出统一释放（abort → dispose → settleCredentialWrites → 删本实例心跳）。
+- 一次性任务用同一实体（`kind: 'task'`）：`execution` 记录超时、结果、输出长度与最后助手文本；并发上限 `PI_WEB_MAX_TASKS`（默认 4），超时 `PI_WEB_TASK_TIMEOUT_MS`（默认 600000）。
+- pi SDK 未安装时配置与浏览仍可用，对话与任务返回 503。
+
+## 模块结构
+
+- `server/src/server.ts`：入口（配置 → 路由 → 静态 → 信号）。
+- `server/src/config.ts`、`state.ts`：唯一读环境变量与状态目录布局的地方。
+- `server/src/http/`：路由表（段匹配 + 每条路由声明 home 策略）、响应原语、静态托管。
+- `server/src/shared/`：pi home 校验、SDK 按需加载、原子写与乐观锁、JSONC、frontmatter。
+- `server/src/config/`：home 注册表、settings / skills / agents / mcp / models / auth / plugins 的文件级读写与路由。
+- `server/src/chat/`：常驻对话运行时、会话装配与释放、一次性任务、跨进程心跳读取。
+- `server/src/sessions/`：扫描、轨迹转换、偏好、删除、会话实体注册表（`registry.ts`）与路由。
+- `web/src/pi-context.tsx`：home 与视图的唯一真源。
+- `web/src/pi-sidebar.tsx`、`pi-workspace.tsx`、`pi-status.tsx`：三段切换、按视图渲染、状态栏。
+- `web/src/views/{config,sessions,chat}/`：三个视图各自的侧栏、工作区与状态（只做渲染镜像）。
+- `web/src/module.css`：三段视图样式与切换条，供工作台引入；`standalone.css` 只服务独立入口。

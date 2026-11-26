@@ -59,7 +59,7 @@ npm run dev:shell-web        # http://localhost:5191
 cd apps/todo-web/server && cargo run        # 或已有实例
 cd apps/fs-web/server && ...                # 8199
 cd apps/ssh-web/server && ...               # 8091
-cd apps/pi-sessions-web/server && npm start  # 30200
+cd apps/pi-web/server && npm start  # 8093（配置、对话、会话浏览）
 cd apps/flow-web/server && npm start        # 8094（先构建 apps/ursi-flow）
 ```
 
