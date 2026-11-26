@@ -14,7 +14,10 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.14.28",
+    "@ursi/flow-web": "*",
     "@ursi/fs-web": "*",
+    "@ursi/pi-chat-web": "*",
+    "@ursi/pi-manager-web": "*",
     "@ursi/pi-sessions-web": "*",
     "@ursi/sandbox-web": "*",
     "@ursi/ssh-web": "*",
@@ -24,8 +27,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-resizable-panels": "^4.24.1",
-    "zustand": "^5.1.0",
-    "@ursi/flow-web": "*"
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

@@ -1,0 +1,1917 @@
+/*
+ * 管理台模块样式（由 src/styles.css 用 scripts/scope-css.py 生成，勿手改）。
+ *
+ * 独立入口仍然 import styles.css；作为工作台模块时用这份作用域化版本：
+ * 所有选择器都挂在 .pi-manager-root 下，:root 变量搬到根类上，
+ * html/body/#root 与全局 reset 不下发，避免污染宿主外壳。
+ */
+
+.pi-manager-root,
+.pi-manager-root *,
+.pi-manager-root *::before,
+.pi-manager-root *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 出版物式版面靠隐藏滚动条维持，作用域内保持一致。 */
+.pi-manager-root * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pi-manager-root *::-webkit-scrollbar {
+  display: none;
+}
+
+.pi-manager-root {
+  height: 100%;
+  overflow: hidden;
+  color: var(--gray-900);
+  background: var(--white);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pi-manager-root {
+--black: #000000;
+  --gray-900: #1a1a1a;
+  --gray-600: #666666;
+  --gray-400: #999999;
+  --gray-200: #e5e5e5;
+  --white: #ffffff;
+
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  --danger: #b3253e;
+  --ok: #2f7a45;
+  --warn: #91650f;
+
+  --sidebar-width: 200px;
+  --list-width: 260px;
+}
+
+.pi-manager-root, .pi-manager-root *, .pi-manager-root *::before, .pi-manager-root *::after {
+box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.pi-manager-root, .pi-manager-root * {
+scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pi-manager-root *::-webkit-scrollbar {
+display: none;
+}
+
+.pi-manager-root button, .pi-manager-root input, .pi-manager-root select, .pi-manager-root textarea {
+font: inherit;
+  color: inherit;
+}
+
+.pi-manager-root :focus-visible {
+outline: 1px solid var(--gray-900);
+  outline-offset: 1px;
+}
+
+.pi-manager-root .home-bar {
+display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex: none;
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--gray-900);
+  background: var(--white);
+}
+
+.pi-manager-root .home-bar-title {
+font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pi-manager-root .home-bar-home {
+display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .home-bar-name {
+font-size: 12px;
+  color: var(--gray-900);
+  white-space: nowrap;
+}
+
+.pi-manager-root .home-bar-path {
+min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--gray-400);
+  user-select: text;
+}
+
+.pi-manager-root .home-bar-flag {
+flex: none;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.pi-manager-root .home-bar-home.invalid .home-bar-path {
+color: var(--gray-400);
+}
+
+.pi-manager-root .app-main {
+flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.pi-manager-root .config-sidebar {
+width: var(--sidebar-width);
+  flex: none;
+  min-height: 100%;
+  padding: var(--space-md);
+  overflow-y: auto;
+  user-select: none;
+}
+
+.pi-manager-root .config-sidebar-head {
+display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.pi-manager-root .config-sidebar-head-sections {
+margin-top: var(--space-lg);
+}
+
+.pi-manager-root .config-sidebar-heading {
+flex: 1;
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .rail-toggle {
+display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  padding: 0 var(--space-xs);
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pi-manager-root .rail-toggle:hover {
+color: var(--gray-900);
+  background: var(--gray-200);
+}
+
+.pi-manager-root .preset-create {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.pi-manager-root .preset-create-modes {
+display: flex;
+  gap: 2px;
+}
+
+.pi-manager-root .preset-mode {
+flex: 1;
+  padding: 2px var(--space-xs);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.pi-manager-root .preset-mode:hover {
+border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.pi-manager-root .preset-mode.active {
+border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.pi-manager-root .preset-create-actions {
+display: flex;
+  gap: var(--space-xs);
+}
+
+.pi-manager-root .preset-inline-input {
+width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 12px;
+}
+
+.pi-manager-root .preset-inline-input:focus {
+outline: none;
+  border-color: var(--black);
+}
+
+.pi-manager-root .preset-add-hint {
+font-size: 10px;
+  line-height: 1.4;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .preset-add-hint.error {
+color: var(--danger);
+}
+
+.pi-manager-root .preset-list {
+list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.pi-manager-root .preset-item {
+display: flex;
+  align-items: stretch;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pi-manager-root .preset-item:hover {
+background: var(--gray-200);
+}
+
+.pi-manager-root .preset-item.active {
+border-left-color: var(--black);
+  background: var(--gray-200);
+}
+
+.pi-manager-root .preset-item.invalid .preset-name {
+color: var(--gray-400);
+}
+
+.pi-manager-root .preset-main {
+flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-sm) var(--space-xs);
+  overflow: hidden;
+}
+
+.pi-manager-root .preset-name {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  color: var(--gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .preset-item.active .preset-name {
+color: var(--black);
+  font-weight: 500;
+}
+
+.pi-manager-root .preset-path {
+font-size: 10px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .preset-source {
+flex: none;
+  font-size: 10px;
+  color: var(--gray-400);
+  letter-spacing: 0.5px;
+}
+
+.pi-manager-root .preset-sub {
+font-size: 11px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .preset-item.invalid .preset-sub {
+color: var(--danger);
+}
+
+.pi-manager-root .preset-error {
+display: block;
+  padding: 2px var(--space-xs);
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.pi-manager-root .preset-item-editing {
+padding: var(--space-xs) 0;
+  cursor: default;
+}
+
+.pi-manager-root .context-menu {
+position: fixed;
+  z-index: 200;
+  padding: 4px 0;
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+}
+
+.pi-manager-root .context-menu-heading {
+padding: 4px var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--gray-400);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pi-manager-root .context-menu-item {
+display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
+  cursor: pointer;
+}
+
+.pi-manager-root .context-menu-item:hover, .pi-manager-root .context-menu-item:focus-visible {
+outline: none;
+  background: var(--gray-200);
+}
+
+.pi-manager-root .context-menu-item.danger {
+color: var(--danger);
+}
+
+.pi-manager-root .context-menu-item.danger:hover {
+background: rgba(179, 37, 62, 0.1);
+}
+
+.pi-manager-root .preset-empty {
+padding: var(--space-sm) var(--space-xs);
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sidebar-item {
+display: block;
+  width: 100%;
+  padding: var(--space-sm) var(--space-xs);
+  background: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-manager-root .sidebar-item:hover {
+background: var(--gray-200);
+  color: var(--gray-900);
+}
+
+.pi-manager-root .sidebar-item[aria-current='true'] {
+border-left-color: var(--black);
+  background: var(--gray-200);
+  color: var(--black);
+}
+
+.pi-manager-root .sidebar-item-icon {
+display: none;
+}
+
+.pi-manager-root .sidebar-item-label {
+font-size: 13px;
+}
+
+.pi-manager-root .config-detail {
+flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.pi-manager-root .config-detail > [hidden] {
+display: none;
+}
+
+.pi-manager-root .section {
+flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-sm) var(--space-lg) var(--space-lg);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.pi-manager-root .section-head {
+display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
+  padding: var(--space-sm) 0 var(--space-xs);
+}
+
+.pi-manager-root .section-title {
+font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pi-manager-root .section-desc {
+color: var(--gray-400);
+  font-size: 12px;
+}
+
+.pi-manager-root .section-warn {
+color: var(--warn);
+  font-size: 12px;
+}
+
+.pi-manager-root .filter-input {
+width: 220px;
+  flex: none;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 12px;
+}
+
+.pi-manager-root .filter-input:focus {
+outline: none;
+  border-color: var(--black);
+}
+
+.pi-manager-root .settings-form-narrow {
+max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .item-table {
+width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pi-manager-root .item-table th {
+font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-400);
+  text-align: left;
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.pi-manager-root .item-table td {
+padding: var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  vertical-align: top;
+  color: var(--gray-900);
+}
+
+.pi-manager-root .item-table tbody tr {
+cursor: pointer;
+  user-select: none;
+}
+
+.pi-manager-root .item-table tbody tr:hover > td {
+background: rgba(26, 26, 26, 0.05);
+}
+
+.pi-manager-root .item-table tbody tr.is-selected > td {
+background: rgba(26, 26, 26, 0.08);
+}
+
+.pi-manager-root .item-table tbody tr.is-selected > td:first-child {
+box-shadow: inset 2px 0 0 var(--gray-900);
+}
+
+.pi-manager-root .item-table tbody tr.is-selected:hover > td {
+background: rgba(26, 26, 26, 0.12);
+}
+
+.pi-manager-root .cell-title {
+font-weight: 500;
+}
+
+.pi-manager-root .cell-sub {
+font-size: 11px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+
+.pi-manager-root .col-state {
+width: 52px;
+  text-align: center;
+}
+
+.pi-manager-root .col-size {
+width: 72px;
+  text-align: right;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pi-manager-root .state-mark {
+font-size: 12px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .state-mark.off {
+color: var(--danger);
+}
+
+.pi-manager-root .state-mark.running {
+color: var(--gray-900);
+}
+
+.pi-manager-root .split-view {
+display: flex;
+  min-height: 0;
+  height: 100%;
+}
+
+.pi-manager-root .split-list {
+width: var(--list-width);
+  flex: none;
+  border-right: 1px solid var(--gray-200);
+  overflow-y: auto;
+  padding: var(--space-sm);
+}
+
+.pi-manager-root .split-detail {
+flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-md) var(--space-lg);
+}
+
+.pi-manager-root .split-detail-inner {
+max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .list-item {
+display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-xs);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-align: left;
+}
+
+.pi-manager-root .list-item:hover {
+background: var(--gray-200);
+  color: var(--gray-900);
+}
+
+.pi-manager-root .list-item[aria-current='true'] {
+border-left-color: var(--black);
+  background: var(--gray-200);
+  color: var(--black);
+}
+
+.pi-manager-root .list-item-main {
+flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pi-manager-root .list-item-title {
+font-weight: 500;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-manager-root .list-item[aria-current='true'] .list-item-title {
+color: var(--black);
+}
+
+.pi-manager-root .list-item-sub {
+font-size: 11px;
+  color: var(--gray-400);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-manager-root .list-item-badges {
+display: flex;
+  flex: none;
+  gap: var(--space-xs);
+}
+
+.pi-manager-root .badge {
+display: inline-block;
+  padding: 1px var(--space-xs);
+  border: 1px solid var(--gray-200);
+  font-size: 10px;
+  color: var(--gray-600);
+  white-space: nowrap;
+}
+
+.pi-manager-root .badge.ok {
+color: var(--ok);
+  border-color: currentColor;
+}
+
+.pi-manager-root .badge.warn {
+color: var(--warn);
+  border-color: currentColor;
+}
+
+.pi-manager-root .badge.danger {
+color: var(--danger);
+  border-color: currentColor;
+}
+
+.pi-manager-root .badge.accent {
+color: var(--gray-900);
+  border-color: var(--gray-900);
+}
+
+.pi-manager-root .field {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.pi-manager-root .field-label {
+font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .field-hint {
+font-size: 11px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .field-row {
+display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .tool-switches {
+display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+}
+
+.pi-manager-root .tool-switch {
+display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-700, var(--gray-600));
+  cursor: pointer;
+}
+
+.pi-manager-root .tool-switch input {
+accent-color: var(--gray-900);
+}
+
+.pi-manager-root .input, .pi-manager-root .select, .pi-manager-root .textarea {
+width: 100%;
+  padding: var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 13px;
+}
+
+.pi-manager-root .input::placeholder, .pi-manager-root .textarea::placeholder {
+color: var(--gray-400);
+}
+
+.pi-manager-root .input:focus, .pi-manager-root .select:focus, .pi-manager-root .textarea:focus {
+outline: none;
+  border-color: var(--black);
+}
+
+.pi-manager-root .textarea {
+min-height: 96px;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+.pi-manager-root .textarea.code {
+min-height: 180px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pi-manager-root .switch {
+display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.pi-manager-root .switch:disabled {
+opacity: 0.4;
+  cursor: default;
+}
+
+.pi-manager-root .switch-track {
+width: 28px;
+  height: 16px;
+  border: 1px solid var(--gray-400);
+  background: var(--white);
+  position: relative;
+  flex: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.pi-manager-root .switch-track::after {
+content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: var(--gray-400);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.pi-manager-root .switch[aria-pressed='true'] .switch-track {
+border-color: var(--gray-900);
+  background: var(--gray-900);
+}
+
+.pi-manager-root .switch[aria-pressed='true'] .switch-track::after {
+transform: translateX(12px);
+  background: var(--white);
+}
+
+.pi-manager-root .switch-label {
+color: var(--gray-600);
+}
+
+.pi-manager-root .switch[aria-pressed='true'] .switch-label {
+color: var(--gray-900);
+}
+
+.pi-manager-root .btn {
+padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+  white-space: nowrap;
+}
+
+.pi-manager-root .btn:hover {
+background: var(--gray-200);
+}
+
+.pi-manager-root .btn:disabled {
+opacity: 0.4;
+  cursor: default;
+}
+
+.pi-manager-root .btn:disabled:hover {
+background: var(--white);
+}
+
+.pi-manager-root .btn-primary {
+background: var(--gray-900);
+  color: var(--white);
+}
+
+.pi-manager-root .btn-primary:hover:not(:disabled) {
+background: var(--black);
+}
+
+.pi-manager-root .btn-danger {
+border-color: var(--gray-900);
+  color: var(--danger);
+}
+
+.pi-manager-root .btn-danger:hover:not(:disabled) {
+background: var(--danger);
+  border-color: var(--danger);
+  color: var(--white);
+}
+
+.pi-manager-root .btn.small {
+padding: var(--space-xs) var(--space-sm);
+  font-size: 11px;
+}
+
+.pi-manager-root .btn.primary {
+background: var(--gray-900);
+  border-color: var(--gray-900);
+  color: var(--white);
+}
+
+.pi-manager-root .btn.primary:hover:not(:disabled) {
+background: var(--black);
+}
+
+.pi-manager-root .btn.danger {
+border-color: var(--gray-900);
+  color: var(--danger);
+}
+
+.pi-manager-root .btn.danger:hover:not(:disabled) {
+background: var(--danger);
+  color: var(--white);
+}
+
+.pi-manager-root .notice {
+border: 1px solid var(--gray-200);
+  border-left: 2px solid var(--gray-400);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+  color: var(--gray-600);
+  background: var(--white);
+}
+
+.pi-manager-root .notice.warn {
+border-left-color: var(--warn);
+  color: var(--warn);
+}
+
+.pi-manager-root .notice.danger {
+border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.pi-manager-root .notice.ok {
+border-left-color: var(--ok);
+  color: var(--ok);
+}
+
+.pi-manager-root .empty-state {
+display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--space-xl);
+  color: var(--gray-400);
+  text-align: center;
+}
+
+.pi-manager-root .empty-state-title {
+font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+.pi-manager-root .loading {
+display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  color: var(--gray-400);
+}
+
+.pi-manager-root .loading-dot {
+width: 8px;
+  height: 8px;
+  background: var(--gray-900);
+  animation: pulse 900ms ease-in-out infinite;
+}
+
+@keyframes pulse { 0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  } }
+
+.pi-manager-root .error-banner {
+border-left: 2px solid var(--danger);
+  background: rgba(179, 37, 62, 0.05);
+  color: var(--danger);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.pi-manager-root .kv-grid {
+display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-xs) var(--space-md);
+  font-size: 12px;
+}
+
+.pi-manager-root .kv-key {
+color: var(--gray-400);
+}
+
+.pi-manager-root .kv-value {
+color: var(--gray-900);
+  word-break: break-all;
+}
+
+.pi-manager-root .kv-value.muted {
+color: var(--gray-400);
+}
+
+.pi-manager-root .masked-value {
+color: var(--gray-400);
+  letter-spacing: 0.08em;
+}
+
+.pi-manager-root .code-block {
+border: 1px solid var(--gray-200);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pi-manager-root .detail-sheet {
+flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--gray-900);
+  background: var(--white);
+  animation: detail-sheet-rise 200ms ease-out;
+}
+
+@keyframes detail-sheet-rise { from {
+    transform: translateY(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  } }
+
+.pi-manager-root .detail-grip {
+height: 10px;
+  flex: none;
+}
+
+.pi-manager-root .detail-body {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-xs) var(--space-md) var(--space-md);
+}
+
+.pi-manager-root .detail-head {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .detail-title {
+font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pi-manager-root .detail-meta {
+font-size: 11px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .detail-desc {
+font-size: 12px;
+  color: var(--gray-600);
+}
+
+.pi-manager-root .detail-actions {
+display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .skill-content {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .skill-frontmatter {
+border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  width: 100%;
+}
+
+.pi-manager-root .skill-frontmatter th, .pi-manager-root .skill-frontmatter td {
+border-bottom: 1px solid var(--gray-100, var(--gray-200));
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pi-manager-root .skill-frontmatter th {
+color: var(--gray-400);
+  font-weight: 400;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.pi-manager-root .skill-frontmatter td {
+white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pi-manager-root .skill-body {
+margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-sm);
+  border: 1px solid var(--gray-100, var(--gray-200));
+  background: var(--gray-50, var(--white));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pi-manager-root .detail-hint {
+font-size: 11px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .detail-form {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .detail-grid {
+display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-lg);
+}
+
+.pi-manager-root .detail-grid .field {
+flex: 1 1 240px;
+  min-width: 0;
+}
+
+.pi-manager-root .settings-section {
+border: 1px solid var(--gray-200);
+  background: var(--white);
+}
+
+.pi-manager-root .settings-section + .settings-section {
+margin-top: var(--space-md);
+}
+
+.pi-manager-root .settings-section-header {
+padding: var(--space-md) var(--space-md) var(--space-xs);
+}
+
+.pi-manager-root .settings-section-title {
+font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pi-manager-root .settings-section-description {
+margin-top: var(--space-xs);
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+.pi-manager-root .settings-section-body {
+padding: var(--space-sm) var(--space-md) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .modal-overlay {
+position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 40;
+}
+
+.pi-manager-root .modal {
+background: var(--white);
+  border: 1px solid var(--gray-900);
+  width: min(520px, calc(100vw - var(--space-xl)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.pi-manager-root .modal-title {
+font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pi-manager-root .modal-body {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.pi-manager-root .modal-actions {
+display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .status-footer {
+flex: none;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
+  border-top: 1px solid var(--gray-200);
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .status-footer .spacer {
+flex: 1;
+}
+
+.pi-manager-root .footer-msg {
+white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-manager-root .footer-msg.ok {
+color: var(--ok);
+}
+
+.pi-manager-root .footer-msg.error {
+color: var(--danger);
+}
+
+.pi-manager-root .row-between {
+display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.pi-manager-root .stack {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .mono-dim {
+color: var(--gray-400);
+  font-size: 12px;
+}
+
+.pi-manager-root .catalog-summary {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--gray-200);
+  margin-top: var(--space-md);
+}
+
+.pi-manager-root .section-body {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--gray-200);
+}
+
+.pi-manager-root .section-head-inline {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.pi-manager-root .scoped-panel {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .scoped-toolbar {
+display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.pi-manager-root .scoped-toolbar-actions {
+display: flex;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.pi-manager-root .scoped-meta {
+display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.pi-manager-root .scoped-toolbar .filter-input {
+flex: 1 1 200px;
+}
+
+.pi-manager-root .scoped-provider-select {
+width: auto;
+  flex: none;
+  min-width: 160px;
+}
+
+.pi-manager-root .provider-group {
+display: flex;
+  flex-direction: column;
+}
+
+.pi-manager-root .provider-head {
+display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pi-manager-root .provider-toggle {
+display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.pi-manager-root .provider-caret {
+width: 10px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .provider-name {
+overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.pi-manager-root .provider-count {
+font-variant-numeric: tabular-nums;
+}
+
+.pi-manager-root .provider-count.partial {
+color: var(--gray-900);
+}
+
+.pi-manager-root .provider-badge {
+padding: 0 var(--space-xs);
+  border: 1px solid var(--gray-900);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--gray-900);
+  white-space: nowrap;
+}
+
+.pi-manager-root .provider-head .spacer {
+flex: 1;
+}
+
+.pi-manager-root .provider-table {
+margin-bottom: var(--space-sm);
+}
+
+.pi-manager-root .provider-table-wrap {
+max-height: min(46vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.pi-manager-root .provider-table-wrap .item-table th {
+position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
+}
+
+.pi-manager-root .col-order {
+width: 36px;
+  text-align: right;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-manager-root .col-actions {
+width: 76px;
+  text-align: right;
+}
+
+.pi-manager-root .col-num {
+width: 76px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray-600);
+  white-space: nowrap;
+}
+
+.pi-manager-root .cell-token {
+padding: 0 var(--space-xs);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray-600);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--gray-200);
+}
+
+.pi-manager-root .cell-token:hover {
+color: var(--gray-900);
+  border-bottom-color: var(--gray-900);
+}
+
+.pi-manager-root .cell-token.overridden {
+color: var(--gray-900);
+  border-bottom-style: solid;
+  border-bottom-color: var(--gray-900);
+}
+
+.pi-manager-root .cell-input {
+width: 76px;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pi-manager-root .cell-input:focus {
+outline: none;
+}
+
+.pi-manager-root .col-caps {
+width: 110px;
+  color: var(--gray-600);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pi-manager-root .row-actions {
+display: inline-flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+.pi-manager-root .catalog-summary-head {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.pi-manager-root .catalog-summary-row {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.pi-manager-root .section-caption {
+font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .visually-hidden {
+position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+.pi-manager-root {
+--sidebar-width: 56px;
+    --list-width: 200px;
+}
+
+.pi-manager-root .sidebar-item-label, .pi-manager-root .config-sidebar-heading {
+display: none;
+}
+}
+
+.pi-manager-root .detail-block {
+display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pi-manager-root .detail-block .item-table {
+font-size: 11px;
+}
+
+.pi-manager-root .model-table td, .pi-manager-root .model-table th {
+padding: 4px 8px;
+}
+
+.pi-manager-root .error-text {
+color: var(--red, #a40000);
+}
+
+.pi-manager-root .mcp-summary {
+display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.pi-manager-root .mcp-summary-row {
+display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.pi-manager-root .mcp-summary-row > .cell-sub {
+flex: none;
+  width: 64px;
+}
+
+.pi-manager-root .mcp-target {
+font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pi-manager-root .sessions-panel {
+position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--gray-200);
+  border-right: 1px solid var(--gray-200);
+  background: var(--white);
+  min-width: 0;
+  user-select: none;
+}
+
+.pi-manager-root .sessions-panel.is-collapsed {
+width: 32px !important;
+}
+
+.pi-manager-root .sessions-panel-head {
+display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex: none;
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pi-manager-root .sessions-panel-title {
+font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--gray-600);
+}
+
+.pi-manager-root .sessions-panel-count {
+flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--gray-400);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-manager-root .sessions-panel-error, .pi-manager-root .sessions-panel-warn {
+flex: none;
+  padding: 4px var(--space-sm);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.pi-manager-root .sessions-panel-warn {
+color: var(--warn);
+}
+
+.pi-manager-root .sessions-panel-list {
+flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pi-manager-root .sessions-group-head {
+display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px var(--space-sm);
+  border: 0;
+  border-bottom: 1px solid var(--gray-200);
+  background: rgba(26, 26, 26, 0.03);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pi-manager-root .sessions-group-head:hover {
+background: rgba(26, 26, 26, 0.07);
+}
+
+.pi-manager-root .sessions-group-caret {
+flex: none;
+  width: 10px;
+  font-size: 9px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-group-main {
+flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pi-manager-root .sessions-group-name {
+font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-group-path {
+font-size: 9px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-group-count {
+flex: none;
+  font-size: 9px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-manager-root .sessions-group-count.is-running {
+color: var(--gray-900);
+  font-weight: 600;
+}
+
+.pi-manager-root .sessions-item {
+display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  width: 100%;
+  
+  padding: 6px var(--space-sm) 6px 26px;
+  border: 0;
+  border-bottom: 1px solid var(--gray-100, #f0f0f0);
+  border-left: 2px solid transparent;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pi-manager-root .sessions-item:hover {
+background: rgba(26, 26, 26, 0.05);
+}
+
+.pi-manager-root .sessions-item.is-selected {
+border-left-color: var(--gray-900);
+  background: rgba(26, 26, 26, 0.08);
+}
+
+.pi-manager-root .sessions-dot {
+flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border: 1px solid var(--gray-400);
+  border-radius: 50%;
+}
+
+.pi-manager-root .sessions-dot.is-running {
+border-color: var(--gray-900);
+  background: var(--gray-900);
+}
+
+.pi-manager-root .sessions-item-main {
+flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pi-manager-root .sessions-item-name {
+font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-item-meta, .pi-manager-root .sessions-item-cwd {
+font-size: 10px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-item-time {
+flex: none;
+  font-size: 9px;
+  color: var(--gray-400);
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-panel-empty {
+padding: var(--space-md);
+  font-family: var(--font-serif);
+  font-size: 12px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-panel-detail {
+flex: none;
+  max-height: 46%;
+  overflow-y: auto;
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--gray-900);
+}
+
+.pi-manager-root .sessions-detail-head {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: 6px;
+}
+
+.pi-manager-root .sessions-detail-title {
+font-family: var(--font-serif);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .sessions-detail-status {
+flex: none;
+  font-size: 10px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-detail-grid {
+display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 2px var(--space-sm);
+  font-size: 10px;
+}
+
+.pi-manager-root .sessions-detail-grid dt {
+color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-detail-grid dd {
+overflow-wrap: anywhere;
+}
+
+.pi-manager-root .sessions-detail-foot {
+margin-top: 6px;
+  font-size: 9px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-resizer {
+position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  z-index: 5;
+  cursor: col-resize;
+}
+
+.pi-manager-root .sessions-resizer:hover {
+background: var(--gray-200);
+}
+
+.pi-manager-root .sessions-rail {
+display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-sm) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.pi-manager-root .sessions-rail:hover {
+background: rgba(26, 26, 26, 0.05);
+}
+
+.pi-manager-root .sessions-rail-toggle {
+font-size: 12px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .sessions-rail-title {
+writing-mode: vertical-lr;
+  text-orientation: upright;
+  letter-spacing: 2px;
+  font-family: var(--font-serif);
+  font-size: 11px;
+}
+
+.pi-manager-root .sessions-rail-count {
+font-size: 10px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-manager-root .sessions-rail-count.is-running {
+color: var(--gray-900);
+  font-weight: 600;
+}
+
+.pi-manager-root .home-bar-sessions {
+display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--gray-200);
+  background: none;
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.pi-manager-root .home-bar-sessions:hover {
+border-color: var(--gray-900);
+  color: var(--gray-900);
+}
+
+.pi-manager-root .home-bar-sessions[aria-pressed='true'] {
+border-color: var(--gray-900);
+  color: var(--gray-900);
+}
+
+/* 模块宿主自己的两条辅助样式：home 摘要行与侧栏内边距。 */
+.pi-manager-root.manager-module-sidebar {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pi-manager-root .manager-home-line {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 11px;
+  color: var(--gray-600);
+  overflow: hidden;
+}
+
+.pi-manager-root .manager-home-line strong {
+  flex: none;
+  color: var(--gray-900);
+  font-weight: 600;
+}
+
+.pi-manager-root .manager-home-line span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-manager-root .manager-home-line.invalid span {
+  color: var(--danger);
+}

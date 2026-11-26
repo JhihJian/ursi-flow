@@ -71,12 +71,20 @@ function SessionsStatus() {
   )
 }
 
-/** 跨模块能力：按绝对路径打开某个会话根目录（目录不存在或不可读时抛错）。 */
+/** 跨模块能力：打开某个会话根目录，或直接定位到一条会话。 */
 export interface PiSessionsCommands {
   openRoot: (root: string) => Promise<{ id: string; label: string }>
+  /**
+   * 打开一条会话：按会话文件优先、id 兜底定位；根目录不同则先切根。
+   * 找不到时抛错，不发半截请求。
+   */
+  openSession: (input: { root?: string; id?: string; sessionFile?: string }) => Promise<{ id: string; label: string }>
 }
 
-export type PiSessionsModuleOptions = SessionsControllerOptions
+export type PiSessionsModuleOptions = SessionsControllerOptions & {
+  /** 在对话模块继续这条历史会话；未注入时不显示该动作。 */
+  resumeSessionInChat?: (input: { sessionFile: string }) => Promise<unknown>
+}
 
 /**
  * pi 会话浏览模块工厂。
@@ -122,6 +130,17 @@ export function createPiSessionsModule(
   )
 
   const commands: PiSessionsCommands = {
+    async openSession(input) {
+      if (!controller) throw new Error('会话模块未挂载')
+      const root = input.root?.trim()
+      const id = input.id?.trim()
+      const sessionFile = input.sessionFile?.trim()
+      if (!id && !sessionFile) throw new Error('需要会话 id 或会话文件路径')
+      // 根目录不一样时先校验再切，避免停在一个不可读的目录上。
+      if (root) await api.fetchBrowse(root)
+      controller.openSession({ root, id, sessionFile })
+      return { id: id ?? sessionFile ?? '', label: shortRoot(root ?? controller.root ?? '') }
+    },
     async openRoot(root: string) {
       const target = root.trim()
       if (!target) throw new Error('目录不能为空')
@@ -134,6 +153,8 @@ export function createPiSessionsModule(
       return { id: target, label: shortRoot(target) }
     },
   }
+
+  const resumeInChat = options.resumeSessionInChat
 
   return {
     id: 'pi-sessions',
@@ -148,6 +169,23 @@ export function createPiSessionsModule(
     },
     /** 折叠即卸载，重开时按当前根目录重新扫描；轨迹不需要保活。 */
     keepMounted: false,
+    actions: resumeInChat
+      ? [
+          {
+            id: 'resume-in-chat',
+            label: '在对话里继续',
+            appliesTo: (selection) => selection?.kind === PI_SESSION_KIND,
+            run: async (selection, shell) => {
+              const row = controller?.listing?.sessions.find((item) => item.id === selection.id)
+              if (!row) throw new Error('这条会话不在当前列表里')
+              await resumeInChat({ sessionFile: row.path })
+              shell.reveal('pi-chat')
+            },
+            disabledReason: (_selection, shell) =>
+              shell.enabled('pi-chat') ? null : '对话模块未在当前 profile 中启用',
+          },
+        ]
+      : [],
     commands,
   }
 }

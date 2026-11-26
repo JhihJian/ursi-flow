@@ -14,8 +14,9 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | [Workbench](workbench/SPEC.md) | Web 通过同源 API 访问 Server。Server 保存工作清单、工作包和工作包生成器。 |
 | [执行器管理平台](executor-platform/server/SPEC.md) | `ursi-executor-platform` 保存冻结配置、执行尝试和只读制品。独立管理页维护配置包、资源、后端和执行器修订，Agent 工作区显示 ACP 执行过程。 |
 | [Pi Web](docs/design/pi-web/INTEGRATION.md) | 上游 pi coding agent 的完整 Web UI，以 git subtree 从 fork `JhihJian/pi-web` 接入 `apps/pi-web`，内容不改造。进程内驱动 AgentSession，与 CLI 共享 `~/.pi/agent`，浏览器里完整使用 Pi agent。 |
-| [Pi 管理台](apps/pi-manager-web/SPEC.md) | 对任意给定的 pi home（默认 `~/.pi/agent`）做文件级配置管理：settings 受管项、skills 开关、subagent profile 与内置开关、MCP 与自定义模型条目、凭据。Node 服务托管 React 页面，以读写配置文件为主；另提供执行一次性会话任务的接口（agent = pi home 名，可选按 agents/ 里的 subagent 定义启动，pi SDK 按需加载）。凭据遮蔽、写操作按可信局域网边界开放、乐观锁加原子写。 |
-| [Pi 会话浏览](apps/pi-sessions-web/SPEC.md) | 浏览磁盘上的 pi 会话：在浏览器里指定任意 sessions 根目录，按项目分组列出会话并用轨迹组件库渲染正文，可把项目设为特别关注、删除单个会话。零依赖 Node 服务负责扫描、按 id 定位与格式兼容，不启动 pi，删除的作用范围限定在当前根目录内，与 `pi-web` 不共享代码。 |
+| [Pi 管理台](apps/pi-manager-web/SPEC.md) | 对任意给定的 pi home（默认 `~/.pi/agent`）做文件级配置管理：settings 受管项、skills 开关、subagent profile 与内置开关、MCP 与自定义模型条目、凭据。Node 服务托管 React 页面，以读写配置文件为主；另提供一次性会话任务的接口与交互对话的运行时（`session-runtime` 装配与释放、`chat` 的 SSE 与扩展 UI 桥接，pi SDK 按需加载），并汇总会话心跳运行态供会话模块展示。凭据遮蔽、写操作按可信局域网边界开放、乐观锁加原子写。同时以 `pi-config` 模块接入工作区外壳。 |
+| [Pi 会话浏览](apps/pi-sessions-web/SPEC.md) | 浏览磁盘上的 pi 会话：在浏览器里指定任意 sessions 根目录，按项目分组列出会话并用轨迹组件库渲染正文，可把项目设为特别关注、删除单个会话。零依赖 Node 服务负责扫描、按 id 定位与格式兼容，不启动 pi，删除的作用范围限定在当前根目录内，与 `pi-web` 不共享代码。宿主可注入会话运行态与「在对话里继续」能力，模块本身不采集心跳、不依赖其他模块。 |
+| [Pi 交互对话](apps/pi-chat-web/SPEC.md) | 浏览器里的多轮对话：选一份 pi home 即选整套配置（模型、凭据、skills、agents、MCP），流式输出、工具调用可见、可打断、可续聊。运行时全部在 Pi 管理台，本模块只做界面并复用会话模块同一份轨迹组件库；会话文件写回该 home 的 `sessions/`，因此 CLI、Pi Web 与会话浏览都能接着读。 |
 | [ursi-flow](apps/ursi-flow/SPEC.md) | 交付包：装配一次运行并提供 `ursi-flow` 命令行，把 `FLOW.md` 推到最终结果。包内含 `core`、`executor`、`runtime` 三个模块。 |
 | [Flow Core](apps/ursi-flow/core/SPEC.md) | 无状态推进 SDK，从 `FLOW.md` 或当前 JSON 快照和回执生成待办。解析、变量和路由规则供引擎复用。 |
 | [Flow Executor](apps/ursi-flow/executor/SPEC.md) | 引擎与外部世界之间唯一的契约：`prompt(agentName, instruct)` 与 `command(invocation)`。适配层按契约接入具体执行方式，首个适配器是 `FakeExecutor`。 |
@@ -35,7 +36,8 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 - **执行一次工作。** Workbench 用服务令牌通过 HTTP 调用固定的执行器修订。执行器平台通过本机 ACP v2 stdio 驱动受管 Agent 并收集制品。
 - **回看历史会话。** Pi 会话浏览读磁盘上的 `.jsonl`，根目录当场指定，因此本机会话、备份和别人的导出都能看；它不启动 agent，登录、配置与会话写入都不在它的职责内，写操作只有用户主动删除会话文件与记录特别关注的项目，服务假定运行在可信局域网。
 - **浏览器使用 Pi agent。** `apps/pi-web` 是完整的 Pi Web UI，进程内启动 AgentSession，与 CLI 共享 `~/.pi/agent` 的模型、会话、技能和 MCP 配置，浏览器里完整使用 Pi agent 能力。该入口独立于执行器平台和 Flow 的 ACP 链路。
-- **管理 Pi 配置文件。** Pi 管理台与 Pi Web、CLI 读同一份 pi home：三者并发修改靠文件级乐观锁与备份互不覆盖。管理台以配置编辑为主，另可按 pi home 名（即 agent 名）执行一次性会话任务（跑完即止，无交互界面）；持续的人机对话交给 Pi Web 与 CLI。
+- **管理 Pi 配置文件。** Pi 管理台与 Pi Web、CLI 读同一份 pi home：三者并发修改靠文件级乐观锁与备份互不覆盖。管理台以配置编辑为主，另可按 pi home 名（即 agent 名）执行一次性会话任务，并提供交互对话的运行时与会话运行态数据。
+- **在浏览器里对话。** Pi 交互对话消费管理台的对话接口，选 home 即选模型、凭据与 skills；会话文件写在同一个 `sessions/`，聊完能在 Pi 会话浏览里看完整轨迹，历史会话也能反向「在对话里继续」。三者通过工作台组合根用命令与普通值接线（`openSession`、`resumeSession`、运行态来源），各自仍可独立部署。
 - **生成工作包。** Workbench 通过内嵌的 `mcp-web` 读取授权的 HTTP MCP 资源，再交给 Python 配方或版本化生成器。文件与生成来源归 Workbench，发布工作包独立于启动 Flow 或 Agent。
 - **使用沙箱。** 外部调用方通过 Gateway 打开已登记的 SSH、浏览器或 ACP 等端点，业务会话由对应服务持有。现行 Flow 的命令和 Pi 节点直接在本机工作目录运行，无需 Gateway。
 
@@ -53,7 +55,8 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | dae 路由观察台 | [同源代理、页面结构与刷新策略](docs/design/dae-web/OVERVIEW.md) |
 | 工作项与文件包 | [工作清单与包来源](docs/design/workbench/WORK-LIST-DESIGN.md) · [版本化工作包生成器](docs/design/workbench/WORK-PATCH-GENERATOR-DESIGN.md) · [工作包和配置包编辑台](docs/design/workbench/PATCH-STUDIO.md) |
 | 执行器 | [平台拆分与调用边界](docs/design/executor-platform/OVERVIEW.md) · [执行器协议统一为 ACP 的提案](docs/design/executor-platform/ACP-BACKEND.md) · [ACP 执行契约](docs/design/executor-platform/ACP-PROFILE.md) · [ACP 基线与首版范围](docs/design/executor-platform/ACP-SCOPE.md) · [平台部署](executor-platform/server/README.md) · [定义与尝试](docs/design/workbench/EXECUTOR-DESIGN.md) · [Agent 执行器](docs/design/workbench/PI-AGENT-EXECUTOR-DESIGN.md) |
-| Pi Web | [迁移与集成](docs/design/pi-web/INTEGRATION.md) |
+| Pi Web | [迁移与集成](docs/design/pi-web/INTEGRATION.md) · [职责拆分与再聚合](docs/design/pi-web/SPLIT-AND-AGGREGATION.md) |
+| Pi 交互对话 | [对话运行时、界面与依赖关系](docs/design/pi-chat-web/CHAT.md) |
 | Flow Core | [Flow Core SDK 设计](docs/design/flow-runtime/FLOW-CORE.md) |
 | ursi-flow 交付包 | [引擎、日志实体与日志存储](docs/design/flow-runtime/RUNTIME.md) |
 | Flow 工作台 | [接口、页面与数据归属](apps/flow-web/README.md) |

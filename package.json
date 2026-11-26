@@ -18,6 +18,7 @@
     "apps/pi-manager-web/web",
     "apps/pi-manager-web/server",
     "apps/pi-sessions-web/web",
+    "apps/pi-chat-web/web",
     "apps/flow-web/web",
     "apps/flow-web/server"
   ],

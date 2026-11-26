@@ -2,15 +2,9 @@ import { useAppStore } from '../store/app-store'
 
 /**
  * 顶栏：当前 pi home 的名称与路径。
- * 切换与新增统一在左侧 Pi home 列表；这里只做状态展示。
+ * 切换与新增统一在左侧 Pi home 列表；运行中会话在会话模块里看，这里只做状态展示。
  */
-export function HomeBar({
-  sessionsOpen,
-  onToggleSessions,
-}: {
-  sessionsOpen: boolean
-  onToggleSessions: () => void
-}) {
+export function HomeBar() {
   const homePath = useAppStore((s) => s.homePath)
   const homes = useAppStore((s) => s.homes)
   const homeValid = useAppStore((s) => s.homeValid)
@@ -26,17 +20,6 @@ export function HomeBar({
         <span className="home-bar-path">{homePath || '未设置 pi home'}</span>
         {homeValid === false ? <span className="home-bar-flag">（不是有效的 pi home）</span> : null}
       </span>
-      <button
-        type="button"
-        className="home-bar-sessions"
-        aria-pressed={sessionsOpen}
-        aria-label={sessionsOpen ? '折叠运行中的会话面板' : '展开运行中的会话面板'}
-        title={sessionsOpen ? '折叠运行中的会话面板' : '展开运行中的会话面板'}
-        onClick={onToggleSessions}
-      >
-        <span aria-hidden>◉</span>
-        <span>会话</span>
-      </button>
     </header>
   )
 }

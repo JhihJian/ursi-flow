@@ -5,7 +5,22 @@ import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
 import { HomeRegistry, type HomeEntry } from './homes.ts'
 import { startSessionTask, getTask, listTasks, cancelSessionTask, taskCapacity } from './session-task.ts'
-import { readLiveSessions } from './live-sessions.ts'
+import { readLiveSessions, readLiveSessionsAllHomes } from './live-sessions.ts'
+import { sessionRoot } from './session-runtime.ts'
+import {
+  abortChat,
+  answerUiRequest,
+  attachChatStream,
+  chatCapacity,
+  chatOptions,
+  closeChat,
+  createChat,
+  disposeAllChats,
+  getChat,
+  listChats,
+  promptChat,
+  setChatModel,
+} from './chat.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import {
   SETTINGS_BUILTIN_TOOLS,
@@ -55,8 +70,12 @@ interface RouteContext {
   home: string
   url: URL
   req: http.IncomingMessage
+  res: http.ServerResponse
   body: <T>() => Promise<T>
 }
+
+/** handler 自己接管响应（SSE、非 200 状态）时返回它，路由层不再写 JSON。 */
+const HANDLED = Symbol('handled')
 
 type Handler = (ctx: RouteContext) => Promise<unknown>
 
@@ -589,21 +608,40 @@ route('GET', '/api/session/task', async ({ url }) => {
   return { task, capacity: taskCapacity() }
 })
 
-/** 任务列表：可按 agent（home 名）过滤；不传则列出全部。 */
+/** 任务列表：可按 agent（home 名）或 home 路径过滤；都不传则列出全部。 */
 route('GET', '/api/session/tasks', async ({ url }) => {
+  const homeRaw = url.searchParams.get('home')
+  if (homeRaw && homeRaw.trim()) {
+    const home = await resolveRequestedHome(homeRaw)
+    return { tasks: listTasks(home), capacity: taskCapacity() }
+  }
   const raw = url.searchParams.get('agent')
   if (!raw || !raw.trim()) return { tasks: listTasks(), capacity: taskCapacity() }
   const agent = resolveAgent(raw)
   return { tasks: listTasks(agent.path), capacity: taskCapacity() }
 })
 
+/** 会话根：给跨模块跳转用，前端不自己拼路径。 */
+route('GET', '/api/session/disk', async ({ url }) => {
+  const home = await resolveRequestedHome(url.searchParams.get('home'))
+  const root = sessionRoot(home)
+  return { root, exists: existsSync(root) }
+})
+
 /**
- * 该 home 的跨进程运行态：读心跳扩展写的文件，与任务表无关。
- * 路径在 /api/session/ 下，路由层不预校验 home，这里自己 realpath。
+ * 跨进程运行态：读心跳扩展写的文件，与任务表无关。
+ *
+ * 不带 home 时汇总所有已登记 / 已发现的 home：会话模块只认绝对路径，
+ * 不需要知道 home 的概念。
  */
 route('GET', '/api/session/live', async ({ url }) => {
-  const home = await resolveRequestedHome(url.searchParams.get('home'))
-  return readLiveSessions(home)
+  const raw = url.searchParams.get('home')
+  if (raw && raw.trim()) return readLiveSessions(await resolveRequestedHome(raw))
+  const paths: string[] = []
+  for (const entry of homes.list()) {
+    if (entry.valid && !paths.includes(entry.path)) paths.push(entry.path)
+  }
+  return readLiveSessionsAllHomes(paths)
 })
 
 route('POST', '/api/session/cancel', async ({ body }) => {
@@ -614,6 +652,164 @@ route('POST', '/api/session/cancel', async ({ body }) => {
   await cancelSessionTask(payload.sessionId)
   return { ok: true }
 })
+
+// ---------------------------------------------------------------------------
+// chat：交互对话的运行时
+//
+// 会话装配、事件转发与释放都在 chat.ts / session-runtime.ts；这里只做参数解析。
+// /api/chat/ 与 /api/session/ 一样自行解析入参，不参与统一的 home 预校验。
+// ---------------------------------------------------------------------------
+
+/** 续聊时按会话文件反查 home：会话文件必须在某份 home 的 sessions/ 下。 */
+async function resolveHomeBySessionFile(raw: string): Promise<string> {
+  const target = raw.trim()
+  if (!target.startsWith('/')) throw new HomeError('sessionFile 必须是绝对路径', 400, 'invalid_request')
+  const candidates: string[] = []
+  for (const entry of homes.list()) {
+    if (entry.valid && !candidates.includes(entry.path)) candidates.push(entry.path)
+  }
+  for (const path of candidates) {
+    try {
+      const real = await resolveRequestedHome(path)
+      const root = sessionRoot(real)
+      if (target === root || target.startsWith(`${root}/`)) return real
+    } catch {
+      /* 单个 home 失效时继续找下一个 */
+    }
+  }
+  throw new HomeError(`会话文件不属于任何已登记的 pi home：${target}`, 404, 'session_file_unknown')
+}
+
+route('GET', '/api/chat/options', async ({ url }) => {
+  const home = await resolveRequestedHome(url.searchParams.get('home'))
+  return chatOptions(home)
+})
+
+route('GET', '/api/chat/sessions', async ({ url }) => {
+  const raw = url.searchParams.get('home')
+  const home = raw && raw.trim() ? await resolveRequestedHome(raw) : undefined
+  return { chats: listChats(home), capacity: chatCapacity() }
+})
+
+/** 建会话（或续聊）：home 可由调用方给出，也可由 sessionFile 反查。 */
+route('POST', '/api/chat/session', async ({ body }) => {
+  const payload = await body<{
+    home?: unknown
+    cwd?: unknown
+    model?: unknown
+    thinkingLevel?: unknown
+    subagent?: unknown
+    sessionFile?: unknown
+  }>()
+  const sessionFile =
+    typeof payload.sessionFile === 'string' && payload.sessionFile.trim()
+      ? payload.sessionFile.trim()
+      : null
+  let home: string
+  if (typeof payload.home === 'string' && payload.home.trim()) {
+    home = await resolveRequestedHome(payload.home)
+  } else if (sessionFile) {
+    home = await resolveHomeBySessionFile(sessionFile)
+  } else {
+    throw new HomeError('home 必填（或用 sessionFile 续聊）', 400, 'invalid_home')
+  }
+  return createChat({
+    home,
+    cwd: typeof payload.cwd === 'string' && payload.cwd.trim() ? payload.cwd.trim() : undefined,
+    model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
+    thinkingLevel:
+      typeof payload.thinkingLevel === 'string' && payload.thinkingLevel.trim()
+        ? payload.thinkingLevel.trim()
+        : undefined,
+    subagent:
+      typeof payload.subagent === 'string' && payload.subagent.trim() ? payload.subagent.trim() : null,
+    sessionFile,
+  })
+})
+
+route('GET', '/api/chat/session', async ({ url }) => {
+  const sessionId = url.searchParams.get('sessionId')
+  if (!sessionId) throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  const chat = getChat(sessionId)
+  if (!chat) throw new HomeError(`没有这个对话：${sessionId}`, 404, 'chat_not_found')
+  return chat
+})
+
+route('GET', '/api/chat/stream', async ({ url, req, res }) => {
+  const sessionId = url.searchParams.get('sessionId')
+  if (!sessionId) throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  attachChatStream(sessionId, req, res)
+  return HANDLED
+})
+
+route('POST', '/api/chat/prompt', async ({ res, body }) => {
+  const payload = await body<{ sessionId?: unknown; text?: unknown; mode?: unknown }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  if (typeof payload.text !== 'string') throw new HomeError('text 必填', 400, 'invalid_request')
+  const mode = payload.mode === 'steer' ? 'steer' : 'followUp'
+  await promptChat(payload.sessionId, payload.text, mode)
+  sendJson(res, 202, { ok: true })
+  return HANDLED
+})
+
+route('POST', '/api/chat/abort', async ({ body }) => {
+  const payload = await body<{ sessionId?: unknown }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  return abortChat(payload.sessionId)
+})
+
+route('POST', '/api/chat/model', async ({ body }) => {
+  const payload = await body<{
+    sessionId?: unknown
+    provider?: unknown
+    modelId?: unknown
+    thinkingLevel?: unknown
+  }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  if (typeof payload.provider !== 'string' || !payload.provider.trim()) {
+    throw new HomeError('provider 必填', 400, 'invalid_request')
+  }
+  return setChatModel(
+    payload.sessionId,
+    payload.provider.trim(),
+    typeof payload.modelId === 'string' && payload.modelId.trim() ? payload.modelId.trim() : undefined,
+    typeof payload.thinkingLevel === 'string' && payload.thinkingLevel.trim()
+      ? payload.thinkingLevel.trim()
+      : undefined,
+  )
+})
+
+route('POST', '/api/chat/answer', async ({ body }) => {
+  const payload = await body<{ sessionId?: unknown; requestId?: unknown; value?: unknown }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  if (typeof payload.requestId !== 'string' || !payload.requestId) {
+    throw new HomeError('requestId 必填', 400, 'invalid_request')
+  }
+  answerUiRequest(payload.sessionId, payload.requestId, payload.value)
+  return { ok: true }
+})
+
+route('POST', '/api/chat/close', async ({ body }) => {
+  const payload = await body<{ sessionId?: unknown }>()
+  if (typeof payload.sessionId !== 'string' || !payload.sessionId) {
+    throw new HomeError('sessionId 必填', 400, 'invalid_request')
+  }
+  await closeChat(payload.sessionId)
+  return { ok: true }
+})
+
+/** 进程退出时释放所有对话（凭据写入等待、心跳清理都在这里）。 */
+export async function shutdownChats(): Promise<void> {
+  await disposeAllChats()
+}
 
 // ---------------------------------------------------------------------------
 // plugins（settings.json 的 packages 条目）
@@ -665,7 +861,8 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
       const selfResolved =
         pathname.startsWith('/api/home/') ||
         pathname === '/api/homes' ||
-        pathname.startsWith('/api/session/')
+        pathname.startsWith('/api/session/') ||
+        pathname.startsWith('/api/chat/')
       const home = selfResolved
         ? (url.searchParams.get('home') ?? '')
         : await resolveRequestedHome(url.searchParams.get('home'))
@@ -673,11 +870,13 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
         home,
         url,
         req,
+        res,
         body: async <T,>() => {
           const text = await readBody(req, BODY_LIMIT)
           return JSON.parse(text) as T
         },
       })
+      if (result === HANDLED) return true
       sendJson(res, 200, result)
       return true
     } catch (error) {

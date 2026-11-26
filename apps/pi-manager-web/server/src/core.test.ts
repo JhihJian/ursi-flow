@@ -20,7 +20,7 @@ import { readCachedCatalog } from './models-runtime.ts'
 import { createHash } from 'node:crypto'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
-import { readLiveSessions } from './live-sessions.ts'
+import { readLiveSessions, readLiveSessionsAllHomes } from './live-sessions.ts'
 
 function makeHome(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-manager-test-'))
@@ -997,6 +997,22 @@ test('live sessions：跨机条目只按 updatedAt 判活，坏 JSON 不阻塞�
   assert.ok(listing.warnings.length >= 1)
 })
 
+test('live sessions：汇总多份 home，同一个会话只留一条', () => {
+  const first = makeHome()
+  const second = makeHome()
+  const now = Date.now()
+  const base = { version: 1, host: hostname(), pid: process.pid, cwd: '/tmp/p', mode: 'tui' }
+  writeBeat(first, { ...base, sessionId: 'a', status: 'idle', updatedAt: now - 1000 })
+  writeBeat(second, { ...base, sessionId: 'b', status: 'running', updatedAt: now })
+  writeBeat(second, { ...base, sessionId: 'a', status: 'running', updatedAt: now })
+
+  const listing = readLiveSessionsAllHomes([first, second])
+  // running 排前，重复的 sessionId 只保留第一次出现的条目。
+  assert.deepEqual(listing.sessions.map((s) => s.sessionId), ['b', 'a'])
+  assert.equal(listing.stale, 0)
+  assert.deepEqual(readLiveSessionsAllHomes([]).sessions, [])
+})
+
 test('live sessions：没有心跳目录时返回空清单', () => {
   const dir = makeHome()
   const listing = readLiveSessions(dir)
@@ -1294,4 +1310,55 @@ test('models-check：只写 name 或 api 的内置覆盖条目合法，自定义
   checkProviderEntry('openai', { api: 'openai-responses' })
   assert.throws(() => checkProviderEntry('x', { oauth: 'radius', models: [{ id: 'm' }] }), /baseUrl/)
   assert.throws(() => checkProviderEntry('x', {}), /空条目/)
+})
+
+// ---------------------------------------------------------------------------
+// 会话根、会话文件归属与对话参数校验
+// ---------------------------------------------------------------------------
+
+test('session runtime：会话根固定在 <home>/sessions', async () => {
+  const { sessionRoot } = await import('./session-runtime.ts')
+  assert.equal(sessionRoot('/tmp/home'), join('/tmp/home', 'sessions'))
+})
+
+test('session runtime：续聊的会话文件必须落在该 home 的 sessions 下', async () => {
+  const { assertSessionFileIn } = await import('./session-runtime.ts')
+  const home = makeHome()
+  const root = join(home, 'sessions', '--proj--')
+  mkdirSync(root, { recursive: true })
+  const file = join(root, 'a.jsonl')
+  writeFileSync(file, '{}\n')
+
+  assert.equal(assertSessionFileIn(home, file), file)
+  assert.throws(() => assertSessionFileIn(home, join(home, 'settings.json')), /不在该 pi home 的 sessions/)
+  assert.throws(() => assertSessionFileIn(home, join(home, 'sessions', 'missing.jsonl')), /不存在/)
+  assert.throws(() => assertSessionFileIn(home, 'relative.jsonl'), /不存在|必须/)
+})
+
+test('session runtime：thinkingLevel 与 cwd、模型引用在加载 SDK 前校验', async () => {
+  const { normalizeThinkingLevel, resolveCwd } = await import('./session-runtime.ts')
+  assert.equal(normalizeThinkingLevel('high'), 'high')
+  assert.equal(normalizeThinkingLevel(undefined), null)
+  assert.throws(() => normalizeThinkingLevel('turbo'), /thinkingLevel 只能是/)
+  // pi 的完整档位（含 high）都要认，之前漏过 high。
+  for (const level of ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+    assert.equal(normalizeThinkingLevel(level), level)
+  }
+  assert.equal(resolveCwd(undefined), process.cwd())
+  assert.throws(() => resolveCwd('/definitely/not/here'), /cwd 不存在/)
+})
+
+test('chat：对话可选项只读文件与缓存，不建会话', async () => {
+  const { chatOptions } = await import('./chat.ts')
+  const home = makeHome()
+  writeFileSync(
+    join(home, 'settings.json'),
+    JSON.stringify({ defaultProvider: 'p', defaultModel: 'm', enabledModels: ['p/m'] }),
+  )
+  const options = chatOptions(home)
+  assert.deepEqual(options.agents, [])
+  assert.equal(options.defaultModel, 'p/m')
+  assert.equal(options.sessionRoot, join(home, 'sessions'))
+  assert.equal(options.sessionRootExists, false)
+  assert.ok(options.thinkingLevels.includes('high'))
 })

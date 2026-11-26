@@ -45,7 +45,12 @@ export function SessionWorkspace() {
   const [revision, setRevision] = useState(0)
 
   const selectedId = selected?.id ?? null
-  // 列表轮询会持续给出新的行对象，正文只按会话 id 与手动刷新重读，不跟着列表对象走。
+  /**
+   * 正文只在会话 id、根目录、手动刷新或文件的活动时间变化时重读。
+   * 大文件不自动跟随：整份重下与重解析的成本按体积线性增长，交给手动刷新。
+   */
+  const autoFollow = (selected?.size ?? 0) <= 8 * 1024 * 1024
+  const activity = autoFollow ? (selected?.modified ?? 0) : 0
   const rowRef = useRef<SessionRow | null>(selected)
   rowRef.current = selected
 
@@ -69,7 +74,7 @@ export function SessionWorkspace() {
     return () => {
       alive = false
     }
-  }, [root, selectedId, revision, api])
+  }, [root, selectedId, revision, activity, api])
 
   const parsed = useMemo(() => {
     if (state.status !== 'ready') return null

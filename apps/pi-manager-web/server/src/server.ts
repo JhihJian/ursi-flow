@@ -1,7 +1,7 @@
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createApiHandler } from './api.ts'
+import { createApiHandler, shutdownChats } from './api.ts'
 import { createStaticHandler } from './static.ts'
 import { sendJson } from './http-util.ts'
 import { defaultHomeIfValid } from './pi-home.ts'
@@ -49,3 +49,13 @@ server.listen(PORT, HOST, () => {
   console.log(`静态目录: ${STATIC_DIR}`)
   console.log(`默认 pi home: ${defaultHomeIfValid() ?? '（默认位置没有找到 pi home）'}`)
 })
+
+// 对话是常驻会话：退出前释放，等凭据写入并清掉本进程的心跳。
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    void shutdownChats().finally(() => {
+      server.close(() => process.exit(0))
+      setTimeout(() => process.exit(0), 1500).unref()
+    })
+  })
+}

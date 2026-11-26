@@ -101,6 +101,50 @@ function parseBeat(path: string, text: string): LiveSession {
 }
 
 export function readLiveSessions(home: string): LiveSessionsListing {
+  return readHomes([home])[0]
+}
+
+/**
+ * 汇总多份 home 的心跳：会话模块只认会话文件的绝对路径，不需要知道 home 的概念。
+ * 同一个 sessionId 在多份 home 里同时出现时保留第一条（会话文件路径本来就不同）。
+ */
+export function readLiveSessionsAllHomes(paths: string[]): LiveSessionsListing {
+  const listings = readHomes(paths)
+  const seen = new Set<string>()
+  const sessions: LiveSession[] = []
+  const warnings: string[] = []
+  let stale = 0
+  let pluginDetected = false
+  for (const listing of listings) {
+    stale += listing.stale
+    pluginDetected = pluginDetected || listing.pluginDetected
+    if (warnings.length < 20) warnings.push(...listing.warnings.slice(0, 20 - warnings.length))
+    for (const session of listing.sessions) {
+      if (seen.has(session.sessionId)) continue
+      seen.add(session.sessionId)
+      sessions.push(session)
+    }
+  }
+  sessions.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'running' ? -1 : 1
+    if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt
+    return b.startedAt - a.startedAt
+  })
+  return {
+    sessions,
+    heartbeatDir: listings.length === 1 ? listings[0].heartbeatDir : paths.map((p) => join(p, 'state', 'running-sessions')).join(', '),
+    pluginDetected,
+    stale,
+    now: Date.now(),
+    warnings,
+  }
+}
+
+function readHomes(paths: string[]): LiveSessionsListing[] {
+  return paths.map((home) => readOneHome(home))
+}
+
+function readOneHome(home: string): LiveSessionsListing {
   const heartbeatDir = join(home, 'state', 'running-sessions')
   const pluginDetected = detectPlugin(home)
   const warnings: string[] = []

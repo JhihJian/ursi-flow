@@ -25,10 +25,12 @@ export function useSessions(root: string | null, api: SessionsApi) {
         if (current !== generation.current) return
         setListing(next)
         setError(null)
+        return next
       } catch (failure) {
         if (current !== generation.current) return
         setListing(null)
         setError(failure instanceof Error ? failure.message : String(failure))
+        return null
       } finally {
         if (current === generation.current) setLoading(false)
       }
@@ -53,11 +55,32 @@ export function useSessions(root: string | null, api: SessionsApi) {
     return () => clearTimeout(timer)
   }, [root, listing, load])
 
+  /**
+   * 定时轻扫：会话可能在别的进程里继续增长，列表要能跟上活动时间。
+   * 服务端按 size + mtimeMs 命中缓存，这里接近一次目录 stat；页面隐藏时跳过。
+   */
+  useEffect(() => {
+    if (!root) return
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load(root)
+    }, 15_000)
+    return () => clearInterval(timer)
+  }, [root, load])
+
   const reload = useCallback(() => {
     if (!root) return
     followUps.current = 0
     void load(root)
   }, [root, load])
 
-  return { listing, loading, error, reload }
+  /** 供命令使用：切换根目录后按 id 定位会话需要等列表回来。 */
+  const loadNow = useCallback(
+    async (target: string) => {
+      followUps.current = 0
+      return await load(target)
+    },
+    [load],
+  )
+
+  return { listing, loading, error, reload, loadNow }
 }

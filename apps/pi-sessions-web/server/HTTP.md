@@ -2,7 +2,7 @@
 
 零依赖 Node 24 服务，默认监听 `0.0.0.0:30200`，同时托管 `web/dist`。
 
-除 `DELETE /api/sessions/:id` 与 `PUT /api/prefs` 外全部只读。服务假定运行在可信局域网，两个写接口对任何能连上服务的来源都放行；收紧的边界是当前根目录，删除只能落在它内部。
+除 `DELETE /api/sessions/:id` 与 `PUT /api/prefs` 外全部只读。会话运行态不在本服务内：它由宿主采集后注入前端（见 SPEC 的「叠加会话运行态」）。服务假定运行在可信局域网，两个写接口对任何能连上服务的来源都放行；收紧的边界是当前根目录，删除只能落在它内部。
 
 所有接口的响应都是 `application/json; charset=utf-8` 或 `text/plain; charset=utf-8`，并带 `Cache-Control: no-store`。
 

@@ -16,6 +16,7 @@ import {
   type SessionRow,
 } from './api'
 import { useSessions } from './hooks/useSessions'
+import { indexLiveByFile, type LiveSessionFeed, type LiveSessionInfo, type LiveSessionSource } from './live'
 
 /**
  * 模块共享状态：根目录、搜索词、当前选中会话、关注的项目与服务配置。
@@ -42,6 +43,11 @@ export interface SessionsControllerOptions {
   readRootFromUrl?: boolean
   /** 关注/删除失败等需要用户看见的提示。缺省写进模块内的提示位。 */
   onNotice?: (notice: Notice) => void
+  /**
+   * 会话运行态来源，由宿主注入（会话模块不采集心跳）。
+   * 不注入时模块按纯磁盘列表工作，行为与之前完全一致。
+   */
+  liveSessions?: LiveSessionSource
 }
 
 export interface SessionsController {
@@ -68,6 +74,15 @@ export interface SessionsController {
   loading: boolean
   error: string | null
   reload: () => void
+  /** 运行态（未注入来源时为空）。 */
+  live: LiveSessionInfo[]
+  liveByPath: Map<string, LiveSessionInfo[]>
+  liveError: string | null
+  /** 打开某条会话（可按会话文件或 id 定位），会切根目录并放开日期筛选。 */
+  openSession: (input: { root?: string; id?: string; sessionFile?: string }) => void
+  /** 命令跳转后要额外放开的日期；侧边栏消费一次后自行并入筛选。 */
+  focusDay: number | null
+  clearFocusDay: () => void
 }
 
 /** 记住的根目录只在本模块的键下，宿主注入 storageKey 后互不干扰。 */
@@ -116,6 +131,13 @@ export function SessionsProvider({
   const [picking, setPicking] = useState(false)
   const [pinnedProjects, setPinnedProjects] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [live, setLive] = useState<LiveSessionInfo[]>([])
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const [pendingSelection, setPendingSelection] = useState<{
+    id?: string
+    sessionFile?: string
+  } | null>(null)
+  const [focusDay, setFocusDay] = useState<number | null>(null)
 
   const notify = useCallback(
     (next: Notice) => {
@@ -146,6 +168,52 @@ export function SessionsProvider({
 
   const { listing, loading, error, reload } = useSessions(root, api)
 
+  // 运行态：来源由宿主注入，5 秒一次；失败只降级成一行小字，不影响磁盘列表。
+  const liveSource = options.liveSessions
+  useEffect(() => {
+    if (!liveSource) return
+    let alive = true
+    const load = () => {
+      void liveSource
+        .fetch()
+        .then((feed: LiveSessionFeed) => {
+          if (!alive) return
+          setLive(feed.sessions)
+          setLiveError(null)
+        })
+        .catch((failure: unknown) => {
+          if (alive) setLiveError(errorText(failure))
+        })
+    }
+    load()
+    const timer = setInterval(load, 5_000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [liveSource])
+
+  const liveByPath = useMemo(() => indexLiveByFile({ sessions: live, stale: 0, warnings: [], now: Date.now() }), [live])
+
+  // 命令跳转：等列表到达后按会话文件优先、id 兜底选中，并记下要放开的日期。
+  useEffect(() => {
+    if (!pendingSelection || !listing) return
+    const wanted = pendingSelection.sessionFile
+    const row = wanted
+      ? listing.sessions.find((item) => item.path === wanted)
+      : listing.sessions.find((item) => item.id === pendingSelection.id)
+    if (!row) {
+      if (!loading && listing.pendingDetails === 0) {
+        notify({ kind: 'error', message: `这个根目录里找不到该会话：${wanted ?? pendingSelection.id}` })
+        setPendingSelection(null)
+      }
+      return
+    }
+    setSelected(row)
+    setFocusDay(row.modified)
+    setPendingSelection(null)
+  }, [listing, loading, pendingSelection, notify])
+
   const setRoot = useCallback(
     (next: string) => {
       rememberRoot(storageKey, next)
@@ -155,6 +223,18 @@ export function SessionsProvider({
       setRootState(next)
     },
     [storageKey],
+  )
+
+  /** 跨模块命令用：切根目录 + 等列表到达后选中目标会话。 */
+  const openSession = useCallback(
+    (input: { root?: string; id?: string; sessionFile?: string }) => {
+      const target = input.root?.trim()
+      if (target && target !== root) setRoot(target)
+      setSelected(null)
+      setPendingSelection({ id: input.id, sessionFile: input.sessionFile })
+      setPicking(false)
+    },
+    [root, setRoot],
   )
 
   /**
@@ -222,6 +302,12 @@ export function SessionsProvider({
     loading,
     error,
     reload,
+    live,
+    liveByPath,
+    liveError,
+    openSession,
+    focusDay,
+    clearFocusDay: () => setFocusDay(null),
   }
 
   return <SessionsContext.Provider value={value}>{children}</SessionsContext.Provider>

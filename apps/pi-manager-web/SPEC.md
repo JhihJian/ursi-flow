@@ -12,7 +12,7 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 管理台以读写配置文件为主：除下面「执行一次性会话任务」外，不加载扩展、不 spawn MCP server、不执行安装。它与 pi CLI 及 pi-web 共享同一份 pi home，是它们之间的第三入口。凭据永不原样回传浏览器；写操作只对本机开放；文件级乐观锁防止覆盖 pi CLI 的并发修改。
 
-「执行一次性会话任务」是一项明确划界的执行能力：调用方给一个 agent profile 与一句指令，服务端用 pi SDK 在该 home 下起一个会话跑完一轮就结束，不提供交互界面，也不驻留会话。它与 pi-web 的完整交互式 UI 互补：pi-web 是人在用 Pi，这里是程序用 Pi。
+「执行一次性会话任务」是一项明确划界的执行能力：调用方给一个 agent profile 与一句指令，服务端用 pi SDK 在该 home 下起一个会话跑完一轮就结束，不提供交互界面，也不驻留会话。它与 pi-web 的完整交互式 UI 互补：pi-web 是人在用 Pi，这里是程序用 Pi。运行中会话与交互对话是它的两块运行时能力：运行态数据供 [Pi 会话浏览](../pi-sessions-web/SPEC.md) 叠加展示，对话运行时供 [Pi 交互对话](../pi-chat-web/SPEC.md) 使用。
 
 ## 关键功能与验收
 
@@ -154,9 +154,9 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 同时运行的会话数受上限约束（默认 4，`PI_MANAGER_MAX_TASKS` 可调），超出返回 429；单次任务有超时（默认 600000 ms，`PI_MANAGER_TASK_TIMEOUT_MS` 可调），超时即中止并标记失败。
 - pi SDK 按需加载：未安装 `@earendil-works/pi-coding-agent` 时配置管理功能照常可用，执行接口返回 503。
 
-### 查看运行中的 pi 会话
+### 提供会话运行态数据
 
-pi 不维护跨进程的会话注册表，运行态只存在于进程内存里。管理台要看见 CLI、pi-web 与 SDK 起的会话，统一约定用一个 pi 扩展把运行态写到 home 目录，再用只读接口汇总到页面。
+pi 不维护跨进程的会话注册表，运行态只存在于进程内存里。统一约定用一个 pi 扩展把运行态写到 home 目录，管理台用只读接口汇总；页面展示归 [Pi 会话浏览](../pi-sessions-web/SPEC.md)，管理台不再自己画运行中会话面板。
 
 #### 验收
 
@@ -167,9 +167,39 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 - 心跳写入失败只影响心跳，不影响会话；`host` 与 `pid` 让读取方区分同机多进程、同进程多会话与 subagent 子会话。
 - `GET /api/session/live?home=<路径>` 只读心跳目录，返回 `sessions`、`heartbeatDir`、`pluginDetected`、`stale`、`now`、`warnings`。超过 60 秒未续写或同机 pid 已退出的条目不进 `sessions`，只计入 `stale`；`running` 排在 `idle` 前，同一状态按最近心跳倒序。
 - 心跳目录不存在时返回空清单而不是报错；坏文件与读取失败写进 `warnings` 并跳过，不阻塞其余条目。
-- 运行态是独立的二级侧面板（不在分区导航里）：一级按 cwd 聚合成树，组头显示目录名、完整路径、运行中/总数与折叠开关（折叠状态存 localStorage，有运行中会话的组排在前面），组内列会话（状态点、名称或 session id、模型、最近心跳，subagent 子会话标注「子会话」）；二级显示选中会话的详情（会话文件、父会话、主机与 pid、开始时间）。面板在内容区左侧、可拖宽（220–560px）、可折叠成 32px 窄条；折叠后仍显示运行中数量，展开/折叠状态存 localStorage，顶栏「会话」按钮也可切换。
-- 面板每 5 秒轮询心跳（折叠时也继续，以维持运行中计数）；切换 pi home 后面板随内容区一起刷新。
-- `extensions/` 下未检测到扩展且没有会话时，页面提示安装路径与 `/reload`；有会话时不再提示。面板不提供启动、切换、取消会话的操作。
+- `GET /api/session/live` 不带参数时汇总所有已登记与已发现的 home，返回 `{ sessions, stale, warnings, now }`：会话模块只认会话文件的绝对路径，不需要知道 home 的概念。`?home=` 形式保留给脚本使用。
+- 返回值带 `sameHost`、`parentSessionFile`、`mode`、`pid`：判断「本机能不能读文件」「是不是子会话」由采集方算好，展示方不猜。心跳目录不存在时返回空清单而不是报错；坏文件与读取失败写进 `warnings` 并跳过。
+- `GET /api/session/disk?home=` 返回该 home 的会话根 `{ root, exists }`，供跨模块跳转使用，前端不自己拼路径。
+- `GET /api/session/tasks` 支持 `?home=<绝对路径>` 过滤（保留 `?agent=`），任务分区的「打开轨迹」用它定位会话。
+- 运行中会话的展示、轮询与状态点都在会话模块：管理台只负责采集与提供数据，停掉管理台才会话模块少这一层状态。
+
+### 执行交互对话
+
+对话需要一个常驻的 AgentSession：加载某个 pi home 的模型、凭据、skills、subagent 与 MCP，接收事件流、可以连续发消息。运行时归管理台（它已经持有 SDK、home 校验、凭据与并发控制），界面归 [Pi 交互对话](../pi-chat-web/SPEC.md)。
+
+#### 验收
+
+- `server/src/session-runtime.ts` 装配会话：校验 home / cwd / 模型 / thinkingLevel / subagent，续聊只接受落在该 home `sessions/` 下的会话文件（`realpath` 校验），且不接受 cwd 与 subagent（文件里已记录工作目录与工具集）。一次性任务与对话共用这一份装配。
+- 释放统一走 `disposeSession()`：abort → `session.dispose()` → `modelRuntime.settleCredentialWrites()` → 删掉本进程写下的心跳文件。直接 `session.dispose()` 不发 `session_shutdown`，心跳扩展删不掉记录，会话模块会看到幽灵 running。
+- 新建会话不自建 SessionManager：沿用 `createAgentSession` 的默认布局，会话写进 `<home>/sessions/--<cwd>--/`；只有续聊才 `SessionManager.open(file)`。
+- `POST /api/chat/session` 建会话或续聊，返回实际生效的 `model`、`thinkingLevel` 与会话文件；`sessionFile` 由调用方给出时 home 按会话文件反查。同一会话已有运行时则接到已有对话上，不并行追加同一份 JSONL。
+- `POST /api/chat/prompt` 在流式期间必须带排队方式（默认 `followUp`，可 `steer`）；`POST /api/chat/abort` 中止并把排队输入原样回传；`POST /api/chat/model` 只切本会话，不写 settings.json；`POST /api/chat/answer` 回执扩展 UI 请求；`POST /api/chat/close` 释放。
+- `GET /api/chat/stream?sessionId=` 用 SSE：首帧回放会话行文本（与 pi 会话文件同形状，浏览器用同一个 `parsePiJsonl` 解析），第二帧给 `isStreaming` 与当前 `partial`，随后转发 SDK 事件（`agent_start`、`message_*`、`tool_execution_*`、`queue_update`、`compaction_*`、`auto_retry_*`、`thinking_level_changed`、`agent_settled`）。消息落盘后整段重发 transcript，不依赖 `entry_appended`。
+- 扩展 UI 的 `confirm` / `select` / `input` / `notify` 转成帧等浏览器回执，服务端有兜底超时（默认 120 秒）；TUI 专属能力做成静默 stub。
+- 对话上限 `PI_MANAGER_MAX_CHATS`（默认 8）超出返回 429；空闲 30 分钟自动释放并保留会话文件；进程收到 SIGINT/SIGTERM 时释放全部对话。重启后按会话文件续聊。
+- 路由层支持 handler 接管响应（SSE 与 202），`/api/chat/` 自行解析入参、不参与统一 home 预校验。
+
+### 作为工作台模块接入
+
+管理台同时是独立站点（`App.tsx`）与工作台模块（`module.tsx`），两者共用同一批分区组件与 store。
+
+#### 验收
+
+- `createPiManagerModule({ apiBaseUrl, storageKey, openRootInSessions? })` 返回 `WorkspaceModule`：侧边栏是 pi home 清单 + 分区导航，工作区是分区内容；分区状态的 localStorage 键以 `storageKey` 为前缀。
+- 发布 `context.kind = 'pi.home'`：store 里的 homePath 是真源，选中单向派生，只在 home 真的变化时发布，不抢别的模块的选中。
+- 样式分两份：独立入口用 `styles.css`；模块入口用 `module.css`（由 `scripts/scope-css.py` 从 `styles.css` 生成，全部选择器挂在 `.pi-manager-root` 下，不下发 `html/body/#root` 与全局 reset）。
+- `openRootInSessions` 注入时提供动作「在会话模块打开该 home 的会话」：先 `GET /api/session/disk` 取会话根，再 `shell.reveal('pi-sessions')`；会话模块未启用时给出禁用原因。
+- 已废弃 `SessionsPanel`：运行中会话的展示在会话模块里。
 
 ### 安全边界
 
@@ -183,6 +213,6 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；`frontmatter.ts` 按根级块解析与渲染 agent/skill 的 frontmatter；各域模块（`settings-file`、`tool-settings`、`skills`、`agents`、`models-auth`、`plugins`、`mcp-file`、`mcp-mask`）只做文件级读写；`models-check.ts` 镜像 pi 会拒绝的 provider 条目规则；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-probe.ts` 做连接测试与上游模型发现；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回、frontmatter 往返与心跳过滤。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；`frontmatter.ts` 按根级块解析与渲染 agent/skill 的 frontmatter；各域模块（`settings-file`、`tool-settings`、`skills`、`agents`、`models-auth`、`plugins`、`mcp-file`、`mcp-mask`）只做文件级读写；`models-check.ts` 镜像 pi 会拒绝的 provider 条目规则；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-probe.ts` 做连接测试与上游模型发现；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-runtime.ts` 是任务与对话共用的会话装配、会话文件归属校验与释放；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`chat.ts` 是交互对话运行时（会话表、SSE、扩展 UI 桥接、限流与空闲回收）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回、frontmatter 往返与心跳过滤。
 - `extension/`：`pi-session-heartbeat.ts` 是安装到 pi home 的扩展，负责写会话心跳文件；`README.md` 记录安装方式与文件约定。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar、七个分区组件与独立的 `SessionsPanel`（运行中会话的二级侧面板）；分区组件是表格列表 + 底部详情面板，已挂载分区保持状态，`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`SessionsPanel.tsx` 是只读会话运行态，`sections/AgentsSection.tsx` 是结构化 profile 表单，`sections/McpSection.tsx` 与 `sections/ModelsSection.tsx` 的详情分别带 MCP 开关/摘要与模型测试/发现；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装（可注入接口前缀，导出 `createApiClient` 给别的模块用）；`module.tsx` 是工作台模块入口；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件；分区组件是表格列表 + 底部详情面板，已挂载分区保持状态，`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`sections/AgentsSection.tsx` 是结构化 profile 表单，`sections/McpSection.tsx` 与 `sections/ModelsSection.tsx` 的详情分别带 MCP 开关/摘要与模型测试/发现；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画；`module.css` 是它的作用域化版本（`scripts/scope-css.py` 生成）。

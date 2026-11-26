@@ -19,6 +19,8 @@ const sbxApi = process.env.SBX_WEB_API ?? 'http://127.0.0.1:4180'
 const flowApi = process.env.FLOW_WEB_API ?? 'http://127.0.0.1:8094'
 /** pi 会话目录服务；前缀在代理层重写，服务端路由保持 /api 不动。 */
 const piSessionsApi = process.env.PI_SESSIONS_API ?? 'http://127.0.0.1:30200'
+/** pi 管理台（配置、会话运行时与交互对话）；路径里已经带 /api，重写成空前缀。 */
+const piManagerApi = process.env.PI_MANAGER_API ?? 'http://127.0.0.1:8093'
 
 const proxy = {
   // 顺序敏感：Vite 按插入顺序首个前缀命中生效，各模块前缀必须排在通用 /api 之前。
@@ -38,6 +40,12 @@ const proxy = {
     target: piSessionsApi,
     changeOrigin: false,
     rewrite: (path: string) => path.replace(/^\/api\/pi-sessions/, '/api'),
+  },
+  // 管理台客户端自己带 /api 前缀，因此这里直接去掉模块前缀。
+  '/api/pi-manager': {
+    target: piManagerApi,
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/api\/pi-manager/, ''),
   },
   '/sbx': {
     target: sbxApi,

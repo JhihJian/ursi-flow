@@ -1,0 +1,411 @@
+/*
+ * 对话模块的作用域样式。所有规则挂在 .pichat 下，不写 html/body/:root。
+ * 轨迹组件库自己的样式由 ChatWorkspace 引入，这里只管模块骨架。
+ */
+
+.pichat {
+  --pichat-border: var(--gray-200, #e2ddd4);
+  --pichat-text: var(--gray-900, #1d1b18);
+  --pichat-muted: var(--gray-600, #6e6860);
+  --pichat-bg: var(--white, #fff);
+  --pichat-accent: #1d1b18;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  background: var(--pichat-bg);
+  color: var(--pichat-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.pichat *,
+.pichat *::before,
+.pichat *::after {
+  box-sizing: border-box;
+}
+
+.pichat-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pichat-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pichat-label {
+  color: var(--pichat-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pichat-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--pichat-border);
+  border-radius: 0;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pichat-input.is-inline {
+  width: auto;
+  max-width: 190px;
+  padding: 2px 4px;
+}
+
+.pichat-hint {
+  margin: 0;
+  color: var(--pichat-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.pichat-error {
+  margin: 0;
+  color: #a4231f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pichat-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--pichat-border);
+}
+
+.pichat-count {
+  color: var(--pichat-muted);
+  font-size: 11px;
+}
+
+.pichat-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pichat-primary {
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--pichat-accent);
+  border-radius: 0;
+  background: var(--pichat-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pichat-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pichat-rail-toggle {
+  padding: 2px 6px;
+  border: 1px solid var(--pichat-border);
+  border-radius: 0;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.pichat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pichat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pichat-item:hover {
+  background: #f6f4f1;
+}
+
+.pichat-item.is-active {
+  border-left-color: var(--pichat-accent);
+  background: #f1eeea;
+}
+
+.pichat-item-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pichat-item-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pichat-item-meta {
+  overflow: hidden;
+  color: var(--pichat-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pichat-item-state {
+  color: var(--pichat-muted);
+  font-size: 10px;
+}
+
+.pichat-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #bdb7ad;
+}
+
+.pichat-dot.is-running {
+  background: #2f7d32;
+}
+
+.pichat-dot.is-error {
+  background: #a4231f;
+}
+
+.pichat-empty-line {
+  padding: 4px 6px;
+  color: var(--pichat-muted);
+  font-size: 11px;
+}
+
+.pichat-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pichat-muted);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pichat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--pichat-border);
+}
+
+.pichat-bar-title {
+  font-size: 12px;
+}
+
+.pichat-bar-meta {
+  overflow: hidden;
+  max-width: 34ch;
+  color: var(--pichat-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pichat-bar-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pichat-bar-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.pichat-button {
+  padding: 3px 8px;
+  border: 1px solid var(--pichat-border);
+  border-radius: 0;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pichat-button.is-primary {
+  border-color: var(--pichat-accent);
+  background: var(--pichat-accent);
+  color: #fff;
+}
+
+.pichat-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pichat-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--pichat-border);
+  background: #faf8f5;
+  font-size: 12px;
+}
+
+.pichat-banner.is-error {
+  background: #fdf3f2;
+  color: #a4231f;
+}
+
+.pichat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px 12px;
+}
+
+.pichat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 24px 12px;
+  color: var(--pichat-muted);
+}
+
+.pichat-empty p {
+  margin: 0;
+}
+
+.pichat-streaming {
+  margin-top: 10px;
+  border: 1px solid var(--pichat-border);
+  background: #fbfaf8;
+}
+
+.pichat-streaming-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--pichat-border);
+  color: var(--pichat-muted);
+  font-size: 11px;
+}
+
+.pichat-streaming-body {
+  margin: 0;
+  padding: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pichat-pending {
+  margin-top: 6px;
+  color: var(--pichat-muted);
+  font-size: 11px;
+}
+
+.pichat-ui-request {
+  margin: 0 10px 8px;
+  padding: 8px;
+  border: 1px solid var(--pichat-accent);
+  background: #faf8f5;
+}
+
+.pichat-ui-request-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.pichat-ui-request-msg {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.pichat-ui-request-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.pichat-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--pichat-border);
+}
+
+.pichat-textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--pichat-border);
+  border-radius: 0;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.pichat-input-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pichat-input-actions .pichat-hint {
+  margin-left: auto;
+}

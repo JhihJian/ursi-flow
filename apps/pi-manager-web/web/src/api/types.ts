@@ -344,3 +344,82 @@ export interface MutationResult {
 export interface ApiErrorBody {
   error: { code: string; message: string }
 }
+
+/** 一次性会话任务（服务端进程内任务表）。 */
+export interface SessionTask {
+  sessionId: string
+  agent: string
+  home: string
+  subagent: string | null
+  instruct: string
+  cwd: string
+  state: 'running' | 'done' | 'error' | 'cancelled'
+  startedAt: number
+  finishedAt: number | null
+  answer: string | null
+  error: string | null
+  sessionFile: string | null
+  textLength: number
+}
+
+export interface SessionTaskListing {
+  tasks: SessionTask[]
+  capacity: { running: number; limit: number }
+}
+
+/** 该 home 的会话根（跨模块跳转用，前端不自己拼路径）。 */
+export interface SessionDisk {
+  root: string
+  exists: boolean
+}
+
+/** 运行中的对话（服务端进程内状态）。 */
+export interface ChatInfo {
+  sessionId: string
+  home: string
+  cwd: string
+  model: string | null
+  thinkingLevel: string | null
+  sessionFile: string | null
+  name: string | null
+  state: 'idle' | 'running' | 'error'
+  isStreaming: boolean
+  partial: string
+  pendingCount: number
+  error: string | null
+  startedAt: number
+  updatedAt: number
+  fallbackMessage?: string | null
+}
+
+export interface ChatListing {
+  chats: ChatInfo[]
+  capacity: { open: number; limit: number }
+}
+
+export interface ChatModelOption {
+  provider: string
+  id: string
+  enabled: boolean
+}
+
+/** 对话可选项：模型、默认值、agent 清单与会话根。 */
+export interface ChatOptions {
+  models: ChatModelOption[]
+  defaultModel: string | null
+  defaultThinkingLevel: string | null
+  thinkingLevels: string[]
+  agents: string[]
+  sessionRoot: string
+  sessionRootExists: boolean
+  defaultCwd: string
+}
+
+export interface ChatCreateInput {
+  home?: string
+  cwd?: string
+  model?: string
+  thinkingLevel?: string
+  subagent?: string | null
+  sessionFile?: string
+}

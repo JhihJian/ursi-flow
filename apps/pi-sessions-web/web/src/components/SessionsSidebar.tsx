@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
 import type { SessionRow } from '../api'
+import { primaryLive, type LiveSessionInfo } from '../live'
 import type { SessionGroup } from '../lib/format'
 import {
   dailyBuckets,
+  dayKey,
   defaultFoldedGroups,
   formatAge,
   groupSessions,
@@ -46,6 +48,10 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     notice,
     clearNotice,
     setPicking,
+    liveByPath,
+    liveError,
+    focusDay,
+    clearFocusDay,
   } = useSessionsController()
   const [folded, setFolded] = useState<Record<string, boolean>>({})
   const [more, setMore] = useState<Record<string, number>>({})
@@ -57,6 +63,13 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
   useEffect(() => {
     setSelectedDays(new Set([todayKey()]))
   }, [root])
+  // 跨模块跳转过来的会话可能不在今天：把它的日期并进筛选，否则选中了却看不见。
+  useEffect(() => {
+    if (focusDay === null) return
+    setSelectedDays((current) => new Set([...current, dayKey(focusDay)]))
+    clearFocusDay()
+  }, [focusDay, clearFocusDay])
+
   // 确认菜单要落在原菜单位置上：菜单关闭后 state 已清空，位置另存一份。
   const menuAt = useRef({ x: 0, y: 0 })
   // 浮层挂在侧边栏容器内，避免用全局 position: fixed 在多区域布局里坐标错位。
@@ -71,6 +84,20 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     if (selectedDays.size === 1) return `筛选 ${[...selectedDays][0].slice(5)}`
     return `筛选 ${selectedDays.size} 天`
   }, [selectedDays])
+  /** 运行态：只接注入来源，按会话文件路径与磁盘行对齐。 */
+  const liveRows = useMemo(() => {
+    const rowsByPath = new Map(allRows.map((row) => [row.path, row] as const))
+    return [...liveByPath.entries()]
+      .map(([path, list]) => ({ session: primaryLive(list), row: rowsByPath.get(path) ?? null, path }))
+      .filter((item): item is { session: LiveSessionInfo; row: SessionRow | null; path: string } =>
+        Boolean(item.session),
+      )
+      .sort((a, b) => {
+        if (a.session.status !== b.session.status) return a.session.status === 'running' ? -1 : 1
+        return b.session.updatedAt - a.session.updatedAt
+      })
+  }, [liveByPath, allRows])
+
   const groups = groupSessions(allRows, query, selectedDays)
   const { pinned, rest } = splitPinnedGroups(groups, pinnedProjects)
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
@@ -142,6 +169,8 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     })
   }
 
+  const liveForRow = (row: SessionRow) => primaryLive(liveByPath.get(row.path))
+
   const renderGroup = (group: SessionGroup) => {
     const isFolded = isFoldedGroup(group.key)
     const shown = Math.min(group.sessions.length, GROUP_VISIBLE + (more[group.key] ?? 0))
@@ -172,14 +201,22 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
               <li key={row.id}>
                 <button
                   type="button"
-                  className={row.id === selected?.id ? 'session-item active' : 'session-item'}
+                  className={`${row.id === selected?.id ? 'session-item active' : 'session-item'}${liveForRow(row) ? ' is-live' : ''}`}
                   title={`${sessionTitle(row)}\n${row.cwd || row.path}`}
                   onClick={() => select(row)}
                   onContextMenu={(event) => sessionMenu(event, row)}
                 >
-                  <span className="name">{sessionTitle(row)}</span>
+                  <span className="name">
+                    {liveForRow(row) ? (
+                      <span
+                        className={`session-live-dot is-${liveForRow(row)?.status}`}
+                        aria-label={liveForRow(row)?.status === 'running' ? '运行中' : '空闲'}
+                      />
+                    ) : null}
+                    {sessionTitle(row)}
+                  </span>
                   <span className="meta">
-                    <span>{formatAge(row.modified)}</span>
+                    <span>{liveForRow(row) ? liveForRow(row)?.model ?? formatAge(row.modified) : formatAge(row.modified)}</span>
                     <span>{sessionMeta(row)}</span>
                   </span>
                 </button>
@@ -363,6 +400,52 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
                   : selectedDays.size > 0
                     ? `所选的 ${selectedDays.size} 天里没有会话`
                     : '这个目录下没有 .jsonl 会话文件'}
+              </p>
+            ) : null}
+
+            {liveRows.length > 0 ? (
+              <section className="pinned-section live-section">
+                <h3 className="section-label">
+                  运行中 <span className="session-group-count">{liveRows.length}</span>
+                </h3>
+                <ul className="session-items">
+                  {liveRows.map(({ session, row }) => (
+                    <li key={session.sessionId}>
+                      <button
+                        type="button"
+                        className={`session-item${row && row.id === selected?.id ? ' active' : ''}`}
+                        title={
+                          row
+                            ? `${session.name ?? session.sessionId}\n${session.sessionFile ?? ''}`
+                            : `文件还没写入：${session.sessionFile ?? session.sessionId}`
+                        }
+                        onClick={() => {
+                          if (row) select(row)
+                        }}
+                        disabled={!row}
+                      >
+                        <span className="name">
+                          <span
+                            className={`session-live-dot is-${session.status}`}
+                            aria-label={session.status === 'running' ? '运行中' : '空闲'}
+                          />
+                          {session.name ?? row?.name ?? session.sessionId.slice(0, 12)}
+                          {!session.sameHost ? '（远程）' : ''}
+                        </span>
+                        <span className="meta">
+                          <span>{session.model ?? '模型未知'}</span>
+                          <span>{session.sameHost ? (row ? formatAge(row.modified) : '待写入') : session.host}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {liveError ? (
+              <p className="sidebar-note" title={liveError}>
+                运行态读取失败，只显示历史会话
               </p>
             ) : null}
 

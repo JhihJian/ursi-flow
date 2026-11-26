@@ -1,9 +1,13 @@
-import { statSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { listAgentProfiles, type AgentProfile } from './agents.ts'
+import {
+  THINKING_LEVELS,
+  assembleSession,
+  disposeSession,
+  parseSubagentTools,
+  resolveSubagent,
+  type AgentSession,
+} from './session-runtime.ts'
 import { HomeError } from './pi-home.ts'
-import { loadSdk, type Sdk } from './sdk.ts'
+import { loadSdk } from './sdk.ts'
 
 /**
  * 一次性会话任务：用 pi SDK 在指定 pi home 下起一个 AgentSession，跑完一轮就结束。
@@ -18,13 +22,14 @@ import { loadSdk, type Sdk } from './sdk.ts'
  * 因此本接口的 `subagent` 参数含义是「直接以该 subagent 的定义起一个会话」，
  * 等价于父会话调用一次 Agent 工具；省略时起普通主会话，由它自己决定是否派生。
  *
- * 与管理台其余部分的分工：其他模块只读写配置文件，不启动会话；这里明确是"执行"
- * 能力，因此单独成模块、单独限流。session 写回该 home 的
- * sessions 目录，和 pi CLI / pi-web 的会话并列。
+ * 会话的装配与释放逻辑在 `session-runtime.ts` 里，与交互对话共用；这里只负责
+ * 「跑一轮、记录结果、限流」。
  *
  * SDK 按需加载：没装 @earendil-works/pi-coding-agent 时管理台仍能正常管理配置，
  * 只有执行接口返回 503。
  */
+
+export { parseSubagentTools, resolveSubagent }
 
 export type TaskState = 'running' | 'done' | 'error' | 'cancelled'
 
@@ -69,12 +74,7 @@ const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.PI_MANAGER_TASK_TIMEOUT_M
 /** 进程内任务表：会话是活的运行时对象，不落盘也无法跨进程共享。 */
 const tasks = new Map<string, SessionTask>()
 /** 运行中的会话句柄，用于取消。 */
-const live = new Map<string, { abort: () => Promise<void>; dispose: () => void }>()
-
-const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
-type ThinkingLevel = (typeof THINKING_LEVELS)[number]
-
-type AgentSession = Awaited<ReturnType<Sdk['createAgentSession']>>['session']
+const live = new Map<string, { abort: () => Promise<void>; dispose: () => Promise<void> }>()
 
 export function taskCapacity(): { running: number; limit: number } {
   let running = 0
@@ -90,57 +90,6 @@ export function listTasks(home?: string): SessionTask[] {
   const all = [...tasks.values()]
   const filtered = home ? all.filter((task) => task.home === home) : all
   return filtered.sort((a, b) => b.startedAt - a.startedAt)
-}
-
-/**
- * 找一个 subagent 定义：先按文件名，再按 frontmatter 的 name（都不区分大小写）。
- * 这些文件就是会话内 Agent 工具的 subagent_type 取值。
- */
-export function resolveSubagent(home: string, name: string): AgentProfile {
-  const wanted = name.trim().toLowerCase()
-  const profiles = listAgentProfiles(home)
-  const found = profiles.find(
-    (p) => p.file.replace(/\.md$/i, '').toLowerCase() === wanted || p.name.toLowerCase() === wanted,
-  )
-  if (!found) {
-    const known = profiles.map((p) => p.file.replace(/\.md$/i, ''))
-    throw new HomeError(
-      `该 pi home 里没有这个 subagent：${name}${known.length ? `（可选：${known.join('、')}）` : '（agents/ 目录为空）'}`,
-      404,
-      'subagent_not_found',
-    )
-  }
-  return found
-}
-
-/** 从 subagent 定义的 frontmatter 取一个标量值（extraKeys 是 "key: value" 原样行）。 */
-function subagentScalar(profile: AgentProfile, key: string): string | null {
-  for (const line of profile.extraKeys) {
-    const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(line.trim())
-    if (m && m[1].toLowerCase() === key.toLowerCase()) {
-      return m[2].replace(/^["']|["']$/g, '').trim() || null
-    }
-  }
-  return null
-}
-
-function resolveCwd(raw: string | undefined): string {
-  // 不传时用服务进程的当前目录，与 pi CLI 的默认行为一致；home 只是配置来源。
-  if (!raw || !raw.trim()) return process.cwd()
-  const home = homedir()
-  const expanded = raw.trim().startsWith('~')
-    ? join(home, raw.trim().slice(1))
-    : raw.trim()
-  const target = resolve(expanded)
-  try {
-    if (!statSync(target).isDirectory()) {
-      throw new HomeError(`cwd 不是目录：${target}`, 400, 'invalid_request')
-    }
-  } catch (error) {
-    if (error instanceof HomeError) throw error
-    throw new HomeError(`cwd 不存在：${target}`, 404, 'cwd_not_found')
-  }
-  return target
 }
 
 /**
@@ -161,10 +110,9 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
   }
 
   // 纯参数校验全部前置：不装 SDK 也能拿到明确的参数错误，测试也不必加载运行时。
-  const thinking = options.thinkingLevel
-  if (thinking && !THINKING_LEVELS.includes(thinking as ThinkingLevel)) {
+  if (options.thinkingLevel && !(THINKING_LEVELS as readonly string[]).includes(options.thinkingLevel)) {
     throw new HomeError(
-      `thinkingLevel 只能是 ${THINKING_LEVELS.join(' / ')}，收到 ${thinking}`,
+      `thinkingLevel 只能是 ${THINKING_LEVELS.join(' / ')}，收到 ${options.thinkingLevel}`,
       400,
       'invalid_request',
     )
@@ -176,82 +124,42 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
       'invalid_request',
     )
   }
-
-  const subagent = options.subagent ? resolveSubagent(options.home, options.subagent) : null
-  const cwd = resolveCwd(options.cwd)
-  const sdk = await loadSdk()
-
-  // 会话与 pi CLI 共用分组规则：不传 sessionManager 时 SDK 按 agentDir + cwd
-  // 建 `<home>/sessions/--<escaped-cwd>--/`，这些会话 CLI 与 pi-web 都能接着聊。
-  const loader = new sdk.DefaultResourceLoader({
-    cwd,
-    agentDir: options.home,
-    // subagent 正文就是这个子会话的系统提示：追加在 pi 默认系统提示之后，
-    // 替换会把工具协议一并丢掉。
-    ...(subagent ? { appendSystemPromptOverride: (base: string[]) => [...base, subagent.body] } : {}),
-  })
-  await loader.reload()
-
-  // subagent 定义的其余约束：frontmatter 的 tools / model / thinking。
-  const subagentTools = subagent ? parseSubagentTools(subagentScalar(subagent, 'tools')) : null
-  const modelRef = options.model ?? (subagent ? subagentScalar(subagent, 'model') : null)
-  const effectiveThinking = thinking ?? (subagent ? subagentScalar(subagent, 'thinking') : null)
-  if (effectiveThinking && !THINKING_LEVELS.includes(effectiveThinking as ThinkingLevel)) {
-    throw new HomeError(
-      `subagent 里的 thinking 不是合法值：${effectiveThinking}（可选 ${THINKING_LEVELS.join(' / ')}）`,
-      400,
-      'invalid_subagent',
-    )
-  }
-
-  // 只有显式指定模型时才自建 ModelRuntime：它绑定该 home 的 auth.json / models.json，
-  // 不指定时 createAgentSession 自己就按 agentDir 建同样的 runtime。
-  const modelRuntime = modelRef
-    ? await sdk.ModelRuntime.create({
-        authPath: join(options.home, 'auth.json'),
-        modelsPath: join(options.home, 'models.json'),
-      })
-    : null
-  const model = modelRef && modelRuntime ? resolveModel(modelRuntime, modelRef, options.home) : null
+  if (options.subagent) resolveSubagent(options.home, options.subagent)
 
   // 会话创建放在返回前：agent 不存在、模型不存在、凭据缺失都能立刻报给调用方。
-  const { session } = await sdk.createAgentSession({
-    cwd,
-    agentDir: options.home,
-    resourceLoader: loader,
-    ...(model ? { model } : {}),
-    ...(modelRuntime ? { modelRuntime } : {}),
-    ...(effectiveThinking ? { thinkingLevel: effectiveThinking as ThinkingLevel } : {}),
-    // subagent 声明的工具集就是它的作用域；未声明则沿用 pi 的默认工具。
-    ...(subagentTools && subagentTools.length > 0 ? { tools: subagentTools } : {}),
+  const assembled = await assembleSession({
+    home: options.home,
+    cwd: options.cwd,
+    model: options.model,
+    thinkingLevel: options.thinkingLevel,
+    subagent: options.subagent,
   })
 
-  const sessionId = session.sessionManager.getSessionId()
   const task: SessionTask = {
-    sessionId,
+    sessionId: assembled.sessionId,
     agent: options.agent,
     home: options.home,
-    subagent: subagent ? subagent.file.replace(/\.md$/i, '') : null,
+    subagent: options.subagent ? options.subagent.replace(/\.md$/i, '') : null,
     instruct,
-    cwd,
+    cwd: assembled.cwd,
     state: 'running',
     startedAt: Date.now(),
     finishedAt: null,
     answer: null,
     error: null,
-    sessionFile: session.sessionManager.getSessionFile() ?? null,
+    sessionFile: assembled.sessionFile,
     textLength: 0,
   }
-  tasks.set(sessionId, task)
+  tasks.set(task.sessionId, task)
 
-  live.set(sessionId, {
-    abort: () => session.abort(),
-    dispose: () => session.dispose(),
+  live.set(task.sessionId, {
+    abort: () => assembled.session.abort(),
+    dispose: () => disposeSession(assembled.session, options.home),
   })
 
-  void runTask({ session, task }).catch((error: unknown) => {
+  void runTask({ session: assembled.session, task, home: options.home }).catch((error: unknown) => {
     finish(task, 'error', error instanceof Error ? error.message : String(error))
-    session.dispose()
+    void disposeSession(assembled.session, options.home)
   })
 
   return task
@@ -267,8 +175,8 @@ function finish(task: SessionTask, state: TaskState, error: string | null, answe
   live.delete(task.sessionId)
 }
 
-async function runTask(args: { session: AgentSession; task: SessionTask }): Promise<void> {
-  const { session, task } = args
+async function runTask(args: { session: AgentSession; task: SessionTask; home: string }): Promise<void> {
+  const { session, task, home } = args
   const unsubscribe = session.subscribe((event) => {
     if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
       task.textLength += event.assistantMessageEvent.delta.length
@@ -293,45 +201,9 @@ async function runTask(args: { session: AgentSession; task: SessionTask }): Prom
     if (timer) clearTimeout(timer)
     unsubscribe()
     // 无论成功、失败还是取消都在这里释放会话句柄。
-    session.dispose()
+    await disposeSession(session, home)
     live.delete(task.sessionId)
   }
-}
-
-/** subagent 的 `tools:` 是逗号分隔的工具名；空值或 "none" 表示不给工具。 */
-export function parseSubagentTools(raw: string | null): string[] {
-  if (!raw) return []
-  return raw
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => name && name.toLowerCase() !== 'none')
-}
-
-/** "provider/modelId" 解析到 Model；找不到就明确报错，不静默回落到默认模型。 */
-function resolveModel(
-  runtime: { getModel: (provider: string, modelId: string) => unknown },
-  raw: string,
-  home: string,
-): never {
-  const slash = raw.indexOf('/')
-  if (slash <= 0 || slash === raw.length - 1) {
-    throw new HomeError(
-      `model 需要写成 provider/modelId（收到 ${raw}）`,
-      400,
-      'invalid_request',
-    )
-  }
-  const provider = raw.slice(0, slash)
-  const modelId = raw.slice(slash + 1)
-  const model = runtime.getModel(provider, modelId)
-  if (!model) {
-    throw new HomeError(
-      `该 pi home 里没有这个模型：${raw}（检查 ${join(home, 'models.json')} 与 pi 内置模型列表）`,
-      404,
-      'model_not_found',
-    )
-  }
-  return model as never
 }
 
 export async function cancelSessionTask(sessionId: string): Promise<void> {
