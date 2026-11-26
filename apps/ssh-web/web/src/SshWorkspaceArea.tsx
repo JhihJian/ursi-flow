@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ConnectionEditorSheet } from './components/ConnectionEditorSheet'
 import { NewSessionForm } from './components/NewSessionForm'
+import { ResourcePanel } from './components/ResourcePanel'
 import { SessionTabBar } from './components/SessionTabBar'
 import { TerminalPane } from './components/TerminalPane'
 import { SshContainerProvider, useSshStore } from './ssh-context'
@@ -16,6 +17,7 @@ export function SshWorkspaceArea() {
   const terminals = useSshStore((state) => state.terminals)
   const activeTerminalKey = useSshStore((state) => state.activeTerminalKey)
   const sessionFormOpen = useSshStore((state) => state.sessionFormOpen)
+  const resourcesOpen = useSshStore((state) => state.resourcesOpen)
   const [searchKey, setSearchKey] = useState(0)
   const seenSearchKey = useRef(0)
 
@@ -38,21 +40,24 @@ export function SshWorkspaceArea() {
         <div className="ssh-main">
           <SessionTabBar />
           {sessionFormOpen ? <NewSessionForm /> : null}
-          <div className="ssh-terminal-stack">
-            {terminals.map((tab) => (
-              <TerminalPane
-                key={tab.key}
-                tab={tab}
-                active={tab.key === activeTerminalKey}
-                searchKey={searchKey}
-                onSearchHandled={handleSearchDone}
-              />
-            ))}
-            {terminals.length === 0 ? (
-              <div className="ssh-terminal ssh-terminal-placeholder">
-                从左侧选择 tmux 会话，或右键新建
-              </div>
-            ) : null}
+          <div className="ssh-main-body">
+            <div className="ssh-terminal-stack">
+              {terminals.map((tab) => (
+                <TerminalPane
+                  key={tab.key}
+                  tab={tab}
+                  active={tab.key === activeTerminalKey}
+                  searchKey={searchKey}
+                  onSearchHandled={handleSearchDone}
+                />
+              ))}
+              {terminals.length === 0 ? (
+                <div className="ssh-terminal ssh-terminal-placeholder">
+                  从左侧选择 tmux 会话，或右键新建
+                </div>
+              ) : null}
+            </div>
+            {resourcesOpen ? <ResourcePanel /> : null}
           </div>
           <ConnectionEditorSheet />
         </div>

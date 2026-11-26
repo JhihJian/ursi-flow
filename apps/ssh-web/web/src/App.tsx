@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Group, Panel, Separator, usePanelRef, type PanelSize } from 'react-resizable-panels'
 import { SshSidebar } from './SshSidebar'
 import { SshWorkspaceArea } from './SshWorkspaceArea'
+import { SshStatus } from './components/SshStatus'
 import { SshModuleProvider, type SshController } from './ssh-context'
 
 const COLLAPSED_SIZE = 32
@@ -34,29 +35,34 @@ function StandaloneLayout() {
   }
 
   return (
-    <Group orientation="horizontal" className="ssh-embed">
-      <Panel
-        id="ssh-side"
-        className="ssh-embed-col"
-        panelRef={panelRef}
-        defaultSize={lastExpanded.current}
-        minSize={220}
-        maxSize={560}
-        collapsible
-        collapsedSize={COLLAPSED_SIZE}
-        groupResizeBehavior="preserve-pixel-size"
-        onResize={onResize}
-      >
-        <SshSidebar
-          collapsed={collapsed}
-          collapse={() => panelRef.current?.collapse()}
-          expand={() => panelRef.current?.resize(lastExpanded.current)}
-        />
-      </Panel>
-      <Separator className="ssh-standalone-separator" />
-      <Panel id="ssh-main" className="ssh-embed-col" minSize={320}>
-        <SshWorkspaceArea />
-      </Panel>
-    </Group>
+    <div className="ssh-embed ssh-standalone-root">
+      <Group orientation="horizontal" className="ssh-standalone-body">
+        <Panel
+          id="ssh-side"
+          className="ssh-embed-col"
+          panelRef={panelRef}
+          defaultSize={lastExpanded.current}
+          minSize={220}
+          maxSize={560}
+          collapsible
+          collapsedSize={COLLAPSED_SIZE}
+          groupResizeBehavior="preserve-pixel-size"
+          onResize={onResize}
+        >
+          <SshSidebar
+            collapsed={collapsed}
+            collapse={() => panelRef.current?.collapse()}
+            expand={() => panelRef.current?.resize(lastExpanded.current)}
+          />
+        </Panel>
+        <Separator className="ssh-standalone-separator" />
+        <Panel id="ssh-main" className="ssh-embed-col" minSize={320}>
+          <SshWorkspaceArea />
+        </Panel>
+      </Group>
+      <footer className="ssh-standalone-status">
+        <SshStatus />
+      </footer>
+    </div>
   )
 }

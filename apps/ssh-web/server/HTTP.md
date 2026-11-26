@@ -48,7 +48,7 @@
 
 ### `GET /connections/{id}/tmux-sessions`
 
-经 ssh 在远端执行 `tmux ls` 并解析（连接命令附加 `tmux ls -F '...'` 执行一次）。返回：
+经 ssh 在远端执行 `tmux ls` 并解析（连接命令附加 `tmux ls -F '...'` 执行一次）。批量调用以 `-o BatchMode=yes` 运行，要求密钥 / agent 免交互认证：需要交互密码的远端在这里直接返回认证失败，交互密码仍可在终端会话里输入。返回：
 
 ```json
 {"sessions": [{"name": "ssh-main", "attached": 1, "created": 1700000000}]}
@@ -80,6 +80,34 @@ WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：
   - 文本帧 JSON 事件：`{"type":"error","message":"..."}` 与 `{"type":"closed","message":"ssh 已退出，exit code 0"}`。发送后服务端关闭 WS 并终止子进程；远端 tmux 会话不受影响，重连即恢复。
 
 WS 断开即终止 ssh 子进程，服务端无任何会话状态；持久性完全由远端 tmux 承担。
+
+## 设备资源采样
+
+服务端不缓存采样：每次请求就是一轮独立的批量 ssh（不分配 PTY）。远端读完 `/proc` 后逐行输出 `key value`，随后在 ssh 通道上做一次问答应答量出网络往返延迟。
+
+### `GET /connections/{id}/metrics`
+
+采样一台连接中设备的资源：
+
+```json
+{
+  "hostname": "host-1",
+  "cores": 8,
+  "load1": 0.42,
+  "mem_total_kb": 16384000,
+  "mem_available_kb": 9200000,
+  "latency_ms": 7.3,
+  "sampled_at": "2025-11-26T13:34:05.386Z"
+}
+```
+
+- `load1`：远端 `/proc/loadavg` 第一列，1 分钟负载均值；百分比由调用方按 `load1 / cores` 换算。
+- `mem_total_kb` / `mem_available_kb`：远端 `/proc/meminfo` 的 `MemTotal` / `MemAvailable`，已用由调用方相减得到。
+- `cores`：`nproc`，缺失时回退 `getconf _NPROCESSORS_ONLN`，仍取不到按 1 计。
+- `latency_ms`：在 ssh 通道上做一次一问一答的往返耗时（毫秒，一位小数），不含 ssh 握手；4 秒内没有应答时为 `null`。
+- `sampled_at`：服务端采样时刻（RFC 3339，毫秒精度）。
+
+整轮采样 15 秒超时，同样以 `-o BatchMode=yes` 批量执行，需要免交互认证。SSH 失败（不可达、认证失败）或远端缺少 `/proc` 数据返回 502 `ssh_error`，消息里附 ssh 自身的 stderr（截断到 400 字符）。
 
 ### `GET /health`
 

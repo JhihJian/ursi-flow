@@ -1,6 +1,7 @@
 mod app;
 mod db;
 mod handlers;
+mod metrics;
 mod models;
 mod session;
 
@@ -43,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/connections/{id}/tmux-sessions",
             get(app::get_tmux_sessions),
         )
+        .route("/api/connections/{id}/metrics", get(app::get_metrics))
         .route("/api/connections/{id}/terminal", get(app::get_terminal_ws))
         .fallback_service(ServeDir::new(static_dir()).fallback(ServeFile::new(index)));
 

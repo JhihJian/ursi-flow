@@ -73,7 +73,51 @@ function SshBootstrap({ children }: { children?: ReactNode }) {
       store.getState().setNotice(error instanceof Error ? error.message : String(error)),
     )
   }, [loadConnections, store])
-  return <>{children}</>
+  return (
+    <>
+      <SshMetricsPolling />
+      {children}
+    </>
+  )
+}
+
+/** 指标轮询间隔：兼顾状态栏新鲜度与每次采样一条 ssh 的成本。 */
+const METRICS_POLL_MS = 15_000
+
+/**
+ * 只给「有 live 终端」的连接采样。live 集合变化才重建定时器，
+ * 没有连接中设备时一次请求都不发（折叠模块后终端卸载，集合自然清空）。
+ */
+function SshMetricsPolling() {
+  const { store } = useSshController()
+  const liveKey = useSshStore((state) =>
+    Array.from(
+      new Set(state.terminals.filter((tab) => tab.state === 'live').map((tab) => tab.connectionId)),
+    )
+      .sort((left, right) => left - right)
+      .join(','),
+  )
+  // 打开面板时立即补一轮，不用等下一个周期。
+  const resourcesOpen = useSshStore((state) => state.resourcesOpen)
+
+  useEffect(() => {
+    const ids = liveKey ? liveKey.split(',').map(Number) : []
+    store.getState().retainMetrics(ids)
+    if (ids.length === 0) return
+    let cancelled = false
+    const tick = (): void => {
+      if (cancelled) return
+      for (const id of ids) void store.getState().refreshMetrics(id)
+    }
+    tick()
+    const timer = setInterval(tick, METRICS_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [liveKey, resourcesOpen, store])
+
+  return null
 }
 
 /** 模块根容器（.ssh-embed）：右键菜单的 portal 目标与绝对定位坐标系。 */

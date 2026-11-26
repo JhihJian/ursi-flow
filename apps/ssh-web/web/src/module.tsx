@@ -2,23 +2,8 @@ import type { ReactNode } from 'react'
 import type { WorkspaceModule } from '@ursi/workspace-shell'
 import { SshSidebar } from './SshSidebar'
 import { SshWorkspaceArea } from './SshWorkspaceArea'
-import { createSshController, SshModuleProvider, useSshStore, type SshControllerOptions } from './ssh-context'
-import { STATE_LABEL } from './terminal-state'
-
-/** 状态栏：激活终端的会话名与生命周期。 */
-function SshStatus() {
-  const terminals = useSshStore((state) => state.terminals)
-  const activeTerminalKey = useSshStore((state) => state.activeTerminalKey)
-  const activeTab = terminals.find((tab) => tab.key === activeTerminalKey)
-  const label = activeTab?.tmuxSession ?? 'ssh-main'
-  return (
-    <span>
-      SSH {activeTab ? `${label} · ` : ''}
-      {STATE_LABEL[activeTab?.state ?? 'closed']}
-      {terminals.length > 1 ? ` · 标签 ${terminals.length}` : ''}
-    </span>
-  )
-}
+import { SshStatus } from './components/SshStatus'
+import { createSshController, SshModuleProvider, type SshControllerOptions } from './ssh-context'
 
 export interface SshWebModuleOptions extends SshControllerOptions {}
 

@@ -10,6 +10,7 @@ use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::db;
+use crate::metrics::HostMetrics;
 use crate::session::{
     valid_tmux_session, ControlMessage, WsEvent, EVENT_CAPACITY, INPUT_CAPACITY,
     WS_TEXT_LIMIT_BYTES,
@@ -91,6 +92,16 @@ pub async fn get_tmux_sessions(
         .await
         .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
     Ok(Json(crate::models::TmuxSessionsResponse { sessions }))
+}
+
+/// `GET /api/connections/{id}/metrics`：采样远端设备资源。
+/// 每次请求执行一轮独立的批量 ssh，服务端不保存任何采样状态。
+pub async fn get_metrics(Path(id): Path<i64>) -> AppResult<Json<HostMetrics>> {
+    let config = load_connection(id).await?;
+    let metrics = crate::metrics::sample(&config)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(metrics))
 }
 
 async fn load_connection(id: i64) -> AppResult<crate::models::Connection> {

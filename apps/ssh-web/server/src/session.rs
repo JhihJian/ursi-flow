@@ -51,17 +51,35 @@ pub enum ControlMessage {
     Resize { cols: u32, rows: u32 },
 }
 
-/// 从用户命令提取 ssh 参数（去掉首词 `ssh`），并追加服务端固定参数：
-/// `-tt` 强制分配远端 PTY、`StrictHostKeyChecking=accept-new` 首连自动接受主机密钥。
-/// 不加 `-q`：连接失败等诊断信息必须原样透传到终端。
-/// 用户命令的其余参数原样保留（host、-p、-i、-J、config 别名等）。
-fn ssh_args(command: &str, remote_script: &str) -> Vec<String> {
-    let mut args: Vec<String> = command
+/// 用户命令里除首词 `ssh` 之外的参数（host、-p、-i、-J、config 别名等）原样保留。
+/// `-t`/`-tt` 由调用方决定：批量采集不带 PTY，否则远端输出会带 CRLF。
+fn command_ssh_args(command: &str) -> Vec<String> {
+    command
         .split_whitespace()
         .skip(1)
+        .filter(|arg| *arg != "-t" && *arg != "-tt")
         .map(String::from)
-        .collect();
+        .collect()
+}
+
+/// 终端用参数：`-tt` 强制分配远端 PTY。
+/// `StrictHostKeyChecking=accept-new` 首连自动接受主机密钥。
+/// 不加 `-q`：连接失败等诊断信息必须原样透传到终端。
+fn ssh_args(command: &str, remote_script: &str) -> Vec<String> {
+    let mut args = command_ssh_args(command);
     args.push("-tt".into());
+    args.push("-o".into());
+    args.push("StrictHostKeyChecking=accept-new".into());
+    args.push(remote_script.into());
+    args
+}
+
+/// 批量执行用参数：不分配 PTY，stdin/stdout 为普通管道。
+/// `BatchMode=yes`：批量调用没人能回答密码提示，让认证立即失败而不阻塞整个采样轮。
+pub fn batch_ssh_args(command: &str, remote_script: &str) -> Vec<String> {
+    let mut args = command_ssh_args(command);
+    args.push("-o".into());
+    args.push("BatchMode=yes".into());
     args.push("-o".into());
     args.push("StrictHostKeyChecking=accept-new".into());
     args.push(remote_script.into());
@@ -230,13 +248,12 @@ async fn pump(
 
 /// 在远端执行一条命令，收集 stdout 与退出码。
 async fn exec_collect(connection: &ConnectionConfig, remote_script: &str) -> Result<(String, i32)> {
-    let args = ssh_args(&connection.command, remote_script);
+    // tmux ls 无交互输出，不需要 PTY，直接 ssh 批量执行。
+    let args = batch_ssh_args(&connection.command, remote_script);
     let output = tokio::time::timeout(
         CONNECT_TIMEOUT,
-        // tmux ls 无交互输出，不需要 PTY，直接 ssh 批量执行。
         Command::new("ssh")
-            .args(&args[..args.len() - 1]) // 去掉 -tt 保持批量模式干净
-            .arg(remote_script)
+            .args(&args)
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
             .output(),

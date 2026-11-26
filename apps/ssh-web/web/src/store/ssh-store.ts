@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { ApiError, SshApi } from '../api/client'
-import type { Connection, ConnectionInput, TmuxSession } from '../api/types'
+import { loadPercent, memoryPercent } from '../resource-metrics'
+import type { Connection, ConnectionInput, HostMetrics, TmuxSession } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
 
@@ -37,6 +38,26 @@ export interface SessionsState {
   error: string | null
 }
 
+/** 面板走势线上的一个采样点；分母缺失的指标为 null，画线时跳过。 */
+export interface MetricsPoint {
+  loadPercent: number | null
+  memoryPercent: number | null
+  latencyMs: number | null
+}
+
+/**
+ * 单条连接的采样状态。error 不覆盖最后一次成功的 sample：
+ * 链路抖一下时状态栏继续显示上一轮数值，面板另行说明采样失败。
+ */
+export interface ConnectionMetrics {
+  sample: HostMetrics | null
+  error: string | null
+  history: MetricsPoint[]
+}
+
+/** 走势线保留的采样点数（15s 一轮，约 7.5 分钟）。 */
+export const METRICS_HISTORY_LIMIT = 30
+
 export interface SshStoreDeps {
   api: SshApi
   /** 亮暗主题的 localStorage 键；嵌入工作区时带模块前缀注入。 */
@@ -55,6 +76,10 @@ export interface SshStoreState {
   sessionFormOpen: boolean
   /** 每个连接各自的 tmux 会话列表（树默认全展开，需要逐连接的数据）。 */
   sessionsByConnection: Record<number, SessionsState>
+  /** 连接中设备的最近一次采样与走势；键为连接 id。 */
+  metricsByConnection: Record<number, ConnectionMetrics>
+  /** 资源面板是否展开；状态栏指标不受它影响。 */
+  resourcesOpen: boolean
   editor: EditorTarget | null
   notice: string | null
   /** 终端面板亮色（白底）主题，跨刷新保留。 */
@@ -75,6 +100,12 @@ export interface SshStoreState {
   closeSessionForm: () => void
   /** 刷新指定连接（缺省为当前选中连接）的 tmux 会话列表。 */
   refreshTmuxSessions: (id?: number) => Promise<void>
+  /** 采样指定连接的设备资源；同一连接同一时间只跑一轮。 */
+  refreshMetrics: (id: number) => Promise<void>
+  /** 只保留这些连接的采样状态（已无 live 终端的连接被丢弃）。 */
+  retainMetrics: (ids: number[]) => void
+  setResourcesOpen: (open: boolean) => void
+  toggleResources: () => void
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
   removeConnection: (id: number) => Promise<void>
   setEditor: (editor: EditorTarget | null) => void
@@ -106,6 +137,8 @@ export function createSshStore(
 ): UseBoundStore<StoreApi<SshStoreState>> {
   const { api } = deps
   const storageKey = deps.storageKey ?? 'ssh.terminal-light'
+  /** 在途采样：上一轮没回来时不叠加新请求（ssh 最慢可能到 15s 超时）。 */
+  const metricsInFlight = new Set<number>()
 
   const readLight = (): boolean => {
     try {
@@ -123,6 +156,8 @@ export function createSshStore(
     activeTerminalKey: null,
     sessionFormOpen: false,
     sessionsByConnection: {},
+    metricsByConnection: {},
+    resourcesOpen: false,
     editor: null,
     notice: null,
     terminalLight: readLight(),
@@ -211,6 +246,66 @@ export function createSshStore(
       }
     },
 
+    refreshMetrics: async (id) => {
+      if (metricsInFlight.has(id)) return
+      metricsInFlight.add(id)
+      try {
+        const sample = await api.getMetrics(id)
+        // 请求期间连接被删除时不回写，避免复活已删条目。
+        if (!get().connections.some((connection) => connection.id === id)) return
+        set((current) => {
+          const previous = current.metricsByConnection[id]
+          const history = [
+            ...(previous?.history ?? []),
+            {
+              loadPercent: loadPercent(sample),
+              memoryPercent: memoryPercent(sample),
+              latencyMs: sample.latency_ms,
+            },
+          ].slice(-METRICS_HISTORY_LIMIT)
+          return {
+            metricsByConnection: {
+              ...current.metricsByConnection,
+              [id]: { sample, error: null, history },
+            },
+          }
+        })
+      } catch (error) {
+        if (!get().connections.some((connection) => connection.id === id)) return
+        set((current) => {
+          const previous = current.metricsByConnection[id]
+          return {
+            metricsByConnection: {
+              ...current.metricsByConnection,
+              [id]: {
+                sample: previous?.sample ?? null,
+                error: toMessage(error),
+                history: previous?.history ?? [],
+              },
+            },
+          }
+        })
+      } finally {
+        metricsInFlight.delete(id)
+      }
+    },
+
+    retainMetrics: (ids) =>
+      set((current) => {
+        const keep = new Set(ids)
+        const next: Record<number, ConnectionMetrics> = {}
+        let changed = false
+        for (const [key, value] of Object.entries(current.metricsByConnection)) {
+          const id = Number(key)
+          if (keep.has(id)) next[id] = value
+          else changed = true
+        }
+        return changed ? { metricsByConnection: next } : {}
+      }),
+
+    setResourcesOpen: (open) => set({ resourcesOpen: open }),
+    toggleResources: () => set((state) => ({ resourcesOpen: !state.resourcesOpen })),
+
     saveConnection: async (target, input) => {
       if (target.kind === 'new') {
         await api.createConnection(input)
@@ -235,7 +330,9 @@ export function createSshStore(
       set((current) => {
         const sessionsByConnection = { ...current.sessionsByConnection }
         delete sessionsByConnection[id]
-        return { sessionsByConnection }
+        const metricsByConnection = { ...current.metricsByConnection }
+        delete metricsByConnection[id]
+        return { sessionsByConnection, metricsByConnection }
       })
       await get().loadConnections()
     },

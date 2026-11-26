@@ -30,3 +30,15 @@ export type ControlFrame = { type: 'input'; data: string } | { type: 'resize'; c
 
 /** WS 事件帧（服务端 → 前端）。 */
 export type EventFrame = { type: 'error'; message: string } | { type: 'closed'; message: string }
+
+/** 一次远端设备资源采样。CPU 取 1 分钟负载，内存已用 = MemTotal - MemAvailable。 */
+export interface HostMetrics {
+  hostname: string
+  cores: number
+  load1: number
+  mem_total_kb: number
+  mem_available_kb: number
+  /** ssh 通道往返耗时（毫秒，一位小数）；未收到 pong 时为 null。 */
+  latency_ms: number | null
+  sampled_at: string
+}

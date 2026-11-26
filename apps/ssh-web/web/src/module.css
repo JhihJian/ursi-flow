@@ -827,3 +827,237 @@
   transform: translateX(-50%);
   background: var(--ssh-gray-200);
 }
+
+/* ── 设备资源面板：终端区右侧一栏，宽度固定 ─────────────── */
+
+.ssh-main-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ssh-resources {
+  display: flex;
+  flex: 0 0 264px;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--ssh-gray-200);
+  background: var(--ssh-white);
+  user-select: none;
+}
+
+.ssh-resources-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ssh-space-xs);
+  flex: none;
+  height: 30px;
+  padding: 0 var(--ssh-space-sm) 0 var(--ssh-space-md);
+  border-bottom: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-resources-title {
+  flex: 1;
+  overflow: hidden;
+  font-family: var(--ssh-font-serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ssh-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-resources-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ssh-gray-400);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ssh-resources-action:hover:not(:disabled) {
+  color: var(--ssh-gray-900);
+  background: var(--ssh-gray-200);
+}
+
+.ssh-resources-action:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.ssh-resources-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+}
+
+.ssh-resources-empty {
+  margin: 0;
+  color: var(--ssh-gray-400);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ssh-device {
+  padding: var(--ssh-space-xs) 0 var(--ssh-space-md);
+  border-bottom: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-device:last-child {
+  border-bottom: 0;
+}
+
+.ssh-device-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ssh-space-sm);
+  margin-bottom: var(--ssh-space-xs);
+}
+
+.ssh-device-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-device-host {
+  flex: none;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-metric {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label value"
+    "detail spark";
+  align-items: center;
+  gap: 2px var(--ssh-space-sm);
+  padding: var(--ssh-space-xs) 0;
+}
+
+.ssh-metric-label {
+  grid-area: label;
+  color: var(--ssh-gray-600);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.ssh-metric-value {
+  grid-area: value;
+  color: var(--ssh-gray-900);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssh-metric-detail {
+  grid-area: detail;
+  overflow: hidden;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-metric-spark {
+  grid-area: spark;
+  flex: none;
+  justify-self: end;
+  color: var(--ssh-gray-400);
+}
+
+.ssh-device-error {
+  margin: var(--ssh-space-xs) 0 0;
+  color: var(--ssh-danger);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ssh-device-pending,
+.ssh-device-foot {
+  margin: var(--ssh-space-xs) 0 0;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+}
+
+/* ── 状态栏缩略指标：外壳状态栏与独立入口底部栏共用 ─────────
+   外壳状态栏在 .ssh-embed 之外，这里不能引用容器上的 --ssh-* 变量，
+   配色一律继承宿主/页面的 currentColor。 */
+
+.ssh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ssh-space-sm, 8px);
+  min-width: 0;
+}
+
+.ssh-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ssh-status-metric {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssh-status-toggle {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.ssh-status-toggle:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* 独立入口：分组在上，状态栏贴底。 */
+.ssh-standalone-root {
+  flex-direction: column;
+}
+
+.ssh-standalone-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ssh-standalone-status {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 24px;
+  padding: 0 12px;
+  overflow: hidden;
+  border-top: 1px solid var(--ssh-gray-200);
+  color: var(--ssh-gray-600);
+  font-size: 11px;
+}

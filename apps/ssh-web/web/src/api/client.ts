@@ -1,4 +1,4 @@
-import type { Connection, ConnectionInput, TmuxSessionsResponse } from './types'
+import type { Connection, ConnectionInput, HostMetrics, TmuxSessionsResponse } from './types'
 
 export interface SshApiOptions {
   /** API 前缀。缺省 `/api`（独立入口的同源代理）；嵌入工作区时由宿主注入 `/api/ssh-web`。 */
@@ -58,6 +58,11 @@ export class SshApi {
   /** 列出远端 tmux 会话；sessions 为 null 表示远端没有 tmux。 */
   listTmuxSessions(id: number): Promise<TmuxSessionsResponse> {
     return this.request(`/connections/${id}/tmux-sessions`)
+  }
+
+  /** 采样远端设备资源。每次请求由服务端跑一轮独立的批量 ssh。 */
+  getMetrics(id: number): Promise<HostMetrics> {
+    return this.request(`/connections/${id}/metrics`)
   }
 
   /** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */

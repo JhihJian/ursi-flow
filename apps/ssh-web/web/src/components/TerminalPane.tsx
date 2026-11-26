@@ -95,6 +95,8 @@ export function TerminalPane({
       bridgeRef.current = null
       setSearchAddon(null)
       bridge.dispose()
+      // 卸载（关闭标签或折叠模块）即断开，采样轮询随之停掉；重展开时重新建桥。
+      store.getState().setTerminalState(tab.key, 'closed')
     }
   }, [tab.key, tab.connectionId, tab.tmuxSession, api, store])
 
