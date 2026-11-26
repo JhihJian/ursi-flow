@@ -2,14 +2,12 @@
 parent: ../../../SPEC.md
 depends-on:
   - ../../shared/SPEC.md
-references:
-  - ../../../../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
 ---
 # 本地演示对话
 
 ## 功能意图
 
-提供独立于 Flow 服务的会话管理、流式交互与 Markdown 消息阅读。界面标明演示回复来源。
+提供独立的会话管理、流式交互与 Markdown 消息阅读。界面标明演示回复来源。
 
 ## 关键功能与验收
 

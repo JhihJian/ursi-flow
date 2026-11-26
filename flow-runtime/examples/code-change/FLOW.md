@@ -32,7 +32,7 @@ flowchart TD
 
 ## 验证修改
 
-```复用Agent
+```新建Agent
 验证以下修改结果：
 {var.修改记录}
 ```

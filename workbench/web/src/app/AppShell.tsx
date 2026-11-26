@@ -4,11 +4,10 @@ import { Link, Outlet, useLocation, useMatches } from 'react-router'
 import { readToken, subscribeSession } from '@/shared/http/session'
 import { isLanPreview } from '@/shared/http/lan-preview'
 import { FeedbackHost } from './FeedbackHost'
-import { Button } from '@/shared/ui/button'
 import { Icon } from '@/shared/ui/icon'
 import { Sheet, SheetContent } from '@/shared/ui/sheet'
 import { AppSidebar } from './AppSidebar'
-import { deployedNavigation, navigationGroups, useFlowAvailability } from './navigation'
+import { deployedNavigation, navigationGroups } from './navigation'
 
 
 function routeTitle(matches: { handle?: unknown }[]): string | undefined {
@@ -30,11 +29,8 @@ export default function AppShell() {
 function Workspace({ signedIn }: { signedIn: boolean }) {
   const location = useLocation()
   const matches = useMatches()
-  const flow = useFlowAvailability(signedIn)
   const groups = deployedNavigation().map(group => ({ ...group,
-    items: group.items.filter(item => isLanPreview()
-      ? item.lanPreview
-      : !item.requiresFlow || flow.data),
+    items: group.items.filter(item => !isLanPreview() || item.lanPreview),
   })).filter(group => group.items.length > 0)
 
   const [drawerPath, setDrawerPath] = useState<string | null>(null)
@@ -44,7 +40,6 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
     .flatMap((group) => group.items)
     .find(item => item.routeId ? matches.some(match => match.id === item.routeId)
       : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
-  const unavailable = currentDomain?.requiresFlow && !flow.data
   // 页面标题优先取路由 handle.title，未声明时退回当前导航项标题。
   const pageTitle = useMemo(() => routeTitle(matches) ?? currentDomain?.title ?? '工作台', [matches, currentDomain])
 
@@ -85,16 +80,7 @@ function Workspace({ signedIn }: { signedIn: boolean }) {
           </header>
           <div className="shell-scroll">
             <main id="main-content" tabIndex={-1} className="shell-content">
-              {flow.error && (
-                <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 border-b border-line pb-3 text-sm text-txt2">
-                  <span>Flow 工具检查失败：{flow.error}</span>
-                  <Button icon="refresh" onClick={flow.reload}>重试Flow 工具</Button>
-                </div>
-              )}
-              {unavailable ? <section className="space-y-3">
-                <h1 className="text-xl font-semibold">Flow 工具未启用</h1>
-                <Link to="/work-items" className="text-accent-2">返回工作清单</Link>
-              </section> : <Outlet />}
+              <Outlet />
             </main>
           </div>
         </div>

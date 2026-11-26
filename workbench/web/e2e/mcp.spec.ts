@@ -9,7 +9,6 @@ test('在宿主管理凭据，配方使用同一登记，删除凭据后深链�
     const req = route.request()
     const path = new URL(req.url()).pathname
     expect(req.headers().authorization).toBe('Bearer mcp-test')
-    if (path === '/api/v1/flows') return route.fulfill({ json: [] })
     if (path === '/api/v2/platform-env') return route.fulfill({ json: hasCredential ? [server.credentialEnv] : [] })
     if (path === '/api/v2/platform-env/TEAM_TOKEN' && req.method() === 'DELETE') {
       hasCredential = false

@@ -65,7 +65,7 @@
 
 `workbench/web/src/modules/workspace` 装配清单 `/work-items` 和项目 `/work-projects`，保留项目内的 `/map`、`/canvases/:canvasId`、`/todo` 原有深链。`itemId` 记录正在查看的事项，`focusItemId` 和 `focusCardId` 记录画布定位。待办筛选使用 `canvasId`、`taskCardId` 和 `category`，从待办定位画布再返回时恢复。项目列表按需加载。地图、画布、待办和大纲共用当前项目快照；切换项目取消旧读取。应用壳只渲染统一导航入口。
 
-地图和画布共用独立的 Web `modules/canvas` 模块。该模块基于 `@xyflow/react` 渲染调用方提供的坐标、边和节点内容，只对外报告拖动、选择、连线等图形事件。项目工作区负责生成地图节点和任务卡节点，处理规划写入。PlanWeave 与 [Flow Runtime Web](../../../flow-runtime/web/package.json) 已使用同一图库。详情侧栏沿用 Workbench 的主题、表单和 HTTP 客户端。借鉴 PlanWeave 的组件结构和交互，按 Workbench 数据模型重写投影。若复制源代码片段，保留 PlanWeave 的 MIT 许可证与版权声明。
+地图和画布共用独立的 Web `modules/canvas` 模块。该模块基于 `@xyflow/react` 渲染调用方提供的坐标、边和节点内容，只对外报告拖动、选择、连线等图形事件。项目工作区负责生成地图节点和任务卡节点，处理规划写入。PlanWeave 已使用同一图库。详情侧栏沿用 Workbench 的主题、表单和 HTTP 客户端。借鉴 PlanWeave 的组件结构和交互，按 Workbench 数据模型重写投影。若复制源代码片段，保留 PlanWeave 的 MIT 许可证与版权声明。
 
 项目工作区直接访问 Workbench 服务端，关闭 Flow 时仍可完整使用。PlanWeave Runtime、Electron IPC、就绪队列、派发、资源锁和评审门禁留在迁移范围之外。
 

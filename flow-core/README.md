@@ -48,8 +48,16 @@ console.assert(done.current === null);
 
 每次访问都有独立的 `stepId`，循环返回同一节点时也会生成新 ID。宿主派发 `current.prompt` 和 `current.options`，只在执行正常结束且取得合法业务结果后，绑定派发时的 `stepId` 提交。人工确认仅提交选项名。`current === null` 表示已到达结束边，最后的业务结果可从 `steps` 读取。
 
+命令与并行的完整走法见[检查流水线示例](examples/pipeline/FLOW.md)。
+
 两个接口均同步返回 `{ context }`，非法提交抛出错误并保留原快照。把快照作为只读值保存，只用最新快照受理提交。SDK 不会跟踪旧快照是否已用过，并发时需由宿主保证同一版本只被接受一次。
 
-首版支持单文档、单一待办、分支、循环、普通 `新建Agent` 和 `confirm`。复用 Agent、专用执行器、Agent Profile、包内资料、命令、子 Flow 和并行由 [Flow Runtime](../flow-runtime/README.md) 提供。`ursi-flow-core/runtime` 是 Runtime 使用的共享规则入口，SDK 调用方从 `ursi-flow-core` 导入。
+支持四种动作：`新建Agent`、`confirm`、`执行自定义命令`，以及并行开始点（两条以上命令分支汇合到一个命令节点）。`复用Agent`、`执行Flow`、Agent Profile、节点级执行器和包内资料引用已从格式中移除。
+
+命令步骤给出已渲染的 `request`（`command`、`args`、`stdin`，可选 `cwd`）与 `output` 标记；宿主执行命令，`output: "variables"` 时用 `readCommandVariables(stdout)` 解析 `{"variables": {...}}` 信封，再把 `{outcome: "已执行", variables}` 提交回来。
+
+并行步骤一次给出全部分支请求，宿主并发执行后按分支提交 `{stepId, branches: {分支引用: {outcome: "已执行", variables?}}}`。SDK 校验每个分支的结果与变量、合并分支写入的全局变量、检查同名写入冲突，然后生成汇合命令步骤，`{branch.分支.变量}` 在汇合请求里渲染。
+
+`ursi-flow-core/runtime` 导出解析、规则与变量工具，供 [Flow Runtime](../flow-runtime/README.md) 复用。
 
 在 `flow-core/` 运行 `npm test` 可验证流程推进和跨进程交接，`npm run test:pack` 检查仓库外的离线安装。

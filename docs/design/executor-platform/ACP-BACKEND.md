@@ -10,7 +10,7 @@
 | 执行器平台 → 受管 Agent | ACP v2 stdio；每次尝试由独立 worker 持有连接，在新 `sessionId` 中提交一个任务。 |
 | Agent → 业务工具 | 按部署策略调用经授权的只读 MCP 工具。工具协议与尝试执行协议分开。 |
 
-受管 Agent 经 `URSI_AGENT_BACKENDS` 清单登记，详见[后端部署与检查](../../../executor-platform/server/src/work/agent_backends/README.md)。独立的 [`ursi-flow-executor-mcp`](../../../flow-runtime/README.md#mcp-执行器-adapter) 和执行器 SDK 为 MCP 客户端提供整条 Flow 的启停与查询。这个适配器位于平台执行链路之外，操作的是 Runtime 中的固定修订 Run，待独立使用方审计后决定去留。
+受管 Agent 经 `URSI_AGENT_BACKENDS` 清单登记，详见[后端部署与检查](../../../executor-platform/server/src/work/agent_backends/README.md)。[执行器 MCP SDK](../../../executor-sdk/README.md) 为服务端实现提供协议发现与校验；整条 Flow 的 MCP adapter 已随 Flow 宿主移除。
 
 ## 配置与执行
 

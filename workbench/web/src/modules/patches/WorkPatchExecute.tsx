@@ -2,13 +2,11 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { AttemptPanel } from '@/modules/agent-executor/AttemptPanel'
 import { ExecutorRefPicker } from '@/modules/agent-executor/ExecutorRefPicker'
-import { PickFlowRun } from '@/modules/flows/StartRun'
 import type { ExecutorRef } from '@/shared/api/agent-executor'
 import { useResource } from '@/shared/hooks/use-resource'
 import { Button } from '@/shared/ui/button'
 import { PageHeader } from '@/shared/ui/page-header'
 import { ResourceState } from '@/shared/ui/resource-state'
-import { Select } from '@/shared/ui/select'
 import { getWorkPatch, type Patch } from './api'
 import { patchListPath, patchPath } from './PatchModel'
 
@@ -33,12 +31,8 @@ function ExecutionPage({ id }: { id: string }) {
 
 function ExecutionForm({ patch }: { patch: Patch }) {
   const [ref, setRef] = useState<ExecutorRef | null>(null)
-  const [mode, setMode] = useState('direct')
   return <>
     <ExecutorRefPicker selected={ref} onSelect={setRef} />
-    <label className="field">执行方式<Select value={mode} onChange={e => setMode(e.target.value)}>
-      <option value="direct">直接运行工作包</option><option value="flow">启动 Flow</option>
-    </Select></label>
-    {mode === 'flow' ? <PickFlowRun executorRef={ref} /> : <AttemptPanel target={ref ? { executorRef: ref } : null} workPatchId={patch.id} storageKey={`work-patch:${patch.id}:attempt`} />}
+    <AttemptPanel target={ref ? { executorRef: ref } : null} workPatchId={patch.id} storageKey={`work-patch:${patch.id}:attempt`} />
   </>
 }

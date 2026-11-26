@@ -29,7 +29,7 @@ impl Server {
     fn serve(dir: &std::path::Path) -> JoinHandle<()> {
         let store = Store::open(dir.join("work")).unwrap();
         let work = crate::work::business_routes(store).unwrap();
-        let app = crate::transport::combined(None, work, "planning-test".into());
+        let app = crate::transport::router(work, "planning-test".into());
         let listener = UnixListener::bind(dir.join("http.sock")).unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() })
     }

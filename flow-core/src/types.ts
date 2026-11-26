@@ -15,20 +15,10 @@ export type FlowVariableDeclarations = Record<string, FlowVariableDeclaration>;
 
 export type FlowVariables = Record<string, FlowValue>;
 
-/** Explicit host profile selection for a new Agent session. */
-export interface AgentProfileReference {
-	id: string;
-	params?: FlowVariables;
-}
-
-export type AgentActionKind = "新建Agent" | "复用Agent";
-
+/** 新建一次 Agent 会话。会话复用由宿主按节点名决定，不在 Flow 里声明。 */
 export interface AgentAction {
-	kind: AgentActionKind;
+	kind: "新建Agent";
 	prompt: string;
-	/** 新建Agent 标记后缀声明的平台执行器 id；派发时由宿主解析为已钉死的修订。 */
-	executor?: string;
-	profile?: AgentProfileReference;
 }
 
 export interface CommandRequest {
@@ -47,26 +37,14 @@ export interface CommandAction {
 	branchReferences: string[];
 }
 
-/** 人工确认门禁：渲染提示文本后挂起，等待人在控制台选择一条结果边。 */
+/** 人工确认门禁：渲染提示文本后挂起，等待人选一条结果边。 */
 export interface ConfirmAction {
 	kind: "confirm";
 	/** 展示给决策人的提示正文，支持 {var.}/{input.} 模板。 */
 	prompt: string;
 }
 
-export interface FlowReferenceAction {
-	kind: "执行Flow";
-	/** 目标 Flow 标识，即同目录下兄弟包的目录名。 */
-	flow: string;
-	/** 子 Flow 启动时显式传入的全局变量。 */
-	inputs?: FlowVariables;
-}
-
-export type FlowAction =
-	| AgentAction
-	| CommandAction
-	| ConfirmAction
-	| FlowReferenceAction;
+export type FlowAction = AgentAction | CommandAction | ConfirmAction;
 
 export interface FlowNode {
 	ref: string;
@@ -82,6 +60,7 @@ export type FlowDestination =
 	| { kind: "parallel"; ref: string }
 	| { kind: "finish" };
 
+/** 并行开始点：两条以上命令分支，共同汇合到一个命令节点。 */
 export interface ParallelStart {
 	ref: string;
 	branches: string[];

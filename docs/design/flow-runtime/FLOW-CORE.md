@@ -19,7 +19,7 @@ type StepResult = Outcome & { stepId: string }
 `current` 包含 `stepId`、`nodeRef`、`kind`（`agent` 或 `confirm`）、渲染好的 `prompt` 和 `options`。每个选项给出结果名、说明和允许提交的变量。Agent 可提交已声明的全局变量和所选边的局部变量，值必须是 JSON。
 
 1. Agent 完成当前工作后、结束本轮前，通过 `submit_flow_outcome` 显式提交一次 `{ outcome, variables? }`。`outcome` 必须是当前待办的一条结果边名，即使只有一条边也照样提交。比如 `{ "outcome": "送审", "variables": { "摘要": "草稿已完成" } }`。
-2. 宿主等执行正常结束并取得合法结果后，加上**派发时绑定的** `stepId`，调用 `submit(context, { ...payload, stepId })`，其中 `payload` 是收取的 `{ outcome, variables? }`。本地适配器从[工具回执](../../../flow-runtime/src/ability/agent-harness/executor.ts)取得结果，平台适配器在成功后读取[结果文件](../../../flow-runtime/src/executor-adapters/platform.ts)。Agent 无需知道 `stepId` 或整个 `context`。人工确认只选边，由宿主提交同样的回执，不带 `variables`。
+2. 宿主等执行正常结束并取得合法结果后，加上**派发时绑定的** `stepId`，调用 `submit(context, { ...payload, stepId })`，其中 `payload` 是收取的 `{ outcome, variables? }`。Agent 无需知道 `stepId` 或整个 `context`。人工确认只选边，由宿主提交同样的回执，不带 `variables`。
 
 业务上的「退回」或「未通过」只要是声明过的边，就能正常推进。执行异常、取消、结果尚未确认或没有合法回执时，由宿主处置，Core 保持当前待办。回复正文、日志和产物留在宿主；下游需要的摘要或产物引用应通过已声明的变量显式交接。
 

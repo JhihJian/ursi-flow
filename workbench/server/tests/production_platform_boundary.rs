@@ -35,7 +35,6 @@ impl DataDir {
             .current_dir(&self.0)
             .env("URSI_DATA_DIR", &self.0)
             .env("URSI_API_TOKEN", WORKBENCH_TOKEN)
-            .env("URSI_FLOW_ENABLED", "0")
             .env("URSI_LISTEN_ADDR", addr.to_string())
             .kill_on_drop(true);
         cmd

@@ -1,6 +1,6 @@
 # 工作台开发入口
 
-工作台由 [Server](server/README.md) 和 [Web](web/README.md) 组成。Server 提供 API，Web 在开发时通过 Vite 将同源 `/api` 请求转发给 Server。`workbench/` 是 Cargo 工作区根目录，`web/` 使用自己的 npm 锁文件。请从完整仓库检出构建，Server 编译时依赖仓库内的 [Flow SDK](../flow-runtime/client/README.md)。
+工作台由 [Server](server/README.md) 和 [Web](web/README.md) 组成。Server 提供 API，Web 在开发时通过 Vite 将同源 `/api` 请求转发给 Server。`workbench/` 是 Cargo 工作区根目录，`web/` 使用自己的 npm 锁文件。请从完整仓库检出构建。
 
 **旧实例升级前：先停服，备份整个 `$URSI_DATA_DIR/work/`。** 新版首次打开旧存储时会不可逆地删除派工记录、模板及专属制品和配置快照。旧单不会转换为工作清单项。保留范围和恢复条件见 [Server 使用说明](server/README.md#旧数据升级)。
 
@@ -9,7 +9,7 @@
 以下命令从 `workbench/` 执行。按 [Server 部署说明](server/README.md#部署配置与存储)设置 `URSI_API_TOKEN`、`URSI_EXECUTOR_PLATFORM_URL` 和 `URSI_EXECUTOR_PLATFORM_TOKEN`。只使用工作清单时可关闭 Flow：
 
 ```sh
-URSI_FLOW_ENABLED=0 cargo run --locked -p ursi-server
+cargo run --locked -p ursi-server
 ```
 
 另开终端，在 `workbench/` 下启动 Web（Node.js 24）：

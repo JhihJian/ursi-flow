@@ -1,10 +1,8 @@
 ---
 parent: ../SPEC.md
 depends-on:
-  - ../../flow-runtime/client/SPEC.md
   - ../../executor-platform/server/SPEC.md
 references:
-  - ../../docs/design/workbench/SERVER-FLOW.md
   - ../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md
   - ../../docs/design/workbench/WORK-PROJECTS-DESIGN.md
   - README.md
@@ -14,7 +12,7 @@ references:
 
 ## 功能意图
 
-Server 通过 `/api/v2` 管理工作规划、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。`/api/v1` 提供可选的 Flow 管理入口：Server 管理本机 `ursi-flowd` 子进程，Flow Runtime 持有 Flow 包修订、运行配置和节点历史。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
+Server 通过 `/api/v2` 管理工作规划、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。Server 不再提供 Flow 管理入口，也不启动子进程；Flow 只剩 [Flow Runtime](../../flow-runtime/SPEC.md) 的推进库。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
 
 ## 关键功能与验收
 
@@ -48,6 +46,6 @@ Server 通过 `/api/v2` 管理工作规划、工作包、业务目录、生成�
 
 #### 验收
 
-- `URSI_API_TOKEN`、`URSI_EXECUTOR_PLATFORM_URL` 和 `URSI_EXECUTOR_PLATFORM_TOKEN` 缺一项即启动失败，关闭 Flow 也不例外。后者是 Workbench 的平台消费者令牌。默认启动配置的 daemon 并等待就绪；已有 socket 时拒绝启动。`URSI_FLOW_ENABLED=0` 时不启动 daemon、不挂载 v1，v2 仍可用。
+- `URSI_API_TOKEN`、`URSI_EXECUTOR_PLATFORM_URL` 和 `URSI_EXECUTOR_PLATFORM_TOKEN` 缺一项即启动失败。后者是 Workbench 的平台消费者令牌。
 - 旧存储在取得独占锁后执行不可逆迁移。派工单、模板和尝试级快照被移除，仅清理旧制品及快照独占且已登记的目录。清单与工作包继续在本地可用。旧配置包与执行器尝试的制品目录不列出、按原 ID 不可读写；旧平台记录不会自动导入独立平台。备份要求见[升级说明](README.md#旧数据升级)。
-- 收到 `SIGTERM` 或 `SIGINT` 后，HTTP 监听和本实例启动的 daemon 均退出。以同一数据目录重启，可从私有 `work/` 查回工作清单、工作包和生成器修订；启用 Flow 时还能从独立的 `flow-runtime/` 查回 Flow 包和运行历史。
+- 收到 `SIGTERM` 或 `SIGINT` 后，HTTP 监听退出。以同一数据目录重启，可从私有 `work/` 查回工作清单、工作包和生成器修订。

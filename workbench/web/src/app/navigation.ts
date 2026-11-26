@@ -1,10 +1,7 @@
-import { ApiError, requestJson } from '@/shared/http/client'
-import { useResource } from '@/shared/hooks/use-resource'
-import { isLanPreview } from '@/shared/http/lan-preview'
 import { generationRunsPath, generatorsPath } from '@/shared/api/work-patch-generators'
 import { workAreaRouteId } from '@/modules/workspace/routes'
 
-export interface NavItem { path: string; title: string; icon: string; routeId?: string; lanPreview?: boolean; requiresFlow?: boolean; management?: boolean; external?: boolean }
+export interface NavItem { path: string; title: string; icon: string; routeId?: string; lanPreview?: boolean; management?: boolean; external?: boolean }
 export interface NavGroup { title: string; items: NavItem[] }
 
 export const navigationGroups: NavGroup[] = [
@@ -24,11 +21,6 @@ export const navigationGroups: NavGroup[] = [
     { path: '/mcp-servers', title: '平台 MCP 服务', icon: 'connector' },
     { path: '/platform-env', title: '环境变量', icon: 'settings' },
   ] },
-  { title: '运行工具', items: [
-    { path: '/flows', title: 'Flow 包', icon: 'workflow', requiresFlow: true },
-    { path: '/runs', title: '运行记录', icon: 'runs', requiresFlow: true },
-    { path: '/flow-config', title: '运行配置', icon: 'settings', requiresFlow: true },
-  ] },
   { title: '本地演示', items: [{ path: '/chat', title: '对话', icon: 'chat' }] },
 ]
 
@@ -43,19 +35,4 @@ export function deployedNavigation(): NavGroup[] {
     ...group.items.filter(item => !item.management),
     ...(group.title === '平台设置' ? [{ title: '执行器管理平台', icon: 'robot', path: url.href, external: true }] : []),
   ] }))
-}
-
-// 只保存集合是否挂载，不缓存集合内容。详情页的 404 不影响导航。
-export function useFlowAvailability(signedIn: boolean) {
-  return useResource(async signal => {
-    if (isLanPreview()) return false
-    if (!signedIn) return true
-    try {
-      await requestJson('/flows', { signal })
-      return true
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 404) return false
-      throw cause
-    }
-  }, true)
 }

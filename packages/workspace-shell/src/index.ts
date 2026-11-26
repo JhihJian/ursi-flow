@@ -5,6 +5,7 @@ export type {
   ModuleContext,
   ModuleSidebarProps,
   Selection,
+  ShellHandle,
   WorkspaceAction,
   WorkspaceModule,
   WorkspaceProfile,

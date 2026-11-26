@@ -1,8 +1,6 @@
 //! Bearer 鉴权的 Runtime API。
 mod error;
-mod http;
 
-use crate::flow::FlowService;
 use axum::{
     Router,
     extract::{Request, State},
@@ -13,15 +11,7 @@ use axum::{
 use error::error;
 use std::sync::Arc;
 
-pub fn router(service: FlowService, token: String) -> Router {
-    protected(http::routes(service), token)
-}
-
-pub(crate) fn combined(flow: Option<FlowService>, work: Router, token: String) -> Router {
-    let routes = match flow {
-        Some(s) => work.merge(http::routes(s)),
-        None => work,
-    };
+pub fn router(routes: Router, token: String) -> Router {
     protected(routes, token)
 }
 

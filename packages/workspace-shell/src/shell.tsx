@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import type {
   ModuleSidebarProps,
   Selection,
+  ShellHandle,
   WorkspaceModule,
   WorkspaceProfile,
   WorkspaceShellProps,
@@ -282,7 +283,15 @@ function WorkspaceColumn({
 }
 
 /** 右侧集成控制面板：只列当前选中可用的操作，操作来自已启用模块。 */
-function ControlPanel({ modules, onError }: { modules: WorkspaceModule[]; onError: (error: unknown) => void }) {
+function ControlPanel({
+  modules,
+  shell,
+  onError,
+}: {
+  modules: WorkspaceModule[]
+  shell: ShellHandle
+  onError: (error: unknown) => void
+}) {
   const { selection } = useWorkspace()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -290,7 +299,9 @@ function ControlPanel({ modules, onError }: { modules: WorkspaceModule[]; onErro
   const items = modules.flatMap((module) =>
     (module.actions ?? []).map((action) => ({ module, action })),
   )
-  const applicable = selection ? items.filter(({ action }) => action.appliesTo(selection)) : []
+  const applicable = selection
+    ? items.filter(({ action }) => action.appliesTo(selection, shell))
+    : []
   const summary = selection ? summaryFor(modules, selection) : '未选中'
 
   const run = async (actionId: string, execute: () => Promise<void>) => {
@@ -317,7 +328,7 @@ function ControlPanel({ modules, onError }: { modules: WorkspaceModule[]; onErro
           <span className="ws-control-empty">当前选中没有可用操作。</span>
         ) : (
           applicable.map(({ module, action }) => {
-            const reason = selection ? (action.disabledReason?.(selection) ?? null) : null
+            const reason = selection ? (action.disabledReason?.(selection, shell) ?? null) : null
             return (
               <button
                 key={`${module.id}:${action.id}`}
@@ -327,8 +338,12 @@ function ControlPanel({ modules, onError }: { modules: WorkspaceModule[]; onErro
                 title={reason ?? undefined}
                 onClick={() => {
                   if (!selection) return
-                  if (action.confirm && !window.confirm(action.confirm)) return
-                  void run(action.id, () => action.run(selection))
+                  const confirmText =
+                    typeof action.confirm === 'function'
+                      ? action.confirm(selection, shell)
+                      : action.confirm
+                  if (confirmText && !window.confirm(confirmText)) return
+                  void run(action.id, () => action.run(selection, shell))
                 }}
               >
                 {busy === action.id ? '进行中…' : action.label}
@@ -436,10 +451,11 @@ interface SurfaceProps {
   profile: WorkspaceProfile
   storageKey: string
   status?: ReactNode
+  onError: (error: unknown) => void
 }
 
 /** 一个 profile 的固定骨架：侧边栏堆叠 + 工作区 + 控制面板。profile 切换时整体重挂。 */
-function Surface({ modules, views, profile, storageKey, status }: SurfaceProps) {
+function Surface({ modules, views, profile, storageKey, status, onError }: SurfaceProps) {
   const enabled = useMemo(
     () =>
       profile.modules
@@ -478,11 +494,30 @@ function Surface({ modules, views, profile, storageKey, status }: SurfaceProps) 
     })
   }, [])
 
-  const { selection } = useWorkspace()
+  const { selection, select } = useWorkspace()
   const view = findView(views, selection)
   const expandedModules = enabled.filter((module) => expandedIds.includes(module.id))
   const visibleModules = view ? [] : expandedModules
   const visibleIds = new Set(visibleModules.map((module) => module.id))
+
+  /** 交给模块操作的外壳能力：启用集合按当前 profile 计算，reveal 只做展开与视图回退。 */
+  const shell = useMemo<ShellHandle>(() => {
+    const enabledIds = new Set(enabled.map((module) => module.id))
+    const viewKinds = new Set(views.map((view) => view.kind))
+    return {
+      enabled: (moduleId) => enabledIds.has(moduleId),
+      reveal: (moduleId) => {
+        if (!enabledIds.has(moduleId)) {
+          throw new Error(`模块 ${moduleId} 未在当前 profile 中启用`)
+        }
+        setExpandedIds((previous) =>
+          previous.includes(moduleId) ? previous : [...previous, moduleId],
+        )
+        // 宿主页面占着工作区时先退回模块视图，否则展开后仍然看不见目标模块。
+        if (selection && viewKinds.has(selection.kind)) select(null)
+      },
+    }
+  }, [enabled, views, selection, select])
 
   const [sidebarSize, saveSidebarSize] = useStoredSize(`${storageKey}:body:sidebar`, 300)
   const [controlSize, saveControlSize] = useStoredSize(`${storageKey}:body:control`, 260)
@@ -522,7 +557,7 @@ function Surface({ modules, views, profile, storageKey, status }: SurfaceProps) 
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => saveControlSize(size.inPixels)}
           >
-            <ControlPanel modules={enabled} onError={console.error} />
+            <ControlPanel modules={enabled} shell={shell} onError={onError} />
           </Panel>
         </Group>
         <div className="ws-hidden-hosts" aria-hidden="true">
@@ -549,8 +584,13 @@ function Shell({
   settings,
   onSettings,
   status,
+  onError,
   storageKey,
 }: Required<Pick<WorkspaceShellProps, 'storageKey'>> & WorkspaceShellProps) {
+  const reportError = useMemo(
+    () => onError ?? ((error: unknown) => console.error(error)),
+    [onError],
+  )
   const allIds = modules.map((module) => module.id)
   const activeProfiles: WorkspaceProfile[] = profiles?.length
     ? profiles
@@ -602,6 +642,7 @@ function Shell({
           profile={activeProfile}
           storageKey={`${storageKey}:${activeProfile.id}`}
           status={status}
+          onError={reportError}
         />
       </SlotProvider>
     </div>

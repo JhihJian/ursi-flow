@@ -46,11 +46,33 @@ function SettingsView() {
 }
 
 /** 注册信息从活的 modules 数组派生，不另存一份手工清单，避免漂移。 */
-function RegistryView({ modules, profiles }: { modules: WorkspaceModule[]; profiles: WorkspaceProfile[] }) {
+function RegistryView({
+  modules,
+  profiles,
+  wires,
+}: {
+  modules: WorkspaceModule[]
+  profiles: WorkspaceProfile[]
+  wires: Array<{ from: string; to: string; capability: string }>
+}) {
   return (
     <div className="app-page">
       <h2 className="app-page-title">Registry</h2>
       <p>组合根登记的模块。profile 只决定启用哪些模块与顺序，布局由外壳固定。</p>
+      {wires.map((wire) => (
+        <div key={`${wire.from}:${wire.to}`} className="app-registry-item">
+          <div className="app-registry-head">
+            <span className="app-registry-title">跨模块依赖</span>
+            <span className="app-registry-id">
+              {wire.from} → {wire.to}
+            </span>
+          </div>
+          <div className="app-registry-row">
+            <dt>capability</dt>
+            <dd>{wire.capability}</dd>
+          </div>
+        </div>
+      ))}
       {modules.map((module) => {
         const enabledIn = profiles
           .filter((profile) => profile.modules.includes(module.id))
@@ -121,13 +143,24 @@ function assertRegistry(modules: WorkspaceModule[], views: WorkspaceView[]): voi
   }
 }
 
+/**
+ * 组合根是唯一同时看见多个模块的地方，跨模块的边在这里显式接线：
+ * 用 import 连边，删掉文件模块会直接编译失败，不留运行期才发现的悬空调用。
+ */
+const files = createFsModule({ apiBaseUrl: '/api/fs-web' })
+
 /** 工厂在模块级只调一次，保持组件引用稳定，避免宿主重渲染时重挂模块内部状态。 */
 const MODULES: WorkspaceModule[] = [
-  createTodoModule(),
-  createFsModule({ apiBaseUrl: '/api/fs-web' }),
+  createTodoModule({ openRootInFiles: files.commands.openRoot }),
+  files,
   createSshModule({ apiBaseUrl: '/api/ssh-web' }),
   createSandboxModule({ apiBase: '/sbx' }),
   createPiWebModule(),
+]
+
+/** 跨模块依赖的说明，Registry 页直接展示，避免边藏在代码里。 */
+const WIRES: Array<{ from: string; to: string; capability: string }> = [
+  { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
 ]
 
 /**
@@ -149,7 +182,9 @@ export function useShellRegistry(): ShellRegistry {
       {
         kind: REGISTRY.kind,
         summary: () => 'Registry',
-        Component: () => <RegistryView modules={MODULES} profiles={PROFILES} />,
+        Component: () => (
+          <RegistryView modules={MODULES} profiles={PROFILES} wires={WIRES} />
+        ),
       },
     ],
     [],

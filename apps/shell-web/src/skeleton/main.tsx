@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { WorkspaceProfile, WorkspaceView } from '@ursi/workspace-shell'
 import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
-import { SKELETON_MODULES } from './modules'
+import { SKELETON_MODULES, SKELETON_WIRES } from './modules'
 import './skeleton.css'
 
 /** 骨架预览入口：不依赖后端与真实模块，只展示五个区域的结构与交互。 */
@@ -20,6 +20,19 @@ function HostView() {
         <li>控制面板：按选中列出模块声明的操作。</li>
         <li>状态栏：展开模块各自贡献一段上下文。</li>
       </ul>
+      <h3 className="sk-host-title">跨模块依赖</h3>
+      <p>模块之间不互相 import，由组合根把接收方的具名命令注入给发送方。</p>
+      <ul className="sk-host-list">
+        {SKELETON_WIRES.map((wire) => (
+          <li key={`${wire.from}:${wire.to}`}>
+            {wire.from} → {wire.to}：<code>{wire.capability}</code>
+          </li>
+        ))}
+      </ul>
+      <p>
+        在「任务」里选中一项，控制面板会出现「在文件模块打开项目目录」；切到只有任务的
+        profile 时该操作禁用并给出原因，因为接收方没有启用。
+      </p>
     </div>
   )
 }
@@ -32,6 +45,7 @@ const PROFILES: WorkspaceProfile[] = [
   { id: 'all', title: '全部', modules: ['tasks', 'files', 'terminal', 'sandboxes'] },
   { id: 'work', title: '工作', modules: ['tasks', 'files'] },
   { id: 'ops', title: '运维', modules: ['terminal', 'sandboxes'] },
+  { id: 'solo', title: '仅任务', modules: ['tasks'] },
 ]
 
 const SELECTED = { kind: HOST_KIND, id: 'host' }

@@ -12,6 +12,21 @@ import { copyText } from './lib/clipboard'
 
 const KIND = 'todo.task'
 
+/**
+ * 跨模块能力由组合根注入，todo 只声明它需要的形状，不 import 任何其它模块。
+ * 缺省不注入时，对应的操作给出禁用原因而不是静默消失。
+ */
+export interface TodoModuleOptions {
+  /** 按目录绝对路径在文件模块里打开；返回该目录在文件模块里的标识。 */
+  openRootInFiles?: (root: string) => Promise<{ id: string; label: string }>
+}
+
+function projectPathOf(projectId: string | null | undefined): string | null {
+  if (!projectId) return null
+  const project = useTodoStore.getState().projects.find((item) => item.id === projectId)
+  return project?.path ?? null
+}
+
 function useSelectedTask() {
   return useTodoStore((state) => (state.detail?.mode === 'view' ? state.detail.task : null))
 }
@@ -50,7 +65,8 @@ function selectedTaskFrom(selection: { id: string }) {
   return useTodoStore.getState().tasks.find((item) => item.id === selection.id) ?? null
 }
 
-export function createTodoModule(): WorkspaceModule {
+export function createTodoModule(options: TodoModuleOptions = {}): WorkspaceModule {
+  const { openRootInFiles } = options
   const Provider = ({ children }: { children: ReactNode }) => (
     <TodoProvider>
       <TodoSelectionBridge />
@@ -73,6 +89,33 @@ export function createTodoModule(): WorkspaceModule {
     sidebarMinSize: 180,
     sidebarMaxSize: 560,
     actions: [
+      {
+        id: 'open-project-in-files',
+        label: '在文件模块打开项目目录',
+        appliesTo: (selection) => selection?.kind === KIND,
+        disabledReason: (selection, shell) => {
+          if (!openRootInFiles) return '组合根未接入文件模块能力'
+          if (!shell.enabled('fs-web')) return '文件模块未在当前 profile 中启用'
+          const task = selectedTaskFrom(selection)
+          if (!task) return '任务不在当前列表里'
+          if (!projectPathOf(task.project_id)) return '该项目未设置目录'
+          return null
+        },
+        confirm: (selection) => {
+          const task = selectedTaskFrom(selection)
+          const root = projectPathOf(task?.project_id) ?? ''
+          return `会在文件模块里登记并打开目录\n${root}\n继续？`
+        },
+        run: async (selection, shell) => {
+          if (!openRootInFiles) throw new Error('组合根未接入文件模块能力')
+          const task = selectedTaskFrom(selection)
+          if (!task) throw new Error('任务不在当前列表里')
+          const root = projectPathOf(task.project_id)
+          if (!root) throw new Error('该项目未设置目录')
+          await openRootInFiles(root)
+          shell.reveal('fs-web')
+        },
+      },
       {
         id: 'copy-markdown',
         label: '复制为 Markdown',

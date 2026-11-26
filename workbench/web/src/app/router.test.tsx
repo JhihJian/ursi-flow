@@ -5,23 +5,23 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createAppRoutes } from './router'
 import { readToken, setToken } from '@/shared/http/session'
 
-const probe = async (path: string) => path === '/api/v1/flows' ? Response.json([]) : Response.json({}, { status: 404 })
+const probe = async (_path: string) => Response.json({}, { status: 404 })
 
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllEnvs() })
-it('在深链登录，退出后隐藏运行数据', async () => {
-  const fetch = vi.fn(async (path: string) => Response.json(path === '/api/v1/flows' ? ['sample'] : []))
+it('在深链登录，退出后隐藏数据', async () => {
+  const fetch = vi.fn(async (_path: string) => Response.json([]))
   vi.stubGlobal('fetch', fetch)
-  const router = createMemoryRouter(createAppRoutes(), { initialEntries: ['/flows'] })
+  const router = createMemoryRouter(createAppRoutes(), { initialEntries: ['/work-items?status=active'] })
   render(<RouterProvider router={router} />)
   await userEvent.type(await screen.findByLabelText('访问令牌'), 'manual-token')
   expect(fetch).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: '登录' }))
-  expect(await screen.findByRole('link', { name: 'sample' })).toHaveAttribute('href', '/flows/sample/edit')
-  expect(router.state.location.pathname).toBe('/flows')
+  expect(await screen.findByRole('heading', { name: '工作清单' })).toBeVisible()
+  expect(router.state.location.search).toBe('?status=active')
   await userEvent.click(screen.getByRole('button', { name: '退出登录' }))
   expect(readToken()).toBe('')
   expect(await screen.findByLabelText('访问令牌')).toBeInTheDocument()
-  expect(screen.queryByText('sample')).toBeNull()
+  expect(screen.queryByText('暂无工作项')).toBeNull()
 })
 
 it('免登录预览在原深链展示规划页面，浏览器不发送令牌或请求其他模块', async () => {
@@ -80,7 +80,7 @@ it.each([
   render(<RouterProvider router={router} />)
   expect(await screen.findByRole('heading', { name: '页面未找到' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '返回工作清单' })).toHaveAttribute('href', '/work-items')
-  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/v1/flows'])
+  expect(fetch).not.toHaveBeenCalled()
 })
 
 it.each(['/work-items/abc', '/work-projects/abc/todo', '/executors/abc/revisions/2'])('工作项、项目和执行器深链在原位置登录：%s', async path => {
@@ -92,20 +92,19 @@ it.each(['/work-items/abc', '/work-projects/abc/todo', '/executors/abc/revisions
   expect(fetch).not.toHaveBeenCalled()
 })
 
-it('可选集合 401 清除会话，重新登录后在原深链继续', async () => {
+it('401 清除会话，重新登录后在原深链继续', async () => {
   setToken('expired')
-  vi.stubGlobal('fetch', vi.fn(async (path: string) => (
-    path === '/api/v1/flows' && readToken() === 'expired'
-      ? Response.json({}, { status: 401 }) : Response.json([])
+  vi.stubGlobal('fetch', vi.fn(async (_path: string) => (
+    readToken() === 'expired' ? Response.json({}, { status: 401 }) : Response.json([])
   )))
-  const router = createMemoryRouter(createAppRoutes(), { initialEntries: ['/runs?filter=all'] })
+  const router = createMemoryRouter(createAppRoutes(), { initialEntries: ['/work-items?filter=all'] })
   render(<RouterProvider router={router} />)
   const field = await screen.findByLabelText('访问令牌')
   expect(screen.getByRole('alert')).toHaveTextContent('令牌无效或已过期')
   await userEvent.type(field, 'new-token')
   await userEvent.click(screen.getByRole('button', { name: '登录' }))
-  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('运行记录'))
-  expect(router.state.location).toMatchObject({ pathname: '/runs', search: '?filter=all' })
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('工作清单'))
+  expect(router.state.location).toMatchObject({ pathname: '/work-items', search: '?filter=all' })
 })
 
 it('旧会话迟到的 401 不影响新登录', async () => {
@@ -114,33 +113,13 @@ it('旧会话迟到的 401 不影响新登录', async () => {
   const late = new Promise<Response>((resolve) => { release = resolve })
   vi.stubGlobal('fetch', vi.fn(async (path: string, init: RequestInit) => {
     const authorization = new Headers(init.headers).get('Authorization')
-    if (authorization === 'Bearer old-token' && path === '/api/v1/flows') return late
+    if (authorization === 'Bearer old-token' && path === '/api/v2/work-items') return late
     return Response.json([])
   }))
   render(<RouterProvider router={createMemoryRouter(createAppRoutes(), { initialEntries: ['/work-items'] })} />)
-  expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
+  await screen.findByRole('heading', { name: '工作清单' })
   await act(async () => { setToken('new-token') })
   release(Response.json({}, { status: 401 }))
   await waitFor(() => expect(readToken()).toBe('new-token'))
   expect(screen.queryByLabelText('访问令牌')).toBeNull()
-  expect(await screen.findByText('暂无工作项')).toBeInTheDocument()
-})
-
-it('退出后不沿用旧探测结果，重新登录会重新探测可选模块', async () => {
-  let flowStatus = 404
-  vi.stubGlobal('fetch', vi.fn(async (path: string) => {
-    if (path === '/api/v1/flows') return Response.json([], { status: flowStatus })
-    return Response.json([])
-  }))
-  render(<RouterProvider router={createMemoryRouter(createAppRoutes(), { initialEntries: ['/work-items'] })} />)
-  await userEvent.type(await screen.findByLabelText('访问令牌'), 'first')
-  await userEvent.click(screen.getByRole('button', { name: '登录' }))
-  const nav = () => within(screen.getByRole('navigation', { name: '主导航' }))
-  await waitFor(() => expect(nav().queryByRole('link', { name: 'Flow 包' })).toBeNull())
-  await userEvent.click(screen.getByRole('button', { name: '退出登录' }))
-  await screen.findByLabelText('访问令牌')
-  flowStatus = 200
-  await userEvent.type(screen.getByLabelText('访问令牌'), 'second')
-  await userEvent.click(screen.getByRole('button', { name: '登录' }))
-  await waitFor(() => expect(nav().getByRole('link', { name: 'Flow 包' })).toBeInTheDocument())
 })

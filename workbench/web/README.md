@@ -62,7 +62,7 @@ npx vite preview --mode lan-preview --host 0.0.0.0 --port 4281 --strictPort
 
 填入专有管理页面地址后，桌面侧栏与移动抽屉中的配置包、资源、执行器与后端入口合并为「执行器管理平台」。留空时使用内置的同一套管理页面。此设置只改变导航，不传递登录令牌。Workbench 的 `/api/v2` 请求始终发送到本源，由 Workbench Server 按部署配置代理给平台；`URSI_API_PROXY` 应指向 Workbench Server。平台管理页的构建与部署见[独立入口说明](../../executor-platform/web/README.md)。
 
-在「工作包 → 运行工作包」选启用的执行器和已发布的 Agent 修订。直接运行时由 Workbench 处理当前包的材料；切换到「启动 Flow」则选择已保存的 Flow，输入该 Flow 的变量。同一个 `{id, revision}` 作为顶层 `executorRef` 传给 `POST /api/v1/flows/:id/runs`，不会把工作包目录当成 Runtime 的本机路径。Flow 编辑页也可选「平台执行器修订」，或保留 Runtime 默认执行方式。两处均打开服务返回的 Run 详情。
+在「工作包 → 运行工作包」选启用的执行器和已发布的 Agent 修订，由 Workbench 处理当前包的材料并打开服务返回的尝试详情。
 
 ## 操作（Flow 工具）
 

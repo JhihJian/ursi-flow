@@ -7,7 +7,6 @@ import type {
 	FlowDefinition,
 	FlowDestination,
 	FlowNode,
-	FlowReferenceAction,
 	FlowValue,
 	FlowVariableDeclarations,
 	FlowVariables,
@@ -19,7 +18,6 @@ import {
 } from "./variables.ts";
 
 const IDENTIFIER = "[A-Za-z][A-Za-z0-9_-]*";
-const FLOW_REFERENCE_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const NODE_DECLARATION = new RegExp(
 	`\\b(${IDENTIFIER})\\s*\\[([^\\]]+)\\]`,
 	"g",
@@ -31,15 +29,9 @@ const PARALLEL_DECLARATION = new RegExp(
 const EDGE = new RegExp(
 	`^\\s*(${IDENTIFIER})\\s*-->\\s*(?:\\|([^|]+)\\|\\s*)?(${IDENTIFIER})\\s*$`,
 );
-export const PACKAGE_REFERENCE_LINK = /(\[[^\]]*\]\()(references\/[^)\s]+)(\))/g;
 
 const BRANCH_REFERENCE =
 	/\{branch\.([A-Za-z][A-Za-z0-9_-]*)\.([\p{L}\p{N}_-]+)\}/gu;
-
-/** 执行Flow 节点成功路径的固定结果名，无结果边直连时同样挂在该名下。 */
-export const FLOW_REFERENCE_SUCCESS_RESULT = "已完成";
-/** 执行Flow 节点双结果边的失败结果名。 */
-export const FLOW_REFERENCE_FAILURE_RESULT = "已失败";
 
 interface GraphEdge {
 	from: string;
@@ -118,29 +110,14 @@ export function parseFlow(markdown: string, id: string): FlowDefinition {
 	);
 	for (const node of definition.nodes.values()) {
 		const value =
-			node.action.kind === "新建Agent" || node.action.kind === "复用Agent"
-				? node.action.prompt
-				: node.action.kind === "执行自定义命令"
-					? (node.action.request as unknown as FlowValue)
-					: node.action.kind === "执行Flow"
-						? (node.action.inputs ?? {})
-						: node.action.kind === "confirm"
-							? node.action.prompt
-							: {};
+			node.action.kind === "执行自定义命令"
+				? (node.action.request as unknown as FlowValue)
+				: node.action.prompt;
 		validateTemplates(
 			value,
 			node.ref === definition.startNodeRef,
 			joins.has(node.ref),
 		);
-		if (
-			(node.action.kind === "新建Agent" || node.action.kind === "复用Agent") &&
-			node.action.profile?.params
-		)
-			validateTemplates(
-				node.action.profile.params,
-				node.ref === definition.startNodeRef,
-				joins.has(node.ref),
-			);
 	}
 	return definition;
 }
@@ -322,17 +299,8 @@ function parseAction(nodeName: string, actionArea: string): FlowAction {
 			`节点“${nodeName}”必须有且仅有一个非空动作代码块`,
 		);
 	const content = blocks[0][2].trim();
-	const [marker, executorSuffix] = splitAgentMarker(blocks[0][1].trim());
-	if (marker === "新建Agent" || marker === "复用Agent") {
-		if (executorSuffix === undefined) return parseAgentAction(nodeName, marker, content);
-		if (marker !== "新建Agent")
-			throw new FlowSyntaxError(
-				`节点“${nodeName}”的 复用Agent 标记不能带执行器后缀：${executorSuffix}`,
-			);
-		const agent = parseAgentAction(nodeName, marker, content);
-		return { ...agent, executor: executorSuffix };
-	}
-	if (marker === "执行Flow") return parseFlowReferenceAction(nodeName, content);
+	const marker = blocks[0][1].trim();
+	if (marker === "新建Agent") return parseAgentAction(nodeName, content);
 	if (marker === "confirm") {
 		if (content.includes("\n"))
 			throw new FlowSyntaxError(
@@ -345,39 +313,18 @@ function parseAction(nodeName: string, actionArea: string): FlowAction {
 	return parseCommandAction(nodeName, content);
 }
 
-/** 新建Agent:名称 的后缀；返回 undefined 表示无后缀。名称格式与 profile 相同，且只允许一个冒号。 */
-function splitAgentMarker(marker: string): [string, string?] {
-	const colon = marker.indexOf(":");
-	if (colon < 0) return [marker];
-	const head = marker.slice(0, colon);
-	const tail = marker.slice(colon + 1);
-	if (
-		(head === "新建Agent" || head === "复用Agent") &&
-		!/^[A-Za-z][A-Za-z0-9_-]*$/.test(tail)
-	)
-		return [marker];
-	return [head, tail];
-}
-
-function parseAgentAction(
-	nodeName: string,
-	kind: "新建Agent" | "复用Agent",
-	content: string,
-): AgentAction {
-	if (!content.startsWith("{")) return { kind, prompt: content };
+function parseAgentAction(nodeName: string, content: string): AgentAction {
+	if (!content.startsWith("{")) return { kind: "新建Agent", prompt: content };
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(content);
 	} catch {
-		return { kind, prompt: content };
+		return { kind: "新建Agent", prompt: content };
 	}
-	if (
-		!isRecord(parsed) ||
-		!["prompt", "profile", "params"].some((key) => key in parsed)
-	)
-		return { kind, prompt: content };
+	if (!isRecord(parsed) || !("prompt" in parsed))
+		return { kind: "新建Agent", prompt: content };
 	for (const key of Object.keys(parsed))
-		if (!["prompt", "profile", "params"].includes(key))
+		if (key !== "prompt")
 			throw new FlowSyntaxError(
 				`节点“${nodeName}”的 Agent 动作不允许字段: ${key}`,
 			);
@@ -385,76 +332,7 @@ function parseAgentAction(
 		throw new FlowSyntaxError(
 			`节点“${nodeName}”的 Agent prompt 必须是非空字符串`,
 		);
-	if (
-		kind === "复用Agent" &&
-		(parsed.profile !== undefined || parsed.params !== undefined)
-	)
-		throw new FlowSyntaxError("复用Agent 不能指定 Profile 或 Profile 参数");
-	if (
-		parsed.profile !== undefined &&
-		(typeof parsed.profile !== "string" ||
-			!/^[A-Za-z][A-Za-z0-9_-]*$/.test(parsed.profile))
-	)
-		throw new FlowSyntaxError("Agent profile 必须是字母开头的标识");
-	let params: FlowVariables | undefined;
-	if (parsed.params !== undefined) {
-		try {
-			validateVariables(parsed.params);
-		} catch (error) {
-			throw new FlowSyntaxError(
-				error instanceof Error ? error.message : String(error),
-			);
-		}
-		params = parsed.params as FlowVariables;
-	}
-	if (parsed.profile === undefined && params !== undefined)
-		throw new FlowSyntaxError("Agent params 必须跟随 profile 使用");
-	return {
-		kind,
-		prompt: parsed.prompt.trim(),
-		...(parsed.profile !== undefined
-			? { profile: { id: parsed.profile, ...(params ? { params } : {}) } }
-			: {}),
-	};
-}
-
-function parseFlowReferenceAction(
-	nodeName: string,
-	content: string,
-): FlowReferenceAction {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(content);
-	} catch (error) {
-		throw new FlowSyntaxError(
-			`节点“${nodeName}”的 Flow 引用不是有效 JSON: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-	if (!isRecord(parsed))
-		throw new FlowSyntaxError(`节点“${nodeName}”的 Flow 引用必须是 JSON 对象`);
-	if (typeof parsed.flow !== "string" || !FLOW_REFERENCE_ID.test(parsed.flow)) {
-		throw new FlowSyntaxError(
-			`节点“${nodeName}”的 flow 必须是字母开头且仅含字母、数字、连字符、下划线的非空标识`,
-		);
-	}
-	for (const key of Object.keys(parsed)) {
-		if (key !== "flow" && key !== "inputs")
-			throw new FlowSyntaxError(
-				`节点“${nodeName}”的 Flow 引用不允许字段: ${key}`,
-			);
-	}
-	const action: FlowReferenceAction = { kind: "执行Flow", flow: parsed.flow };
-	if ("inputs" in parsed) {
-		try {
-			validateVariables(parsed.inputs);
-		} catch (error) {
-			throw new FlowSyntaxError(
-				`节点“${nodeName}”: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
-		action.inputs = parsed.inputs;
-	}
-	return action;
+	return { kind: "新建Agent", prompt: parsed.prompt.trim() };
 }
 
 function parseCommandAction(nodeName: string, content: string): CommandAction {
@@ -661,10 +539,6 @@ function validateAndWireGraph(
 	definition.startNodeRef = first.to;
 	for (const node of definition.nodes.values()) {
 		const edges = outgoing.get(node.ref) ?? [];
-		if (node.action.kind === "执行Flow") {
-			wireFlowReferenceNode(node, edges, definition, graph);
-			continue;
-		}
 		if (!edges.length || edges.some((edge) => !edge.result))
 			throw new FlowSyntaxError(`工作节点 ${node.ref} 的出边必须都带结果名`);
 		for (const edge of edges) {
@@ -703,63 +577,6 @@ function validateAndWireGraph(
 	for (const parallelRef of graph.parallels)
 		validateParallel(definition, parallelRef, incoming, outgoing);
 	validateReachability(definition);
-}
-
-/** 执行Flow 节点的出边二选一：恰一条无结果直连边，或恰“已完成/已失败”双结果边。 */
-function wireFlowReferenceNode(
-	node: FlowNode,
-	edges: GraphEdge[],
-	definition: FlowDefinition,
-	graph: {
-		parallels: Set<string>;
-	},
-): void {
-	const resultless = edges.filter((edge) => !edge.result);
-	if (edges.length === 1 && resultless.length === 1) {
-		if (node.results.size)
-			throw new FlowSyntaxError(
-				`Flow 引用节点 ${node.ref} 使用无结果直连时不能声明三级结果标题`,
-			);
-		node.successors.set(
-			FLOW_REFERENCE_SUCCESS_RESULT,
-			destination(edges[0].to, definition.nodes, graph.parallels),
-		);
-		return;
-	}
-	if (resultless.length)
-		throw new FlowSyntaxError(
-			`Flow 引用节点 ${node.ref} 的无结果直连边必须恰好一条且不与其他出边混用`,
-		);
-	if (!edges.length)
-		throw new FlowSyntaxError(`工作节点 ${node.ref} 至少需要一条出边`);
-	for (const edge of edges) {
-		if (!edge.result || !node.results.has(edge.result))
-			throw new FlowSyntaxError(
-				`节点 ${node.ref} 缺少结果“${edge.result}”的三级说明`,
-			);
-		if (node.successors.has(edge.result))
-			throw new FlowSyntaxError(
-				`节点 ${node.ref} 的结果边重复: ${edge.result}`,
-			);
-		node.successors.set(
-			edge.result,
-			destination(edge.to, definition.nodes, graph.parallels),
-		);
-	}
-	const required = [
-		FLOW_REFERENCE_SUCCESS_RESULT,
-		FLOW_REFERENCE_FAILURE_RESULT,
-	];
-	if (
-		node.successors.size !== required.length ||
-		required.some((result) => !node.successors.has(result))
-	) {
-		throw new FlowSyntaxError(
-			`Flow 引用节点 ${node.ref} 必须恰有“${required[0]}”“${required[1]}”两条结果边`,
-		);
-	}
-	if (node.results.size !== node.successors.size)
-		throw new FlowSyntaxError(`节点 ${node.ref} 存在没有结果边的结果说明`);
 }
 
 function destination(
@@ -1035,13 +852,4 @@ export function renderCommandRequest(
 			? { stdin: renderTemplate(request.stdin, context) }
 			: {}),
 	};
-}
-
-/** 显式子 Flow 输入的模板渲染。 */
-export function renderFlowReferenceTask(
-	inputs: FlowValue,
-	input: FlowValue | undefined,
-	variables: Readonly<Record<string, FlowValue>> = {},
-): FlowValue {
-	return renderTemplate(inputs, { input, variables });
 }

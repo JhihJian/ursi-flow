@@ -176,3 +176,19 @@ body {
   padding-left: 18px;
   line-height: 2;
 }
+
+.sk-hint-pad {
+  padding: 12px;
+}
+
+.sk-row-static {
+  cursor: default;
+  color: var(--ws-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sk-row-static:hover {
+  background: none;
+}

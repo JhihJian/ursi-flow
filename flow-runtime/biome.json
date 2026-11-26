@@ -6,14 +6,7 @@
 			"!dist",
 			"!.pi",
 			"!**/.pi",
-			"!node_modules",
-			"!ui/vendor",
-			"!src/web/public/vendor",
-			"!web/src/trajectory/components",
-			"!web/src/trajectory/lib",
-			"!web/test-results",
-			"!web/.e2e-home",
-			"!web/.e2e-work"
+			"!node_modules"
 		]
 	},
 	"formatter": { "indentStyle": "tab" },
