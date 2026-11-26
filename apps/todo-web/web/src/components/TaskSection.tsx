@@ -168,6 +168,8 @@ export function TaskSection() {
   const dayFilter = useTodoStore((state) => state.dayFilter)
   const view = useTodoStore((state) => state.view)
   const setView = useTodoStore((state) => state.setView)
+  const graphPositions = useTodoStore((state) => state.graphPositions)
+  const clearGraphPositions = useTodoStore((state) => state.clearGraphPositions)
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -199,8 +201,8 @@ export function TaskSection() {
         <div className="tasks-header">
           {view === 'graph' ? (
             <p className="task-graph-hint">
-              <span>实线父子 · 虚线前置 · 完成项仅在与未完成任务相关时出现</span>
-              <span>拖动节点叠到另一个节点上设父任务，从节点左侧圆点拖到目标设前置</span>
+              <span>分组是子任务 · 虚线是前置依赖 · 完成项仅在与未完成任务相关时出现</span>
+              <span>拖节点调整位置（保存在本机），按住 Shift 拖到另一个节点设父任务，左侧圆点拖到目标设前置</span>
             </p>
           ) : (
             <DayFilter />
@@ -217,6 +219,17 @@ export function TaskSection() {
                   />
                 ))}
               </div>
+            ) : null}
+            {view === 'graph' ? (
+              <button
+                type="button"
+                className="graph-reset"
+                title="清空手动位置，恢复自动排版"
+                disabled={Object.keys(graphPositions).length === 0}
+                onClick={clearGraphPositions}
+              >
+                Reset layout
+              </button>
             ) : null}
             <ViewSwitch view={view} onChange={changeView} />
           </div>

@@ -128,6 +128,24 @@ describe('buildTaskGraph', () => {
     expect(layout.nodes[0].height).toBe(layout.nodes[1].height)
   })
 
+  it('keeps dragged root positions and lets other roots avoid them', () => {
+    const tasks = [task('p'), task('c', { parent_id: 'p' }), task('q')]
+    const layout = buildTaskGraph(tasks, { p: { x: 24, y: 24 } })
+    const parent = layout.nodes.find((node) => node.id === 'p')!
+    const child = layout.nodes.find((node) => node.id === 'c')!
+    const other = layout.nodes.find((node) => node.id === 'q')!
+
+    expect(parent.x).toBe(24)
+    expect(parent.y).toBe(24)
+    // 子节点跟着父节点整体移动。
+    expect(child.x).toBeGreaterThan(parent.x)
+    expect(child.y).toBeGreaterThan(parent.y)
+    // 自动摆放的根节点让开被固定的位置。
+    expect(other.y).toBeGreaterThanOrEqual(parent.y + parent.height)
+    // 画布覆盖到手动位置。
+    expect(layout.width).toBeGreaterThanOrEqual(24 + parent.width + 24)
+  })
+
   it('returns an empty layout without tasks', () => {
     expect(buildTaskGraph([])).toEqual({
       nodes: [],

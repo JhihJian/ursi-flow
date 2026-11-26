@@ -8,6 +8,12 @@ import type {
   TaskDraft,
   TaskStatus,
 } from '@/api/types'
+import {
+  readPositions,
+  writePositions,
+  type GraphPoint,
+  type GraphPositions,
+} from '@/lib/graph-positions'
 import { relationCreatesCycle } from '@/lib/task-graph'
 
 export type DetailState =
@@ -35,6 +41,8 @@ export interface TodoState {
   tasks: Task[]
   /** 关系图用的全量项目任务，不受按日筛选影响。 */
   graphTasks: Task[]
+  /** 关系图里手动拖过的顶层节点位置，按项目存在浏览器本地。 */
+  graphPositions: GraphPositions
   view: TaskView
   selectedProjectId: string | null
   statusFilter: TaskStatus | null
@@ -67,6 +75,9 @@ export interface TodoState {
   /** 关系图里的关系写入，`null` 表示解除；`parent_id` 与 `pre_id` 都走这里。 */
   setTaskParent: (id: string, parentId: string | null) => Promise<void>
   setTaskPredecessor: (id: string, preId: string | null) => Promise<void>
+  setGraphPosition: (id: string, point: GraphPoint) => void
+  resetGraphPosition: (id: string) => void
+  clearGraphPositions: () => void
   startCreateProject: () => void
   startEditProject: (id: string) => void
   cancelProjectForm: () => void
@@ -81,6 +92,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   projects: [],
   tasks: [],
   graphTasks: [],
+  graphPositions: {},
   view: readStoredView(),
   selectedProjectId: null,
   statusFilter: null,
@@ -107,6 +119,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     set({
       selectedProjectId: id,
       graphTasks: [],
+      graphPositions: {},
       detail: null,
       projectEditing: null,
     })
@@ -194,7 +207,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   refreshGraph: async () => {
     const { selectedProjectId } = get()
     if (!selectedProjectId) {
-      set({ graphTasks: [], graphLoading: false })
+      set({ graphTasks: [], graphPositions: {}, graphLoading: false })
       return
     }
     const requestId = ++graphRequestId
@@ -203,7 +216,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       // 关系图要看见完整的父子与前置链，不能带按日筛选。
       const { tasks } = await api.listTasks({ project: selectedProjectId })
       if (requestId !== graphRequestId) return
-      set({ graphTasks: tasks, graphLoading: false })
+      set({
+        graphTasks: tasks,
+        graphPositions: readPositions(selectedProjectId),
+        graphLoading: false,
+      })
     } catch (error) {
       if (requestId === graphRequestId) set({ graphLoading: false })
       throw error
@@ -290,6 +307,36 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
     await api.updateTask(id, { pre_id: preId })
     await get().refreshAll()
+  },
+
+  /** 记录一个顶层节点的手动位置；顺带丢掉已经不在图里的坐标。 */
+  setGraphPosition: (id, point) => {
+    const projectId = get().selectedProjectId
+    if (!projectId) return
+    const alive = new Set(get().graphTasks.map((task) => task.id))
+    const next: GraphPositions = {}
+    for (const [key, value] of Object.entries(get().graphPositions)) {
+      if (alive.has(key)) next[key] = value
+    }
+    next[id] = point
+    set({ graphPositions: next })
+    writePositions(projectId, next)
+  },
+
+  resetGraphPosition: (id) => {
+    const projectId = get().selectedProjectId
+    if (!projectId || !get().graphPositions[id]) return
+    const next = { ...get().graphPositions }
+    delete next[id]
+    set({ graphPositions: next })
+    writePositions(projectId, next)
+  },
+
+  clearGraphPositions: () => {
+    const projectId = get().selectedProjectId
+    if (!projectId) return
+    set({ graphPositions: {} })
+    writePositions(projectId, {})
   },
 
   startCreateProject: () => set({ projectEditing: { id: null }, detail: null }),

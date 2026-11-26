@@ -14,6 +14,7 @@ vi.mock('@/api/client', () => ({
 }))
 
 import * as api from '@/api/client'
+import { readPositions } from '@/lib/graph-positions'
 import { useTodoStore } from './todo-store'
 
 const mocked = vi.mocked(api)
@@ -59,6 +60,7 @@ function resetStore() {
     projects: [],
     tasks: [],
     graphTasks: [],
+    graphPositions: {},
     view: 'list',
     selectedProjectId: null,
     projectsLoading: true,
@@ -78,6 +80,7 @@ beforeEach(() => {
   mocked.listDailyCounts.mockResolvedValue({ days: [] })
   mocked.listProjects.mockResolvedValue({ projects: [projectA, projectB] })
   mocked.listTasks.mockResolvedValue({ tasks: [task] })
+  localStorage.clear()
   resetStore()
 })
 
@@ -210,6 +213,46 @@ describe('status filter', () => {
     expect(useTodoStore.getState().statusFilter).toBe('done')
     useTodoStore.getState().toggleStatusFilter('done')
     expect(useTodoStore.getState().statusFilter).toBeNull()
+  })
+})
+
+describe('graph positions', () => {
+  it('saves and resets manual positions per project', () => {
+    useTodoStore.setState({ selectedProjectId: 'p1', graphTasks: [task] })
+
+    useTodoStore.getState().setGraphPosition('t1', { x: 120, y: 260 })
+
+    expect(useTodoStore.getState().graphPositions).toEqual({ t1: { x: 120, y: 260 } })
+    expect(readPositions('p1')).toEqual({ t1: { x: 120, y: 260 } })
+
+    useTodoStore.getState().resetGraphPosition('t1')
+    expect(useTodoStore.getState().graphPositions).toEqual({})
+    expect(readPositions('p1')).toEqual({})
+  })
+
+  it('prunes positions of tasks that are no longer in the graph', () => {
+    useTodoStore.setState({
+      selectedProjectId: 'p1',
+      graphTasks: [task],
+      graphPositions: { gone: { x: 1, y: 2 } },
+    })
+
+    useTodoStore.getState().setGraphPosition('t1', { x: 10, y: 20 })
+
+    expect(useTodoStore.getState().graphPositions).toEqual({ t1: { x: 10, y: 20 } })
+  })
+
+  it('clears the whole layout for the project', () => {
+    useTodoStore.setState({
+      selectedProjectId: 'p1',
+      graphTasks: [task],
+      graphPositions: { t1: { x: 10, y: 20 } },
+    })
+
+    useTodoStore.getState().clearGraphPositions()
+
+    expect(useTodoStore.getState().graphPositions).toEqual({})
+    expect(readPositions('p1')).toEqual({})
   })
 })
 

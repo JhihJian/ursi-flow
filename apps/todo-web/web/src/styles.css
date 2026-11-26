@@ -575,6 +575,29 @@
   color: var(--white);
 }
 
+/* 清空手动位置，恢复自动排版。 */
+.graph-reset {
+  flex: none;
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-600);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.graph-reset:hover:not(:disabled) {
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.graph-reset:disabled {
+  color: var(--gray-200);
+  cursor: default;
+}
+
 /* 任务关系图：头部固定，图区域自己双向滚动。 */
 .tasks-section.is-graph {
   display: flex;
@@ -722,6 +745,15 @@
 .task-graph-port:focus-visible {
   border-color: var(--gray-900);
   background: var(--gray-900);
+}
+
+.task-graph-node.is-movable {
+  cursor: grab;
+}
+
+.task-graph-node.is-moving {
+  cursor: grabbing;
+  opacity: 0.85;
 }
 
 .task-graph-node.is-linking {

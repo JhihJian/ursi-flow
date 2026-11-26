@@ -1,4 +1,5 @@
 import type { Priority, Task, TaskStatus } from '@/api/types'
+import type { GraphPositions } from './graph-positions'
 
 /**
  * 把当前项目的任务排成一张从左到右的关系图。
@@ -85,7 +86,10 @@ export function isOpenTask(task: Task): boolean {
  * 否则完成一个前置任务后，后续任务的来龙去脉就从图里消失了。
  * 只认直接相邻的一层，避免顺着已结束任务把整条历史链拖进图里。
  */
-export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
+export function buildTaskGraph(
+  tasks: Task[],
+  positions: GraphPositions = {},
+): TaskGraphLayout {
   const open = tasks.filter(isOpenTask)
   const openIds = new Set(open.map((task) => task.id))
   const keep = new Set(openIds)
@@ -199,9 +203,19 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     node.height = size.height
   }
 
-  // 根节点只按前置依赖分列，子节点跟随父节点缩进。
+  // 手动拖过的根节点保留坐标，其余根节点仍按前置依赖分列。
+  const rootPos = new Map<string, { x: number; y: number }>()
+  const pinned = new Set<string>()
+  for (const id of roots) {
+    const point = positions[id]
+    if (!point) continue
+    rootPos.set(id, { x: Math.max(PADDING, point.x), y: Math.max(PADDING, point.y) })
+    pinned.add(id)
+  }
+
   const columns = new Map<number, string[]>()
   for (const id of roots) {
+    if (pinned.has(id)) continue
     const depth = nodes.get(id)!.depth
     const column = columns.get(depth)
     if (column) column.push(id)
@@ -216,18 +230,8 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
       Math.max(0, column.length - 1) * ROOT_GAP
     columnHeights.set(depth, height)
   }
-  const tallest = Math.max(...depths.map((depth) => columnHeights.get(depth)!))
-
-  const place = (id: string, x: number, y: number) => {
-    const node = nodes.get(id)!
-    node.x = x
-    node.y = y
-    let childY = y + HEADER_HEIGHT + CHILD_GAP
-    for (const kid of node.childIds) {
-      place(kid, x + CHILD_INDENT, childY)
-      childY += nodes.get(kid)!.height + CHILD_GAP
-    }
-  }
+  const tallest =
+    depths.length > 0 ? Math.max(...depths.map((depth) => columnHeights.get(depth)!)) : 0
 
   const xOf = new Map<number, number>()
   let x = PADDING
@@ -240,9 +244,48 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     const column = columns.get(depth)!
     let y = PADDING + Math.max(0, (tallest - columnHeights.get(depth)!) / 2)
     for (const id of column) {
-      place(id, xOf.get(depth)!, y)
+      rootPos.set(id, { x: xOf.get(depth)!, y })
       y += nodes.get(id)!.height + ROOT_GAP
     }
+  }
+
+  // 自动摆放的根节点让开手动位置，避免分组变大后压住别人。
+  const boxes = roots.map((id) => ({
+    id,
+    ...rootPos.get(id)!,
+    width: nodes.get(id)!.width,
+    height: nodes.get(id)!.height,
+  }))
+  for (let pass = 0; pass < 6; pass += 1) {
+    let moved = false
+    for (const box of boxes) {
+      if (pinned.has(box.id)) continue
+      for (const other of boxes) {
+        if (other.id === box.id) continue
+        const overlapsX = box.x < other.x + other.width && other.x < box.x + box.width
+        const overlapsY = box.y < other.y + other.height && other.y < box.y + box.height
+        if (!overlapsX || !overlapsY) continue
+        box.y = other.y + other.height + ROOT_GAP
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+
+  const place = (id: string, x: number, y: number) => {
+    const node = nodes.get(id)!
+    node.x = x
+    node.y = y
+    let childY = y + HEADER_HEIGHT + CHILD_GAP
+    for (const kid of node.childIds) {
+      place(kid, x + CHILD_INDENT, childY)
+      childY += nodes.get(kid)!.height + CHILD_GAP
+    }
+  }
+  for (const box of boxes) rootPos.set(box.id, { x: box.x, y: box.y })
+  for (const id of roots) {
+    const point = rootPos.get(id)!
+    place(id, point.x, point.y)
   }
 
   const plans: EdgePlan[] = []
@@ -258,7 +301,7 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
       plans.push({ from, to, fromAnchor: from, toAnchor: to, kind: 'sibling' })
     } else if (toBox.x >= fromBox.x + fromBox.width) {
       plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'forward' })
-    } else if (toBox.x === fromBox.x && toBox.y > fromBox.y) {
+    } else if (overlaps(fromBox, toBox) && toBox.y > fromBox.y) {
       plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'vertical' })
     } else {
       plans.push({ from, to, fromAnchor: fromBox, toAnchor: toBox, kind: 'back' })
@@ -313,12 +356,19 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
     })
   }
 
+  let right = PADDING
+  let bottom = PADDING
+  for (const node of nodes.values()) {
+    right = Math.max(right, node.x + node.width)
+    bottom = Math.max(bottom, node.y + node.height)
+  }
+
   return {
     nodes: [...nodes.values()],
     roots,
     edges,
-    width: x - COLUMN_GAP + PADDING,
-    height: PADDING * 2 + tallest + (hasBack ? BACK_EDGE_ROOM : 0),
+    width: right + PADDING,
+    height: bottom + PADDING + (hasBack ? BACK_EDGE_ROOM : 0),
     hidden: tasks.length - shown.length,
   }
 }
@@ -468,6 +518,11 @@ function topLevelNode(
     current = parent
   }
   return current
+}
+
+/** 两个分组在横向上是否重叠；判断上下连线还是绕行。 */
+function overlaps(left: TaskGraphNode, right: TaskGraphNode): boolean {
+  return left.x < right.x + right.width && right.x < left.x + left.width
 }
 
 interface EdgePlan {
