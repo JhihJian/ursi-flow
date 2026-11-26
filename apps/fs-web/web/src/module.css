@@ -98,6 +98,8 @@
 .wsx-git-bar {
   display: flex;
   align-items: center;
+  /* 三个按钮整组靠右：同间距顺排，多余空间全部留在左侧 */
+  justify-content: flex-end;
   gap: 4px;
   flex: none;
   margin-bottom: 12px;
