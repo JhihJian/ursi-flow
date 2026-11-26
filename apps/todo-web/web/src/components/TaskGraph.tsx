@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from '@/api/types'
 import { prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import type { GraphPositions } from '@/lib/graph-positions'
 import { STATUS_ORDER, nextStatuses, requiredInput } from '@/lib/task-status'
+import type { StatusInput } from '@/store/todo-store'
 import {
   buildTaskGraph,
   findOverlapParent,
@@ -231,25 +232,31 @@ export function TaskGraph() {
     )
   }
 
-  const applyStatus = (task: Task, status: TaskStatus) => {
+  const applyStatus = async (task: Task, status: TaskStatus) => {
     const required = requiredInput(status)
-    let input: { result?: string; blockedReason?: string } = {}
+    const store = useTodoStore.getState()
+    let input: StatusInput = {}
     if (required === 'result') {
-      const result = window.prompt(`Result for "${task.title}"?`)
+      const result = await store.requestText({
+        title: `Complete "${task.title}"`,
+        label: 'result',
+        placeholder: 'What was delivered',
+        multiline: true,
+        confirmLabel: 'done',
+        requiredMessage: 'Completing a task requires a result',
+      })
       if (result === null) return
-      if (!result.trim()) {
-        alert('Completing a task requires a result')
-        return
-      }
-      input = { result: result.trim() }
+      input = { result }
     } else if (required === 'blocked_reason') {
-      const reason = window.prompt(`Why is "${task.title}" blocked?`)
+      const reason = await store.requestText({
+        title: `Block "${task.title}"`,
+        label: 'blocked_reason',
+        placeholder: 'Why is it blocked',
+        confirmLabel: 'blocked',
+        requiredMessage: 'A blocked task needs a reason',
+      })
       if (reason === null) return
-      if (!reason.trim()) {
-        alert('A blocked task needs a reason')
-        return
-      }
-      input = { blockedReason: reason.trim() }
+      input = { blockedReason: reason }
     }
     void useTodoStore
       .getState()
@@ -274,7 +281,7 @@ export function TaskGraph() {
         icon: <StatusIcon status={status} />,
         checked: task.status === status,
         disabled: !reachable.has(status),
-        onSelect: () => applyStatus(task, status),
+        onSelect: () => void applyStatus(task, status),
       })),
     })
   }

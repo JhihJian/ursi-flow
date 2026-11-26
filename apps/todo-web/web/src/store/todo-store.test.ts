@@ -69,6 +69,7 @@ function resetStore() {
     graphLoading: false,
     detail: null,
     projectEditing: null,
+    textPrompt: null,
     statusFilter: null,
     dayCounts: [],
     dayFilter: [],
@@ -82,6 +83,35 @@ beforeEach(() => {
   mocked.listTasks.mockResolvedValue({ tasks: [task] })
   localStorage.clear()
   resetStore()
+})
+
+describe('text prompt', () => {
+  const options = { title: 'Result', label: 'result', confirmLabel: 'done' }
+
+  it('resolves with the submitted text and closes', async () => {
+    const pending = useTodoStore.getState().requestText(options)
+    expect(useTodoStore.getState().textPrompt?.options).toEqual(options)
+
+    useTodoStore.getState().settleTextPrompt('shipped')
+    await expect(pending).resolves.toBe('shipped')
+    expect(useTodoStore.getState().textPrompt).toBeNull()
+  })
+
+  it('resolves null when cancelled', async () => {
+    const pending = useTodoStore.getState().requestText(options)
+    useTodoStore.getState().settleTextPrompt(null)
+    await expect(pending).resolves.toBeNull()
+  })
+
+  it('cancels the previous request when a new one opens', async () => {
+    const first = useTodoStore.getState().requestText(options)
+    const second = useTodoStore.getState().requestText({ ...options, label: 'reason' })
+    await expect(first).resolves.toBeNull()
+    expect(useTodoStore.getState().textPrompt?.options.label).toBe('reason')
+
+    useTodoStore.getState().settleTextPrompt('because')
+    await expect(second).resolves.toBe('because')
+  })
 })
 
 describe('bootstrap', () => {

@@ -1579,3 +1579,81 @@
   flex: 1;
   min-height: 0;
 }
+
+/* 补填结果与原因的内嵌输入框，替代浏览器原生 prompt。 */
+.prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 26, 26, 0.18);
+}
+
+.prompt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: min(460px, calc(100vw - 32px));
+  padding: var(--space-md);
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+}
+
+.prompt-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.prompt-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.prompt-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.prompt-input {
+  width: 100%;
+  padding: var(--space-sm);
+  border: 1px solid var(--gray-200);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
+  resize: vertical;
+}
+
+/* 单行输入不提供拖柄，避免看起来像可多行。 */
+.prompt-input.is-single {
+  resize: none;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--gray-900);
+}
+
+.prompt-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.prompt-error {
+  font-size: 11px;
+  color: #b43c3c;
+}
+
+.prompt-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-left: auto;
+}

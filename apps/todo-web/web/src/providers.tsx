@@ -14,6 +14,7 @@ import {
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Task } from './api/types'
 import { TaskDragPreview } from './components/TaskSection'
+import { TextPromptDialog } from './components/TextPromptDialog'
 import { useNotificationPolling } from './hooks/useNotificationPolling'
 import { errorMessage, readDropData, readTaskDrag } from './lib/ui'
 import { useTodoStore } from './store/todo-store'
@@ -49,7 +50,10 @@ export function TodoProvider({ children }: { children: ReactNode }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       const state = useTodoStore.getState()
-      if (state.projectEditing) {
+      // 一次性输入框在最上层，Esc 先关掉它。
+      if (state.textPrompt) {
+        state.settleTextPrompt(null)
+      } else if (state.projectEditing) {
         state.cancelProjectForm()
       } else if (state.detail) {
         state.closeDetail()
@@ -66,7 +70,7 @@ export function TodoProvider({ children }: { children: ReactNode }) {
     setDraggingTask(source?.task ?? null)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     setDraggingTask(null)
     const source = readTaskDrag(event.active.data.current)
     const drop = readDropData(event.over?.data.current)
@@ -74,13 +78,15 @@ export function TodoProvider({ children }: { children: ReactNode }) {
 
     let blockedReason: string | undefined
     if (drop.type === 'status' && drop.status === 'blocked') {
-      const reason = window.prompt(`Why is "${source.task.title}" blocked?`)
+      const reason = await useTodoStore.getState().requestText({
+        title: `Block "${source.task.title}"`,
+        label: 'blocked_reason',
+        placeholder: 'Why is it blocked',
+        confirmLabel: 'blocked',
+        requiredMessage: 'A blocked task needs a reason',
+      })
       if (reason === null) return
-      if (!reason.trim()) {
-        alert('A blocked task needs a reason')
-        return
-      }
-      blockedReason = reason.trim()
+      blockedReason = reason
     }
 
     const action =
@@ -102,6 +108,7 @@ export function TodoProvider({ children }: { children: ReactNode }) {
       <DragOverlay dropAnimation={null}>
         {draggingTask ? <TaskDragPreview task={draggingTask} /> : null}
       </DragOverlay>
+      <TextPromptDialog />
     </DndContext>
   )
 }

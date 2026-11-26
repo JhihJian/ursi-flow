@@ -34,6 +34,24 @@ export interface StatusInput {
   blockedReason?: string
 }
 
+/** 需要用户补填一段文字时的弹窗描述。 */
+export interface TextPromptOptions {
+  title: string
+  label: string
+  confirmLabel: string
+  placeholder?: string
+  /** 是否多行输入；多行时 Ctrl+Enter 提交。 */
+  multiline?: boolean
+  /** 空输入时的提示，未提供则允许空文本。 */
+  requiredMessage?: string
+}
+
+export interface TextPromptState {
+  id: number
+  options: TextPromptOptions
+  settle: (value: string | null) => void
+}
+
 /** 任务区有两种视图：任务表与任务关系图。 */
 export type TaskView = 'list' | 'graph'
 
@@ -61,6 +79,8 @@ export interface TodoState {
   graphLoading: boolean
   detail: DetailState | null
   projectEditing: ProjectEditing | null
+  /** 完成结果、阻塞原因等一次性输入，全应用共用一个弹窗。 */
+  textPrompt: TextPromptState | null
 
   bootstrap: () => Promise<void>
   selectProject: (id: string) => Promise<void>
@@ -82,6 +102,9 @@ export interface TodoState {
   moveTask: (task: Task, target: MoveTarget, blockedReason?: string) => Promise<void>
   /** 关系图里直接切换状态，`done` 需要 result、`blocked` 需要 reason。 */
   setTaskStatus: (id: string, status: TaskStatus, input?: StatusInput) => Promise<void>
+  /** 弹出输入框等一段文字；取消或关闭时得到 `null`。 */
+  requestText: (options: TextPromptOptions) => Promise<string | null>
+  settleTextPrompt: (value: string | null) => void
   /** 关系图里的关系写入，`null` 表示解除；`parent_id` 与 `pre_id` 都走这里。 */
   setTaskParent: (id: string, parentId: string | null) => Promise<void>
   setTaskPredecessor: (id: string, preId: string | null) => Promise<void>
@@ -97,6 +120,7 @@ export interface TodoState {
 
 let tasksRequestId = 0
 let graphRequestId = 0
+let promptId = 0
 
 export const useTodoStore = create<TodoState>((set, get) => ({
   projects: [],
@@ -114,6 +138,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   graphLoading: false,
   detail: null,
   projectEditing: null,
+  textPrompt: null,
 
   bootstrap: async () => {
     await get().refreshProjects()
@@ -342,6 +367,21 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
     await api.updateTask(id, { pre_id: preId })
     await get().refreshAll()
+  },
+
+  requestText: (options) =>
+    new Promise((resolve) => {
+      // 同时只保留一个输入请求，旧请求按取消处理。
+      get().settleTextPrompt(null)
+      promptId += 1
+      set({ textPrompt: { id: promptId, options, settle: resolve } })
+    }),
+
+  settleTextPrompt: (value) => {
+    const prompt = get().textPrompt
+    if (!prompt) return
+    set({ textPrompt: null })
+    prompt.settle(value)
   },
 
   /** 记录一个顶层节点的手动位置；顺带丢掉已经不在图里的坐标。 */
