@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from 'react'
 import { ContextMenu, type MenuState } from './ContextMenu'
+import { TmuxInstallHint } from './TmuxInstallHint'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
 import type { Connection } from '../api/types'
 import type { SessionsState } from '../store/ssh-store'
@@ -102,10 +103,20 @@ export function ConnectionTree() {
   const renderSessionChildren = (connectionId: number, state: SessionsState | undefined) => {
     if (!state || state.loading) return <li className="ssh-tree-note">查询中…</li>
     if (state.error !== null) {
-      return <li className="ssh-tree-note ssh-error-note">{state.error}</li>
+      return (
+        <li className="ssh-tree-note ssh-error-note">
+          {state.error}
+          <TmuxInstallHint />
+        </li>
+      )
     }
     if (state.sessions === null) {
-      return <li className="ssh-tree-note">远端无 tmux，连接后将回退普通 shell，断开即结束。</li>
+      return (
+        <li className="ssh-tree-note">
+          远端未安装 tmux，连接后将回退普通 shell，断开即结束。
+          <TmuxInstallHint />
+        </li>
+      )
     }
     return (
       <>

@@ -117,10 +117,10 @@ async fn run_terminal_inner(
     event_tx: &mpsc::Sender<WsEvent>,
 ) -> Result<()> {
     let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
-    // 远端启动命令：tmux 可用则 attach 指定会话，否则回退普通 shell 并提示。
+    // 远端启动命令：tmux 可用则 attach 指定会话，否则回退普通 shell 并给出安装指引。
     // 会话名已过白名单，单引号内拼接安全。POSIX sh 兼容。
     let remote_script = format!(
-        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端无 tmux，已回退普通 shell，断开后会话不保留\033[0m\n'; exec $SHELL; }}",
+        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'; exec $SHELL; }}",
     );
     let args = ssh_args(&connection.command, &remote_script);
 
@@ -246,8 +246,12 @@ async fn pump(
     }
 }
 
-/// 在远端执行一条命令，收集 stdout 与退出码。
-async fn exec_collect(connection: &ConnectionConfig, remote_script: &str) -> Result<(String, i32)> {
+/// 在远端执行一条命令，收集 stdout、stderr 与退出码。
+/// stderr 用于区分「ssh 自己连不上」与「远端命令退出码异常」，只报退出码会让排查走错方向。
+async fn exec_collect(
+    connection: &ConnectionConfig,
+    remote_script: &str,
+) -> Result<(String, String, i32)> {
     // tmux ls 无交互输出，不需要 PTY，直接 ssh 批量执行。
     let args = batch_ssh_args(&connection.command, remote_script);
     let output = tokio::time::timeout(
@@ -262,21 +266,32 @@ async fn exec_collect(connection: &ConnectionConfig, remote_script: &str) -> Res
     .map_err(|_| anyhow!("连接超时"))?
     .context("启动 ssh 子进程失败")?;
     let code = output.status.code().unwrap_or(-1);
-    Ok((String::from_utf8_lossy(&output.stdout).into_owned(), code))
+    Ok((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        code,
+    ))
 }
 
-/// 列出远端 tmux 会话。远端没有 tmux 时返回 None（前端据此展示回退提示）。
+/// 远端无 tmux 时由脚本打印的标记。用显式探测替代「退出码 127」，
+/// 避免不同远端 shell 在找不到命令时返回别的码被当成异常报错。
+const NO_TMUX_MARKER: &str = "__ssh_web_no_tmux__";
+
+/// 列出远端 tmux 会话。远端没有 tmux 时返回 None（前端据此展示安装指引）。
 /// tmux 无会话（exit 1）是正常空态。
 pub async fn list_tmux_sessions(
     connection: &ConnectionConfig,
 ) -> Result<Option<Vec<TmuxSession>>> {
     // tmux 的 -F 格式串不解析 \t 转义（输出字面反斜杠），用竖线做字段分隔。
-    // 竖线不在会话名白名单里，不会冲突。
-    let (out, code) = exec_collect(
-        connection,
-        "tmux ls -F '#{session_name}|#{session_attached}|#{session_created}' 2>/dev/null",
-    )
-    .await?;
+    // 竖线不在会话名白名单里，不会冲突。tmux 缺失由 else 分支显式标记，
+    // 不依赖 command -v 失败时的退出码。
+    let script = format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux ls -F '#{{session_name}}|#{{session_attached}}|#{{session_created}}' 2>/dev/null; else echo {NO_TMUX_MARKER}; fi",
+    );
+    let (out, err, code) = exec_collect(connection, &script).await?;
+    if out.lines().any(|line| line.trim() == NO_TMUX_MARKER) {
+        return Ok(None);
+    }
     match code {
         0 => {
             let sessions = out
@@ -293,8 +308,22 @@ pub async fn list_tmux_sessions(
             Ok(Some(sessions))
         }
         1 => Ok(Some(Vec::new())),
-        // 127 = tmux 不存在。
-        127 => Ok(None),
-        code => Err(anyhow!("tmux ls 异常退出：{code}")),
+        // 255 是 ssh 自身的失败（不可达、认证失败、主机密钥问题），原样返回它的 stderr。
+        255 => {
+            let detail = err.trim();
+            Err(anyhow!(if detail.is_empty() {
+                "ssh 连接失败（exit 255）".to_string()
+            } else {
+                format!("ssh 连接失败：{detail}")
+            }))
+        }
+        code => {
+            let detail = err.trim();
+            Err(anyhow!(if detail.is_empty() {
+                format!("tmux ls 异常退出：{code}")
+            } else {
+                format!("tmux ls 异常退出：{code}：{detail}")
+            }))
+        }
     }
 }

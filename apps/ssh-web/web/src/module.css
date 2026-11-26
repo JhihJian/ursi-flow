@@ -242,6 +242,43 @@
   line-height: 1.6;
 }
 
+/* ── 远端 tmux 安装指引：树内 200px 宽，命令可选中复制 ─────────── */
+
+.ssh-tmux-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--ssh-space-xs);
+  padding-top: var(--ssh-space-xs);
+  border-top: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-tmux-hint-title {
+  font-size: 10px;
+  color: var(--ssh-gray-400);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ssh-tmux-hint-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.ssh-tmux-hint-os {
+  font-size: 10px;
+  color: var(--ssh-gray-400);
+}
+
+.ssh-tmux-hint-code {
+  font-family: var(--ssh-font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ssh-gray-900);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .ssh-empty {
   padding: var(--ssh-space-lg) var(--ssh-space-xs);
   color: var(--ssh-gray-400);

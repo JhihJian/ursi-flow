@@ -29,10 +29,10 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 #### 验收
 
 - 布局为左侧树状连接面板 + 右侧顶部会话标签栏与终端区：嵌入 ursi-flow 工作区时，连接树进外壳的侧边栏堆叠，标签栏与终端进中间工作区；独立入口用同一对组件配一栏可折叠侧边栏。布局纯 flex 实现，不用可拖拽分隔条（折叠后重开靠远端 tmux 恢复屏幕）。
-- 选中连接后，树中该连接下实时列出远端 tmux 会话（`GET /api/connections/{id}/tmux-sessions`，实时执行远端 `tmux ls` 不缓存，每个连接独立加载与刷新）；远端无 tmux 时显示「远端无 tmux，连接后将回退普通 shell，断开即结束」；SSH 失败（认证失败、不可达）时错误显示在该连接的子级区。默认入口 main 展示为「默认会话 ssh-main」。
+- 选中连接后，树中该连接下实时列出远端 tmux 会话（`GET /api/connections/{id}/tmux-sessions`，实时执行远端 `tmux ls` 不缓存，每个连接独立加载与刷新）；远端未安装 tmux 时显示「远端未安装 tmux，连接后将回退普通 shell，断开即结束」并列出安装命令（Debian/Ubuntu `sudo apt install tmux`、Fedora/RHEL `sudo dnf install tmux`、macOS `brew install tmux`，命令可选中复制）；SSH 失败（认证失败、不可达）时错误显示在该连接的子级区，错误下方同样给出这份安装指引供排查。默认入口 main 展示为「默认会话 ssh-main」。
 - 点击任一会话项（含默认入口）即在顶部标签栏打开（或激活）标签并启动全新 OpenSSH 子进程：认证失败、主机不可达等失败原因原样显示在终端区（OpenSSH 自身的错误输出），不产生会话。WS 握手即启动子进程，服务端无会话注册表。新建 tmux 会话经标签栏 `+` 或右键 `New session` 展开内联表单，名称限 ASCII 字母数字下划线连字符（1–64），服务端与前端同校验；重名由远端 `tmux new -A` 语义兜底（直接 attach 已有会话）。
 - 远端有 tmux 时，PTY 启动命令为 `tmux new -A -s <会话名>`：SSH 断开、刷新页面或关闭浏览器后远端 tmux 会话与其中进程继续运行；重新点击同一会话即 attach 回去，屏幕内容完整恢复。tmux 内 `exit` 退出 shell 会结束 tmux 会话，前端收到退出码。改名、杀会话等管理操作由用户在终端内执行 tmux 命令完成，GUI 不重复造轮子。
-- 远端没有 tmux 时自动回退普通 shell，并在终端内显示黄色提示「远端无 tmux，已回退普通 shell，断开后会话不保留」；回退判断由远端一行启动命令完成，服务端不解析输出。
+- 远端没有 tmux 时自动回退普通 shell，并在终端内显示黄色提示：首行「远端未安装 tmux，已回退普通 shell，断开后会话不保留」，次行给出 Linux（`sudo apt install tmux` / `sudo dnf install tmux`）与 macOS（`brew install tmux`）的安装命令；回退判断由远端一行启动命令完成，服务端不解析输出。
 - 终端为 xterm.js 面板，PTY 类型 `xterm-256color`。初始列行由 xterm 实测的 cell 尺寸与面板盒子算出（扣掉内边距与滚动条宽度），并随 WS 握手参数直接用于服务端建 PTY：连接后不会先按 80×24 排版再被 resize 冲刷，握手期间面板尺寸变化会在 WS 打开时补发一次 resize。窗口缩放（含拖拽面板分隔条）时经 ResizeObserver 自适应，列行连续两帧稳定后才落盘，resize 命令 debounce 100ms 同步远端，列行上限 500。
 - 渲染使用 xterm 的 Unicode 11 宽度表并补零宽连接符折叠（中文、emoji、ZWJ 序列不量错格）。WebGL 渲染仅在 WebGL2 可用且渲染器不是软件渲染时启用，否则留在 DOM 渲染；上下文丢失后释放 GPU 上下文、退回 DOM 并重排重绘，60 秒内连续丢失 3 次以上不再重试。跨屏拖动或缩放导致 devicePixelRatio 变化、以及切回标签页时，自动修复画布像素比并重绘整个视口。
 - 终端内搜索：右键菜单「Search in terminal」或 `Ctrl/Cmd+F` 打开搜索条（快捷键在模块容器内拦截，指针或焦点不在模块内时不枪宿主同名快捷键），支持区分大小写与正则开关、显示命中计数（如 `3/14`）、增量高亮所有命中并标出当前命中；Enter/Shift+Enter 跳转下一个/上一个，Esc 关闭并把焦点还给终端。搜索装饰色按亮暗主题分别取值（灰块与砖红块，与版面专色同源），保证两种底色上都看得见。

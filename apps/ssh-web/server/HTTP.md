@@ -48,15 +48,15 @@
 
 ### `GET /connections/{id}/tmux-sessions`
 
-经 ssh 在远端执行 `tmux ls` 并解析（连接命令附加 `tmux ls -F '...'` 执行一次）。批量调用以 `-o BatchMode=yes` 运行，要求密钥 / agent 免交互认证：需要交互密码的远端在这里直接返回认证失败，交互密码仍可在终端会话里输入。返回：
+经 ssh 在远端执行 `tmux ls` 并解析（连接命令附加 `tmux ls -F '...'` 执行一次）。批量调用以 `-o BatchMode=yes` 运行，要求密钥 / agent 免交互认证：需要交互密码的远端在这里直接返回认证失败，交互密码仍可在终端会话里输入。每轮先 `command -v tmux` 显式探测：tmux 不存在时由远端脚本打印固定标记，服务端据此返回 `null`（不依赖找不到命令时的退出码）。返回：
 
 ```json
 {"sessions": [{"name": "ssh-main", "attached": 1, "created": 1700000000}]}
 ```
 
-- 远端无 tmux（`tmux` 不存在或 exit 127）：`{"sessions": null}`。
+- 远端无 tmux：`{"sessions": null}`，前端据此列出 Linux（apt/dnf）与 macOS（brew）安装命令。
 - 有 tmux 但无会话（exit 1）：`{"sessions": []}`。
-- SSH 失败（不可达、认证失败等）：502 `ssh_error`。
+- SSH 失败（不可达、认证失败、主机密钥问题等，ssh 退出码 255）：502 `ssh_error`，错误消息附 OpenSSH 自身 stderr，不再笼统报“tmux ls 异常退出”。
 
 ### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
 
@@ -67,7 +67,7 @@ WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：
 - `cols`/`rows`（可选）：PTY 初始尺寸，取自前端终端面板实际大小，2–500，缺省或非法回退 80×24。
 - ssh 以 `ssh -tt` 运行，强制分配远端 PTY；`StrictHostKeyChecking=accept-new` 首次连接自动接受主机密钥。
 - 认证失败、主机不可达等错误原样经 WS 下发（OpenSSH 自身 stderr 输出），由前端红色内联显示。
-- 远端无 tmux 时由远端侧一行启动命令回退普通 shell（终端内黄色提示），服务端不解析输出。
+- 远端无 tmux 时由远端侧一行启动命令回退普通 shell：终端内黄色提示首行说明已回退、次行给出 Debian/Ubuntu `sudo apt install tmux`、Fedora/RHEL `sudo dnf install tmux` 与 macOS `brew install tmux`；服务端不解析输出。
 
 **帧协议**：
 
