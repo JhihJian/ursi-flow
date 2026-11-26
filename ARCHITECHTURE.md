@@ -45,6 +45,7 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | SSH 终端 | [接入工作区外壳](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) |
 | dae 路由观察台 | [同源代理、页面结构与刷新策略](docs/design/dae-web/OVERVIEW.md) |
 | Pi 交互对话 | [对话运行时、界面与依赖关系](docs/design/pi-chat-web/CHAT.md) |
+| Pi Web 架构 | [领域模型、状态机与实体契约](docs/design/pi-web/OVERVIEW.md) |
 | Flow Core | [Flow Core SDK 设计](docs/design/flow-runtime/FLOW-CORE.md) |
 | ursi-flow 交付包 | [引擎、日志实体与日志存储](docs/design/flow-runtime/RUNTIME.md) |
 | Flow 工作台 | [接口、页面与数据归属](apps/flow-web/README.md) |
