@@ -165,7 +165,7 @@ export async function refreshCatalog(home: string, cwd: string): Promise<Runtime
     noTools: 'all',
   })
   try {
-    const models = session.modelRuntime.getAvailableSnapshot().map(toRuntimeModel)
+    const models = session.modelRuntime.getAvailableSnapshot().map((model) => toRuntimeModel(model as never))
     const catalog: RuntimeCatalog = {
       fetchedAt: Date.now(),
       cwd,

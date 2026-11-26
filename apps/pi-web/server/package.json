@@ -7,7 +7,8 @@
   },
   "scripts": {
     "start": "node src/server.ts",
-    "test": "node --test test/*.test.ts"
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "description": "pi-web 服务端：pi home 配置管理、对话运行时、一次性任务与任意根目录的会话浏览，共用一份会话实体表",
   "dependencies": {

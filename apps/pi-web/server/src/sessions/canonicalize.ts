@@ -20,13 +20,13 @@ const isMessageRow = (row) =>
  * 逐行转换。`transform` 返回要写出的行（可能为空），无法解析的行被丢弃并计数，
  * 这样组件库不会因为一行坏数据整份拒绝。
  */
-export function createTransformer(meta) {
+export function createTransformer(meta: { sessionId?: string; project?: string | null; timestamp?: string }) {
   let headerWritten = false
   let previousId = null
   let sequence = 0
   let skipped = 0
 
-  const header = (source = {}) =>
+  const header = (source: { sessionId?: string; timestamp?: string; cwd?: string | null } = {}) =>
     JSON.stringify({
       type: 'session',
       version: 3,

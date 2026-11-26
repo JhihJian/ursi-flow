@@ -251,8 +251,7 @@ route('GET', '/api/sessions/:id/trajectory', 'none', async ({ params, req, res }
     }
   }
   // 文件形态：逐行转换成组件库认的形状后流式输出，可 gzip。
-  const { streamTrajectory } = await import('./service.ts')
-  await streamTrajectory(requireService(), entity, res, String(req.headers['accept-encoding'] ?? ''))
+  await requireService().streamText(entity, res, String(req.headers['accept-encoding'] ?? ''))
   return HANDLED
 })
 
@@ -348,5 +347,3 @@ route('GET', '/api/sessions/roots', 'none', async ({ url }) => {
   const root = join(path, 'sessions')
   return { path, root, exists: existsSync(root) }
 })
-
-export { findByPath }

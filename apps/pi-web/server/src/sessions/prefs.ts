@@ -45,7 +45,11 @@ export function normalizePinned(value) {
  * 一个请求应用后的关注列表。`pin` 与 `unpin` 是项目键；pin 把项目放到最前
  * （最近关注的在最上面），unpin 去掉它。已经是目标状态时不变。
  */
-export function applyPinnedChange(pinnedProjects, { pin, unpin }) {
+export function applyPinnedChange(
+  pinnedProjects: unknown,
+  change: { pin?: string; unpin?: string },
+) {
+  const { pin, unpin } = change
   const current = normalizePinned(pinnedProjects)
   if (isKey(unpin)) return current.filter((key) => key !== unpin)
   if (!isKey(pin)) return current

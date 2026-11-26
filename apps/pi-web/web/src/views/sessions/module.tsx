@@ -81,10 +81,7 @@ export interface PiSessionsCommands {
   openSession: (input: { root?: string; id?: string; sessionFile?: string }) => Promise<{ id: string; label: string }>
 }
 
-export type PiSessionsModuleOptions = SessionsControllerOptions & {
-  /** 在对话模块继续这条历史会话；未注入时不显示该动作。 */
-  resumeSessionInChat?: (input: { sessionFile: string }) => Promise<unknown>
-}
+export type PiSessionsModuleOptions = SessionsControllerOptions
 
 /**
  * pi 会话浏览模块工厂。

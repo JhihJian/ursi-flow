@@ -1,4 +1,3 @@
-import type { HomeSummary } from '../config/homes.ts'
 import { homeIdOf } from '../config/homes.ts'
 import { EPOCH, EXTERNAL_ROOT_LIMIT, EXTERNAL_ROOT_TTL_MS } from '../config.ts'
 
@@ -448,8 +447,4 @@ export function capabilitiesOf(entity: PiSession): PiSessionCapabilities {
 /** 对外投影：大字段（disk 的原始行）在这里补上派生值。 */
 export function project(entity: PiSession): PiSession & { capabilities: PiSessionCapabilities } {
   return { ...entity, capabilities: capabilitiesOf(entity) }
-}
-
-export function homeEntitySummary(home: HomeSummary): { id: string; name: string } {
-  return { id: home.id, name: home.name }
 }

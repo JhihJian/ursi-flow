@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { HomeError, defaultHomeIfValid, looksLikePiHome, resolveRequestedHome } from '../shared/pi-home.ts'
 import { homes, homeViewOf, requireHome } from './registry.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
@@ -37,6 +38,7 @@ import { readCachedCatalog, refreshCatalog, catalogCwd } from './models-runtime.
 import { testProviderModel, discoverProviderModels } from './models-probe.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { route } from '../http/router.ts'
+import { ConflictError } from '../shared/rw.ts'
 import { profileRevisionOf } from './registry.ts'
 
 /**

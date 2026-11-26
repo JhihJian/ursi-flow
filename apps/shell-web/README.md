@@ -34,11 +34,8 @@ profile 只声明启用哪些模块与顺序，不再描述区域布局：
 | 工作（`work`） | todo、fs-web、ssh |
 | 终端（`terminal`） | ssh、fs-web |
 | 沙箱（`sandbox`） | 沙箱、ssh |
-| 会话（`history`） | pi-sessions、fs-web |
 | Flow（`flow`） | flow、fs-web |
-| Pi 控制台（`pi`） | pi-chat、pi-sessions、pi-config、fs-web |
-| 对话（`chat`） | pi-chat |
-| Pi 配置（`pi-config`） | pi-config、fs-web |
+| Pi（`pi`） | pi、fs-web |
 
 上表是 `registry.tsx` 里的默认值。标题栏的 **Profiles** 页可编辑：新建、改名、删除 profile，并用「＋ 未启用模块 / 移除 / ↑ ↓」决定每个 profile 启用哪些模块与堆叠顺序。改动即时生效并写入 `ursi.workspace:profiles`，标题栏切换器同步更新；「恢复默认」丢弃自定义配置回到上表。
 
@@ -53,7 +50,7 @@ npm install
 npm run dev:shell-web        # http://localhost:5191
 ```
 
-`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`）、`/api/pi-sessions` 代理到会话目录服务并重写回 `/api`（`PI_SESSIONS_API`，默认 `http://127.0.0.1:30200`），把 `/api/flow-web` 代理到 flow-web 服务并重写回 `/api`（`FLOW_WEB_API`，默认 `http://127.0.0.1:8094`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
+`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`）、`/api/pi` 代理到 pi-web 服务并切掉模块前缀（`PI_WEB_API`，默认 `http://127.0.0.1:8093`），把 `/api/flow-web` 代理到 flow-web 服务并重写回 `/api`（`FLOW_WEB_API`，默认 `http://127.0.0.1:8094`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
 
 ```sh
 cd apps/todo-web/server && cargo run        # 或已有实例

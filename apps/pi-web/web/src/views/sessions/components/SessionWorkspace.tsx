@@ -40,7 +40,9 @@ function Legend() {
  * 选中来自模块共享状态，侧边栏与这里读同一份。
  */
 export function SessionWorkspace() {
-  const { root, selected, api, picking, setPicking, setRoot, config } = useSessionsController()
+  const { root, selected, api, picking, setPicking, setRoot, config, canResumeInChat, resumeInChat } = useSessionsController()
+  const [resuming, setResuming] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
   const [state, setState] = useState<LoadState>({ status: 'idle' })
   const [revision, setRevision] = useState(0)
 
@@ -136,6 +138,27 @@ export function SessionWorkspace() {
           </span>
         ) : null}
         <span className="viewer-actions">
+          {canResumeInChat ? (
+            <button
+              type="button"
+              className="viewer-action"
+              disabled={resuming}
+              title={resumeError ?? '在对话视图继续这条会话'}
+              onClick={async () => {
+                setResuming(true)
+                setResumeError(null)
+                try {
+                  await resumeInChat()
+                } catch (failure) {
+                  setResumeError(errorText(failure))
+                } finally {
+                  setResuming(false)
+                }
+              }}
+            >
+              {resuming ? '接续中…' : '在对话里继续'}
+            </button>
+          ) : null}
           <button type="button" className="rail-toggle" title="重新读取会话" onClick={reload}>
             <RefreshIcon />
           </button>

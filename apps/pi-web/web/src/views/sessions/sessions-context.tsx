@@ -52,6 +52,8 @@ export interface SessionsControllerOptions {
    * 不注入时模块按纯磁盘列表工作，行为与之前完全一致。
    */
   liveSessions?: LiveSessionSource
+  /** 在对话视图继续这条会话；不注入时不显示该入口。 */
+  resumeSessionInChat?: (input: { sessionFile: string }) => Promise<unknown>
 }
 
 export interface SessionsController {
@@ -87,6 +89,9 @@ export interface SessionsController {
   /** 命令跳转后要额外放开的日期；侧边栏消费一次后自行并入筛选。 */
   focusDay: number | null
   clearFocusDay: () => void
+  /** 选中会话能否交给对话继续（宿主是否注入了 resumeSessionInChat）。 */
+  canResumeInChat: boolean
+  resumeInChat: () => Promise<void>
 }
 
 /** 记住的根目录只在本模块的键下，宿主注入 storageKey 后互不干扰。 */
@@ -293,6 +298,14 @@ export function SessionsProvider({
     [api, root, reload, notify],
   )
 
+  const resumeSessionInChat = options.resumeSessionInChat
+  const resumeInChat = useCallback(async () => {
+    const row = selectedRef.current
+    if (!row) throw new Error('先在左侧选一条会话')
+    if (!resumeSessionInChat) throw new Error('对话视图未挂载')
+    await resumeSessionInChat({ sessionFile: row.path })
+  }, [resumeSessionInChat])
+
   const value: SessionsController = {
     api,
     root,
@@ -321,6 +334,8 @@ export function SessionsProvider({
     openSession,
     focusDay,
     clearFocusDay: () => setFocusDay(null),
+    canResumeInChat: Boolean(resumeSessionInChat),
+    resumeInChat,
   }
 
   return <SessionsContext.Provider value={value}>{children}</SessionsContext.Provider>

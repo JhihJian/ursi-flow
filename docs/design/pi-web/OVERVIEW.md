@@ -371,7 +371,9 @@ v1 的目标是让三视图读同一套实体、同一份权威、同一个身�
 - 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
 - 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
 - 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。
-- 一个工作区模块 `pi`：三视图切换、视图首次激活才挂载、home 一份真源（`PiProvider`），配置与对话的 home 选择互为同步，会话根由 home 派生且可显式改成外部目录。
+- 一个工作区模块 `pi`：三视图切换、视图首次激活才挂载、home 一份真源（`PiProvider`），配置与对话的 home 选择互为同步，会话根由 home 派生且可显式改成外部目录；「看完整轨迹」与「在对话里继续」是模块内视图切换，不再经过外壳 actions。
+- 折叠态：外壳把这一节压到 32px 时只渲染一条可点开的窄条（视图 + home），三段切换随之隐藏。
+- 验证：后端 `node --test`（90 项，含移植的扫描与偏好用例）加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（37 项，含合并模块的装配、视图切换、折叠与 home 记忆）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
 - 部署：一个 `ursi-pi-web` 单元、一条 `/api/pi` 反代、一次性状态迁移。
 
 下一轮（v2）：

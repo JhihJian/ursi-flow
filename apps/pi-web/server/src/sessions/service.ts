@@ -9,13 +9,10 @@ import { createTransformer } from './canonicalize.ts'
 import { createPrefs } from './prefs.ts'
 import { deleteSessionFile } from './delete.ts'
 import {
-  externalOrigin,
   findByPath,
   getEntity,
-  homeOrigin,
   listEntities,
   removeEntity,
-  touchExternalRoot,
   upsertDisk,
   type DiskRow,
   type PiSession,
@@ -139,12 +136,15 @@ export async function createSessionService(): Promise<SessionService> {
 
     async remove(session, root) {
       if (!session.filePath) throw new HomeError('会话还没有落盘文件', 409, 'session_memory_only')
-      const result = await deleteSessionFile({ path: session.filePath, root })
+      const result = (await deleteSessionFile({ path: session.filePath, root })) as {
+        removed?: string[]
+        error?: [number, string]
+      }
       if (result.error) throw new HomeError(result.error[1], result.error[0], 'delete_failed')
       scanner.forget(session.filePath)
       persister.schedule()
       removeEntity(session.id)
-      return result.removed
+      return result.removed ?? []
     },
 
     async streamText(session, res, acceptEncoding) {
@@ -193,27 +193,6 @@ export async function createSessionService(): Promise<SessionService> {
       persister.flush()
     },
   }
-}
-
-/** 作用域解析：home 由 realpath 后的路径给出，外部目录显式传入并登记 LRU。 */
-export function originForHome(homePath: string): SessionOrigin {
-  return homeOrigin(homePath)
-}
-
-export async function originForRoot(service: SessionService, root: unknown): Promise<SessionOrigin> {
-  const path = await service.resolveRoot(root)
-  touchExternalRoot(path)
-  return externalOrigin(path)
-}
-
-/** 轨迹文本：按行执行 canonicalize 后交给调用方；gzip 由协商决定。 */
-export async function streamTrajectory(
-  service: SessionService,
-  session: PiSession,
-  res: import('node:http').ServerResponse,
-  acceptEncoding: string,
-): Promise<void> {
-  await service.streamText(session, res, acceptEncoding)
 }
 
 export { findByPath, getEntity }

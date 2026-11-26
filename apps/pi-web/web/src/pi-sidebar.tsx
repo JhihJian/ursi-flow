@@ -27,9 +27,28 @@ export function PiSidebar({
   sessions: ViewModule
   chat: ViewModule
 }): ReactNode {
-  const { view, setView, loading, error } = usePi()
+  const { view, setView, loading, error, home } = usePi()
   const active = view === 'config' ? config : view === 'sessions' ? sessions : chat
   const Sidebar = active.Sidebar as ComponentType<ModuleSidebarProps>
+  const label = VIEWS.find((item) => item.id === view)?.label ?? 'Pi'
+
+  // 折叠态：外壳把这一节压到 32px，此时只留一条可点击的窄条，不渲染三段切换。
+  if (props.collapsed) {
+    return (
+      <button
+        type="button"
+        className="pi-switch-rail"
+        onClick={props.expand}
+        aria-label={`Pi · ${label}${home ? ` · ${home.name}` : ''} · 展开`}
+      >
+        <span className="pi-switch-rail-arrow" aria-hidden="true">
+          ↓
+        </span>
+        <span className="pi-switch-rail-label">Pi · {label}</span>
+        <span className="pi-switch-rail-home">{home?.name ?? '未选 home'}</span>
+      </button>
+    )
+  }
 
   return (
     <div className="pi-switch-root">

@@ -177,7 +177,7 @@ test('browse 列出子目录与各自直接包含的会话数，并按会话数�
   assert.ok(listing.parent)
   assert.deepEqual(
     listing.dirs.map((dir) => [dir.name, dir.sessions]),
-    [['proj-gamma', 1], ['proj-alpha', 1], ['proj-beta', 1], ['proj-delta', 1]].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+    [['proj-gamma', 1], ['proj-alpha', 1], ['proj-beta', 1], ['proj-delta', 1]].sort((a: [string, number], b: [string, number]) => b[1] - a[1] || a[0].localeCompare(b[0])),
   )
   assert.equal(await scanner.browse(join(root, 'nope')), null)
 })

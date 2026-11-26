@@ -10,6 +10,7 @@ import { useSessionsController } from './views/sessions/sessions-context'
 import { createPiChatModule } from './views/chat/module'
 import { useChatController } from './views/chat/chat-context'
 import { useAppStore } from './views/config/store/app-store'
+import { bridges } from './bridges'
 import type { LiveSessionFeed } from './views/sessions/live'
 
 /**
@@ -73,6 +74,32 @@ function createLiveFeed(base: string): () => Promise<LiveSessionFeed> {
   }
 }
 
+/**
+ * 视图之间的跳转是模块内切换，不再经过外壳的 actions：
+ * 「看完整轨迹」= 切到会话视图并选中同一份会话文件，
+ * 「在对话里继续」= 切到对话视图并在同一实体上续聊。
+ */
+function WireBridges() {
+  const { setView } = usePi()
+  const sessions = useSessionsController()
+  const chat = useChatController()
+
+  useEffect(() => {
+    bridges.setView = setView
+    bridges.openSessionInSessions = async (target) => {
+      sessions.openSession(target)
+      setView('sessions')
+    }
+    bridges.resumeInChat = async (sessionFile) => {
+      const resumed = await chat.resume(sessionFile)
+      if (!resumed) throw new Error('续聊失败：服务端没有返回会话')
+      setView('chat')
+    }
+  }, [setView, sessions, chat])
+
+  return null
+}
+
 /** 配置视图的 home 选择：store 是它的渲染镜像，PiProvider 是真源。 */
 function ConfigBridge() {
   const { homePath, setHomePath } = usePi()
@@ -134,8 +161,13 @@ export function createPiModule(options: PiModuleOptions = {}): WorkspaceModule {
     apiBaseUrl,
     storageKey: `${storageKey}.sessions`,
     liveSessions: { fetch: createLiveFeed(apiBaseUrl) },
+    resumeSessionInChat: (input) => bridges.resumeInChat(input.sessionFile),
   })
-  const chat = createPiChatModule({ managerApiBaseUrl: apiBaseUrl, storageKey: `${storageKey}.chat` })
+  const chat = createPiChatModule({
+    managerApiBaseUrl: apiBaseUrl,
+    storageKey: `${storageKey}.chat`,
+    openSessionInSessions: (target) => bridges.openSessionInSessions(target),
+  })
 
   const ConfigProvider = config.Provider ?? Passthrough
   const SessionsProvider = sessions.Provider ?? Passthrough
@@ -149,6 +181,7 @@ export function createPiModule(options: PiModuleOptions = {}): WorkspaceModule {
           <SessionsBridge />
           <ChatProvider>
             <ChatBridge />
+            <WireBridges />
             {children}
           </ChatProvider>
         </SessionsProvider>

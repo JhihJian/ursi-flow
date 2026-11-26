@@ -28,6 +28,8 @@
     "test:ursi-flow": "cd apps/ursi-flow && npm test",
     "build:ursi-flow": "cd apps/ursi-flow && npm run build",
     "test:flow-web": "npm run test -w @ursi/flow-web && npm run test -w @ursi/flow-web-server",
-    "build:flow-web": "npm run build -w @ursi/flow-web"
+    "build:flow-web": "npm run build -w @ursi/flow-web",
+    "test:pi-web": "npm run test -w @ursi/pi-web-server && npm run test -w @ursi/pi-web",
+    "build:pi-web": "npm run build -w @ursi/pi-web"
   }
 }

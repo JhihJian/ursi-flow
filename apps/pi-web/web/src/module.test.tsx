@@ -93,21 +93,21 @@ afterEach(() => {
 const MODULE = createPiModule({ apiBaseUrl: '/api/pi', storageKey: 'test.pi' })
 
 /** 外壳里挂载：Provider 只包内容，选中上下文来自 WorkspaceProvider。 */
-function Inner() {
+function Inner({ collapsed }: { collapsed: boolean }) {
   const Provider = MODULE.Provider
   const body = (
     <>
-      <MODULE.Sidebar collapsed={false} collapse={() => undefined} expand={() => undefined} />
+      <MODULE.Sidebar collapsed={collapsed} collapse={() => undefined} expand={() => undefined} />
       <MODULE.Workspace />
     </>
   )
   return Provider ? <Provider>{body}</Provider> : body
 }
 
-function Harness() {
+function Harness({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <WorkspaceProvider>
-      <Inner />
+      <Inner collapsed={collapsed} />
     </WorkspaceProvider>
   )
 }
@@ -142,6 +142,15 @@ describe('Pi Web 模块', () => {
     expect(container.querySelector('[data-view="sessions"]')).not.toBeNull()
     expect(sessionsTab.getAttribute('aria-selected')).toBe('true')
     expect(container.querySelector('[data-view="chat"]')).not.toBeNull()
+  })
+
+  test('折叠态只留一条可点击窄条，不渲染三段切换', async () => {
+    await act(async () => root.render(<Harness collapsed />))
+    await settle()
+    expect(container.querySelectorAll('.pi-switch-tab')).toHaveLength(0)
+    const rail = container.querySelector('.pi-switch-rail')
+    expect(rail).not.toBeNull()
+    expect(rail!.getAttribute('aria-label')).toContain('展开')
   })
 
   test('home 与视图记忆写在同一个前缀下', async () => {
