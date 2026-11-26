@@ -43,7 +43,6 @@ Workbench 管理工作项和工作包，执行器平台（`executor-platform`）
 | Workbench Server | [工作清单、目录与定义](docs/design/workbench/SERVER-WORK-MANAGEMENT.md) |
 | Workbench Web | [工作管理界面](docs/design/workbench/WEB-WORK-MANAGEMENT.md) |
 | SUMM-Todo 看板 | [布局、拖拽与数据流](docs/design/todo-web/DASHBOARD.md) · [执行集成与嵌入形态](docs/design/todo-web/EXECUTION-AND-EMBEDDING.md) · [工作区外壳与模块组合](docs/design/todo-web/WORKSPACE-SHELL.md) |
-| 会话查看工作台 | [模块结构、解析与嵌入](docs/design/session-viewer/SESSION-VIEWER.md) |
 | Pi 会话浏览 | 接口与扫描规则见 [服务端契约](apps/pi-sessions-web/server/HTTP.md) |
 | SSH 终端 | [接入工作区外壳](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) |
 | dae 路由观察台 | [同源代理、页面结构与刷新策略](docs/design/dae-web/OVERVIEW.md) |

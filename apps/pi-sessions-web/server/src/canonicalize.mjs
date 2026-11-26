@@ -4,9 +4,6 @@
  * 组件库（pi-agent-trajectory-viewer）要求首行 `type: "session"`、消息行是
  * `type: "message"` 且带 `message.role`。目录里同时存在老写法（`type: user|assistant`、
  * `uuid/parentUuid`、没有 session 头），这里统一补齐并映射，未知类型原样保留（库会忽略）。
- *
- * 与 `session-viewer/server/src/canonicalize.mjs` 同一份规则：两处都要能独立渲染
- * 同一批会话文件，规则分叉会导致同一个会话在两个页面里长得不一样。
  */
 
 export function detectFormat(row) {

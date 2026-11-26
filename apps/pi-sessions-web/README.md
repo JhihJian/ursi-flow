@@ -74,4 +74,3 @@ cd web && npm run typecheck
 ## 与既有模块的关系
 
 - `apps/pi-web` 是完整的 Pi Web UI，带 agent 运行时；本模块只翻阅历史会话（可删除整条会话），两者不共享代码。
-- `session-viewer` 按 `sessionId` 在服务端预先配置的目录里找单个会话，供看板嵌入；本模块在浏览器里指定根目录并浏览整批会话，定位方式与会话转换规则保持一致（`server/src/canonicalize.mjs` 与它同源）。
