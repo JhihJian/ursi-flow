@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import {
+  currentNodeOf,
   flowAvailability,
   formatTime,
   missingVariables,
@@ -46,10 +47,8 @@ export function FlowWorkspace() {
   const executorTitle = (id: string) =>
     config?.executors.find((executor) => executor.id === id)?.title ?? (id || '未知执行器')
   const variableNames = detail?.variables.map((variable) => variable.name) ?? []
-  // 运行进度：取最后一条带节点的事件，只用来在结构图上标注。
-  const currentRef = run?.events
-    .filter((event) => event.nodeRef !== undefined)
-    .at(-1)?.nodeRef
+  // 运行进度：只标注还在推进或等待确认的运行，已结束的运行没有「当前节点」。
+  const currentRef = run === undefined ? undefined : currentNodeOf(run)
   const startReason =
     availability ?? (missing.length > 0 ? `必填变量未填写：${missing.join('、')}` : null)
 

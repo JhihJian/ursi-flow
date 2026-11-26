@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FlowDetail, LogEvent } from '../api'
 import {
   buildVariables,
+  currentNodeOf,
   draftValue,
   eventSummary,
   flowAvailability,
@@ -135,6 +136,22 @@ describe('状态与文案', () => {
     expect(stopDisabledReason({ status: 'unconfirmed', active: false })).toBeNull()
     expect(stopDisabledReason({ status: 'running', active: false })).toBeNull()
     expect(stopDisabledReason({ status: 'running', active: true })).toBe('运行还在执行')
+  })
+
+  it('只有未结束的运行才标当前节点', () => {
+    const events = [
+      { type: 'node.entered', seq: 1, at: '', nodeRef: 'change' },
+      { type: 'route.selected', seq: 2, at: '', nodeRef: 'change' },
+      { type: 'node.entered', seq: 3, at: '', nodeRef: 'verify' },
+      { type: 'route.selected', seq: 4, at: '', nodeRef: 'verify' },
+      { type: 'run.completed', seq: 5, at: '' },
+    ]
+    expect(currentNodeOf({ status: 'running', events })).toBe('verify')
+    expect(currentNodeOf({ status: 'awaiting_input', events })).toBe('verify')
+    expect(currentNodeOf({ status: 'unconfirmed', events })).toBe('verify')
+    expect(currentNodeOf({ status: 'completed', events })).toBeUndefined()
+    expect(currentNodeOf({ status: 'failed', events })).toBeUndefined()
+    expect(currentNodeOf({ status: 'interrupted', events })).toBeUndefined()
   })
 
   it('运行列表只展示前几项关键变量，过长时收尾', () => {

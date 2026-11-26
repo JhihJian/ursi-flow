@@ -195,6 +195,23 @@ function previewValue(value: unknown): string {
   return text.length > 24 ? `${text.slice(0, 23)}…` : text
 }
 
+/**
+ * 运行进度标记：只有还在推进或等待确认的运行才有「当前节点」。
+ * 已完成、失败、已停止的运行没有下一步，不再标节点。
+ */
+export function currentNodeOf(run: {
+  status: RunStatus
+  events: LogEvent[]
+}): string | undefined {
+  if (
+    run.status !== 'running' &&
+    run.status !== 'awaiting_input' &&
+    run.status !== 'unconfirmed'
+  )
+    return undefined
+  return run.events.filter((event) => event.nodeRef !== undefined).at(-1)?.nodeRef
+}
+
 export function formatTime(iso: string | undefined): string {
   if (iso === undefined) return '-'
   const date = new Date(iso)
