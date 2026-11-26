@@ -1,6 +1,6 @@
 # Server v2：业务工作包与执行器平台的边界
 
-Workbench 管理工作规划、生成器、工作包和业务目录。独立的[执行器平台](../../../executor-platform/server/SPEC.md)管理配置包、资源与执行器修订、后端绑定、执行尝试和只读制品。Workbench 不持有 Flow 包、运行配置或节点历史：这些能力已随 Flow 宿主退出，Flow 只剩 [Flow Runtime](../../../flow-runtime/SPEC.md) 的推进库。两个服务各自写入私有存储，通过引用和 API 交换数据，不共享目录根。
+Workbench 管理工作规划、生成器、工作包和业务目录。独立的[执行器平台](../../../executor-platform/server/SPEC.md)管理配置包、资源与执行器修订、后端绑定、执行尝试和只读制品。Workbench 不持有 Flow 包、运行配置或节点历史：这些能力已随 Flow 宿主退出，Flow 只剩 [Flow Runtime](../../../apps/ursi-flow/runtime/SPEC.md) 的推进库。两个服务各自写入私有存储，通过引用和 API 交换数据，不共享目录根。
 
 ## 从清单项到业务文件
 

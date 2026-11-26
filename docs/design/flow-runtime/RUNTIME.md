@@ -8,9 +8,15 @@ Flow Runtime 收敛为一个只做一件事的库：把 FLOW.md 推到最终结�
 
 收敛后的价值主线只有一句：**给定 FLOW.md 和一个执行器，跑出一份最终结果，并把每一步原样记下来。** 其余都是可选宿主。
 
+## 包结构
+
+`apps/ursi-flow` 是交付包，三个模块按目录划分，依赖单向：`core` <- `executor` <- `runtime` <- 包入口（`run.ts`、`cli.ts`）。执行器契约放在 `executor/`，引擎从那里取类型，因此换适配器不需要改引擎。
+
+先走通闭环用的是 `executor/adapters/fake.ts`：没有模型与子进程，按脚本或第一条结果边作答。真实适配器只需要实现同一契约的两个方法。
+
 ## 三部分
 
-### 引擎 `src/engine`
+### 引擎 `runtime/engine`
 
 输入 Flow 原文、启动变量与工作目录，输出终态、待确认或失败。
 
@@ -21,13 +27,13 @@ const result = await engine.start({ flow: { id, text, path }, variables, cwd })
 
 - 推进规则完全来自 Flow Core 的 `ready` / `submit`：解析、变量校验、结果边合法性、下一跳输入都由它决定，引擎不复制规则。
 - 每一步把节点名、渲染好的提示词、当前变量、可选结果与被拒原因交给执行器；执行器返回 `{ outcome, variables? }`。
-- 执行器是唯一外部依赖：`prompt(agentName: string, instruct: Instruct): Promise<ExecutorReply>`。
+- 执行器是唯一外部依赖，契约由 `executor/` 拥有：`prompt(agentName, instruct)` 与 `command(invocation)`。引擎只依赖契约，适配器由使用方提供。
 - 同一节点连续三次提交不允许的结果时本次运行失败，保留最后一次拒绝信息。
 - `confirm` 节点不调用执行器，返回 `awaiting_input` 与待决选项；`respond(runId, stepId, result)` 校验后继续。
 - `resume(runId)` 从快照继续；等待中的运行只重新给出待决确认，不重复执行。
 - `start` 的 Flow 已被执行过时抛冲突，不重复创建。
 
-### 日志实体 `src/logs`
+### 日志实体 `runtime/logs`
 
 过程日志是实体定义，不是字符串。每条记录带 `runId`、单调递增的 `seq` 和 `at`，类型覆盖：运行开始、节点进入（含提示词与变量）、执行器回执、被拒原因、确认待决、确认应答、选边去向、恢复、完成与失败。
 
@@ -38,7 +44,7 @@ const result = await engine.start({ flow: { id, text, path }, variables, cwd })
 
 `LogStore` 是写入端口，引擎只依赖这四个方法：`create`、`append`、`saveSnapshot`、`load`。
 
-### 文件存储 `src/store`
+### 文件存储 `runtime/store`
 
 `FileLogStore` 每条运行一个目录：
 
@@ -69,7 +75,7 @@ Flow Runtime 只做推进，不提供守护进程、Unix socket、HTTP、MCP ada
 
 这样切分的直接收益：
 
-- 库只依赖 `ursi-flow-core`，可以独立安装、独立测试，不需要模型凭据、不需要 socket。
+- 库只依赖同包的 `core/` 与 `executor/` 契约，可以独立测试，不需要模型凭据、不需要 socket。
 - 换执行器等于换一个 `prompt` 实现，不需要改引擎。
 - 宿主崩溃、重启、并发上限与凭据隔离都不属于库的语义。
 
@@ -88,8 +94,8 @@ Flow Core 表达四种动作：`新建Agent`、`confirm`、`执行自定义命�
 
 ## 验收
 
-- `cd flow-runtime && npm test`：引擎与存储用例，不需要模型凭据。
-- `cd flow-core && npm test`：解析、变量、命令与并行推进。
+- `cd apps/ursi-flow && npm test`：SDK 用例覆盖解析、变量、命令与并行推进；引擎用例覆盖推进、确认、拒绝与恢复；闭环与命令行用例覆盖 `FLOW.md` 到结果。
+- `cd apps/ursi-flow && npm run test:pack`：打包后在仓库外离线安装并跑 SDK 用例。
 - `cd workbench/server && cargo test`：Workbench 只保留 v2 业务接口。
 - `spec_validate`：模块结构与文档引用有效。
 

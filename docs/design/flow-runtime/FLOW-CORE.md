@@ -1,6 +1,6 @@
 # Flow Core SDK 设计
 
-`flow-core` 根据 `FLOW.md` 给出当前待办，再根据回执决定下一步。`flow-runtime` 执行待办、收取回执并保存运行。首步和后续步骤使用同一种待办，也使用同一种回执。
+`apps/ursi-flow/core` 根据 `FLOW.md` 给出当前待办，再根据回执决定下一步。`apps/ursi-flow/runtime` 执行待办、收取回执并保存运行。首步和后续步骤使用同一种待办，也使用同一种回执。
 
 ## 公开接口
 

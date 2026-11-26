@@ -24,3 +24,4 @@ node_modules
 /apps/pi-manager-web/web/dist/
 /apps/pi-sessions-web/web/dist/
 /apps/pi-sessions-web/web/node_modules/
+/apps/ursi-flow/dist/

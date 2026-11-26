@@ -12,7 +12,7 @@ references:
 
 ## 功能意图
 
-Server 通过 `/api/v2` 管理工作规划、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。Server 不再提供 Flow 管理入口，也不启动子进程；Flow 只剩 [Flow Runtime](../../flow-runtime/SPEC.md) 的推进库。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
+Server 通过 `/api/v2` 管理工作规划、工作包、业务目录、生成器和 MCP 资源来源。它以 Workbench 消费者身份向独立执行器平台选版和提交尝试，平台独占配置包、执行器及资源定义的管理权。Server 不再提供 Flow 管理入口，也不启动子进程；Flow 只剩 [Flow Runtime](../../../apps/ursi-flow/runtime/SPEC.md) 的推进库。数据边界见 [Server v2 设计](../../docs/design/workbench/SERVER-WORK-MANAGEMENT.md)。
 
 ## 关键功能与验收
 
