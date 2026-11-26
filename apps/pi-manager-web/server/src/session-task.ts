@@ -7,9 +7,15 @@ import { HomeError } from './pi-home.ts'
 /**
  * 一次性会话任务：用 pi SDK 在指定 pi home 下起一个 AgentSession，跑完一轮就结束。
  *
- * 这里的 agent 身份就是 pi home 本身：一份 home 有自己的一套模型、凭据、skills 与
- * agents，因此"不同 home 里的同名 profile"也是不同 agent。调用方用 home 的 name 指定
- * agent，服务端再映射到该 home 的路径，agentDir 即指向它。
+ * 两层身份，不要混淆：
+ * - **agent 是一份 pi home**。它自带模型、凭据、skills、subagent 定义与 MCP 设置，
+ *   所以不同 home 里的同名 subagent 属于不同 agent。调用方用 home 的 name 指定。
+ * - **subagent 是 agents/*.md 定义的一种"特别的工具"**：会话里的 Agent 工具按
+ *   `subagent_type` 派生一个子会话，profile 文件就是该取值的定义（正文即子会话的
+ *   系统提示，frontmatter 约束工具集与模型）。它不是可选人设，而是工具的参数枚举。
+ *
+ * 因此本接口的 `subagent` 参数含义是「直接以该 subagent 的定义起一个会话」，
+ * 等价于父会话调用一次 Agent 工具；省略时起普通主会话，由它自己决定是否派生。
  *
  * 与管理台其余部分的分工：其他模块只读写配置文件，不启动会话；这里明确是"执行"
  * 能力，因此单独成模块、单独限流、并且只接受回环来源。session 写回该 home 的
@@ -26,8 +32,8 @@ export interface SessionTask {
   /** agent 身份 = 这份 pi home 在清单里的 name。 */
   agent: string
   home: string
-  /** 可选的 agents/<name>.md 子角色，用于追加系统提示。 */
-  profile: string | null
+  /** 本次按其定义执行的 subagent（agents/<name>.md）；空表示普通主会话。 */
+  subagent: string | null
   instruct: string
   cwd: string
   state: TaskState
@@ -48,8 +54,8 @@ export interface StartOptions {
   agent: string
   /** 已解析的 pi home 路径：所有配置与 session 都落在这里。 */
   home: string
-  /** 可选的 agents/<name>.md 子角色。 */
-  profile: string | null
+  /** 可选的 subagent 类型（agents/<name>.md）；等价于 Agent 工具的 subagent_type。 */
+  subagent: string | null
   instruct: string
   cwd?: string
   model?: string
@@ -104,9 +110,12 @@ export function listTasks(home?: string): SessionTask[] {
   return filtered.sort((a, b) => b.startedAt - a.startedAt)
 }
 
-/** 找 agent profile：先按文件名，再按 frontmatter 的 name（都不区分大小写）。 */
-export function resolveAgentProfile(home: string, agent: string): AgentProfile {
-  const wanted = agent.trim().toLowerCase()
+/**
+ * 找一个 subagent 定义：先按文件名，再按 frontmatter 的 name（都不区分大小写）。
+ * 这些文件就是会话内 Agent 工具的 subagent_type 取值。
+ */
+export function resolveSubagent(home: string, name: string): AgentProfile {
+  const wanted = name.trim().toLowerCase()
   const profiles = listAgentProfiles(home)
   const found = profiles.find(
     (p) => p.file.replace(/\.md$/i, '').toLowerCase() === wanted || p.name.toLowerCase() === wanted,
@@ -114,16 +123,16 @@ export function resolveAgentProfile(home: string, agent: string): AgentProfile {
   if (!found) {
     const known = profiles.map((p) => p.file.replace(/\.md$/i, ''))
     throw new HomeError(
-      `该 pi home 里没有 agent profile：${agent}${known.length ? `（可选：${known.join('、')}）` : '（agents/ 目录为空）'}`,
+      `该 pi home 里没有这个 subagent：${name}${known.length ? `（可选：${known.join('、')}）` : '（agents/ 目录为空）'}`,
       404,
-      'agent_not_found',
+      'subagent_not_found',
     )
   }
   return found
 }
 
-/** 从 profile 的 frontmatter 取一个标量值（extraKeys 是 "key: value" 原样行）。 */
-function profileScalar(profile: AgentProfile, key: string): string | null {
+/** 从 subagent 定义的 frontmatter 取一个标量值（extraKeys 是 "key: value" 原样行）。 */
+function subagentScalar(profile: AgentProfile, key: string): string | null {
   for (const line of profile.extraKeys) {
     const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(line.trim())
     if (m && m[1].toLowerCase() === key.toLowerCase()) {
@@ -186,7 +195,7 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
     )
   }
 
-  const profile = options.profile ? resolveAgentProfile(options.home, options.profile) : null
+  const subagent = options.subagent ? resolveSubagent(options.home, options.subagent) : null
   const cwd = resolveCwd(options.cwd)
   const sdk = await loadSdk()
 
@@ -195,19 +204,21 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
   const loader = new sdk.DefaultResourceLoader({
     cwd,
     agentDir: options.home,
-    // profile 正文追加在 pi 默认系统提示之后：替换会把工具协议一并丢掉。
-    ...(profile ? { appendSystemPromptOverride: (base: string[]) => [...base, profile.body] } : {}),
+    // subagent 正文就是这个子会话的系统提示：追加在 pi 默认系统提示之后，
+    // 替换会把工具协议一并丢掉。
+    ...(subagent ? { appendSystemPromptOverride: (base: string[]) => [...base, subagent.body] } : {}),
   })
   await loader.reload()
 
-  // 模型与思考级别：显式入参 > profile frontmatter > home 的 settings（SDK 自己读）。
-  const modelRef = options.model ?? (profile ? profileScalar(profile, 'model') : null)
-  const effectiveThinking = thinking ?? (profile ? profileScalar(profile, 'thinking') : null)
+  // subagent 定义的其余约束：frontmatter 的 tools / model / thinking。
+  const subagentTools = subagent ? parseSubagentTools(subagentScalar(subagent, 'tools')) : null
+  const modelRef = options.model ?? (subagent ? subagentScalar(subagent, 'model') : null)
+  const effectiveThinking = thinking ?? (subagent ? subagentScalar(subagent, 'thinking') : null)
   if (effectiveThinking && !THINKING_LEVELS.includes(effectiveThinking as ThinkingLevel)) {
     throw new HomeError(
-      `profile 里的 thinking 不是合法值：${effectiveThinking}（可选 ${THINKING_LEVELS.join(' / ')}）`,
+      `subagent 里的 thinking 不是合法值：${effectiveThinking}（可选 ${THINKING_LEVELS.join(' / ')}）`,
       400,
-      'invalid_profile',
+      'invalid_subagent',
     )
   }
 
@@ -229,6 +240,8 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
     ...(model ? { model } : {}),
     ...(modelRuntime ? { modelRuntime } : {}),
     ...(effectiveThinking ? { thinkingLevel: effectiveThinking as ThinkingLevel } : {}),
+    // subagent 声明的工具集就是它的作用域；未声明则沿用 pi 的默认工具。
+    ...(subagentTools && subagentTools.length > 0 ? { tools: subagentTools } : {}),
   })
 
   const sessionId = session.sessionManager.getSessionId()
@@ -236,7 +249,7 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
     sessionId,
     agent: options.agent,
     home: options.home,
-    profile: profile ? profile.file.replace(/\.md$/i, '') : null,
+    subagent: subagent ? subagent.file.replace(/\.md$/i, '') : null,
     instruct,
     cwd,
     state: 'running',
@@ -301,6 +314,15 @@ async function runTask(args: { session: AgentSession; task: SessionTask }): Prom
     session.dispose()
     live.delete(task.sessionId)
   }
+}
+
+/** subagent 的 `tools:` 是逗号分隔的工具名；空值或 "none" 表示不给工具。 */
+export function parseSubagentTools(raw: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name && name.toLowerCase() !== 'none')
 }
 
 /** "provider/modelId" 解析到 Model；找不到就明确报错，不静默回落到默认模型。 */

@@ -324,7 +324,7 @@ route('POST', '/api/session/prompt', async ({ body }) => {
   const payload = await body<{
     agent?: unknown
     instruct?: unknown
-    profile?: unknown
+    subagent?: unknown
     cwd?: unknown
     model?: unknown
     thinkingLevel?: unknown
@@ -338,7 +338,10 @@ route('POST', '/api/session/prompt', async ({ body }) => {
   const task = await startSessionTask({
     agent: agent.name,
     home,
-    profile: typeof payload.profile === 'string' && payload.profile.trim() ? payload.profile.trim() : null,
+    subagent:
+      typeof payload.subagent === 'string' && payload.subagent.trim()
+        ? payload.subagent.trim()
+        : null,
     instruct: payload.instruct,
     cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
     model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
@@ -352,7 +355,7 @@ route('POST', '/api/session/prompt', async ({ body }) => {
     sessionFile: task.sessionFile,
     state: task.state,
     agent: task.agent,
-    profile: task.profile,
+    subagent: task.subagent,
     startedAt: task.startedAt,
   }
 })
