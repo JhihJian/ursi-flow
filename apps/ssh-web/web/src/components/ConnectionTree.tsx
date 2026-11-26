@@ -37,7 +37,9 @@ export function ConnectionTree() {
   }
 
   const openContextMenu = (event: MouseEvent, connection: Connection | null) => {
+    // 行菜单与树的空白处菜单挂在同一条冒泡链上：不拦住会让行菜单被空白处菜单覆盖。
     event.preventDefault()
+    event.stopPropagation()
     const items: MenuState['items'] = [
       { label: 'New connection', onSelect: () => setEditor({ kind: 'new' }) },
     ]
