@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../api/client'
-import type { ModelCatalog, ModelsListing, ProviderView } from '../../api/types'
+import type {
+  DiscoveryResult,
+  ModelCatalog,
+  ModelsListing,
+  ProbeResult,
+  ProviderView,
+} from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
@@ -111,7 +117,8 @@ export function ModelsSection({ home }: { home: string }) {
       {creating ? (
         <ProviderEditor
           key="__new__"
-          provider={{ name: '', baseUrl: '', apiKeyMasked: null, hasApiKey: false, modelCount: 0, entry: { baseUrl: '', models: {} } }}
+          home={home}
+          provider={{ name: '', baseUrl: '', apiKeyMasked: null, hasApiKey: false, modelCount: 0, entry: { baseUrl: '', models: [] } }}
           isNew
           onSave={(name, entry) => saveOne(name, entry, `新增 provider ${name}`)}
           onCancel={() => setCreating(false)}
@@ -119,6 +126,7 @@ export function ModelsSection({ home }: { home: string }) {
       ) : selectedProvider ? (
         <ProviderEditor
           key={selectedProvider.name}
+          home={home}
           provider={selectedProvider}
           isNew={false}
           onSave={(name, entry) => saveOne(name, entry, `保存 provider ${name}`)}
@@ -129,13 +137,67 @@ export function ModelsSection({ home }: { home: string }) {
   )
 }
 
+function modelsOf(entry: Record<string, unknown>): Array<Record<string, unknown>> {
+  const models = entry.models
+  if (Array.isArray(models)) {
+    return models.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
+  }
+  if (models && typeof models === 'object') {
+    return Object.entries(models as Record<string, unknown>)
+      .filter(([, value]) => value !== null && typeof value === 'object' && !Array.isArray(value))
+      .map(([id, value]) => ({ id, ...(value as Record<string, unknown>) }))
+  }
+  return []
+}
+
+function modelIdOf(model: Record<string, unknown>): string {
+  return typeof model.id === 'string' ? model.id : ''
+}
+
+function ModelRows({ models }: { models: Array<Record<string, unknown>> }) {
+  if (models.length === 0) return <p className="mono-dim">该 provider 还没有模型。</p>
+  return (
+    <table className="item-table model-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th className="col-size">Context</th>
+          <th className="col-size">Max out</th>
+          <th className="col-size">能力</th>
+        </tr>
+      </thead>
+      <tbody>
+        {models.map((model, index) => {
+          const capabilities = [
+            model.reasoning === true ? '思考' : null,
+            Array.isArray(model.input) && model.input.includes('image') ? '图片' : null,
+          ].filter(Boolean)
+          return (
+            <tr key={`${modelIdOf(model)}-${index}`} title={typeof model.baseUrl === 'string' ? model.baseUrl : undefined}>
+              <td>
+                <div className="cell-title">{modelIdOf(model) || '（缺 id）'}</div>
+                <div className="cell-sub">{typeof model.name === 'string' ? model.name : '—'}</div>
+              </td>
+              <td className="col-size">{typeof model.contextWindow === 'number' ? model.contextWindow.toLocaleString('en-US') : '—'}</td>
+              <td className="col-size">{typeof model.maxTokens === 'number' ? model.maxTokens.toLocaleString('en-US') : '—'}</td>
+              <td className="col-size">{capabilities.length > 0 ? capabilities.join(' / ') : '—'}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
 function ProviderEditor({
+  home,
   provider,
   isNew,
   onSave,
   onDelete,
   onCancel,
 }: {
+  home: string
   provider: ProviderView
   isNew: boolean
   onSave: (name: string, entry: Record<string, unknown>) => Promise<boolean>
@@ -145,7 +207,23 @@ function ProviderEditor({
   const [name, setName] = useState(provider.name)
   const [text, setText] = useState(() => JSON.stringify(provider.entry, null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [testModelId, setTestModelId] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<ProbeResult | null>(null)
+  const [discovering, setDiscovering] = useState(false)
+  const [discovered, setDiscovered] = useState<DiscoveryResult | null>(null)
   const nameValid = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)
+
+  const models = useMemo(() => {
+    try {
+      const parsed = JSON.parse(text) as unknown
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? modelsOf(parsed as Record<string, unknown>)
+        : []
+    } catch {
+      return []
+    }
+  }, [text])
 
   function parseDraft(): Record<string, unknown> | null {
     try {
@@ -166,6 +244,57 @@ function ProviderEditor({
     const entry = parseDraft()
     if (!entry || !nameValid) return
     await onSave(name, entry)
+  }
+
+  async function runTest() {
+    const entry = parseDraft()
+    if (!entry || !nameValid) return
+    const modelId = testModelId.trim() || models[0]?.id
+    const model = models.find((item) => modelIdOf(item) === modelId) ?? { id: modelId }
+    if (typeof model.id !== 'string' || !model.id) {
+      setTestResult({ ok: false, error: '先填一个模型 id' })
+      return
+    }
+    setTesting(true)
+    setTestResult(null)
+    try {
+      setTestResult(await api.testModel(home, name, entry, model as Record<string, unknown>))
+    } catch (err) {
+      setTestResult({ ok: false, error: describeError(err) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  async function runDiscover() {
+    const entry = parseDraft()
+    if (!entry || !nameValid) return
+    setDiscovering(true)
+    setDiscovered(null)
+    try {
+      setDiscovered(await api.discoverModels(home, name, entry))
+    } catch (err) {
+      setDiscovered({ models: [], endpoint: describeError(err) })
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  function appendDiscovered() {
+    if (!discovered) return
+    const entry = parseDraft()
+    if (!entry) return
+    const existing = modelsOf(entry)
+    const known = new Set(existing.map(modelIdOf))
+    const added = discovered.models.filter((model) => !known.has(model.id))
+    if (added.length === 0) return
+    const nextModels: Array<Record<string, unknown>> = [
+      ...existing,
+      ...added.map((model) => ({ ...model }) as Record<string, unknown>),
+    ]
+    const next = { ...entry, models: nextModels }
+    setText(JSON.stringify(next, null, 2))
+    setDiscovered({ ...discovered, models: [] })
   }
 
   return (
@@ -190,7 +319,8 @@ function ProviderEditor({
               />
             </Field>
           </div>
-          <Field label="条目 JSON">
+
+          <Field label="条目 JSON" hint="pi 的 provider 条目：baseUrl / api / apiKey / headers / models / modelOverrides。">
             <textarea
               className="textarea code"
               value={text}
@@ -199,6 +329,64 @@ function ProviderEditor({
             />
             {jsonError ? <span className="field-hint">{jsonError}</span> : null}
           </Field>
+
+          <div className="detail-block">
+            <div className="section-head-inline">
+              <span className="field-label">模型</span>
+              <span className="mono-dim">{models.length} 个 · 对齐 pi --list-models 的列</span>
+            </div>
+            <ModelRows models={models} />
+          </div>
+
+          <div className="detail-grid">
+            <Field label="测试连接" hint="用当前草稿与该 home 的 auth.json 发一次真实请求（16 token，20s 超时）。">
+              <div className="field-row">
+                <input
+                  className="input"
+                  value={testModelId}
+                  list="provider-model-ids"
+                  placeholder={models[0]?.id ? String(models[0].id) : 'model id'}
+                  onChange={(e) => setTestModelId(e.target.value)}
+                />
+                <datalist id="provider-model-ids">
+                  {models.map((model) => (
+                    <option key={modelIdOf(model)} value={modelIdOf(model)} />
+                  ))}
+                </datalist>
+                <button type="button" className="btn small" disabled={testing} onClick={() => void runTest()}>
+                  {testing ? '测试中…' : '测试'}
+                </button>
+              </div>
+              {testResult ? (
+                <span className={`field-hint${testResult.ok ? '' : ' error-text'}`}>
+                  {testResult.ok
+                    ? `连接成功：${testResult.latencyMs ?? 0}ms${testResult.status ? ` · HTTP ${testResult.status}` : ''}${testResult.responseText ? ` · ${testResult.responseText}` : ''}`
+                    : `测试失败：${testResult.error ?? '未知错误'}`}
+                </span>
+              ) : null}
+            </Field>
+
+            <Field label="发现模型" hint="请求上游 /models（只读，不改文件）；把缺失的模型追加到上面的 JSON。">
+              <div className="field-row">
+                <button type="button" className="btn small" disabled={discovering} onClick={() => void runDiscover()}>
+                  {discovering ? '请求中…' : '从上游拉取'}
+                </button>
+                {discovered && discovered.models.length > 0 ? (
+                  <button type="button" className="btn small btn-primary" onClick={appendDiscovered}>
+                    追加缺失的 {discovered.models.length} 个
+                  </button>
+                ) : null}
+              </div>
+              {discovered ? (
+                <span className="field-hint">
+                  {discovered.models.length > 0
+                    ? `${discovered.endpoint} · ${discovered.models.length} 个模型`
+                    : discovered.endpoint || '（没有模型）'}
+                </span>
+              ) : null}
+            </Field>
+          </div>
+
           <div className="field-row">
             <button type="button" className="btn btn-primary" disabled={!nameValid} onClick={() => void commit()}>
               保存

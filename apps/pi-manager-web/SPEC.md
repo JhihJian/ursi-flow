@@ -1,5 +1,7 @@
 ---
 parent: ../../SPEC.md
+references:
+  - docs/settings-alignment.md
 ---
 
 # Pi Manager Web
@@ -32,7 +34,10 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- 「常规」分区按 pi 的 settings schema 编辑：默认模型（`defaultProvider` + `defaultModel` 两个独立字符串，一次写入，同时填或同时清空）、默认思考级别（`off`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`）、默认工具（`+name`/`-name` 修饰列表）、codemode（`mode` 为 `on`/`only` 加可选 `inlineBudget`）；写入只触碰受管 key，文件里其余 key 原样保留。
+- 「常规」分区按 pi 的 settings schema 编辑：默认模型（`defaultProvider` + `defaultModel` 两个独立字符串，一次写入，同时填或同时清空）、默认思考级别（`off`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`）、默认工具、codemode（`mode` 为 `on`/`only` 加可选 `inlineBudget`）；写入只触碰受管 key，文件里其余 key 原样保留。
+- 内置工具是一组开关（`read`/`grep`/`find`/`ls`/`edit`/`write`/bash）：服务端先按 pi 的规则把 `defaultTools` 解析成实际工具集，再写回最小 `+name`/`-name` 条目；勾选等于 pi 默认组合时删除该 key，扩展工具与未知条目原样保留。原始修饰列表仍可编辑。
+- Windows 上提供 PowerShell 代替 bash 的开关，写回普通名字的工具集；非 Windows 请求该接口返回 400。
+- 「缓存未命中提示」开关对应 `showCacheMissNotices`：开写 `true`，关删除 key。
 - 默认模型输入框按「已知模型清单」补全：清单合并 `enabledModels`、`models.json` 自建 provider 与 `models-store.json` 的运行目录，由 `GET /api/models/catalog` 提供。
 - 写 `settings.json` 用 2 空格缩进、不带结尾换行，与 pi 自身的写法一致，避免互相改写产生无意义 diff。
 - 「插件」分区列出 `packages` 条目与 `npm/` 安装目录核对结果；string 条目禁用编码为四空数组 object，启用还原；带资源过滤列表（extensions/skills/prompts/themes 非空）的条目拒绝禁用并解释原因；移除条目不删 `npm/` 目录。
@@ -93,13 +98,16 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 - 列出 pi home `skills/` 目录全部 skill（name、description、所在子目录），支持按名称与描述过滤；子目录读取失败单独标注，不阻塞其余条目。
 - 单个 skill 的 `disable-model-invocation` 开关以 frontmatter 行级切换写回：启用/禁用只增删或修改该行，正文逐字节不变，CRLF/LF 保持；改动前备份 `SKILL.md.bak-manager`。
+- 选中 skill 的详情展示根级 frontmatter 原条目（含缩进续行）与正文预览，正文逐字来自 `SKILL.md`，不重新解析 Markdown。
 - 仅全局 `skills/` 可写；其他来源只读展示。
 
 ### 管理 Subagent
 
 #### 验收
 
-- 「Subagent」分区列出 `agents/` 目录的 subagent 定义（name、description、扩展 frontmatter key、正文预览）——这些就是会话内 Agent 工具的 `subagent_type` 取值；表单编辑保存为 `agents/<name>.md`，未知 frontmatter key 原样保留；删除有确认。
+- 「Subagent」分区列出 `agents/` 目录的 subagent 定义（name、description、启用状态）——这些就是会话内 Agent 工具的 `subagent_type` 取值；删除有确认。
+- profile 表单按 pi-web 的受管 key 结构化编辑：`display_name`、`model`、`thinking`、`tools`（内置工具勾选加 `ext:` 等扩展工具）、`load_skills`、`load_extensions`、`codemode`（off/inherit/on）、`mcp`（off/on）、`enabled`、`inherit_context`、`run_in_background`、`prompt_mode`、`max_turns`、`color`、`isolation`、`persist_session`，正文是系统提示词。
+- 未受管的 frontmatter key 按根级块逐行原样保留（含缩进续行）；`skills:` / `extensions:` 白名单只读展示、保存不改写，开关只写 `load_skills` / `load_extensions`。新增 profile 不为默认值补写多余 key。
 - 内置 agent 开关（builtInEnabled、disabledBuiltIns、maxConcurrent）写入 `agents/settings.json`，不触碰主 `settings.json`。
 - profile 写入走同一乐观锁与备份机制；项目级 `.pi/agents/` 不在本页范围。
 
@@ -108,8 +116,14 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 #### 验收
 
 - 「MCP」分区按 `mcp.json` 的 `mcpServers` 条目列出 server（传输方式摘要），详情以 JSON 编辑，合并写回（保存单条不影响其余，置 null 删除）。
-- env/headers 里的字面量密钥回显为掩码（名字含凭据词或值是 `Bearer <token>` 短语）；原样提交掩码时服务端还原为原文，改成新值则写新值；`${VAR}` 引用标注后原样保留；`!command` 值标注警示且从不执行。
-- 「自定义模型」分区按 `models.json` 的 `providers` 条目编辑（baseUrl、apiKey、models 数组），合并写回语义同上；文件为 JSONC 时 UI 提示写回是纯 JSON、注释会丢。
+- 字面量密钥回显为掩码，覆盖 env/headers 值、`oauth.clientSecret`、URL 的 userinfo 与查询参数、command 与 args 里 `--token` 这类选项值；`${VAR}` 引用与 `!command` 原样保留并标注，从不展开或执行。
+- 遮蔽是可逆的：提交值与“原文的遮蔽形式”一致时写回原文（包括 URL/命令里的局部遮蔽），改成新值则写新值，占位符不会落到磁盘。
+- 条目含不可见/控制/零宽字符时，详情标出这些字段的路径。
+- 详情给出传输方式、目标（command/url）、cwd、env 与 header 名；`enabled` 与 `exposure` 有独立开关，只改这两个键（`enabled: true` 与 `exposure: codemode` 写回时删键）。
+- 「自定义模型」分区按 `models.json` 的 `providers` 条目编辑（baseUrl、api、apiKey、headers、models、modelOverrides），合并写回语义同上；文件为 JSONC 时 UI 提示写回是纯 JSON、注释会丢。
+- 保存前拒绝 pi 会丢弃的条目：空对象，以及自带模型却写 `oauth` 不写 `baseUrl` 的自定义 provider；只写 `name` / `api` 的内置覆盖条目放行。非法条目返回 400 且不写盘；`models.json` 读不出时 409 拒绝覆盖，原文件保留。
+- provider 详情列出草稿里的模型与 Context / Max out / 推理 / 图片列。
+- 「测试连接」用临时 `models.json` 加该 home 的 `auth.json` 起 `ModelRuntime`，对选中模型发一次 16 token 请求（20s 超时，返回耗时与状态）；「从上游拉取」请求 provider 的 `/models` 并把缺失模型追加到草稿，两者都不改磁盘。草稿的 `baseUrl` 与磁盘不同时不携带磁盘凭据，`!command` 凭据直接拒绝测试（管理台不执行命令），掩码形式的 header 不外发。
 - 分区底部只读展示模型来源汇总：当前默认模型、`enabledModels` 条数、`models.json` 自建 provider 数，以及 `models-store.json` 缓存的内置 provider 目录（provider 名与模型数）。`models-store.json` 只读展示，不参与写回；由 `extensions/providers/` 注册的 provider 不写任何配置文件，页面明确说明管理台按文件管理、不加载扩展。
 - 首次保存创建文件（含 `mcpServers`/`providers` 包裹层）；运行状态与工具发现由 pi 会话负责，管理台不 spawn。
 
@@ -168,6 +182,6 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回与心跳过滤。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；`frontmatter.ts` 按根级块解析与渲染 agent/skill 的 frontmatter；各域模块（`settings-file`、`tool-settings`、`skills`、`agents`、`models-auth`、`plugins`、`mcp-file`、`mcp-mask`）只做文件级读写；`models-check.ts` 镜像 pi 会拒绝的 provider 条目规则；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-probe.ts` 做连接测试与上游模型发现；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回、frontmatter 往返与心跳过滤。
 - `extension/`：`pi-session-heartbeat.ts` 是安装到 pi home 的扩展，负责写会话心跳文件；`README.md` 记录安装方式与文件约定。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与八个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`sections/SessionsSection.tsx` 是只读会话运行态；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与八个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`sections/SessionsSection.tsx` 是只读会话运行态，`sections/AgentsSection.tsx` 是结构化 profile 表单，`sections/McpSection.tsx` 与 `sections/ModelsSection.tsx` 的详情分别带 MCP 开关/摘要与模型测试/发现；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

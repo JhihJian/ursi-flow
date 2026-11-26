@@ -1,4 +1,5 @@
-import { copyFile, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { copyFile, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { statSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -78,18 +79,37 @@ export async function writeSnapshot(
     }
   }
   const dir = dirname(file)
-  const tmp = join(dir, `.${basename(file)}.manager-tmp`)
+  // 每次写用唯一临时名：两个并发保存不会互相截断对方的临时文件。
+  const tmp = join(dir, `.${basename(file)}.${process.pid}.${randomUUID()}.manager-tmp`)
   const text = render()
   await writeFile(tmp, text, { mode: 0o600 })
   try {
-    const existing = await stat(file)
-    if (existing.isFile()) {
-      await copyFile(file, join(dir, `${basename(file)}.bak-manager`))
+    // 写完临时文件后再校验一次 revision，缩短「校验 → rename」之间的窗口。
+    if (expectedRevision !== undefined) {
+      let current = ''
+      try {
+        current = await currentRevision(file)
+      } catch {
+        current = ''
+      }
+      if (current !== expectedRevision) {
+        await unlink(tmp).catch(() => {})
+        throw new ConflictError('文件已被其他进程修改，请刷新后重试（写入前复核失败）')
+      }
     }
-  } catch {
-    // 目标不存在（首次创建）时没有可备份的内容。
+    try {
+      const existing = await stat(file)
+      if (existing.isFile()) {
+        await copyFile(file, join(dir, `${basename(file)}.bak-manager`))
+      }
+    } catch {
+      // 目标不存在（首次创建）时没有可备份的内容。
+    }
+    await rename(tmp, file)
+  } catch (error) {
+    await unlink(tmp).catch(() => {})
+    throw error
   }
-  await rename(tmp, file)
 }
 
 function basename(file: string): string {

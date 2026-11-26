@@ -1,14 +1,35 @@
 import type http from 'node:http'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
 import { HomeRegistry, type HomeEntry } from './homes.ts'
 import { startSessionTask, getTask, listTasks, cancelSessionTask, taskCapacity } from './session-task.ts'
 import { readLiveSessions } from './live-sessions.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
+import {
+  SETTINGS_BUILTIN_TOOLS,
+  assertBuiltinToolNames,
+  builtinToolsOf,
+  isPowerShellToolEnabled,
+  readDefaultTools,
+  resolvedToolsOf,
+  withBuiltinTools,
+  withPowerShell,
+} from './tool-settings.ts'
 import { ConflictError } from './rw.ts'
-import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
-import { listAgentProfiles, saveAgentProfile, deleteAgentProfile, readAgentsSettings, writeAgentsSettings, renderProfile } from './agents.ts'
-import { readMcp, mergeMcp } from './mcp-file.ts'
+import { listSkills, readSkillContent, toggleSkill } from './skills.ts'
+import {
+  listAgentProfiles,
+  readAgentProfile,
+  saveAgentProfile,
+  deleteAgentProfile,
+  readAgentsSettings,
+  writeAgentsSettings,
+  renderProfile,
+  type AgentProfileFields,
+} from './agents.ts'
+import { readMcp, mergeMcp, patchMcpServer, type McpExposure } from './mcp-file.ts'
 import {
   readModels,
   mergeModels,
@@ -16,8 +37,10 @@ import {
   mergeAuth,
   readModelCatalog,
   mergeModelOverride,
+  realProviderEntry,
 } from './models-auth.ts'
 import { readCachedCatalog, refreshCatalog, catalogCwd } from './models-runtime.ts'
+import { testProviderModel, discoverProviderModels } from './models-probe.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { createStaticHandler } from './static.ts'
 
@@ -130,13 +153,54 @@ route('GET', '/api/general', async ({ home }) => {
   for (const key of MANAGED_KEYS) {
     if (snap.data[key] !== undefined) managed[key] = snap.data[key]
   }
+  const defaultTools = readDefaultTools(snap.data)
   return {
     revision: snap.revision,
     path: snap.path,
     managed,
     keyCount: Object.keys(snap.data).length,
     unmanagedKeys: Object.keys(snap.data).filter((k) => !(MANAGED_KEYS as readonly string[]).includes(k)),
+    // 内置工具开关的初始状态由 defaultTools 解析得出，与 pi 的启动工具集一致。
+    builtinTools: builtinToolsOf(defaultTools),
+    builtinToolNames: [...SETTINGS_BUILTIN_TOOLS],
+    resolvedTools: resolvedToolsOf(defaultTools),
+    isWindows: process.platform === 'win32',
+    powerShellEnabled: isPowerShellToolEnabled(defaultTools),
   }
+})
+
+/** 内置工具开关：一次写回最小 entries；等于 pi 默认组合时删除 defaultTools。 */
+route('PUT', '/api/general/tools', async ({ home, body }) => {
+  const payload = await body<{ builtinTools?: unknown; revision?: string }>()
+  if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
+  const selected = assertBuiltinToolNames(payload.builtinTools)
+  const result = mutateSettings(home, payload.revision, (settings) => {
+    const current = readDefaultTools(settings)
+    const next = withBuiltinTools(current, selected)
+    if (JSON.stringify(current ?? null) === JSON.stringify(next ?? null)) return false
+    if (next === undefined) delete settings.defaultTools
+    else settings.defaultTools = next
+    return true
+  })
+  return { ok: true, ...result }
+})
+
+/** Windows 上的 PowerShell 代替 bash：写回普通名字的工具集。 */
+route('PUT', '/api/general/shell', async ({ home, body }) => {
+  const payload = await body<{ powerShell?: unknown; revision?: string }>()
+  if (typeof payload.powerShell !== 'boolean') throw new HomeError('powerShell 必须是布尔值', 400, 'invalid_request')
+  if (process.platform !== 'win32') {
+    throw new HomeError('PowerShell 工具设置只在 Windows 上可用', 400, 'not_windows')
+  }
+  if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
+  const result = mutateSettings(home, payload.revision, (settings) => {
+    const current = readDefaultTools(settings)
+    const next = withPowerShell(current, payload.powerShell as boolean)
+    if (JSON.stringify(current ?? null) === JSON.stringify(next)) return false
+    settings.defaultTools = next
+    return true
+  })
+  return { ok: true, ...result }
 })
 
 route('PUT', '/api/general/key', async ({ home, req, body }) => {
@@ -184,24 +248,19 @@ route('PUT', '/api/general/model', async ({ home, body }) => {
 
 route('GET', '/api/skills', async ({ home }) => listSkills(home))
 
+/** 单个 skill 的完整内容：frontmatter 原条目 + 正文（只读）。 */
+route('GET', '/api/skills/content', async ({ home, url }) => {
+  const relDir = url.searchParams.get('relDir') ?? ''
+  if (!relDir) throw new HomeError('relDir 必填', 400, 'invalid_request')
+  return readSkillContent(home, relDir)
+})
+
 route('POST', '/api/skills/toggle', async ({ home, body }) => {
   const payload = await body<{ relDir?: string; disabled?: boolean }>()
   if (typeof payload.relDir !== 'string' || typeof payload.disabled !== 'boolean') {
     throw new HomeError('relDir 与 disabled 必填', 400, 'invalid_request')
   }
-  const { readFile, writeFile, rename, copyFile } = await import('node:fs/promises')
-  const { join } = await import('node:path')
-  const path = join(home, 'skills', payload.relDir, 'SKILL.md')
-  if (!path.startsWith(join(home, 'skills') + '/')) throw new HomeError('relDir 越界', 400, 'invalid_request')
-  const text = await readFile(path, 'utf8')
-  const next = toggleDisableModelInvocation(text, payload.disabled)
-  if (next !== text) {
-    await copyFile(path, `${path}.bak-manager`)
-    const tmp = `${path}.tmp-manager`
-    await writeFile(tmp, next, { mode: 0o600 })
-    await rename(tmp, path)
-  }
-  return { ok: true, disabled: readDisableModelInvocation(path) }
+  return { ok: true, disabled: await toggleSkill(home, payload.relDir, payload.disabled) }
 })
 
 // ---------------------------------------------------------------------------
@@ -215,17 +274,8 @@ route('GET', '/api/agents', async ({ home }) => ({
 
 route('GET', '/api/agents/profile', async ({ home, url }) => {
   const file = url.searchParams.get('file') ?? ''
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*\.md$/.test(file)) throw new HomeError('非法文件名', 400, 'invalid_file')
-  const { join } = await import('node:path')
-  const { readFileSync, statSync } = await import('node:fs')
-  const path = join(home, 'agents', file)
-  const text = readFileSync(path, 'utf8')
-  const info = statSync(path)
-  return {
-    file,
-    content: text,
-    revision: `${Math.round(info.mtimeMs)}.${info.size}`,
-  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(file)) throw new HomeError('非法文件名', 400, 'invalid_file')
+  return readAgentProfile(home, file)
 })
 
 route('PUT', '/api/agents/profile', async ({ home, body }) => {
@@ -233,22 +283,42 @@ route('PUT', '/api/agents/profile', async ({ home, body }) => {
     file?: string
     name?: string
     description?: string
-    extraKeys?: string[]
+    fields?: AgentProfileFields
+    presentKeys?: unknown
+    extraKeys?: unknown
     body?: string
     revision?: string
   }>()
   if (typeof payload.file !== 'string' || typeof payload.name !== 'string' || !payload.name.trim()) {
     throw new HomeError('file 与 name 必填', 400, 'invalid_request')
   }
+  if (!payload.fields || typeof payload.fields !== 'object') {
+    throw new HomeError('fields 必填', 400, 'invalid_request')
+  }
   if (!payload.file.endsWith('.md')) payload.file = `${payload.file}.md`
-  const content = renderProfile({
-    name: payload.name.trim(),
-    description: typeof payload.description === 'string' ? payload.description : '',
-    extraKeys: Array.isArray(payload.extraKeys) ? payload.extraKeys.filter((l): l is string => typeof l === 'string') : [],
-    body: typeof payload.body === 'string' ? payload.body : '',
-  })
+  // pi 用 frontmatter 的 name 作为 subagent 名；文件名与 name 不一致会造成同名歧义。
+  if (payload.file.replace(/\.md$/, '') !== payload.name.trim()) {
+    throw new HomeError('文件名必须与 name 一致；改名请新建 profile 并删除旧的', 400, 'name_file_mismatch')
+  }
+  const path = join(home, 'agents', payload.file)
+  const current = existsSync(path) ? readAgentProfile(home, payload.file) : undefined
+  const content = renderProfile(
+    {
+      name: payload.name.trim(),
+      description: typeof payload.description === 'string' ? payload.description : '',
+      fields: payload.fields,
+      presentKeys: Array.isArray(payload.presentKeys)
+        ? payload.presentKeys.filter((key): key is string => typeof key === 'string')
+        : [],
+      extraKeys: Array.isArray(payload.extraKeys)
+        ? payload.extraKeys.filter((line): line is string => typeof line === 'string')
+        : [],
+      body: typeof payload.body === 'string' ? payload.body : '',
+    },
+    current,
+  )
   const revision = await saveAgentProfile(home, payload.file, payload.revision, content)
-  return { ok: true, file: payload.file, revision }
+  return { ok: true, file: payload.file, revision, profile: readAgentProfile(home, payload.file) }
 })
 
 route('DELETE', '/api/agents/profile', async ({ home, body }) => {
@@ -294,6 +364,34 @@ route('PUT', '/api/mcp/servers', async ({ home, body }) => {
   return { ok: true, revision }
 })
 
+/** 只切换一个 server 的 enabled / exposure，不改条目其它字段。 */
+route('PUT', '/api/mcp/server', async ({ home, body }) => {
+  const payload = await body<{
+    name?: unknown
+    enabled?: unknown
+    exposure?: unknown
+    revision?: unknown
+  }>()
+  if (typeof payload.name !== 'string' || !payload.name) throw new HomeError('name 必填', 400, 'invalid_request')
+  if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
+  if (payload.enabled !== undefined && typeof payload.enabled !== 'boolean') {
+    throw new HomeError('enabled 必须是布尔值', 400, 'invalid_request')
+  }
+  if (
+    payload.exposure !== undefined
+    && payload.exposure !== 'direct'
+    && payload.exposure !== 'deferred'
+    && payload.exposure !== 'codemode'
+  ) {
+    throw new HomeError('exposure 只能是 direct / deferred / codemode', 400, 'invalid_request')
+  }
+  const revision = await patchMcpServer(home, payload.revision, payload.name, {
+    enabled: payload.enabled as boolean | undefined,
+    exposure: payload.exposure as McpExposure | undefined,
+  })
+  return { ok: true, revision }
+})
+
 // ---------------------------------------------------------------------------
 // models + auth
 // ---------------------------------------------------------------------------
@@ -335,7 +433,6 @@ function buildCatalog(home: string) {
 }
 
 route('GET', '/api/models/catalog', async ({ home }) => buildCatalog(home))
-
 /**
  * 刷新运行时模型目录。会加载该 home 的扩展（provider 扩展会访问网关），因此
  * 只在显式请求时做；结果缓存到状态目录，供后续 GET /api/models/catalog 使用。
@@ -350,6 +447,44 @@ route('PUT', '/api/models/providers', async ({ home, body }) => {
   if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
   const revision = await mergeModels(home, payload.revision, payload.providers ?? {})
   return { ok: true, revision }
+})
+
+/** 测试一个草稿模型：临时 models.json + 该 home 的 auth.json，发一次真实请求。 */
+route('POST', '/api/models/test', async ({ home, body }) => {
+  const payload = await body<{ providerName?: unknown; provider?: unknown; model?: unknown }>()
+  if (typeof payload.providerName !== 'string' || !payload.providerName.trim()) {
+    throw new HomeError('providerName 必填', 400, 'invalid_request')
+  }
+  if (!payload.provider || typeof payload.provider !== 'object' || Array.isArray(payload.provider)) {
+    throw new HomeError('provider 必填', 400, 'invalid_request')
+  }
+  if (!payload.model || typeof payload.model !== 'object' || Array.isArray(payload.model)) {
+    throw new HomeError('model 必填', 400, 'invalid_request')
+  }
+  const providerName = payload.providerName.trim()
+  return testProviderModel(
+    home,
+    providerName,
+    realProviderEntry(home, providerName, payload.provider as Record<string, unknown>),
+    payload.model as Record<string, unknown>,
+  )
+})
+
+/** 拉取上游 /models 列表（不写文件）。 */
+route('POST', '/api/models/discover', async ({ home, body }) => {
+  const payload = await body<{ providerName?: unknown; provider?: unknown }>()
+  if (typeof payload.providerName !== 'string' || !payload.providerName.trim()) {
+    throw new HomeError('providerName 必填', 400, 'invalid_request')
+  }
+  if (!payload.provider || typeof payload.provider !== 'object' || Array.isArray(payload.provider)) {
+    throw new HomeError('provider 必填', 400, 'invalid_request')
+  }
+  const providerName = payload.providerName.trim()
+  return discoverProviderModels(
+    home,
+    providerName,
+    realProviderEntry(home, providerName, payload.provider as Record<string, unknown>),
+  )
 })
 
 route('GET', '/api/auth', async ({ home }) => readAuth(home))

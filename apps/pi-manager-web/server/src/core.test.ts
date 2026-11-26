@@ -436,12 +436,15 @@ test('agents：profile 解析与渲染往返', async () => {
   const profiles = listAgentProfiles(dir)
   assert.equal(profiles.length, 1)
   assert.equal(profiles[0].name, 'reviewer')
-  assert.deepEqual(profiles[0].extraKeys, ['model: claude-sonnet-4-6'])
+  assert.deepEqual(profiles[0].extraKeys, [])
+  assert.equal(profiles[0].fields.model, 'claude-sonnet-4-6')
   assert.equal(profiles[0].body.trim(), '你是评审员。')
 
   const rendered = renderProfile({
     name: 'reviewer',
     description: '评审',
+    fields: profiles[0].fields,
+    presentKeys: profiles[0].presentKeys,
     extraKeys: profiles[0].extraKeys,
     body: profiles[0].body,
   })
@@ -1000,4 +1003,295 @@ test('live sessions：没有心跳目录时返回空清单', () => {
   assert.deepEqual(listing.sessions, [])
   assert.equal(listing.stale, 0)
   assert.equal(listing.pluginDetected, false)
+})
+
+// ---------------------------------------------------------------------------
+// settings 工具集语义（对齐 pi 的 defaultTools 与 pi-web 的内置工具开关）
+// ---------------------------------------------------------------------------
+
+test('tool settings：内置工具从 defaultTools 解析，写回最小 entries', async () => {
+  const { builtinToolsOf, withBuiltinTools, resolvedToolsOf } = await import('./tool-settings.ts')
+  assert.deepEqual(builtinToolsOf(undefined), ['read', 'edit', 'write', 'bash'])
+  assert.deepEqual(resolvedToolsOf(undefined), ['read', 'bash', 'edit', 'write'])
+  // pi 的默认组合写回时删除 key（等于跟随默认）。
+  assert.equal(withBuiltinTools(undefined, ['read', 'edit', 'write', 'bash']), undefined)
+  // 关掉 bash 写成 -bash，其它默认工具不动。
+  assert.deepEqual(withBuiltinTools(undefined, ['read', 'edit', 'write']), ['-bash'])
+  // 再打开 grep：保留 -bash，追加 +grep。
+  assert.deepEqual(withBuiltinTools(['-bash'], ['read', 'grep', 'edit', 'write']), ['-bash', '+grep'])
+  // 已有普通名字的工具集时写成普通名字，扩展工具不被吞掉。
+  assert.deepEqual(withBuiltinTools(['read', 'custom-tool'], ['read', 'edit']), ['read', 'edit', 'custom-tool'])
+})
+
+// ---------------------------------------------------------------------------
+// skills 内容读取
+// ---------------------------------------------------------------------------
+
+test('skills content：frontmatter 条目与正文分开，续行并入上一个 key', async () => {
+  const { readSkillContent } = await import('./skills.ts')
+  const dir = makeHome()
+  mkdirSync(join(dir, 'skills', 'review'), { recursive: true })
+  writeFileSync(
+    join(dir, 'skills', 'review', 'SKILL.md'),
+    '---\nname: review\ndescription: 代码评审\n  （第二行）\n---\n\n# Review\n\n正文。\n',
+  )
+  const content = await readSkillContent(dir, 'review')
+  assert.deepEqual(content.frontmatter, [
+    { key: 'name', value: 'review' },
+    { key: 'description', value: '代码评审\n（第二行）' },
+  ])
+  assert.equal(content.body.trim(), '# Review\n\n正文。')
+  await assert.rejects(readSkillContent(dir, '../etc'), ConflictError)
+})
+
+// ---------------------------------------------------------------------------
+// agents 结构化 frontmatter
+// ---------------------------------------------------------------------------
+
+test('agents：受管 key 解析成结构化字段，未知 key 与白名单原样保留', async () => {
+  const dir = makeHome()
+  mkdirSync(join(dir, 'agents'))
+  writeFileSync(
+    join(dir, 'agents', 'reviewer.md'),
+    [
+      '---',
+      'name: reviewer',
+      'description: 评审',
+      'tools: [read, bash, ext:codegraph]',
+      'codemode: inherit',
+      'enabled: false',
+      'skills: [review, testing]',
+      'allowed_subagents: explore',
+      '---',
+      '',
+      '你是评审员。',
+      '',
+    ].join('\n'),
+  )
+  const [profile] = listAgentProfiles(dir)
+  assert.deepEqual(profile.fields.tools, ['read', 'bash', 'ext:codegraph'])
+  assert.equal(profile.fields.codemode, 'inherit')
+  assert.equal(profile.fields.enabled, false)
+  assert.equal(profile.fields.loadSkills, true)
+  assert.deepEqual(profile.fields.skillsAlias, ['review', 'testing'])
+  assert.deepEqual(profile.extraKeys, ['skills: [review, testing]', 'allowed_subagents: explore'])
+
+  const rendered = renderProfile({
+    name: profile.name,
+    description: profile.description,
+    fields: profile.fields,
+    presentKeys: profile.presentKeys,
+    extraKeys: profile.extraKeys,
+    body: profile.body,
+  })
+  assert.match(rendered, /tools: \[read, bash, ext:codegraph\]/)
+  assert.match(rendered, /codemode: inherit/)
+  assert.match(rendered, /enabled: false/)
+  assert.match(rendered, /skills: \[review, testing\]/)
+  assert.match(rendered, /allowed_subagents: explore/)
+  // 白名单不是本页可编辑项：开关读出「已开启」并写 load_skills: true，白名单原样保留。
+  assert.match(rendered, /load_skills: true/)
+})
+
+test('agents：新增 profile 不写默认受管 key，只写 tools', () => {
+  const rendered = renderProfile({
+    name: 'helper',
+    description: '帮忙',
+    fields: {
+      displayName: null,
+      model: null,
+      thinking: null,
+      tools: ['read'],
+      loadSkills: false,
+      loadExtensions: false,
+      codemode: 'off',
+      mcp: 'off',
+      enabled: true,
+      inheritContext: false,
+      runInBackground: false,
+      promptMode: 'append',
+      maxTurns: null,
+      color: null,
+      isolation: null,
+      persistSession: null,
+      skillsAlias: null,
+      extensionsAlias: null,
+    },
+    presentKeys: [],
+    extraKeys: [],
+    body: '你是 helper。',
+  })
+  assert.match(rendered, /name: helper/)
+  assert.match(rendered, /tools: \[read\]/)
+  assert.doesNotMatch(rendered, /load_skills:/)
+  assert.doesNotMatch(rendered, /enabled:/)
+  assert.match(rendered, /你是 helper。/)
+})
+
+// ---------------------------------------------------------------------------
+// mcp 遮蔽扩展：url / command / args 与写回还原
+// ---------------------------------------------------------------------------
+
+test('mcp：url/command/args 里的字面量密钥遮蔽，原样提交时写回原文', async () => {
+  const { mergeMcp } = await import('./mcp-file.ts')
+  const dir = makeHome()
+  const original = {
+    mcpServers: {
+      remote: { url: 'https://user:hunter2@example.test/mcp?api_key=abcd1234efgh5678ijkl' },
+      local: { command: 'npx', args: ['server', '--token', 'abcd1234efgh5678', '--port', '3000'] },
+    },
+  }
+  writeFileSync(join(dir, 'mcp.json'), `${JSON.stringify(original, null, 2)}\n`)
+  const listing = readMcp(dir)
+  const remote = listing.servers.find((server) => server.name === 'remote')!
+  const local = listing.servers.find((server) => server.name === 'local')!
+  assert.ok(remote.maskedFields.includes('url'))
+  assert.match(String(remote.entry.url), /•••/)
+  assert.ok(local.maskedFields.some((field) => field.startsWith('args[')))
+  assert.match((local.entry.args as string[]).join(' '), /•••/)
+
+  // 原样提交遮蔽条目：服务端按「原文的遮蔽形式」还原，不把占位符写进磁盘。
+  await mergeMcp(dir, listing.revision, { remote: remote.entry, local: local.entry })
+  const after = JSON.parse(readFileSync(join(dir, 'mcp.json'), 'utf8')) as typeof original
+  assert.equal(after.mcpServers.remote.url, original.mcpServers.remote.url)
+  assert.deepEqual(after.mcpServers.local.args, original.mcpServers.local.args)
+})
+
+test('mcp：enabled/exposure 开关只改这两个键', async () => {
+  const { patchMcpServer } = await import('./mcp-file.ts')
+  const dir = makeHome()
+  writeFileSync(
+    join(dir, 'mcp.json'),
+    `${JSON.stringify({ mcpServers: { fs: { command: 'fs-server', args: ['--root', '.'] } } }, null, 2)}\n`,
+  )
+  const before = readMcp(dir)
+  await patchMcpServer(dir, before.revision, 'fs', { enabled: false, exposure: 'deferred' })
+  const after = readMcp(dir)
+  const server = after.servers[0]
+  assert.equal(server.enabled, false)
+  assert.equal(server.exposure, 'deferred')
+  assert.deepEqual(server.entry.args, ['--root', '.'])
+  // 恢复默认：enabled: true 与 exposure: codemode 都删键。
+  await patchMcpServer(dir, after.revision, 'fs', { enabled: true, exposure: 'codemode' })
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'mcp.json'), 'utf8')), {
+    mcpServers: { fs: { command: 'fs-server', args: ['--root', '.'] } },
+  })
+})
+
+// ---------------------------------------------------------------------------
+// models.json 写入校验（对齐 pi 的 provider 条目规则）
+// ---------------------------------------------------------------------------
+
+test('models：pi 会拒绝的空 provider 条目不写盘，不可解析文件不覆盖', async () => {
+  const { mergeModels } = await import('./models-auth.ts')
+  const dir = makeHome()
+  writeFileSync(join(dir, 'models.json'), `${JSON.stringify({ providers: {} }, null, 2)}\n`)
+  const revision = readModels(dir).revision
+  await assert.rejects(mergeModels(dir, revision, { empty: {} }), /是空条目/)
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8')), { providers: {} })
+
+  writeFileSync(join(dir, 'models.json'), '{ not json')
+  await assert.rejects(mergeModels(dir, '', { x: { baseUrl: 'https://x' } }), ConflictError)
+  assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), '{ not json')
+})
+
+test('agents：注释、块标量与非标准值在未改动时原样保留', async () => {
+  const dir = makeHome()
+  mkdirSync(join(dir, 'agents'))
+  writeFileSync(
+    join(dir, 'agents', 'notes.md'),
+    [
+      '---',
+      '# 手写说明：不要删',
+      'name: notes',
+      'description: |',
+      '  第一行',
+      '  第二行',
+      'model: claude-x  # 换模型前先问',
+      'max_turns: 0',
+      '---',
+      '',
+      '正文',
+      '',
+    ].join('\n'),
+  )
+  const [profile] = listAgentProfiles(dir)
+  assert.equal(profile.preamble?.[0], '# 手写说明：不要删')
+  assert.equal(profile.description.trim(), '第一行\n第二行')
+  assert.ok(profile.unparsedKeys?.includes('max_turns'))
+  assert.equal(profile.fields.maxTurns, null)
+
+  const rendered = renderProfile(
+    {
+      name: profile.name,
+      description: profile.description,
+      fields: profile.fields,
+      presentKeys: profile.presentKeys,
+      extraKeys: profile.extraKeys,
+      body: profile.body,
+    },
+    profile,
+  )
+  assert.match(rendered, /# 手写说明：不要删/)
+  assert.match(rendered, /description: "第一行\\n第二行"/)
+  assert.match(rendered, /model: claude-x {2}# 换模型前先问/)
+  assert.match(rendered, /max_turns: 0/)
+})
+
+test('agents：其它 frontmatter key 拒绝受管 key 与非法行', () => {
+  const base = {
+    name: 'x',
+    description: 'd',
+    fields: {
+      displayName: null, model: null, thinking: null, tools: null,
+      loadSkills: false, loadExtensions: false, codemode: 'off' as const, mcp: 'off' as const,
+      enabled: true, inheritContext: false, runInBackground: false, promptMode: 'append' as const,
+      maxTurns: null, color: null, isolation: null, persistSession: null,
+      skillsAlias: null, extensionsAlias: null,
+    },
+    presentKeys: [] as string[],
+    body: '',
+  }
+  assert.throws(() => renderProfile({ ...base, extraKeys: ['name: y'] }), /受管 key/)
+  assert.throws(() => renderProfile({ ...base, extraKeys: ['这不是 key'] }), /无法识别/)
+})
+
+test('mcp：旧式顶层直写形状读得懂也写得回，删除不丢数据', async () => {
+  const { mergeMcp, patchMcpServer } = await import('./mcp-file.ts')
+  const dir = makeHome()
+  writeFileSync(join(dir, 'mcp.json'), `${JSON.stringify({ fs: { command: 'fs-server' } }, null, 2)}\n`)
+  const before = readMcp(dir)
+  assert.equal(before.servers[0].name, 'fs')
+  await patchMcpServer(dir, before.revision, 'fs', { enabled: false })
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'mcp.json'), 'utf8')), {
+    fs: { command: 'fs-server', enabled: false },
+  })
+  const after = readMcp(dir)
+  await mergeMcp(dir, after.revision, { fs: null })
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'mcp.json'), 'utf8')), {})
+})
+
+test('mcp：args 前插或重排后，遮蔽值仍按内容还原', async () => {
+  const { mergeMcp } = await import('./mcp-file.ts')
+  const dir = makeHome()
+  const original = { mcpServers: { s: { command: 'x', args: ['--token', 'abcd1234efgh5678', '--port', '3000'] } } }
+  writeFileSync(join(dir, 'mcp.json'), `${JSON.stringify(original, null, 2)}\n`)
+  const listing = readMcp(dir)
+  const server = listing.servers[0]
+  const masked = server.entry.args as string[]
+  // 前面插一个参数，并把两项顺序调换：占位符仍应还原成原文。
+  const reordered = ['--verbose', masked[2], masked[3], masked[0], masked[1]]
+  await mergeMcp(dir, listing.revision, { s: { ...server.entry, args: reordered } })
+  assert.deepEqual(
+    (JSON.parse(readFileSync(join(dir, 'mcp.json'), 'utf8')) as typeof original).mcpServers.s.args,
+    ['--verbose', '--port', '3000', '--token', 'abcd1234efgh5678'],
+  )
+})
+
+test('models-check：只写 name 或 api 的内置覆盖条目合法，自定义 oauth 无 baseUrl 被拒', async () => {
+  const { checkProviderEntry } = await import('./models-check.ts')
+  checkProviderEntry('openai', { name: 'OpenAI' })
+  checkProviderEntry('openai', { api: 'openai-responses' })
+  assert.throws(() => checkProviderEntry('x', { oauth: 'radius', models: [{ id: 'm' }] }), /baseUrl/)
+  assert.throws(() => checkProviderEntry('x', {}), /空条目/)
 })

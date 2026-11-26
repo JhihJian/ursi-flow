@@ -4,6 +4,7 @@ import { ConflictError, readSnapshotSync, writeSnapshot } from './rw.ts'
 import { parseJsonc } from './jsonc.ts'
 import { HomeError } from './pi-home.ts'
 import type { RuntimeCatalog, RuntimeModel } from './models-runtime.ts'
+import { checkProviderEntry } from './models-check.ts'
 
 /**
  * models.json（自定义提供商与模型）与 auth.json（凭据）。
@@ -113,13 +114,14 @@ export async function mergeModels(
   let base: Record<string, unknown> = {}
   let currentRoot: Record<string, unknown> = {}
   if (existsSync(path)) {
+    // 读不出就不允许覆盖：草稿不是从这份文件构建的。
     try {
       base = readSnapshotSync<Record<string, unknown>>(path, parseJsonc).data
-      const root = base.providers
-      currentRoot = root && typeof root === 'object' && !Array.isArray(root) ? (root as Record<string, unknown>) : {}
     } catch {
-      base = {}
+      throw new ConflictError('models.json 无法解析，请先修复文件再保存')
     }
+    const root = base.providers
+    currentRoot = root && typeof root === 'object' && !Array.isArray(root) ? (root as Record<string, unknown>) : {}
   }
   // 原文（未遮蔽）条目，用于把提交里的掩码占位符还原。
   const originals = new Map(Object.entries(currentRoot))
@@ -134,16 +136,15 @@ export async function mergeModels(
       continue
     }
     const original = originals.get(name)
-    if (original) {
-      const merged = resolveMaskedApiKey(entry, original as Record<string, unknown>)
-      // 条目整体没变（用户只看了详情）就不动它
-      nextRoot[name] = deepEqual(merged, original) ? currentRoot[name] : merged
-    } else {
-      if (typeof entry.apiKey === 'string' && entry.apiKey.startsWith('•••')) {
-        throw new ConflictError(`provider ${name} 含遮蔽占位符但文件里没有原值，请填写真实 key`)
-      }
-      nextRoot[name] = entry
+    const resolved = original
+      ? resolveMaskedApiKey(entry, original as Record<string, unknown>)
+      : entry
+    if (!original && typeof entry.apiKey === 'string' && entry.apiKey.startsWith('•••')) {
+      throw new ConflictError(`provider ${name} 含遮蔽占位符但文件里没有原值，请填写真实 key`)
     }
+    checkProviderEntry(name, resolved)
+    // 条目整体没变（用户只看了详情）就不动它
+    nextRoot[name] = original && deepEqual(resolved, original) ? currentRoot[name] : resolved
   }
   await writeSnapshot(path, expectedRevision, () => `${JSON.stringify(next, null, 2)}\n`)
   return readModels(home).revision
@@ -161,6 +162,39 @@ function resolveMaskedApiKey(
     if (typeof orig === 'string' && maskSecret(orig) === apiKey) out.apiKey = orig
   }
   return out
+}
+
+/** 把草稿条目里的遮蔽 apiKey 用磁盘原文还原（测试连接 / 发现模型用）。 */
+export function realProviderEntry(
+  home: string,
+  provider: string,
+  submitted: Record<string, unknown>,
+): Record<string, unknown> {
+  const path = modelsConfigPath(home)
+  if (!existsSync(path)) return submitted
+  try {
+    const data = readSnapshotSync<Record<string, unknown>>(path, parseJsonc).data
+    const providers = data.providers
+    if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return submitted
+    const original = (providers as Record<string, unknown>)[provider]
+    if (!original || typeof original !== 'object' || Array.isArray(original)) return submitted
+    const originalEntry = original as Record<string, unknown>
+    const sameHost = (value: unknown, other: unknown): boolean => {
+      const a = typeof value === 'string' ? value.trim().replace(/\/+$/, '') : ''
+      const b = typeof other === 'string' ? other.trim().replace(/\/+$/, '') : ''
+      return a === '' || a === b
+    }
+    // 只有目标地址没变才用磁盘上的真实 key：草稿改成别的 host 时绝不外发已有凭据。
+    if (!sameHost(submitted.baseUrl, originalEntry.baseUrl)) {
+      const out = { ...submitted }
+      // 只丢弃“占位符”形式的 key；用户自己输入的新 key 保留。
+      if (typeof out.apiKey === 'string' && out.apiKey.startsWith('•••')) delete out.apiKey
+      return out
+    }
+    return resolveMaskedApiKey(submitted, originalEntry)
+  } catch {
+    return submitted
+  }
 }
 
 // ---------------------------------------------------------------------------
