@@ -7,17 +7,13 @@ depends-on:
   - ../modules/work-patch-generators/SPEC.md
   - ../modules/patches/SPEC.md
   - ../modules/definitions/SPEC.md
-  - ../modules/flows/SPEC.md
-  - ../modules/runs/SPEC.md
-  - ../modules/config/SPEC.md
   - ../modules/chat/SPEC.md
-references:
 ---
 # 应用装配
 
 ## 功能意图
 
-以工作清单为首页，提供工作项、工作包、配置包和工作定义的导航，并展示当前部署可用的运行工具。
+以工作清单为首页，提供工作项、工作包、配置包和工作定义的导航。
 
 ## 关键功能与验收
 

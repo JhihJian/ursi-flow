@@ -1,7 +1,6 @@
 ---
 parent: ../../SPEC.md
 depends-on:
-  - ../flow/SPEC.md
   - ../transport/SPEC.md
 references:
   - ../../README.md
@@ -12,7 +11,7 @@ references:
 
 ## 功能意图
 
-将部署者指定的 API 身份、数据目录和工作区装配成可用的 HTTP 服务。`app` 打开私有业务存储，将 v2 业务路由和执行器平台消费者路由交给统一鉴权层。平台管理接口只在独立平台装配。启用 Flow 时才持有 daemon 子进程句柄，把连接同一 socket 的 `FlowClient` 用于 v1 管理。
+将部署者指定的 API 身份、数据目录和工作区装配成可用的 HTTP 服务。`app` 打开私有业务存储，将 v2 业务路由和执行器平台消费者路由交给统一鉴权层。平台管理接口只在独立平台装配。Server 不持有子进程，也不提供 Flow 管理入口。
 
 ## 关键功能与验收
 
