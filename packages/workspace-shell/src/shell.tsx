@@ -22,6 +22,8 @@ import {
 import './shell.css'
 
 const DEFAULT_COLLAPSED_SIZE = 32
+/** 侧边栏最小宽度缺省值；模块可声明更大的 `minSidebarSize`。 */
+const DEFAULT_SIDEBAR_MIN_SIZE = 200
 
 /** localStorage 写入按 key 合并延迟，拖动分隔线时不会每帧写盘。 */
 const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>()
@@ -357,6 +359,11 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
 
   const [sidebarSize, saveSidebarSize] = useStoredSize(`${storageKey}:body:sidebar`, 300)
   const [controlSize, saveControlSize] = useStoredSize(`${storageKey}:body:control`, 260)
+  // 侧栏宽度由所有启用模块共享，最小宽度取它们声明的最大值，切模块时不跳。
+  const sidebarMinSize = Math.max(
+    DEFAULT_SIDEBAR_MIN_SIZE,
+    ...enabled.map((module) => module.minSidebarSize ?? 0),
+  )
 
   return (
     <>
@@ -365,8 +372,8 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
           <Panel
             id="sidebar"
             className="ws-sidebar"
-            defaultSize={sidebarSize}
-            minSize={200}
+            defaultSize={Math.max(sidebarSize, sidebarMinSize)}
+            minSize={sidebarMinSize}
             maxSize={560}
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => saveSidebarSize(size.inPixels)}

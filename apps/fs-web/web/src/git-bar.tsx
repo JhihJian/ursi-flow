@@ -200,7 +200,7 @@ export function GitBar({ onOpenFile }: { onOpenFile?: (key: string) => void }) {
           onClick={(event) => openBranches(event.currentTarget)}
           title={`${upstreamTitle}，点击查看分支列表`}
         >
-          {loading ? '…' : branchLabel}
+          <span className="wsx-git-branch">{loading ? '…' : branchLabel}</span>
         </button>
         <button
           type="button"

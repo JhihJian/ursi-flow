@@ -43,6 +43,11 @@ export interface WorkspaceModule {
   context: ModuleContext
   /** 侧边栏折叠后的高度，缺省 32px。展开的那一节占满剩余高度。 */
   collapsedSidebarSize?: number
+  /**
+   * 侧边栏展开时所需的最小宽度（px），缺省不声明（外壳统一 200px）。
+   * 外壳取当前 profile 里启用模块的最大值作为侧栏最小宽度，避免切模块时宽度跳动。
+   */
+  minSidebarSize?: number
   /** 默认展开侧边栏；profile 里没有任何模块声明时默认展开第一个。 */
   defaultExpanded?: boolean
   /** 侧边栏折叠时保留 Workspace 挂载（iframe、终端等需要保持运行状态的模块）。 */

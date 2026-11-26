@@ -6,7 +6,7 @@ import { useEditorStore } from './editor-store.ts'
 import { reloadParentOf } from './explorer.tsx'
 import { useGitStore } from './git-store.ts'
 import { useTreeStore } from './tree-store.ts'
-import { FsScope, FsSidebar, FsWorkspace } from './parts.tsx'
+import { FsScope, FsSidebar, FsWorkspace, SIDEBAR_MIN_SIZE } from './parts.tsx'
 
 export interface FsWebModuleOptions {
   apiBaseUrl?: string
@@ -131,6 +131,7 @@ export function createFsModule(
       summary: (selected) => keyName(selected.id),
       Status: FsStatus,
     },
+    minSidebarSize: SIDEBAR_MIN_SIZE,
     actions: [],
   }
 }

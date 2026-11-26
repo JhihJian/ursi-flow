@@ -19,7 +19,8 @@ export function createExecutorModule(): WorkspaceModule {
       summary: (selection) => selection.label ?? selection.id,
       Status: ExecutorStatus,              // 可选：状态栏组件
     },
-    collapsedSidebarSize: 32,
+    collapsedSidebarSize: 32,             // 可选：折叠后那一节的高度
+    minSidebarSize: 380,                  // 可选：侧栏不得窄于该像素宽度，缺省 200
     keepMounted: false,
     actions: [...],
   }
@@ -35,6 +36,7 @@ export function createExecutorModule(): WorkspaceModule {
 - 折叠方向是上下，不是左右。折叠按钮用 ↑，窄条上的展开提示用 ↓。
 - 窄条上给出标题与 2–3 项关键信息（状态、数量），整条可点击展开，并带 `aria-label`。
 - 折叠态不要依赖折叠时的高度值，外壳会把这一节压到 `collapsedSidebarSize`（缺省 32px）。
+- 侧栏是全局一列，宽度由所有启用模块共享。内容有硬性宽度要求时（例如一行不换行的摘要条），声明 `minSidebarSize`；外壳取当前 profile 里启用模块的最大值作为侧栏最小宽度（不随展开/折叠变化），不声明则统一按 200px。
 - 可以用外壳导出的 `SidebarFrame` 省掉重复的标题行与窄条：
 
 ```tsx

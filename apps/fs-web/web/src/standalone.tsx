@@ -4,7 +4,7 @@ import { WorkspaceApi, keyName, keySegments } from './api.ts'
 import { useEditorStore } from './editor-store.ts'
 import { reloadParentOf } from './explorer.tsx'
 import { useGitStore } from './git-store.ts'
-import { FsScope, FsSidebar, FsWorkspace } from './parts.tsx'
+import { FsScope, FsSidebar, FsWorkspace, SIDEBAR_MIN_SIZE } from './parts.tsx'
 
 /**
  * 独立预览入口：不依赖工作区外壳（@ursi/workspace-shell）的固定骨架，
@@ -52,7 +52,7 @@ export function FsWebStandalone(options: FsWebStandaloneOptions = {}) {
             className="wsx-app-side"
             panelRef={panelRef}
             defaultSize={lastExpanded.current}
-            minSize={280}
+            minSize={SIDEBAR_MIN_SIZE}
             maxSize={720}
             collapsible
             collapsedSize={SIDEBAR_COLLAPSED_SIZE}

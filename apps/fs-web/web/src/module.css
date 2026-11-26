@@ -101,7 +101,8 @@
   gap: 8px;
   flex: none;
   margin-bottom: 12px;
-  padding: 0;
+  /* 右侧留 8px：侧栏内容区到面板边没有内边距，不留白时最右的 ↓ 徽标会压在边框上。 */
+  padding: 0 8px 0 0;
   border: 0;
   background: none;
   font-size: 11px;
@@ -136,6 +137,23 @@
 
 .wsx-git-chip--branch {
   color: var(--wsx-ink, #1a1a1a);
+  /* 分支名长度不可控：它是唯一允许收缩的 chip，空间不足时省略而不把计数与 ↑↓ 顶出去。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wsx-git-branch {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 变更计数与同步按钮不收缩：它们的数字和箭头比分支名短，挤掉它们就失去了功能入口。 */
+.wsx-git-bar > .wsx-git-chip:not(.wsx-git-chip--branch),
+.wsx-git-bar > .wsx-git-sync {
+  flex: none;
 }
 
 .wsx-git-chip--error {
