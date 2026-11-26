@@ -74,8 +74,6 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         skeleton: fileURLToPath(new URL('./skeleton.html', import.meta.url)),
-        // Pi 控制台独立预览页：只装载对话 / 会话 / 配置三个模块。
-        pi: fileURLToPath(new URL('./pi.html', import.meta.url)),
       },
     },
   },
