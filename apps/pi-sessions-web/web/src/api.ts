@@ -1,4 +1,9 @@
-/** 会话目录接口的客户端封装。所有请求都带 `root`，根路径由用户在界面里指定。 */
+/**
+ * 会话目录接口的客户端封装。所有请求都带 `root`，根路径由用户在界面里指定。
+ *
+ * 接口前缀由宿主注入（嵌入工作区时是 /api/pi-sessions，独立入口是 /api），
+ * 因此这里导出工厂而不是写死路径的函数。
+ */
 
 export type SessionFormat = 'pi' | 'legacy' | 'unknown'
 
@@ -64,72 +69,79 @@ export class RequestError extends Error {
   }
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null
-    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+export interface SessionsApi {
+  baseUrl: string
+  fetchConfig: () => Promise<ServerConfig>
+  fetchSessions: (root: string) => Promise<Listing>
+  fetchDetail: (root: string, id: string) => Promise<SessionDetail>
+  fetchBrowse: (path: string) => Promise<BrowseResult>
+  sessionTextUrl: (root: string, id: string) => string
+  fetchPrefs: () => Promise<Prefs>
+  updatePrefs: (change: { pin?: string; unpin?: string }) => Promise<Prefs>
+  deleteSession: (root: string, id: string) => Promise<{ id: string; removed: string[] }>
+  fetchSessionText: (root: string, id: string) => Promise<string>
+}
+
+/**
+ * 建一个指向某个前缀的客户端。前缀末尾的斜杠会去掉，
+ * 这样 `/api/pi-sessions` 与 `/api/pi-sessions/` 得到同一份地址。
+ */
+export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
+  const base = apiBaseUrl.replace(/\/+$/, '')
+  /** 相对路径 + root 参数；拼前缀的动作只在 readJson / send / fetch 里做一次。 */
+  const withRoot = (path: string, root: string) =>
+    `${path}${path.includes('?') ? '&' : '?'}root=${encodeURIComponent(root)}`
+
+  async function readJson<T>(path: string): Promise<T> {
+    const response = await fetch(`${base}${path}`, { headers: { Accept: 'application/json' } })
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+    }
+    return (await response.json()) as T
   }
-  return (await response.json()) as T
-}
 
-const withRoot = (path: string, root: string) =>
-  `${path}${path.includes('?') ? '&' : '?'}root=${encodeURIComponent(root)}`
-
-export function fetchConfig(): Promise<ServerConfig> {
-  return readJson<ServerConfig>('/api/config')
-}
-
-export function fetchSessions(root: string): Promise<Listing> {
-  return readJson<Listing>(withRoot('/api/sessions', root))
-}
-
-export function fetchDetail(root: string, id: string): Promise<SessionDetail> {
-  return readJson<SessionDetail>(withRoot(`/api/sessions/${encodeURIComponent(id)}`, root))
-}
-
-export function fetchBrowse(path: string): Promise<BrowseResult> {
-  return readJson<BrowseResult>(`/api/browse?path=${encodeURIComponent(path)}`)
-}
-
-export const sessionTextUrl = (root: string, id: string) =>
-  withRoot(`/api/sessions/${encodeURIComponent(id)}/text`, root)
-
-export function fetchPrefs(): Promise<Prefs> {
-  return readJson<Prefs>('/api/prefs')
-}
-
-/** 关注或取消关注一个项目；返回更新后的完整列表。 */
-export async function updatePrefs(change: { pin?: string; unpin?: string }): Promise<Prefs> {
-  const response = await fetch('/api/prefs', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(change),
-  })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null
-    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+  async function send<T>(path: string, init: RequestInit): Promise<T> {
+    const response = await fetch(`${base}${path}`, init)
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+    }
+    return (await response.json()) as T
   }
-  return (await response.json()) as Prefs
-}
 
-/** 删除会话文件（连带同名 subagent 目录）。只能删当前根目录下的会话。 */
-export async function deleteSession(root: string, id: string): Promise<{ id: string; removed: string[] }> {
-  const response = await fetch(withRoot(`/api/sessions/${encodeURIComponent(id)}`, root), {
-    method: 'DELETE',
-  })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null
-    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
-  }
-  return (await response.json()) as { id: string; removed: string[] }
-}
+  const sessionTextUrl = (root: string, id: string) =>
+    `${base}${withRoot(`/sessions/${encodeURIComponent(id)}/text`, root)}`
 
-export async function fetchSessionText(root: string, id: string): Promise<string> {
-  const response = await fetch(sessionTextUrl(root, id))
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null
-    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+  return {
+    baseUrl: base,
+    fetchConfig: () => readJson<ServerConfig>('/config'),
+    fetchSessions: (root) => readJson<Listing>(withRoot('/sessions', root)),
+    fetchDetail: (root, id) =>
+      readJson<SessionDetail>(withRoot(`/sessions/${encodeURIComponent(id)}`, root)),
+    fetchBrowse: (path) => readJson<BrowseResult>(`/browse?path=${encodeURIComponent(path)}`),
+    sessionTextUrl,
+    fetchPrefs: () => readJson<Prefs>('/prefs'),
+    updatePrefs: (change) =>
+      send<Prefs>('/prefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(change),
+      }),
+    deleteSession: (root, id) =>
+      send<{ id: string; removed: string[] }>(
+        withRoot(`/sessions/${encodeURIComponent(id)}`, root),
+        {
+          method: 'DELETE',
+        },
+      ),
+    fetchSessionText: async (root, id) => {
+      const response = await fetch(sessionTextUrl(root, id))
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+      }
+      return response.text()
+    },
   }
-  return response.text()
 }

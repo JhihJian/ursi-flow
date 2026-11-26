@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'node:url'
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -7,7 +7,6 @@ const api = process.env.PI_SESSIONS_API ?? 'http://127.0.0.1:30200'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     // 组件库是 file: 依赖，强制 React 单实例，避免两份运行时。
     dedupe: ['react', 'react-dom'],
   },

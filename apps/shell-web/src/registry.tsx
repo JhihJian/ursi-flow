@@ -4,10 +4,14 @@ import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
 import { createSshModule } from '@ursi/ssh-web/module'
 import { createSandboxModule } from '@ursi/sandbox-web/module'
+import { createPiSessionsModule } from '@ursi/pi-sessions-web/module'
 import { createPiWebModule } from './pi-web-panel/module'
 import '@ursi/fs-web/module.css'
 import '@ursi/ssh-web/module.css'
 import '@ursi/sandbox-web/module.css'
+import '@ursi/pi-sessions-web/module.css'
+// 轨迹组件库的样式是全局前缀类（dsw- / trajectory-*），在这里引一次即可。
+import 'pi-agent-trajectory-viewer/style.css'
 import './pi-web-panel/module.css'
 
 /**
@@ -34,6 +38,7 @@ const SOURCES: Record<string, string> = {
   'ssh': '@ursi/ssh-web/module',
   'sandbox': '@ursi/sandbox-web/module',
   'pi-web': './pi-web-panel/module',
+  'pi-sessions': '@ursi/pi-sessions-web/module',
 }
 
 function SettingsView() {
@@ -156,6 +161,7 @@ const MODULES: WorkspaceModule[] = [
   files,
   createSshModule({ apiBaseUrl: '/api/ssh-web' }),
   createSandboxModule({ apiBase: '/sbx' }),
+  createPiSessionsModule({ apiBaseUrl: '/api/pi-sessions', storageKey: 'ursi.sessions' }),
   createPiWebModule(),
 ]
 
@@ -173,6 +179,7 @@ const PROFILES: WorkspaceProfile[] = [
   { id: 'terminal', title: '终端', modules: ['ssh', 'fs-web'] },
   { id: 'sandbox', title: '沙箱', modules: ['sandbox', 'ssh'] },
   { id: 'assistant', title: '助手', modules: ['pi-web', 'fs-web'] },
+  { id: 'history', title: '会话', modules: ['pi-sessions', 'fs-web'] },
 ]
 
 /** 组合根装配：模块与页面只建一次，profile 切换由外壳负责。 */

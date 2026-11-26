@@ -1,4 +1,4 @@
-import type { SessionRow } from '@/api'
+import type { SessionRow } from '../api'
 
 export interface SessionGroup {
   key: string

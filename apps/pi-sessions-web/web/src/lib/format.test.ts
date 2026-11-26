@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { SessionRow } from '@/api'
+import type { SessionRow } from '../api'
 import {
   DAY_BUCKET_DAYS,
   dailyBuckets,

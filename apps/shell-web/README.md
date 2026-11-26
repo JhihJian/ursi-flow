@@ -1,6 +1,6 @@
 # 工作区入口
 
-把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、fs、ssh、沙箱与 pi-web 五个模块。
+把多个模块组合进一个固定工作区的独立入口。组合关系全部在 `package.json` 与 `src/registry.tsx` 里显式声明：模块以 npm workspace 包或仓库内源码接入，宿主依赖它们并调用各自导出的模块工厂。当前接入 todo、fs、ssh、沙箱、pi 会话与 pi-web 六个模块。
 
 ## 页面结构
 
@@ -35,6 +35,7 @@ profile 只声明启用哪些模块与顺序，不再描述区域布局：
 | 终端（`terminal`） | ssh、fs-web |
 | 沙箱（`sandbox`） | 沙箱、ssh |
 | 助手（`assistant`） | pi-web、fs-web |
+| 会话（`history`） | pi-sessions、fs-web |
 
 默认只展开第一个模块；展开的是哪一节按 `ursi.workspace:<profile>:expanded` 持久化，当前 profile 存于 `ursi.workspace:profile`。切换 profile 会重挂布局表面，iframe 类模块（pi-web）会重载一次，属可接受的低频行为。
 
@@ -45,12 +46,13 @@ npm install
 npm run dev:shell-web        # http://localhost:5191
 ```
 
-`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
+`vite.config.ts` 把 `/api` 代理到 todo-web 服务（默认 `http://127.0.0.1:8090`，可用 `TODO_WEB_API` 覆盖），把 `/api/fs-web` 代理到 fs-web（`FS_WEB_API`）、`/api/ssh-web` 代理到 ssh-web（`SSH_WEB_API`）、`/api/pi-sessions` 代理到会话目录服务并重写回 `/api`（`PI_SESSIONS_API`，默认 `http://127.0.0.1:30200`），把 `/sbx` 代理到沙箱控制台服务（`SBX_WEB_API`）。先启动对应后端：
 
 ```sh
 cd apps/todo-web/server && cargo run        # 或已有实例
 cd apps/fs-web/server && ...                # 8199
 cd apps/ssh-web/server && ...               # 8091
+cd apps/pi-sessions-web/server && npm start  # 30200
 ```
 
 ## 模块怎么加

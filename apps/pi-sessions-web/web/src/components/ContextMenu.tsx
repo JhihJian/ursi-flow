@@ -21,8 +21,18 @@ export interface MenuState {
 const MENU_WIDTH = 210
 const ITEM_HEIGHT = 28
 
+interface ContextMenuProps {
+  state: MenuState | null
+  onClose: () => void
+  /**
+   * 挂载容器，通常是侧边栏根元素：浮层只在模块自己的区域内定位，
+   * 不用全局 position: fixed，多区域布局下坐标才不会错位。
+   */
+  container?: HTMLElement | null
+}
+
 /** 列表右键菜单，点空白、按 Esc、滚动或改变窗口大小时关闭。 */
-export function ContextMenu({ state, onClose }: { state: MenuState | null; onClose: () => void }) {
+export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
 
@@ -31,12 +41,20 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
       setPosition(null)
       return
     }
+    const host = container ?? document.body
+    const bounds =
+      host === document.body
+        ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+        : (() => {
+            const rect = host.getBoundingClientRect()
+            return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+          })()
     const height = state.items.length * ITEM_HEIGHT + (state.heading ? ITEM_HEIGHT : 0)
     setPosition({
-      left: Math.max(4, Math.min(state.x, window.innerWidth - MENU_WIDTH - 4)),
-      top: Math.max(4, Math.min(state.y, window.innerHeight - height - 8)),
+      left: Math.max(4, Math.min(state.x - bounds.left, bounds.width - MENU_WIDTH - 4)),
+      top: Math.max(4, Math.min(state.y - bounds.top, bounds.height - height - 8)),
     })
-  }, [state])
+  }, [state, container])
 
   useEffect(() => {
     if (!state) return
@@ -62,6 +80,8 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
   }, [state, onClose])
 
   if (!state || !position) return null
+
+  const host = container ?? document.body
 
   return createPortal(
     <div
@@ -89,6 +109,6 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
         </button>
       ))}
     </div>,
-    document.body,
+    host,
   )
 }

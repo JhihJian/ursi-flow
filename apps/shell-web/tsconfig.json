@@ -29,6 +29,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite.config.ts",
-    "../ursi-sandbox/web/src/novnc.d.ts"
+    "../ursi-sandbox/web/src/novnc.d.ts",
+    "../pi-sessions-web/web/src/vendor.d.ts"
   ]
 }

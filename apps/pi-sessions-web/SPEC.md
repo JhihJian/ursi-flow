@@ -11,6 +11,8 @@ references:
 
 读磁盘上已有的 pi 会话文件，给出「按项目分组、按活动排序」的会话侧面板与轨迹正文，供人翻阅、复核历史会话。模块不启动 pi，也不改写会话内容；唯一的写操作是用户主动删除会话文件，以及记录「特别关注」这层侧边栏偏好。模块不依赖 `apps/pi-web` 运行时；会话目录由使用者当场指定，因此同一份代码既能看本机 `~/.pi/agent/sessions`，也能看挂载进来的备份、别人导出的会话集合或某次实验的临时目录。
 
+模块以 `@ursi/pi-sessions-web` workspace 包交付，导出工作区模块工厂 `createPiSessionsModule`，既能嵌进 `apps/shell-web` 的手风琴侧边栏，也能用 `src/StandaloneApp.tsx` 独立运行。两种入口共用同一对 Sidebar / Workspace 组件与同一份状态，没有第二套实现。
+
 ## 关键功能与验收
 
 ### 指定任意 sessions 根目录
@@ -97,6 +99,23 @@ references:
 - 会话体积超过服务端上限（默认 64MB）时返回 413 与中文说明，界面显示该说明并保留 Raw JSONL 链接。
 - 解析失败时显示组件库给出的原因，并提示可用 Raw JSONL 检查原始内容。
 - 头部提供重新读取按钮与 Raw JSONL 链接；Raw JSONL 打开转换后的纯文本，支持 gzip。
+
+### 接入工作区外壳
+
+模块按 [`MODULE-CONTRACT`](../../packages/workspace-shell/MODULE-CONTRACT.md) 交付：工厂导出模块对象，侧边栏、工作区、状态栏共享一份 Provider。
+
+#### 验收
+
+- `createPiSessionsModule({ apiBaseUrl, storageKey, initialRoot?, readRootFromUrl?, onNotice? })` 返回 `{ id: 'pi-sessions', title: 'Sessions', Provider, Sidebar, Workspace, context, keepMounted: false, commands }`。
+- 侧边栏用平台的 `SidebarFrame`：展开态是「Sessions」标题 + 搜索图标 + 折叠按钮 + 内容，折叠态是一条横向窄条，带上当前选中会话与项目数。折叠由外壳驱动，模块不再画自己的折叠轨道。
+- `context.kind` 为 `pi.session`，只发布 `{ kind, id, label }`；实体由模块按 id 自取。模块内选中变化时同步到外壳，取消选中时只清自己这一种 kind。
+- 状态栏显示会话总数、当前选中会话与根目录。
+- 工作区只放轨迹与头部元信息，不含标题区；轨迹组件库（约 1MB）由工作区 `lazy` 加载，侧边栏与首屏不背它。
+- 接口前缀由宿主注入，模块内不出现写死的 `/api`；`localStorage` 键以 `storageKey` 为前缀（默认 `pi-sessions`），两个实例互不覆盖。
+- 选目录面板渲染在工作区区域（绝对定位、居中，主机侧栏只有两三百像素，放不下路径与目录树），右键菜单 portal 到模块自己的容器，都不使用 `position: fixed`。删除与关注失败通过 `onNotice` 或模块内提示位上报，不用 `alert`。
+- 工作区根容器自带宽度与 `min-width: 0`，作为外壳或独立入口的 flex 项都能铺满，不靠内容撑开。
+- 跨模块命令 `commands.openRoot(root)`：先用目录浏览接口校验（只列一层子目录，比整目录扫描便宜），再切换根目录并返回 `{ id, label }`；模块未挂载、目录不可读或路径为空时抛错，不发半截请求。
+- 独立入口与嵌入模式共用 `SessionsProvider` 与两个区域的组件；独立入口额外从 URL 读 `?root=`，嵌入模式不碰 URL。
 
 ### 访问边界
 

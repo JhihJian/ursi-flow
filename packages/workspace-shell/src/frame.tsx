@@ -8,6 +8,8 @@ export interface SidebarFrameProps {
   expand: () => void
   /** 折叠条上的关键信息，控制在 2–3 项短值。 */
   items?: Array<{ label: string; value: string }>
+  /** 标题行右侧的额外按钮（搜索、过滤），排在折叠按钮之前。 */
+  actions?: ReactNode
   children?: ReactNode
 }
 
@@ -22,6 +24,7 @@ export function SidebarFrame({
   collapse,
   expand,
   items = [],
+  actions,
   children,
 }: SidebarFrameProps) {
   if (collapsed) {
@@ -52,6 +55,7 @@ export function SidebarFrame({
     <div className="ws-section">
       <header className="ws-section-head">
         <span className="ws-section-title">{title}</span>
+        {actions}
         <button
           type="button"
           className="ws-section-toggle"

@@ -15,6 +15,8 @@ const fsApi = process.env.FS_WEB_API ?? 'http://127.0.0.1:8199'
 const sshApi = process.env.SSH_WEB_API ?? 'http://127.0.0.1:8091'
 /** 沙箱 Gateway 控制台（server.mjs，含 HTTP Basic 认证代理）。 */
 const sbxApi = process.env.SBX_WEB_API ?? 'http://127.0.0.1:4180'
+/** pi 会话目录服务；前缀在代理层重写，服务端路由保持 /api 不动。 */
+const piSessionsApi = process.env.PI_SESSIONS_API ?? 'http://127.0.0.1:30200'
 
 const proxy = {
   // 顺序敏感：Vite 按插入顺序首个前缀命中生效，各模块前缀必须排在通用 /api 之前。
@@ -24,6 +26,11 @@ const proxy = {
     changeOrigin: false,
     ws: true,
     rewrite: (path: string) => path.replace(/^\/api\/ssh-web/, '/api'),
+  },
+  '/api/pi-sessions': {
+    target: piSessionsApi,
+    changeOrigin: false,
+    rewrite: (path: string) => path.replace(/^\/api\/pi-sessions/, '/api'),
   },
   '/sbx': {
     target: sbxApi,

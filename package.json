@@ -16,7 +16,8 @@
     "apps/ssh-web/web",
     "packages/workspace-shell",
     "apps/pi-manager-web/web",
-    "apps/pi-manager-web/server"
+    "apps/pi-manager-web/server",
+    "apps/pi-sessions-web/web"
   ],
   "scripts": {
     "test": "node --test apps/fs-web/server/test/*.test.ts",

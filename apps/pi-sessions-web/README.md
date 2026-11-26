@@ -11,7 +11,7 @@
 ## 目录
 
 - `server/`：Node.js 24 服务，零第三方依赖。扫描目录、按 id 定位、把会话转成组件库认的形状、删除会话、保存偏好、托管页面。接口契约见 [`server/HTTP.md`](server/HTTP.md)。
-- `web/`：React 18 + Vite 页面，样式沿用 `apps/todo-web` 的灰阶 token 与两栏骨架。按钮图标统一用 `src/components/Icons.tsx` 里 13×13 的内联 SVG，不用 `«` `↻` 这类字形，尺寸由 `--icon-size` 一处控制。
+- `web/`：React 19 + Vite，同时是 `@ursi/pi-sessions-web` workspace 包，导出 `./module`（工作区模块工厂）与 `./module.css`（作用域样式）。样式沿用 `apps/todo-web` 的灰阶 token。按钮图标统一用 `src/components/Icons.tsx` 里 13×13 的内联 SVG，不用 `«` `↻` 这类字形，尺寸由 `--icon-size` 一处控制。
 
 ## 依赖组件库
 
@@ -23,7 +23,16 @@ npm install
 npm run build:lib     # 产出 dist-lib/index.js 与 dist-lib/index.css
 ```
 
-组件库是 React 18，本页面同样用 18，并在 `vite.config.ts` 里 `dedupe` 了 React，避免出现两份运行时。
+组件库把 React 外部化，由宿主提供。本包按 shell-web 的 React 19 编译，`vite.config.ts` 里 `dedupe` 了 React，避免出现两份运行时。
+
+## 两种入口
+
+同一份模块可以独立运行，也可以嵌进 `apps/shell-web`：
+
+- **嵌入工作区**：`shell-web` 的组合根登记 `createPiSessionsModule({ apiBaseUrl: '/api/pi-sessions', storageKey: 'ursi.sessions' })`，侧边栏变成外壳的一节手风琴，工作区只放轨迹。接口前缀由宿主注入，`vite.config.ts` 把 `/api/pi-sessions` 代理到会话服务并重写回 `/api`。
+- **独立页面**：下面这套启动方式，`src/StandaloneApp.tsx` 直接用模块里的同一对组件摆两栏，没有第二套状态逻辑。
+
+模块导出 `commands.openRoot(root)`：按绝对路径切换会话根目录，先按真实接口校验再切换，供其它模块经组合根注入使用。
 
 ## 启动
 
