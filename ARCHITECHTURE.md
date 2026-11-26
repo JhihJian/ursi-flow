@@ -54,5 +54,6 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | Flow 能力 | [Agent 会话](docs/design/flow-runtime/ability/agent-harness.md) · [运行时工具](docs/design/flow-runtime/ability/runtime-tools.md) · [命令执行](docs/design/flow-runtime/ability/command-execution.md) · [并行执行](docs/design/flow-runtime/ability/parallel-execution.md) · [用户确认门禁](docs/design/flow-runtime/ability/user-confirmation.md)（[实现改动](docs/design/flow-runtime/ability/user-confirmation-impl.md)） |
 | MCP 服务管理 | [识别规则与标签](docs/design/mcp-web/RECOGNITION-RULES.md) |
 | 沙箱平台 | [构建、实例与端点](docs/design/ursi-sandbox/SANDBOX-PLATFORM.md) · [网络观测页面](docs/design/ursi-sandbox/NETWORK-OBSERVATION.md) · [控制台接入工作区](docs/design/ursi-sandbox/WORKSPACE-INTEGRATION.md) |
+| 单机部署 | [入口、路由与发布流程](docs/design/deployment/DEPLOYMENT.md) |
 
 相关入口：[根规格](SPEC.md) · [Flow 导读](apps/ursi-flow/docs/flow-overview.md) · [Flow 文件规范](apps/ursi-flow/docs/flow-spec.md)。

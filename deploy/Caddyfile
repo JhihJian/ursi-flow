@@ -1,0 +1,37 @@
+{
+	admin off
+}
+
+:8095 {
+	handle /api/fs-web/* {
+		reverse_proxy 127.0.0.1:8199
+	}
+	handle /api/ssh-web/* {
+		uri replace /api/ssh-web /api
+		reverse_proxy 127.0.0.1:8091
+	}
+	handle /api/flow-web/* {
+		uri replace /api/flow-web /api
+		reverse_proxy 127.0.0.1:8094
+	}
+	handle /api/pi-sessions/* {
+		uri replace /api/pi-sessions /api
+		reverse_proxy 127.0.0.1:30200
+	}
+	handle_path /api/pi-manager/* {
+		reverse_proxy 127.0.0.1:8093 {
+			flush_interval -1
+		}
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# 静态产物走单独的 handle，压缩只作用于这里，不干涉 SSE。
+	handle {
+		root * /data/dev/ursi-flow/apps/shell-web/dist
+		encode zstd gzip
+		try_files {path} /index.html
+		file_server
+	}
+}

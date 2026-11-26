@@ -1,0 +1,16 @@
+[Unit]
+Description=ursi-flow todo-web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@/apps/todo-web
+Environment=PORT=8090
+Environment=HOST=127.0.0.1
+Environment=TODO_WEB_STATIC_DIR=@ROOT@/apps/todo-web/web/dist
+ExecStart=@ROOT@/apps/todo-web/target/release/todo-web-server
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

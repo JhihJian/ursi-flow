@@ -1,0 +1,15 @@
+[Unit]
+Description=ursi-flow pi-sessions-web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@/apps/pi-sessions-web/server
+Environment=PI_SESSIONS_HOST=127.0.0.1
+Environment=PI_SESSIONS_PORT=30200
+ExecStart=@NODE@ src/main.mjs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

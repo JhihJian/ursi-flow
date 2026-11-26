@@ -1,0 +1,15 @@
+[Unit]
+Description=ursi-flow pi-manager-web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@/apps/pi-manager-web/server
+Environment=PI_MANAGER_HOST=127.0.0.1
+Environment=PI_MANAGER_PORT=8093
+ExecStart=@NODE@ src/server.ts
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

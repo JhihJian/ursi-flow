@@ -1,0 +1,12 @@
+[Unit]
+Description=ursi-flow 工作台入口（Caddy）
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@CADDY@ run --config @ROOT@/deploy/Caddyfile --adapter caddyfile
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

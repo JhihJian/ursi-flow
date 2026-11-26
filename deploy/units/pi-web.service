@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Web（独立入口，自带密码登录）
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@/apps/pi-web
+Environment=NODE_ENV=production
+EnvironmentFile=-%h/.config/ursi-flow/pi-web.env
+ExecStart=@NODE@ node_modules/next/dist/bin/next start -H 0.0.0.0 -p 30141
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
