@@ -10,9 +10,11 @@ import {
   missingVariables,
   nodeKindLabel,
   outcomeLabel,
+  resumeDisabledReason,
   sidebarItems,
   statusLabel,
   statusTone,
+  stopDisabledReason,
 } from './flow'
 
 const detail = (overrides: Partial<FlowDetail> = {}): FlowDetail => ({
@@ -115,6 +117,22 @@ describe('状态与文案', () => {
       '选边 批准',
       '运行失败：执行器出错',
     ])
+  })
+
+  it('只有没到终点的运行才能继续，只有未结束的运行才能停止', () => {
+    expect(resumeDisabledReason({ status: 'completed', active: false })).toBe('运行已经结束')
+    expect(resumeDisabledReason({ status: 'failed', active: false })).toBe('运行已失败，不能继续')
+    expect(resumeDisabledReason({ status: 'awaiting_input', active: false })).toBeNull()
+    expect(resumeDisabledReason({ status: 'interrupted', active: false })).toBeNull()
+    expect(resumeDisabledReason({ status: 'awaiting_input', active: true })).toBe('运行还在执行')
+
+    expect(stopDisabledReason({ status: 'completed', active: false })).toBe('运行已经结束')
+    expect(stopDisabledReason({ status: 'failed', active: false })).toBe('运行已经结束')
+    expect(stopDisabledReason({ status: 'interrupted', active: false })).toBe('运行已经结束')
+    expect(stopDisabledReason({ status: 'awaiting_input', active: false })).toBeNull()
+    expect(stopDisabledReason({ status: 'unconfirmed', active: false })).toBeNull()
+    expect(stopDisabledReason({ status: 'running', active: false })).toBeNull()
+    expect(stopDisabledReason({ status: 'running', active: true })).toBe('运行还在执行')
   })
 
   it('不可执行的 Flow 给出原因', () => {

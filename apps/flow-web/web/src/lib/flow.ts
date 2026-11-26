@@ -93,6 +93,28 @@ export function flowAvailability(detail: FlowDetail | undefined): string | null 
   return null
 }
 
+/** 还能继续的运行：没到终点，且本进程没有在执行。 */
+export function resumeDisabledReason(run: {
+  status: RunStatus
+  active: boolean
+}): string | null {
+  if (run.active) return '运行还在执行'
+  if (run.status === 'completed') return '运行已经结束'
+  if (run.status === 'failed') return '运行已失败，不能继续'
+  return null
+}
+
+/** 还能停止的运行：只有未结束的才需要停止。 */
+export function stopDisabledReason(run: {
+  status: RunStatus
+  active: boolean
+}): string | null {
+  if (run.active) return '运行还在执行'
+  if (run.status === 'running') return null
+  if (run.status === 'awaiting_input' || run.status === 'unconfirmed') return null
+  return '运行已经结束'
+}
+
 export function outcomeLabel(outcome: {
   name: string
   destination: { kind: string; name?: string }

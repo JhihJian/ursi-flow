@@ -66,6 +66,9 @@ export interface RunService {
 
 const RUN_ID = /^[A-Za-z0-9][\w-]{0,95}$/
 
+/** 到达即不再推进的状态。 */
+const TERMINAL: RunStatus[] = ['completed', 'failed', 'interrupted']
+
 /**
  * 运行服务：每个执行器一份引擎实例，共用同一个存储。
  * 运行头记录执行器标识，查询与恢复都按它选回对应的引擎，
@@ -104,6 +107,20 @@ export function createRunService(options: {
     })
     engines.set(id, engine)
     return engine
+  }
+
+  /** 终态运行没有下一步：继续或停止都算误用，直接拒绝。 */
+  async function requireOpen(runId: string, action: string) {
+    assertRunId(runId)
+    const stored = await store.load(runId).catch(() => undefined)
+    if (stored === undefined)
+      throw new EngineError('not_found', `运行不存在：${runId}`)
+    if (TERMINAL.includes(stored.snapshot.status))
+      throw new EngineError(
+        'conflict',
+        `运行状态是 ${stored.snapshot.status}，不能${action}`,
+      )
+    return stored
   }
 
   /** 运行用哪个引擎由运行头决定，不取当前的默认执行器。 */
@@ -241,6 +258,7 @@ export function createRunService(options: {
   }
 
   async function resume(runId: string): Promise<RunView> {
+    await requireOpen(runId, '继续')
     const engine = await engineFor(runId)
     await engine.resume(runId)
     return requireView(runId)
@@ -251,6 +269,7 @@ export function createRunService(options: {
    * （等待确认、待核实或进程重启后遗留的运行）。
    */
   async function stop(runId: string, reason?: string): Promise<RunView> {
+    await requireOpen(runId, '停止')
     const engine = await engineFor(runId)
     if (active.has(runId))
       throw new EngineError('conflict', '运行正在执行，暂时不能停止')

@@ -5,14 +5,18 @@ import {
   formatTime,
   nodeKindLabel,
   outcomeLabel,
+  resumeDisabledReason,
   statusLabel,
   statusTone,
+  stopDisabledReason,
 } from '../lib/flow'
 import { useFlowStore } from '../store'
 
 /** 运行详情：状态、待决确认、过程事件与变量。 */
 export function RunDetail({ run, detail }: { run: RunView; detail?: FlowDetail }) {
   const { busy, confirm, resume, stop } = useFlowStore()
+  const resumeReason = resumeDisabledReason(run)
+  const stopReason = stopDisabledReason(run)
   const names = useMemo(() => {
     const map = new Map<string, string>()
     for (const node of detail?.nodes ?? []) map.set(node.ref, node.name)
@@ -67,18 +71,18 @@ export function RunDetail({ run, detail }: { run: RunView; detail?: FlowDetail }
         <button
           type="button"
           className="flow-link"
-          disabled={run.active || busy !== null}
+          disabled={resumeReason !== null || busy !== null}
           onClick={() => void resume()}
-          title={run.active ? '运行还在执行' : '从快照继续这次运行'}
+          title={resumeReason ?? '从快照继续这次运行'}
         >
           继续
         </button>
         <button
           type="button"
           className="flow-link"
-          disabled={run.active || busy !== null || run.status === 'completed'}
+          disabled={stopReason !== null || busy !== null}
           onClick={() => void stop()}
-          title={run.active ? '运行还在执行' : '把这次运行标为停止'}
+          title={stopReason ?? '把这次运行标为停止'}
         >
           停止
         </button>

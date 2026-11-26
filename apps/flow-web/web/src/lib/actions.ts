@@ -5,7 +5,7 @@ import type {
 } from '@ursi/workspace-shell'
 import type { RunView } from '../api'
 import { copyText } from './clipboard'
-import { statusLabel } from './flow'
+import { statusLabel, stopDisabledReason } from './flow'
 
 /** flow 模块对外发布的选中类型。 */
 export const FLOW_KIND = 'flow.run'
@@ -71,9 +71,7 @@ export function createActions(
       disabledReason: () => {
         const run = read().run
         if (run === undefined) return '运行不在当前视图里'
-        if (run.active) return '运行还在执行'
-        if (run.status === 'completed') return '运行已经结束'
-        return null
+        return stopDisabledReason(run)
       },
       confirm: (selection) => `会把这次运行标记为停止，不再继续推进：\n${selection.id}\n继续？`,
       run: async () => {

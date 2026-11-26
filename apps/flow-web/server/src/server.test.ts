@@ -272,7 +272,7 @@ test('确认门禁：非法结果被拒，合法结果继续到完成', async ()
   assert.equal(done.status, 'completed')
 })
 
-test('等待中的运行可以停止，已结束的运行原样返回', async () => {
+test('等待中的运行可以停止，已结束的运行继续与停止都被拒绝', async () => {
   const home = await tempDir('flow-web-home-')
   const state = await tempDir('flow-web-state-')
   await writeFlow(home, 'gate', CONFIRM_FLOW)
@@ -285,7 +285,8 @@ test('等待中的运行可以停止，已结束的运行原样返回', async ()
   await waitForStatus(service, runId, 'awaiting_input')
   const stopped = await service.stop(runId, '用户停止')
   assert.equal(stopped.status, 'interrupted')
-  assert.equal((await service.stop(runId)).status, 'interrupted')
+  await assert.rejects(() => service.stop(runId), /不能停止/)
+  await assert.rejects(() => service.resume(runId), /不能继续/)
 })
 
 async function waitFor(service: ReturnType<typeof createRunService>, runId: string) {

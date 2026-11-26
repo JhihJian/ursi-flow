@@ -218,6 +218,13 @@ describe('启动运行与人工确认', () => {
     })
 
     expect(container.textContent).toContain('已完成')
+    // 已完成的运行没有下一步：继续与停止都必须禁用。
+    for (const label of ['继续', '停止']) {
+      const action = Array.from(container.querySelectorAll('button')).find(
+        (button) => button.textContent === label,
+      )
+      expect(action?.disabled, label).toBe(true)
+    }
     expect(state.calls).toContain('POST /api/runs/run-1/confirm')
     expect(JSON.parse(state.bodies[0])).toMatchObject({ executor: 'fake' })
 
