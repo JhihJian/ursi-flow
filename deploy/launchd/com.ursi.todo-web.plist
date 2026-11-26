@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ursi.todo-web</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@ROOT@/apps/todo-web/target/release/todo-web-server</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>@ROOT@/apps/todo-web</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>@SERVICE_PATH@</string>
+		<key>HOST</key>
+		<string>@BACKEND_HOST@</string>
+		<key>PORT</key>
+		<string>@TODO_PORT@</string>
+		<key>URSI_DATA_DIR</key>
+		<string>@URSI_HOME@</string>
+		<key>TODO_WEB_STATIC_DIR</key>
+		<string>@ROOT@/apps/todo-web/web/dist</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>2</integer>
+	<key>LimitLoadToSessionType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>@URSI_HOME@/logs/todo-web.log</string>
+	<key>StandardErrorPath</key>
+	<string>@URSI_HOME@/logs/todo-web.log</string>
+</dict>
+</plist>

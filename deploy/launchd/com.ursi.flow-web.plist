@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ursi.flow-web</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@NODE@</string>
+		<string>src/main.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>@ROOT@/apps/flow-web/server</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>@SERVICE_PATH@</string>
+		<key>FLOW_WEB_HOST</key>
+		<string>@BACKEND_HOST@</string>
+		<key>FLOW_WEB_PORT</key>
+		<string>@FLOW_PORT@</string>
+		<key>FLOW_WEB_HOME</key>
+		<string>@URSI_HOME@/flow</string>
+		<key>FLOW_WEB_STATE</key>
+		<string>@URSI_HOME@/flow-web</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>2</integer>
+	<key>LimitLoadToSessionType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>@URSI_HOME@/logs/flow-web.log</string>
+	<key>StandardErrorPath</key>
+	<string>@URSI_HOME@/logs/flow-web.log</string>
+</dict>
+</plist>

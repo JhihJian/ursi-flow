@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ursi.fs-web</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@NODE@</string>
+		<string>apps/fs-web/server/src/server.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>@ROOT@</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>@SERVICE_PATH@</string>
+		<key>FS_WEB_HOST</key>
+		<string>@BACKEND_HOST@</string>
+		<key>FS_WEB_PORT</key>
+		<string>@FS_PORT@</string>
+		<key>FS_WEB_STATE</key>
+		<string>@URSI_HOME@/fs-web/workspaces.json</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>2</integer>
+	<key>LimitLoadToSessionType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>@URSI_HOME@/logs/fs-web.log</string>
+	<key>StandardErrorPath</key>
+	<string>@URSI_HOME@/logs/fs-web.log</string>
+</dict>
+</plist>

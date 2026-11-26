@@ -48,10 +48,11 @@ async fn main() -> Result<()> {
         .ok()
         .and_then(|port| port.parse::<u16>().ok())
         .unwrap_or(8090);
-    let address = format!("0.0.0.0:{port}");
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let address = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&address).await?;
 
-    println!("Server running on http://localhost:{port}");
+    println!("Server running on http://{host}:{port}");
     axum::serve(listener, app).await?;
     Ok(())
 }

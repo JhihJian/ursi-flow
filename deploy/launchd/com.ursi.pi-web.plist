@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ursi.pi-web</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@NODE@</string>
+		<string>src/server.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>@ROOT@/apps/pi-web/server</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>@SERVICE_PATH@</string>
+		<key>PI_WEB_HOST</key>
+		<string>@BACKEND_HOST@</string>
+		<key>PI_WEB_PORT</key>
+		<string>@PI_WEB_PORT@</string>
+		<key>PI_WEB_STATE</key>
+		<string>@URSI_HOME@/pi-web</string>
+		<key>PI_WEB_STATIC_DIR</key>
+		<string>@ROOT@/apps/pi-web/web/dist</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>2</integer>
+	<key>LimitLoadToSessionType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>@URSI_HOME@/logs/pi-web.log</string>
+	<key>StandardErrorPath</key>
+	<string>@URSI_HOME@/logs/pi-web.log</string>
+</dict>
+</plist>
