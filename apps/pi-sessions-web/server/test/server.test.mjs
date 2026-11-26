@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import test from 'node:test'
 import { loadConfig } from '../src/config.mjs'
@@ -15,6 +15,7 @@ async function start(root) {
     port: 0,
     defaultRoot: root,
     stateFile: join(root, '.index.json'),
+    prefsFile: join(root, '.prefs.json'),
     staticDir: join(root, '.web'),
     maxTextBytes: 4096,
   }
@@ -159,6 +160,7 @@ test('文本支持 gzip，超过体积上限返回 413', async (t) => {
     ...loadConfig({}, root),
     defaultRoot: root,
     stateFile: join(root, '.index.json'),
+    prefsFile: join(root, '.prefs.json'),
     staticDir: join(root, '.web'),
     maxTextBytes: 16,
   }
@@ -207,6 +209,8 @@ test('config 与 browse 给出初始根与子目录导航', async (t) => {
   assert.equal(config.defaultRoot, root)
   assert.ok(Array.isArray(config.suggestedRoots))
   assert.equal(typeof config.maxTextBytes, 'number')
+  // 测试走 127.0.0.1，写操作应当放行
+  assert.equal(config.canWrite, true)
 
   const browse = await (await fetch(`${instance.base}/api/browse?path=${encodeURIComponent(root)}`)).json()
   assert.equal(browse.path, root)
@@ -259,4 +263,68 @@ test('未知接口返回 404 JSON，未构建前端时根路径回 404 文本', 
 
   const health = await fetch(`${instance.base}/api/health`)
   assert.equal(await health.text(), 'ok')
+})
+
+test('DELETE 删除会话并从后续列表里消失', async (t) => {
+  const root = await makeFixtureRoot()
+  const instance = await start(root)
+  t.after(async () => {
+    await instance.close()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const before = await (await fetch(`${instance.base}/api/sessions?root=${encodeURIComponent(root)}`)).json()
+  assert.ok(before.sessions.some((session) => session.id === CANONICAL_ID))
+
+  const url = `${instance.base}/api/sessions/${CANONICAL_ID}?root=${encodeURIComponent(root)}`
+  const removed = await fetch(url, { method: 'DELETE' })
+  assert.equal(removed.status, 200)
+  const body = await removed.json()
+  assert.equal(body.id, CANONICAL_ID)
+  assert.equal(body.removed.length, 1)
+
+  const after = await (await fetch(`${instance.base}/api/sessions?root=${encodeURIComponent(root)}`)).json()
+  assert.equal(after.sessions.some((session) => session.id === CANONICAL_ID), false)
+
+  const again = await fetch(url, { method: 'DELETE' })
+  assert.equal(again.status, 404)
+})
+
+test('偏好接口：GET 空列表，PUT 置顶与取消，非法请求体被拒', async (t) => {
+  const root = await makeFixtureRoot()
+  const instance = await start(root)
+  t.after(async () => {
+    await instance.close()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const empty = await (await fetch(`${instance.base}/api/prefs`)).json()
+  assert.deepEqual(empty.pinnedProjects, [])
+
+  const put = (body) =>
+    fetch(`${instance.base}/api/prefs`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  assert.equal((await put({ pin: '/demo/alpha' })).status, 200)
+  const pinned = await (await put({ pin: '/demo/beta' })).json()
+  assert.deepEqual(pinned.pinnedProjects, ['/demo/beta', '/demo/alpha'])
+
+  const unpinned = await (await put({ unpin: '/demo/beta' })).json()
+  assert.deepEqual(unpinned.pinnedProjects, ['/demo/alpha'])
+
+  const stored = await (await fetch(`${instance.base}/api/prefs`)).json()
+  assert.deepEqual(stored.pinnedProjects, ['/demo/alpha'])
+
+  assert.equal((await put({})).status, 400)
+  assert.equal((await put({ pin: 42 })).status, 400)
+
+  const broken = await fetch(`${instance.base}/api/prefs`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: 'not json',
+  })
+  assert.equal(broken.status, 400)
 })

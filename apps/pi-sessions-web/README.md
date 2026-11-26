@@ -2,7 +2,9 @@
 
 按磁盘上的会话目录渲染 pi 会话：左侧按项目分组列出会话，右侧用 [`pi-agent-trajectory-viewer`](../../../pi-agent-trajectory-viewer) 渲染轨迹。
 
-会话目录由使用者在界面里指定，任意绝对路径都行：`~/.pi/agent/sessions`、它的上一级 `~/.pi/agent`、某个项目的单目录、别人的导出备份。模块只读会话文件，不启动 pi，不写任何会话内容。
+会话目录由使用者在界面里指定，任意绝对路径都行：`~/.pi/agent/sessions`、它的上一级 `~/.pi/agent`、某个项目的单目录、别人的导出备份。模块不启动 pi，也不会改写会话内容；唯一的写操作是用户主动删除会话文件，以及记录「特别关注」这层侧边栏偏好。
+
+侧栏支持把项目「设为特别关注」（项目组标题右键），关注的项目整组排在最前；会话行右键可以打开、复制 ID 或路径、删除。删除与关注只在服务所在机器上可用，局域网访问是只读的。
 
 ## 目录
 
@@ -40,11 +42,12 @@ cd ../server && npm start
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PI_SESSIONS_HOST` | `0.0.0.0` | 监听地址。默认所有网卡以便局域网直接打开；只想本机用时设成 `127.0.0.1` |
+| `PI_SESSIONS_HOST` | `0.0.0.0` | 监听地址。默认所有网卡以便局域网直接打开；只想本机用时设成 `127.0.0.1`。无论监听哪里，删除会话与改偏好都只接受回环来源 |
 | `PI_SESSIONS_PORT` | `30200` | 监听端口 |
 | `PI_SESSIONS_ROOT` | `~/.pi/agent/sessions` | 界面初始根目录 |
 | `PI_SESSIONS_MAX_BYTES` | `67108864` | 单个会话文本上限，超过返回 413 |
 | `PI_SESSIONS_STATE` | `~/.cache/pi-sessions-web/session-index.json` | 扫描索引落盘位置 |
+| `PI_SESSIONS_PREFS` | `~/.cache/pi-sessions-web/prefs.json` | 特别关注的项目列表 |
 | `PI_SESSIONS_WEB_DIR` | `../web/dist` | 静态页面目录 |
 
 前端开发用 `PI_SESSIONS_API` 指定代理目标，默认 `http://127.0.0.1:30200`。

@@ -404,6 +404,12 @@ export function createScanner({
     find,
     whenIdle,
 
+    /** 文件被删掉后丢掉它的缓存，下一次列表不再出现这一行。 */
+    forget(path) {
+      cache.delete(path)
+      queued.delete(path)
+    },
+
     onPersist(callback) {
       persist = callback
     },

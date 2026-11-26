@@ -47,6 +47,13 @@ export interface ServerConfig {
   defaultRoot: string
   suggestedRoots: string[]
   maxTextBytes: number
+  /** 当前来源能否删除会话、改偏好；局域网访问为 false，界面据此禁用写操作。 */
+  canWrite: boolean
+}
+
+export interface Prefs {
+  /** 特别关注的项目键，顺序即显示顺序。 */
+  pinnedProjects: string[]
 }
 
 export class RequestError extends Error {
@@ -89,6 +96,36 @@ export function fetchBrowse(path: string): Promise<BrowseResult> {
 
 export const sessionTextUrl = (root: string, id: string) =>
   withRoot(`/api/sessions/${encodeURIComponent(id)}/text`, root)
+
+export function fetchPrefs(): Promise<Prefs> {
+  return readJson<Prefs>('/api/prefs')
+}
+
+/** 关注或取消关注一个项目；返回更新后的完整列表。 */
+export async function updatePrefs(change: { pin?: string; unpin?: string }): Promise<Prefs> {
+  const response = await fetch('/api/prefs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+  }
+  return (await response.json()) as Prefs
+}
+
+/** 删除会话文件（连带同名 subagent 目录）。只能删当前根目录下的会话。 */
+export async function deleteSession(root: string, id: string): Promise<{ id: string; removed: string[] }> {
+  const response = await fetch(withRoot(`/api/sessions/${encodeURIComponent(id)}`, root), {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new RequestError(body?.error ?? `HTTP ${response.status}`, response.status)
+  }
+  return (await response.json()) as { id: string; removed: string[] }
+}
 
 export async function fetchSessionText(root: string, id: string): Promise<string> {
   const response = await fetch(sessionTextUrl(root, id))

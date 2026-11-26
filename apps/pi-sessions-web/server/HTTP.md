@@ -1,6 +1,8 @@
 # 服务端接口契约
 
-零依赖 Node 24 服务，默认监听 `0.0.0.0:30200`，同时托管 `web/dist`。全部接口只读，没有任何写入会话文件的入口。
+零依赖 Node 24 服务，默认监听 `0.0.0.0:30200`，同时托管 `web/dist`。
+
+除 `DELETE /api/sessions/:id` 与 `PUT /api/prefs` 外全部只读。这两个写接口只接受来自回环地址的请求，判定依据是连接的对端地址，不看任何转发头；其它来源返回 403。
 
 所有接口的响应都是 `application/json; charset=utf-8` 或 `text/plain; charset=utf-8`，并带 `Cache-Control: no-store`。
 
@@ -49,9 +51,12 @@
 {
   "defaultRoot": "/home/me/.pi/agent/sessions",
   "suggestedRoots": ["/home/me/.pi/agent/sessions", "/home/me/.pi/agent"],
-  "maxTextBytes": 67108864
+  "maxTextBytes": 67108864,
+  "canWrite": true
 }
 ```
+
+`canWrite` 表示当前来源能否调用下面两个写接口。界面据此把「设为特别关注」与「删除会话」置灰，侧栏脚注显示「只读」。
 
 ## `GET /api/sessions?root=<绝对路径>`
 
@@ -94,6 +99,36 @@
 - 无法解析的行丢弃并计数，不让一行坏数据毁掉整个会话。
 - 其它类型（`model_change`、`thinking_level_change`、`compaction`、`context_edit` 等）原样透传，组件库自行处理或忽略。
 
+## `DELETE /api/sessions/:id?root=<绝对路径>`
+
+删除一个会话：先删 `.jsonl`，如果同名目录（`<文件名去掉 .jsonl>`，pi 在那里放该会话的 subagent 运行记录）存在也一并删掉。
+
+```json
+{ "id": "01a21590-5cd1-7494-aed0-9a08165a9321", "removed": ["/path/session.jsonl", "/path/session"] }
+```
+
+- 非回环来源返回 403。
+- 定位到的路径不在当前根目录内，或不是 `.jsonl` 时返回 400；文件已不存在返回 404。
+- 客户端只传会话 id 与根目录，路径由服务端自己定位，因此不能借此删除根目录以外的文件。
+
+## `GET /api/prefs`
+
+```json
+{ "pinnedProjects": ["/data/dev/ursi-flow"] }
+```
+
+`pinnedProjects` 是「特别关注」的项目键，顺序即显示顺序。保留已从当前根目录消失的项目键：该组只是不显示，等项目再出现时恢复关注。
+
+## `PUT /api/prefs`
+
+请求体是 `{ "pin": "<projectKey>" }` 或 `{ "unpin": "<projectKey>" }`，两者都给时 `unpin` 优先。
+
+- `pin` 把项目放到列表最前，已经在列表里就只调整位置，不产生第二项。
+- 返回更新后的完整列表：`{ "pinnedProjects": [...] }`。
+- 非回环来源返回 403；请求体不是 JSON 对象、缺少两个字段之一、或值不是字符串时返回 400。
+- 列表最多保留 100 个项目键，空串、超长键（>4096 字符）与重复项被丢掉。
+- 落盘在 `PI_SESSIONS_PREFS`，默认 `~/.cache/pi-sessions-web/prefs.json`（0600，临时文件写完后改名）；内容损坏时退回空列表，不影响浏览。
+
 ## `GET /api/browse?path=<绝对路径>`
 
 选根浮层用。只列子目录，不递归。
@@ -110,7 +145,9 @@
 
 ## 索引缓存
 
-扫描结果按文件指纹（`size` + `mtimeMs`）写入 `PI_SESSIONS_STATE` 指向的文件，默认 `~/.cache/pi-sessions-web/session-index.json`，权限 0600，临时文件写完再改名。
+扫描结果按文件指纹（`size` + `mtimeMs`）写入 `PI_SESSIONS_STATE` 指向的文件，默认 `~/.cache/pi-sessions-web/session-index.json`，权限 0600，临时文件写完再改名。删除会话后对应条目立即从缓存移除并触发一次落盘。
+
+侧边栏偏好单独存 `PI_SESSIONS_PREFS`（默认同目录 `prefs.json`）：索引丢了可以重建，偏好丢了就是用户的操作丢失，因此两者不共用一个文件。
 
 - 格式：`{ "version": 1, "entries": [{ "size", "mtimeMs", "info": <会话行> }] }`。
 - 变更后延迟 5 秒合并写一次；进程收到 `SIGINT`/`SIGTERM` 时立即落盘。

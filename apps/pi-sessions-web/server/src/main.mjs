@@ -4,8 +4,11 @@ import { createServer } from 'node:http'
 import { dirname, extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { createGzip } from 'node:zlib'
+import { createAccess } from './access.mjs'
 import { createTransformer } from './canonicalize.mjs'
 import { loadConfig } from './config.mjs'
+import { deleteSessionFile } from './delete.mjs'
+import { createPrefs } from './prefs.mjs'
 import { createScanner } from './scan.mjs'
 
 const MIME = {
@@ -37,6 +40,28 @@ const text = (response, status, body) => {
 }
 
 const PERSIST_DELAY_MS = 5000
+/** 请求体上限：只有偏好这种小对象走 POST，1KB 足够塞下上百个项目键。 */
+const MAX_BODY_BYTES = 64 * 1024
+
+/** 读取并解析 JSON 请求体；超过上限或不是合法 JSON 都返回 null。 */
+async function readJsonBody(request) {
+  let size = 0
+  const chunks = []
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) {
+      request.destroy()
+      return null
+    }
+    chunks.push(chunk)
+  }
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
 
 /** 索引落盘：先写临时文件再改名，半个文件不会被下次启动读到。 */
 function createPersister({ stateFile, scanner }) {
@@ -84,6 +109,18 @@ export async function createApp(config = loadConfig()) {
   const persister = createPersister({ stateFile: config.stateFile, scanner })
   await persister.load()
   scanner.onPersist(() => persister.schedule())
+
+  const prefs = createPrefs({ file: config.prefsFile })
+  await prefs.load()
+
+  const access = createAccess()
+
+  /** 写操作统一在这里拦一道，局域网访问拿到 403 而不是静默失败。 */
+  const refuseWrite = (request, response) => {
+    if (access.canWrite(request)) return false
+    json(response, 403, { error: '删除与偏好只能在服务所在机器上操作（局域网访问为只读）' })
+    return true
+  }
 
   /**
    * 根路径由浏览器给出，这里只做三件事：展开 `~`、要求绝对路径、要求是目录。
@@ -170,6 +207,7 @@ export async function createApp(config = loadConfig()) {
   return {
     scanner,
     persister,
+    prefs,
     async handle(request, response) {
       const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
       const { pathname } = url
@@ -181,7 +219,31 @@ export async function createApp(config = loadConfig()) {
           defaultRoot: config.defaultRoot,
           suggestedRoots: config.suggestedRoots,
           maxTextBytes: config.maxTextBytes,
+          /** 当前来源能否删除会话、改偏好；界面据此禁用菜单项并给出原因。 */
+          canWrite: access.canWrite(request),
         })
+      }
+
+      if (pathname === '/api/prefs') {
+        if (request.method === 'PUT') {
+          if (refuseWrite(request, response)) return undefined
+          const body = await readJsonBody(request)
+          if (!body) return json(response, 400, { error: '请求体必须是 JSON 对象' })
+          const pin = body.pin === undefined ? undefined : body.pin
+          const unpin = body.unpin === undefined ? undefined : body.unpin
+          if (pin === undefined && unpin === undefined) {
+            return json(response, 400, { error: '需要 pin 或 unpin' })
+          }
+          if (pin !== undefined && typeof pin !== 'string') {
+            return json(response, 400, { error: 'pin 必须是 projectKey 字符串' })
+          }
+          if (unpin !== undefined && typeof unpin !== 'string') {
+            return json(response, 400, { error: 'unpin 必须是 projectKey 字符串' })
+          }
+          const result = await prefs.apply({ pin, unpin })
+          return json(response, 200, { pinnedProjects: result.pinnedProjects })
+        }
+        return json(response, 200, prefs.get())
       }
 
       if (pathname === '/api/browse') {
@@ -209,6 +271,19 @@ export async function createApp(config = loadConfig()) {
       }
 
       const metaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/)
+      if (metaMatch && request.method === 'DELETE') {
+        if (refuseWrite(request, response)) return undefined
+        const root = await resolveRoot(url.searchParams.get('root'))
+        if (root.error) return json(response, root.error[0], { error: root.error[1] })
+        const record = await scanner.find(root.path, decodeURIComponent(metaMatch[1]))
+        if (!record) return json(response, 404, { error: '会话不存在' })
+        const result = await deleteSessionFile({ path: record.path, root: root.path })
+        if (result.error) return json(response, result.error[0], { error: result.error[1] })
+        scanner.forget(record.path)
+        persister.schedule()
+        return json(response, 200, { id: record.id, removed: result.removed })
+      }
+
       if (metaMatch) {
         const root = await resolveRoot(url.searchParams.get('root'))
         if (root.error) return json(response, root.error[0], { error: root.error[1] })

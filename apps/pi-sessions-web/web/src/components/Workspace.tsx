@@ -20,6 +20,10 @@ interface WorkspaceProps {
   onRootChange: (root: string) => void
   defaultRoot: string
   suggestedRoots: string[]
+  pinnedProjects: string[]
+  onTogglePin: (projectKey: string, pinned: boolean) => void
+  onDeleteSession: (row: SessionRow) => void
+  canWrite: boolean
 }
 
 /** 两栏骨架：左侧会话分组，右侧轨迹。分隔条拖动、双击复位，与看板一致。 */
@@ -36,6 +40,10 @@ export function Workspace({
   onRootChange,
   defaultRoot,
   suggestedRoots,
+  pinnedProjects,
+  onTogglePin,
+  onDeleteSession,
+  canWrite,
 }: WorkspaceProps) {
   const layout = useDefaultLayout({ id: 'pi-sessions-web.columns' })
   const sidebarRef = usePanelRef()
@@ -96,6 +104,10 @@ export function Workspace({
           onRootChange={onRootChange}
           defaultRoot={defaultRoot}
           suggestedRoots={suggestedRoots}
+          pinnedProjects={pinnedProjects}
+          onTogglePin={onTogglePin}
+          onDeleteSession={onDeleteSession}
+          canWrite={canWrite}
           collapsed={collapsed}
           onCollapse={collapseSidebar}
           onExpand={expandSidebar}

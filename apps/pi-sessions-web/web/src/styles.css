@@ -22,6 +22,21 @@ body {
   background: var(--white);
 }
 
+/*
+ * 隐藏滚动条但保留滚动：内容多时用滚轮、触控板或键盘滚动。
+ * 会话列表、选根列表和轨迹正文都靠这一条覆盖，组件库内部的滚动容器同样生效。
+ */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 ul,
 ol {
   margin: 0;
@@ -277,6 +292,32 @@ button {
   color: var(--gray-400);
 }
 
+/* 区段标题：特别关注 / 全部项目。与侧栏标题同一套衬线放大写的写法，但更小 */
+
+.section-label {
+  padding: var(--space-sm) var(--space-xs) var(--space-xs);
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.section-label + .session-group {
+  margin-top: 0;
+}
+
+.pinned-section {
+  margin-bottom: var(--space-xs);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pinned-section .section-label {
+  padding-top: 0;
+}
+
 /* 项目分组 */
 
 .session-group + .session-group {
@@ -313,6 +354,12 @@ button {
   font-weight: 600;
   color: var(--gray-600);
   letter-spacing: 0.3px;
+}
+
+.session-group-pin {
+  flex: none;
+  font-size: 7px;
+  color: var(--gray-900);
 }
 
 .session-group-count {
@@ -379,6 +426,62 @@ button {
 .session-more:hover {
   color: var(--gray-900);
   background: var(--gray-100);
+}
+
+/* 右键菜单 */
+
+.context-menu {
+  position: fixed;
+  z-index: 400;
+  padding: var(--space-xs) 0;
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+}
+
+.context-menu-heading {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--gray-400);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-900);
+  cursor: pointer;
+}
+
+.context-menu-item:hover:not(:disabled),
+.context-menu-item:focus-visible:not(:disabled) {
+  outline: none;
+  background: var(--gray-200);
+}
+
+.context-menu-item:disabled {
+  cursor: default;
+  color: var(--gray-400);
+}
+
+.context-menu-item.danger {
+  color: #b43c3c;
+}
+
+.context-menu-item.danger:hover:not(:disabled) {
+  background: rgba(180, 60, 60, 0.1);
+}
+
+.context-menu-item.danger:disabled {
+  color: rgba(180, 60, 60, 0.45);
 }
 
 /* 折叠态：一列竖排文字，与看板的项目栏一致 */

@@ -113,6 +113,26 @@ export function groupSessions(rows: readonly SessionRow[], query = ''): SessionG
   return list
 }
 
+/**
+ * 把分组拆成「特别关注」与其余两段。关注段按用户设定的顺序（关注得越晚越靠上），
+ * 只保留当前根目录里确实存在的项目；其余保持按活动排序的原样。
+ */
+export function splitPinnedGroups(
+  groups: readonly SessionGroup[],
+  pinnedKeys: readonly string[],
+): { pinned: SessionGroup[]; rest: SessionGroup[] } {
+  const byKey = new Map(groups.map((group) => [group.key, group]))
+  const pinned: SessionGroup[] = []
+  const taken = new Set<string>()
+  for (const key of pinnedKeys) {
+    const group = byKey.get(key)
+    if (!group || taken.has(key)) continue
+    pinned.push(group)
+    taken.add(key)
+  }
+  return { pinned, rest: groups.filter((group) => !taken.has(group.key)) }
+}
+
 /** 当前选中会话所在的组，折叠侧边栏时用它的最新会话做一行摘要。 */
 export function groupOfKey(groups: readonly SessionGroup[], key: string | null): SessionGroup | null {
   if (!key) return null

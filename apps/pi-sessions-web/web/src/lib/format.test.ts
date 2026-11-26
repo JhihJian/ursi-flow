@@ -10,6 +10,7 @@ import {
   sessionMeta,
   sessionTitle,
   shortRoot,
+  splitPinnedGroups,
 } from './format'
 
 const row = (over: Partial<SessionRow>): SessionRow => ({
@@ -136,5 +137,31 @@ describe('shortRoot', () => {
   test('保留末两段，短路径原样返回', () => {
     expect(shortRoot('/home/me/.pi/agent/sessions')).toBe('…/agent/sessions')
     expect(shortRoot('/data/dev')).toBe('/data/dev')
+  })
+})
+
+describe('splitPinnedGroups', () => {
+  const groups = groupSessions([
+    row({ id: 'a', projectKey: '/p1', projectName: 'p1', modified: 300 }),
+    row({ id: 'b', projectKey: '/p2', projectName: 'p2', modified: 200 }),
+    row({ id: 'c', projectKey: '/p3', projectName: 'p3', modified: 100 }),
+  ])
+
+  test('关注段按设定的顺序，其余保持原样', () => {
+    const split = splitPinnedGroups(groups, ['/p3', '/p1'])
+    expect(split.pinned.map((group) => group.name)).toEqual(['p3', 'p1'])
+    expect(split.rest.map((group) => group.name)).toEqual(['p2'])
+  })
+
+  test('当前根目录里不存在的键、重复的键都不产生空组', () => {
+    const split = splitPinnedGroups(groups, ['/nope', '/p2', '/p2'])
+    expect(split.pinned.map((group) => group.name)).toEqual(['p2'])
+    expect(split.rest.map((group) => group.name)).toEqual(['p1', 'p3'])
+  })
+
+  test('没有关注时全部留在其余段', () => {
+    const split = splitPinnedGroups(groups, [])
+    expect(split.pinned).toEqual([])
+    expect(split.rest).toHaveLength(3)
   })
 })
