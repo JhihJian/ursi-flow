@@ -15,7 +15,7 @@
 - `terminal/fit.ts`：`StableCellFitAddon` 与 `terminalGridSizeForBox` 来自 `pane-manager/terminal-fit`，另加两帧稳定的 fit 调度。
 - `terminal/renderer.ts`：WebGL 可用性判定、上下文丢失降级与 DPR 修复来自 `pane-manager/terminal-rendering`。
 - `terminal/unicode.ts`：Unicode 11 + ZWJ 宽度 provider，来自 `shared/terminal/appearance/terminal-unicode-provider.ts`。
-- `terminal/theme.ts`、`terminal/color.ts`：滚动条按前景对比度染色与最小对比度取值，来自 `terminal-themes` 与 `appearance/terminal-appearance.ts`。
+- `terminal/theme.ts`、`terminal/color.ts`：最小对比度取值与滚动条按前景对比度染色的算法来自 orca 的 `terminal-themes` 与 `appearance/terminal-appearance.ts`；ANSI 调色板改为本模块自有的灰阶 + 低饱和专色方案，与页面排版同源。
 - `terminal/search.tsx`：搜索面板交互与装饰高亮，来自 `components/terminal-pane/search`。
 - `terminal/links.ts`、`terminal/http-url.ts`、`terminal/prose-url.ts`：跨行 URL 识别与悬停提示，来自 `components/terminal-pane/links` 与 `shared/terminal/links`（去掉了 orca 的硬换行启发式）。
 

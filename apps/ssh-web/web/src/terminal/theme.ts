@@ -2,61 +2,68 @@ import type { ITheme } from '@xterm/xterm'
 import { contrastRatio, hexToRgb, over, rgbaString, type Rgba } from './color'
 
 /**
- * 深色配色：底色与前景沿用 ssh-web 出版物黑，ANSI 调色板取自 orca 默认深色主题
- * （Ghostty Default Style Dark），在 #141414 上比原来的低饱和色更易读。
+ * 配色取向：终端不是独立的小黑窗，而是出版物版面的延续。
+ * 两套主题的 ANSI 调色板都由 achromatic 灰阶 + 六种低饱和「印刷专色」组成，
+ * 不出现电商绿、终端蓝这类高纯度色，切换主题时版面观感不跳。
+ * 基准对比度：白底正文槽位 ≥5:1，暗底除 black 一档（1.4:1，本来就用于「看不见」的场景，
+ * 交给 xterm 的最小对比度门限抬到 3:1）外都 ≥3:1。
+ * white / brightWhite 是例外：它们主要被程序当图形色用（`\e[47m` 反显底、块状进度条、
+ * tmux 状态栏），这类字形在 xterm 里绕过最小对比度门限，取近白就会在白底上消失，
+ * 所以亮色下压到中灰（2:1 以上），反显时的黑字仍有 6:1。
+ * 选中色与搜索高亮色刻意不同源：选中是灰阶偏靛的淡染，高亮是纯灰块 + 砖红当前项。
  */
+
+/** 暗色：底色用页面灰阶的 gray-900，前景用 gray-200，与侧栏、标签栏同一套灰。 */
 const DARK_THEME: ITheme = {
-  background: '#141414',
-  foreground: '#e6e6e6',
-  cursor: '#e6e6e6',
-  cursorAccent: '#141414',
-  selectionBackground: '#5a7898',
-  selectionForeground: '#ffffff',
-  black: '#1d1f21',
-  red: '#cc6666',
-  green: '#b5bd68',
-  yellow: '#f0c674',
-  blue: '#81a2be',
-  magenta: '#b294bb',
-  cyan: '#8abeb7',
-  white: '#c5c8c6',
-  brightBlack: '#666666',
-  brightRed: '#d54e53',
-  brightGreen: '#b9ca4a',
-  brightYellow: '#e7c547',
-  brightBlue: '#7aa6da',
-  brightMagenta: '#c397d8',
-  brightCyan: '#70c0b1',
-  brightWhite: '#eaeaea',
+  background: '#1a1a1a',
+  foreground: '#e5e5e5',
+  cursor: '#e5e5e5',
+  cursorAccent: '#1a1a1a',
+  selectionBackground: '#2b3c4d',
+  selectionForeground: '#f5f5f5',
+  black: '#333333',
+  red: '#b06060',
+  green: '#7f9a6b',
+  yellow: '#c2a25e',
+  blue: '#7d97b5',
+  magenta: '#a8839c',
+  cyan: '#7aa5a2',
+  white: '#c8c8c8',
+  brightBlack: '#6b6b6b',
+  brightRed: '#cc8484',
+  brightGreen: '#9cb989',
+  brightYellow: '#d8bc7e',
+  brightBlue: '#9db4cc',
+  brightMagenta: '#c2a2b7',
+  brightCyan: '#9cc0bd',
+  brightWhite: '#eeeeee',
 }
 
-/**
- * 亮色配色：白底黑字保持出版物风格，ANSI 调色板取自 orca 的 Builtin Tango Light。
- * 白底下黄/青/绿若照搬 Tango 原值几乎看不清，orca 已把这几档压暗，这里直接沿用。
- */
+/** 亮色：白底黑字，专色压深到 5:1 以上，白底上不糊；白/亮白见文件头例外说明。 */
 const LIGHT_THEME: ITheme = {
   background: '#ffffff',
   foreground: '#1a1a1a',
   cursor: '#1a1a1a',
   cursorAccent: '#ffffff',
-  selectionBackground: '#accef7',
+  selectionBackground: '#b9cade',
   selectionForeground: '#1a1a1a',
-  black: '#2e3436',
-  red: '#cc0000',
-  green: '#4e9a06',
-  yellow: '#8e7700',
-  blue: '#3465a4',
-  magenta: '#75507b',
-  cyan: '#05727e',
-  white: '#6a6a6a',
-  brightBlack: '#555753',
-  brightRed: '#ef2929',
-  brightGreen: '#1b7a1b',
-  brightYellow: '#6d5a00',
-  brightBlue: '#204a87',
-  brightMagenta: '#ad7fa8',
-  brightCyan: '#034b50',
-  brightWhite: '#3d3d3d',
+  black: '#2e2e2e',
+  red: '#9c3a34',
+  green: '#4a6b3f',
+  yellow: '#7d6320',
+  blue: '#3c5a7d',
+  magenta: '#7a4a66',
+  cyan: '#2f6260',
+  /* 白槽位取中灰：`\e[47m` 反显、块状进度条都要在白底上看得见（见文件头注释）。 */
+  white: '#b4b4b4',
+  brightBlack: '#6b6b6b',
+  brightRed: '#822d28',
+  brightGreen: '#3a5530',
+  brightYellow: '#664f18',
+  brightBlue: '#334c69',
+  brightMagenta: '#653c54',
+  brightCyan: '#274f4e',
+  brightWhite: '#8c8c8c',
 }
 
 /**
@@ -120,7 +127,7 @@ export function terminalMinimumContrastRatio(light: boolean): number {
 
 /** 终端面板底色，React 侧用它同步容器背景，避免 xterm 首帧前后闪色。 */
 export function terminalBackground(light: boolean): string {
-  return (light ? LIGHT_THEME : DARK_THEME).background ?? (light ? '#ffffff' : '#141414')
+  return (light ? LIGHT_THEME : DARK_THEME).background ?? (light ? '#ffffff' : '#1a1a1a')
 }
 
 /** 主题值比较：只在真的变了才写 options.theme，避免重建调色板。 */

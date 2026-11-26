@@ -109,9 +109,10 @@ export function createSshStore(
 
   const readLight = (): boolean => {
     try {
-      return window.localStorage.getItem(storageKey) === 'true'
+      // 默认亮色：模块整体是白底出版物风格，只有显式选过暗色才关掉。
+      return window.localStorage.getItem(storageKey) !== 'false'
     } catch {
-      return false
+      return true
     }
   }
 

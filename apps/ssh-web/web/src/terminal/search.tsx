@@ -7,23 +7,25 @@ import type { ISearchOptions, SearchAddon } from '@xterm/addon-search'
  * 关闭时清掉高亮并清空当前命中，否则 xterm 会把上一次命中当选中内容留着。
  */
 
-// xterm 只接受 #RRGGBB；深色主题用暗黄底，亮色主题换成浅黄底，保证两种底色上都看得见。
+// xterm 只接受 #RRGGBB。高亮与页面的灰阶 + 砖红专色一致，不用黄色：
+// 但纯灰块在亮/暗底上对比太低，所以灰块一律配深一档描边，当前命中换成砖红块。
+// 底色与终端的选中色（暗 #2b3c4d / 亮 #b9cade）分属两套色相，命中落在选区里也分得清。
 const DARK_DECORATIONS = {
-  matchBackground: '#5c4a00',
-  matchBorder: '#5c4a00',
-  matchOverviewRuler: '#ffcc00',
-  activeMatchBackground: '#c4580e',
-  activeMatchBorder: '#ffcf6b',
-  activeMatchColorOverviewRuler: '#ff9900',
+  matchBackground: '#4a4a4a',
+  matchBorder: '#8f8f8f',
+  matchOverviewRuler: '#8f8f8f',
+  activeMatchBackground: '#7a3b36',
+  activeMatchBorder: '#d9a19c',
+  activeMatchColorOverviewRuler: '#b06060',
 }
 
 const LIGHT_DECORATIONS = {
-  matchBackground: '#ffe58a',
-  matchBorder: '#ffe58a',
-  matchOverviewRuler: '#c58f00',
-  activeMatchBackground: '#ffb84d',
-  activeMatchBorder: '#c4580e',
-  activeMatchColorOverviewRuler: '#a34700',
+  matchBackground: '#cfcfcf',
+  matchBorder: '#8f8f8f',
+  matchOverviewRuler: '#8f8f8f',
+  activeMatchBackground: '#e0b2ae',
+  activeMatchBorder: '#9c3a34',
+  activeMatchColorOverviewRuler: '#9c3a34',
 }
 
 interface SearchResults {

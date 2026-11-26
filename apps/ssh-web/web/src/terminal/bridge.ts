@@ -7,7 +7,7 @@ import type { ControlFrame, EventFrame } from '../api/types'
 import type { TerminalTarget } from '../store/ssh-store'
 import { StableCellFitAddon, TerminalFitter, type TerminalSize } from './fit'
 import { createLinkTooltip, createTerminalLinkProvider } from './links'
-import { buildTerminalOptions } from './options'
+import { buildTerminalOptions, TERMINAL_FONT_FALLBACK } from './options'
 import { TerminalRenderer } from './renderer'
 import { sameTerminalTheme, terminalMinimumContrastRatio, terminalTheme } from './theme'
 import { activateTerminalUnicode } from './unicode'
@@ -62,13 +62,22 @@ function parseEventFrame(raw: string): EventFrame | null {
 }
 
 /**
+ * 终端字体族直接继承面板的 computed fontFamily（来自 module.css 的 --ssh-font-mono），
+ * 页面与终端因此共用同一条字体链，不会各自回退到不同字体，也不用在 TS 里再抄一份字体表。
+ */
+function resolveFontFamily(host: HTMLElement): string {
+  const family = host.ownerDocument.defaultView?.getComputedStyle(host).fontFamily.trim()
+  return family ? family : TERMINAL_FONT_FALLBACK
+}
+
+/**
  * 建一条 WS ↔ xterm 桥。
  * 关键顺序：先 open + 量尺寸，再带着真实列行连 WS，远端 PTY 一次就按面板大小建好，
  * 不会先按 80×24 排版再被 resize 冲刷一遍。
  */
 export function openTerminalBridge(options: TerminalBridgeOptions): TerminalBridge {
   const { host, tooltip: tooltipElement, target } = options
-  const terminal = new Terminal(buildTerminalOptions(options.light))
+  const terminal = new Terminal(buildTerminalOptions(options.light, resolveFontFamily(host)))
   const fitAddon = new StableCellFitAddon()
   const searchAddon = new SearchAddon()
   const unicodeAddon = new Unicode11Addon()

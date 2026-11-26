@@ -11,12 +11,18 @@
   --ssh-gray-200: #e5e5e5;
   --ssh-white: #ffffff;
 
-  --ssh-terminal-bg: #141414;
-  --ssh-terminal-fg: #e6e6e6;
+  /* 暗色终端底色就是页面灰阶的 gray-900，暗色面板的边线、事件条都从这里派生。 */
+  --ssh-terminal-bg: var(--ssh-gray-900);
+  --ssh-terminal-line: #4a4a4a;
   --ssh-danger: #b43c3c;
+  /* 暗底上的错误色：砖红在白底够深，在 #1a1a1a 上要提亮一档才读得清。 */
+  --ssh-danger-soft: #d08a8a;
 
   --ssh-font-serif: Georgia, "Times New Roman", serif;
-  --ssh-font-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  /* 页面与终端共用这一条字体链（xterm 从这里继承 fontFamily），回退次序决定 Linux 上落到 DejaVu。 */
+  --ssh-font-mono: "SF Mono", "Menlo", "Monaco", "DejaVu Sans Mono", "Liberation Mono",
+    "Cascadia Mono", "Consolas", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font",
+    "Hack Nerd Font", monospace;
 
   --ssh-space-xs: 4px;
   --ssh-space-sm: 8px;
@@ -321,6 +327,7 @@
   border-right: 1px solid var(--ssh-gray-200);
   cursor: pointer;
   font-size: 12px;
+  color: var(--ssh-gray-600);
 }
 
 .ssh-tab:hover {
@@ -328,19 +335,12 @@
 }
 
 .ssh-tab.active {
-  position: relative;
-  background: var(--ssh-terminal-bg);
-  color: var(--ssh-terminal-fg);
-}
-
-.ssh-tab.active::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: 0;
-  left: 0;
-  height: 2px;
-  background: var(--ssh-black);
+  /* 不跟随终端主题：亮色终端下暗色标签会变成一块突兀的深色块。
+     当前标签靠「白底 + 黑字 + 顶部黑线」标记，未激活标签退到灰字；不改字重，避免字体合成让标签宽度抖动。
+     黑线用 inset 阴影而不是负 top 的伪元素，标签栏 overflow-x:auto 会裁掉溢出的那 1px。 */
+  background: var(--ssh-white);
+  color: var(--ssh-black);
+  box-shadow: inset 0 2px 0 var(--ssh-black);
 }
 
 /* 标签上的生命周期指示：connecting 空心、error 红点，live 无前缀。 */
@@ -430,7 +430,8 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--ssh-terminal-bg);
+  /* 终端底色由各面板自己铺（随亮暗主题），这里只兜住无会话时的空白，保持白底。 */
+  background: var(--ssh-white);
 }
 
 /* 所有标签常驻挂载，靠绝对定位叠在同一块区域上：定位必须只在这里声明。
@@ -575,9 +576,11 @@
 }
 
 .ssh-terminal-surface:not(.light) .ssh-link-tooltip {
-  border-color: #3f3f46;
-  background: rgb(24 24 27 / 0.85);
-  color: #a1a1aa;
+  border-color: var(--ssh-terminal-line);
+  /* 第一行给不认 color-mix 的浏览器兜底。 */
+  background: rgb(26 26 26 / 0.92);
+  background: color-mix(in srgb, var(--ssh-terminal-bg) 92%, transparent);
+  color: var(--ssh-gray-400);
 }
 
 /* 服务端事件条：贴底一条，不遮挡终端内容也不算占位。 */
@@ -601,14 +604,14 @@
 }
 
 .ssh-terminal-surface:not(.light) .ssh-banner {
-  border-top-color: #3f3f46;
+  border-top-color: var(--ssh-terminal-line);
   background: var(--ssh-terminal-bg);
   color: var(--ssh-gray-400);
 }
 
 .ssh-terminal-surface:not(.light) .ssh-banner-error {
   border-top-color: var(--ssh-danger);
-  color: #d46a6a;
+  color: var(--ssh-danger-soft);
 }
 
 /* 亮色终端：面板背景随主题切白，xterm 自身 theme 由 JS 设置。 */
@@ -753,7 +756,7 @@
 }
 
 .ssh-btn-danger:hover {
-  background: rgb(180 60 60 / 0.1);
+  background: color-mix(in srgb, var(--ssh-danger) 10%, transparent);
 }
 
 /* ── 右键菜单：portal 进 .ssh-embed 容器，absolute 定位 ─────────── */
@@ -797,7 +800,7 @@
 }
 
 .ssh-menu-item.danger:hover {
-  background: rgb(180 60 60 / 0.1);
+  background: color-mix(in srgb, var(--ssh-danger) 10%, transparent);
 }
 
 /* ── 模块外框：侧边栏与工作区各一份根容器 ─────────────── */

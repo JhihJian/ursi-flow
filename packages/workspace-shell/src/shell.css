@@ -4,7 +4,10 @@
   --ws-muted: #999999;
   --ws-dim: #666666;
   --ws-serif: Georgia, "Times New Roman", serif;
-  --ws-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  /* 回退次序：Linux 上没有 SF Mono/Menlo，若直接退到 Courier New，
+     工作区外壳与终端里的 DejaVu Sans Mono 会字面不一致。 */
+  --ws-mono: "SF Mono", "Menlo", "Monaco", "DejaVu Sans Mono", "Liberation Mono",
+    "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 
 .ws-shell,

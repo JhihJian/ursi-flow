@@ -5,18 +5,25 @@ import { terminalMinimumContrastRatio, terminalTheme } from './theme'
 export const TERMINAL_SCROLLBACK_ROWS = 5000
 
 /**
- * 字体链沿用 orca 的跨平台 mono 组合：优先系统等宽，再退到常见的 Nerd Font，
- * 保证 tmux 状态栏和 CLI 图标不出现豆腐块。
+ * 字体族兜底值，正常情况下由 module.css 的 --ssh-font-mono 提供同一份字体链，
+ * 这里只在取不到变量（例如页面被单独嵌入、样式未加载）时使用。
  */
-const TERMINAL_FONT_FAMILY =
-  '"SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", "MesloLGS Nerd Font", "JetBrainsMono Nerd Font", "Hack Nerd Font", monospace'
+export const TERMINAL_FONT_FALLBACK =
+  '"SF Mono", "Menlo", "Monaco", "DejaVu Sans Mono", "Liberation Mono", monospace'
+
+/** 终端字号与页面正文字号一致，行高略松于 xterm 默认，读长输出不挤。 */
+const TERMINAL_FONT_SIZE = 13
+const TERMINAL_LINE_HEIGHT = 1.4
 
 /**
- * xterm 初始化选项。取值对齐 orca 的 buildDefaultTerminalOptions：
- * 粗体用亮色、Option 键可组合字符、粗滚动、Ctrl+滚轮加速，
- * 滚动条走 overviewRuler 的窄宽度（xterm 6 的滑条宽度由它决定）。
+ * xterm 初始化选项。字体沿用页面的 --ssh-font-mono（同一款等宽字体、同一字号），
+ * 字重回到 400，让终端文字与页面正文同级，不再比周围重一号；
+ * 其余取值对齐 orca 的 buildDefaultTerminalOptions（粗体用亮色、可控滚动、窄滑条）。
  */
-export function buildTerminalOptions(light: boolean): ITerminalOptions & ITerminalInitOnlyOptions {
+export function buildTerminalOptions(
+  light: boolean,
+  fontFamily: string,
+): ITerminalOptions & ITerminalInitOnlyOptions {
   return {
     allowProposedApi: true,
     convertEol: false,
@@ -25,11 +32,11 @@ export function buildTerminalOptions(light: boolean): ITerminalOptions & ITermin
     cursorInactiveStyle: 'outline',
     drawBoldTextInBrightColors: true,
     fastScrollSensitivity: 5,
-    fontFamily: TERMINAL_FONT_FAMILY,
-    fontSize: 14,
-    fontWeight: '500',
+    fontFamily,
+    fontSize: TERMINAL_FONT_SIZE,
+    fontWeight: '400',
     fontWeightBold: '700',
-    lineHeight: 1.2,
+    lineHeight: TERMINAL_LINE_HEIGHT,
     macOptionClickForcesSelection: true,
     macOptionIsMeta: false,
     minimumContrastRatio: terminalMinimumContrastRatio(light),

@@ -12,7 +12,7 @@ body,
 body {
   margin: 0;
   height: 100dvh;
-  font-family: var(--ssh-font-mono, monospace);
+  /* 字体由 .ssh-embed 自己声明：--ssh-font-mono 只挂在容器上，写在这里拿不到值。 */
   font-size: 13px;
   line-height: 1.5;
   color: #1a1a1a;
