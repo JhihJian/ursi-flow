@@ -698,7 +698,7 @@
 
 .flow-graph-edge {
   fill: none;
-  stroke: var(--flow-line-strong);
+  stroke: var(--flow-muted);
   stroke-width: 1;
 }
 
@@ -707,7 +707,7 @@
 }
 
 .flow-graph-arrow {
-  fill: var(--flow-line-strong);
+  fill: var(--flow-muted);
 }
 
 .flow-graph-label-bg {
@@ -731,8 +731,12 @@
   stroke-width: 1;
 }
 
-.flow-graph-canvas.has-selection .flow-graph-link:not(.is-active) {
-  opacity: 0.35;
+.flow-graph-canvas.has-selection .flow-graph-link:not(.is-active) .flow-graph-edge {
+  stroke: var(--flow-line-strong);
+}
+
+.flow-graph-canvas.has-selection .flow-graph-link:not(.is-active) .flow-graph-edge-label {
+  fill: var(--flow-muted);
 }
 
 .flow-graph-edge.is-active {
@@ -746,6 +750,7 @@
 
 .flow-graph-link.is-active .flow-graph-edge-label {
   fill: var(--flow-ink);
+  font-weight: 600;
 }
 
 .flow-graph-node.kind-confirm .flow-graph-box,

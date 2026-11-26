@@ -62,6 +62,8 @@ const LANE_HEIGHT = 16
 const CORRIDOR_HEAD = 16
 const CORRIDOR_TAIL = 8
 const SIDE_LANE_STEP = 10
+/** 侧边车道与节点外框的最小间距，避免线与节点边缘重叠。 */
+const SIDE_LANE_INSET = 14
 const SIDE_LABEL_GAP = 8
 const SELF_LOOP_WIDTH = 18
 
@@ -226,9 +228,13 @@ function place(nodes: Map<string, GraphNode>, rawEdges: RawEdge[]): GraphLayout 
   const backLabelWidth = Math.max(0, ...backEdges.map((item) => labelWidth(item.edge.label ?? '')))
   const skipLabelWidth = Math.max(0, ...skipEdges.map((item) => labelWidth(item.edge.label ?? '')))
   const leftMargin =
-    backEdges.length === 0 ? PAD : PAD + backSpan + SIDE_LABEL_GAP + backLabelWidth + 8
+    backEdges.length === 0
+      ? PAD
+      : PAD + SIDE_LANE_INSET + backSpan + SIDE_LABEL_GAP + backLabelWidth + 8
   const rightMargin =
-    skipEdges.length === 0 ? PAD : PAD + skipSpan + SIDE_LABEL_GAP + skipLabelWidth + 8
+    skipEdges.length === 0
+      ? PAD
+      : PAD + SIDE_LANE_INSET + skipSpan + SIDE_LABEL_GAP + skipLabelWidth + 8
 
   // 行宽决定内容区宽度；每行水平居中。
   const rowWidths = rows.map(
@@ -299,7 +305,7 @@ function place(nodes: Map<string, GraphNode>, rawEdges: RawEdge[]): GraphLayout 
   const rightSide = sidePorts([...skipEdges, ...selfEdges])
   const rightOut = rightSide.exit
   const rightIn = rightSide.entry
-  const rightLabelX = contentRight + skipSpan + SIDE_LABEL_GAP
+  const rightLabelX = contentRight + SIDE_LANE_INSET + skipSpan + SIDE_LABEL_GAP
   const leftLabelY = labelSlots(backEdges, (item) => item.from.y + leftSide.exit.get(item)!)
   const rightLabelY = labelSlots(
     rightLabelEdges,
@@ -315,20 +321,25 @@ function place(nodes: Map<string, GraphNode>, rawEdges: RawEdge[]): GraphLayout 
       const y2 = to.y
       const laneY = corridorY.get(`${from.key}->${to.key}`) ?? y1 + CORRIDOR_HEAD
       const textWidth = labelWidth(item.edge.label ?? '')
+      const sameColumn = Math.abs(x2 - x1) < 0.5
       pushEdge(
         item,
-        `M ${x1} ${y1} L ${x1} ${laneY} L ${x2} ${laneY} L ${x2} ${y2}`,
+        sameColumn
+          ? `M ${x1} ${y1} L ${x1} ${y2}`
+          : `M ${x1} ${y1} L ${x1} ${laneY} L ${x2} ${laneY} L ${x2} ${y2}`,
         corridorLabel(x1, x2, textWidth, laneY, leftMargin, contentRight),
       )
       continue
     }
     // 跨层正向边：右侧留白，出口横段在端口高度，标签压在这段上方。
-    const laneX = contentRight + skipLane.get(item)!
+    const laneX = contentRight + SIDE_LANE_INSET + skipLane.get(item)!
     const y1 = from.y + rightOut.get(item)!
     const y2 = to.y + rightIn.get(item)!
     pushEdge(
       item,
-      `M ${from.x + from.width} ${y1} L ${laneX} ${y1} L ${laneX} ${y2} L ${to.x + to.width} ${y2}`,
+      Math.abs(y2 - y1) < 0.5
+        ? `M ${from.x + from.width} ${y1} L ${to.x + to.width} ${y1}`
+        : `M ${from.x + from.width} ${y1} L ${laneX} ${y1} L ${laneX} ${y2} L ${to.x + to.width} ${y2}`,
       {
         x: rightLabelX,
         y: rightLabelY.get(item)!,
@@ -338,7 +349,7 @@ function place(nodes: Map<string, GraphNode>, rawEdges: RawEdge[]): GraphLayout 
   }
 
   const skipLanes = skipEdges.map((item) => ({
-    x: contentRight + skipLane.get(item)!,
+    x: contentRight + SIDE_LANE_INSET + skipLane.get(item)!,
     from: item.from.y + rightOut.get(item)!,
     to: item.to.y + rightIn.get(item)!,
   }))
@@ -370,14 +381,16 @@ function place(nodes: Map<string, GraphNode>, rawEdges: RawEdge[]): GraphLayout 
 
   for (const item of backEdges) {
     const { from, to } = item
-    const laneX = leftMargin - backLane.get(item)!
+    const laneX = leftMargin - SIDE_LANE_INSET - backLane.get(item)!
     const y1 = from.y + leftSide.exit.get(item)!
     const y2 = to.y + leftSide.entry.get(item)!
     pushEdge(
       item,
-      `M ${from.x} ${y1} L ${laneX} ${y1} L ${laneX} ${y2} L ${to.x} ${y2}`,
+      Math.abs(y2 - y1) < 0.5
+        ? `M ${from.x} ${y1} L ${to.x} ${y1}`
+        : `M ${from.x} ${y1} L ${laneX} ${y1} L ${laneX} ${y2} L ${to.x} ${y2}`,
       {
-        x: leftMargin - backSpan - SIDE_LABEL_GAP,
+        x: leftMargin - SIDE_LANE_INSET - backSpan - SIDE_LABEL_GAP,
         y: leftLabelY.get(item)!,
         anchor: 'end',
       },

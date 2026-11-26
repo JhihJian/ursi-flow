@@ -200,6 +200,42 @@ describe('结构图布局', () => {
       }
     }
 
+    // 连线不得与任何节点的边框重叠：留白车道与节点外框之间要有间距。
+    const segmentsAll = layout.edges.flatMap((edge) => {
+      const points = [...edge.path.matchAll(/[ML]\s+(-?[\d.]+)\s+(-?[\d.]+)/g)].map(
+        (match) => ({ x: Number(match[1]), y: Number(match[2]) }),
+      )
+      const out: Array<{ axis: 'h' | 'v'; at: number; from: number; to: number }> = []
+      for (let index = 1; index < points.length; index += 1) {
+        const a = points[index - 1]
+        const b = points[index]
+        if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5)
+          out.push({ axis: 'v', at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) })
+        else if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5)
+          out.push({ axis: 'h', at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) })
+      }
+      return out
+    })
+    for (const segment of segmentsAll) {
+      for (const item of layout.nodes) {
+        const borders =
+          segment.axis === 'v'
+            ? [
+                { at: item.x, from: item.y, to: item.y + item.height },
+                { at: item.x + item.width, from: item.y, to: item.y + item.height },
+              ]
+            : [
+                { at: item.y, from: item.x, to: item.x + item.width },
+                { at: item.y + item.height, from: item.x, to: item.x + item.width },
+              ]
+        for (const border of borders) {
+          if (Math.abs(segment.at - border.at) > 1) continue
+          const overlap = Math.min(segment.to, border.to) - Math.max(segment.from, border.from)
+          expect(overlap, `连线贴着节点 ${item.key} 的边框`).toBeLessThanOrEqual(1)
+        }
+      }
+    }
+
     // 跨节点的回边全部走左侧留白：标签右对齐贴在各自车道内侧。
     const backs = layout.edges.filter(
       (edge) => edge.back && edge.from !== edge.to && edge.label !== undefined,
