@@ -20,9 +20,21 @@ export interface ProjectEditing {
 
 export type MoveTarget = { status: TaskStatus } | { projectId: string }
 
+/** 任务区有两种视图：任务表与任务关系图。 */
+export type TaskView = 'list' | 'graph'
+
+const VIEW_KEY = 'todo-web.view'
+
+function readStoredView(): TaskView {
+  return localStorage.getItem(VIEW_KEY) === 'graph' ? 'graph' : 'list'
+}
+
 export interface TodoState {
   projects: ProjectStats[]
   tasks: Task[]
+  /** 关系图用的全量项目任务，不受按日筛选影响。 */
+  graphTasks: Task[]
+  view: TaskView
   selectedProjectId: string | null
   statusFilter: TaskStatus | null
   dayCounts: DayCount[]
@@ -30,17 +42,20 @@ export interface TodoState {
   projectsLoading: boolean
   projectsError: boolean
   tasksLoading: boolean
+  graphLoading: boolean
   detail: DetailState | null
   projectEditing: ProjectEditing | null
 
   bootstrap: () => Promise<void>
   selectProject: (id: string) => Promise<void>
+  setView: (view: TaskView) => Promise<void>
   toggleStatusFilter: (status: TaskStatus) => void
   toggleDayFilter: (date: string) => Promise<void>
   setDayFilter: (dates: string[]) => Promise<void>
   refreshDayCounts: () => Promise<void>
   refreshProjects: () => Promise<void>
   refreshTasks: (clear?: boolean) => Promise<void>
+  refreshGraph: () => Promise<void>
   refreshAll: () => Promise<void>
   openTask: (task: Task) => void
   openNewTask: () => void
@@ -56,10 +71,13 @@ export interface TodoState {
 }
 
 let tasksRequestId = 0
+let graphRequestId = 0
 
 export const useTodoStore = create<TodoState>((set, get) => ({
   projects: [],
   tasks: [],
+  graphTasks: [],
+  view: readStoredView(),
   selectedProjectId: null,
   statusFilter: null,
   dayCounts: [],
@@ -67,6 +85,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   projectsLoading: true,
   projectsError: false,
   tasksLoading: false,
+  graphLoading: false,
   detail: null,
   projectEditing: null,
 
@@ -83,10 +102,20 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   selectProject: async (id) => {
     set({
       selectedProjectId: id,
+      graphTasks: [],
       detail: null,
       projectEditing: null,
     })
-    await Promise.all([get().refreshTasks(true), get().refreshDayCounts()])
+    const loads: Array<Promise<void>> = [get().refreshTasks(true), get().refreshDayCounts()]
+    if (get().view === 'graph') loads.push(get().refreshGraph())
+    await Promise.all(loads)
+  },
+
+  setView: async (view) => {
+    if (get().view === view) return
+    set({ view })
+    localStorage.setItem(VIEW_KEY, view)
+    if (view === 'graph') await get().refreshGraph()
   },
 
   toggleStatusFilter: (status) => {
@@ -149,11 +178,32 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   refreshAll: async () => {
-    await Promise.all([
+    const loads: Array<Promise<void>> = [
       get().refreshProjects(),
       get().refreshTasks(),
       get().refreshDayCounts(),
-    ])
+    ]
+    if (get().view === 'graph') loads.push(get().refreshGraph())
+    await Promise.all(loads)
+  },
+
+  refreshGraph: async () => {
+    const { selectedProjectId } = get()
+    if (!selectedProjectId) {
+      set({ graphTasks: [], graphLoading: false })
+      return
+    }
+    const requestId = ++graphRequestId
+    set({ graphLoading: true })
+    try {
+      // 关系图要看见完整的父子与前置链，不能带按日筛选。
+      const { tasks } = await api.listTasks({ project: selectedProjectId })
+      if (requestId !== graphRequestId) return
+      set({ graphTasks: tasks, graphLoading: false })
+    } catch (error) {
+      if (requestId === graphRequestId) set({ graphLoading: false })
+      throw error
+    }
   },
 
   openTask: (task) => set({ detail: { mode: 'view', task } }),

@@ -58,10 +58,13 @@ function resetStore() {
   useTodoStore.setState({
     projects: [],
     tasks: [],
+    graphTasks: [],
+    view: 'list',
     selectedProjectId: null,
     projectsLoading: true,
     projectsError: false,
     tasksLoading: false,
+    graphLoading: false,
     detail: null,
     projectEditing: null,
     statusFilter: null,
@@ -207,6 +210,38 @@ describe('status filter', () => {
     expect(useTodoStore.getState().statusFilter).toBe('done')
     useTodoStore.getState().toggleStatusFilter('done')
     expect(useTodoStore.getState().statusFilter).toBeNull()
+  })
+})
+
+describe('task view', () => {
+  it('loads the whole project without day filters when switching to the graph', async () => {
+    useTodoStore.setState({ selectedProjectId: 'p1', dayFilter: ['2026-11-24'] })
+
+    await useTodoStore.getState().setView('graph')
+
+    expect(useTodoStore.getState().view).toBe('graph')
+    expect(mocked.listTasks).toHaveBeenLastCalledWith({ project: 'p1' })
+    expect(useTodoStore.getState().graphTasks).toEqual([task])
+    expect(useTodoStore.getState().graphLoading).toBe(false)
+  })
+
+  it('reloads the graph after task changes while it is visible', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ selectedProjectId: 'p1', view: 'graph' })
+
+    await useTodoStore.getState().moveTask(task, { status: 'in_progress' })
+
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1' })
+    expect(useTodoStore.getState().graphTasks).toEqual([task])
+  })
+
+  it('keeps the graph data in step with the selected project', async () => {
+    useTodoStore.setState({ selectedProjectId: 'p1', view: 'graph' })
+
+    await useTodoStore.getState().selectProject('p2')
+
+    expect(useTodoStore.getState().graphTasks).toEqual([task])
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p2' })
   })
 })
 

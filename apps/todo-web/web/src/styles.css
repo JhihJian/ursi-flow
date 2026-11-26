@@ -548,6 +548,148 @@
   color: var(--white);
 }
 
+/* 视图切换：任务表与关系图共用同一块内容区。 */
+.view-switch {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--gray-200);
+}
+
+.view-tab {
+  padding: 2px var(--space-sm);
+  border: 0;
+  background: var(--white);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-600);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  color: var(--gray-900);
+}
+
+.view-tab.is-active {
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+/* 任务关系图：头部固定，图区域自己双向滚动。 */
+.tasks-section.is-graph {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.task-graph-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--gray-400);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-graph {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-sm) 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.task-graph-canvas {
+  position: relative;
+}
+
+.task-graph-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.task-graph-edge {
+  fill: none;
+  stroke: var(--gray-400);
+  stroke-width: 1.2;
+}
+
+/* 前置依赖用虚线，和父子边区分开；回边再加密虚线并绕行。 */
+.task-graph-edge.edge-pre {
+  stroke-dasharray: 4 3;
+}
+
+.task-graph-edge.is-back {
+  stroke-dasharray: 2 3;
+}
+
+.task-graph-arrow {
+  fill: var(--gray-400);
+}
+
+.task-graph-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 12px;
+  color: var(--gray-900);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.task-graph-node:hover {
+  border-color: var(--gray-900);
+}
+
+.task-graph-node.is-selected {
+  border-color: var(--gray-900);
+  box-shadow: inset 2px 0 0 var(--gray-900);
+}
+
+.task-graph-node.is-in_progress {
+  background: var(--gray-200);
+}
+
+.task-graph-node.is-blocked {
+  background: rgba(180, 60, 60, 0.08);
+}
+
+.task-graph-node.is-pending {
+  color: var(--gray-600);
+}
+
+.task-graph-node.is-done,
+.task-graph-node.is-cancelled {
+  color: var(--gray-400);
+}
+
+.task-graph-priority {
+  flex: none;
+  font-family: var(--font-mono);
+}
+
+.task-graph-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-graph-node.is-done .task-graph-title,
+.task-graph-node.is-cancelled .task-graph-title {
+  text-decoration: line-through;
+}
+
 /* Task table */
 .task-table {
   width: 100%;

@@ -3,10 +3,11 @@ import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
-import { useTodoStore } from '@/store/todo-store'
+import { useTodoStore, type TaskView } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 import { DayFilter } from './DayFilter'
 import { StatusIcon } from './StatusIcon'
+import { TaskGraph } from './TaskGraph'
 
 type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
 
@@ -46,6 +47,31 @@ function StatusTarget({
       <StatusIcon status={status} />
       <span className="status-count">{count}</span>
     </button>
+  )
+}
+
+function ViewSwitch({ view, onChange }: { view: TaskView; onChange: (view: TaskView) => void }) {
+  return (
+    <div className="view-switch" role="group" aria-label="任务视图">
+      <button
+        type="button"
+        className={cx('view-tab', view === 'list' && 'is-active')}
+        aria-pressed={view === 'list'}
+        title="任务表"
+        onClick={() => onChange('list')}
+      >
+        列表
+      </button>
+      <button
+        type="button"
+        className={cx('view-tab', view === 'graph' && 'is-active')}
+        aria-pressed={view === 'graph'}
+        title="按父子与前置关系展示任务"
+        onClick={() => onChange('graph')}
+      >
+        图
+      </button>
+    </div>
   )
 }
 
@@ -140,10 +166,16 @@ export function TaskSection() {
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
   const statusFilter = useTodoStore((state) => state.statusFilter)
   const dayFilter = useTodoStore((state) => state.dayFilter)
+  const view = useTodoStore((state) => state.view)
+  const setView = useTodoStore((state) => state.setView)
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+
+  const changeView = (next: TaskView) => {
+    void setView(next).catch((error) => alert(`Failed to load task graph: ${errorMessage(error)}`))
+  }
 
   const counts = statuses.reduce<Record<TaskStatus, number>>((result, status) => {
     result[status] = tasks.filter((task) => task.status === status).length
@@ -153,7 +185,7 @@ export function TaskSection() {
 
   return (
     <section
-      className="tasks-section"
+      className={cx('tasks-section', view === 'graph' && 'is-graph')}
       onContextMenu={(event) => {
         // 行右键自己处理；落在列表空白处时只给新建任务。
         if (!selectedProjectId) return
@@ -165,58 +197,73 @@ export function TaskSection() {
     >
       {selectedProjectId ? (
         <div className="tasks-header">
-          <DayFilter />
+          {view === 'graph' ? (
+            <p className="task-graph-hint">
+              实线是父子关系，虚线是前置依赖；完成与已取消的任务只在关联未完成任务时出现。
+            </p>
+          ) : (
+            <DayFilter />
+          )}
           <div className="tasks-header-right">
-            <div className="status-targets">
-              {statuses.map((status) => (
-                <StatusTarget
-                  key={status}
-                  status={status}
-                  count={counts[status] ?? 0}
-                  filtered={statusFilter === status}
-                />
-              ))}
-            </div>
+            {view === 'list' ? (
+              <div className="status-targets">
+                {statuses.map((status) => (
+                  <StatusTarget
+                    key={status}
+                    status={status}
+                    count={counts[status] ?? 0}
+                    filtered={statusFilter === status}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <ViewSwitch view={view} onChange={changeView} />
           </div>
         </div>
       ) : null}
-      <table className="task-table">
-        <thead>
-          <tr>
-            <th className="col-priority">Pri</th>
-            <th className="col-title">Task</th>
-            <th className="col-status">Status</th>
-            <th className="col-time">Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasksLoading ? (
+      {view === 'graph' ? (
+        <TaskGraph />
+      ) : (
+        <table className="task-table">
+          <thead>
             <tr>
-              <td colSpan={4} className="empty-state">
-                Loading...
-              </td>
+              <th className="col-priority">Pri</th>
+              <th className="col-title">Task</th>
+              <th className="col-status">Status</th>
+              <th className="col-time">Time</th>
             </tr>
-          ) : null}
-          {!tasksLoading && visibleTasks.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="empty-state">
-                {!selectedProjectId
-                  ? 'Select a project'
-                  : statusFilter
-                    ? `No ${statusFilter} tasks`
-                    : dayFilter.length > 1
-                      ? `No tasks created in the selected ${dayFilter.length} days`
-                      : dayFilter.length === 1
-                        ? `No tasks created on ${dayFilter[0]}`
-                        : 'No tasks'}
-              </td>
-            </tr>
-          ) : null}
-          {!tasksLoading
-            ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} openMenu={openMenu} />)
-            : null}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tasksLoading ? (
+              <tr>
+                <td colSpan={4} className="empty-state">
+                  Loading...
+                </td>
+              </tr>
+            ) : null}
+            {!tasksLoading && visibleTasks.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="empty-state">
+                  {!selectedProjectId
+                    ? 'Select a project'
+                    : statusFilter
+                      ? `No ${statusFilter} tasks`
+                      : dayFilter.length > 1
+                        ? `No tasks created in the selected ${dayFilter.length} days`
+                        : dayFilter.length === 1
+                          ? `No tasks created on ${dayFilter[0]}`
+                          : 'No tasks'}
+                </td>
+              </tr>
+            ) : null}
+            {!tasksLoading
+              ? visibleTasks.map((task) => (
+                  <TaskRow key={task.id} task={task} openMenu={openMenu} />
+                ))
+              : null}
+          </tbody>
+        </table>
+      )}
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </section>
   )

@@ -10,6 +10,7 @@ import { useTodoStore } from '@/store/todo-store'
 export function useNotificationPolling() {
   const lastDone = useRef<number | null>(null)
   const refreshTasks = useTodoStore((state) => state.refreshTasks)
+  const refreshGraph = useTodoStore((state) => state.refreshGraph)
 
   useEffect(() => {
     void requestNotificationPermission()
@@ -29,7 +30,8 @@ export function useNotificationPolling() {
 
         void playNotificationSound()
         showDesktopNotification(done - previous)
-        await refreshTasks()
+        // 关系图和任务表的数据范围不同，各刷各的。
+        await Promise.all([refreshTasks(), refreshGraph()])
       } catch (error) {
         console.info('Error checking for completed tasks:', error)
       }
@@ -42,5 +44,5 @@ export function useNotificationPolling() {
       window.clearTimeout(initial)
       window.clearInterval(timer)
     }
-  }, [refreshTasks])
+  }, [refreshTasks, refreshGraph])
 }
