@@ -24,7 +24,8 @@
   display: none;
 }
 
-.ws-shell button {
+/* 基线复位保持零类特异性，模块自己的按钮类（如 .btn-primary 的白字）才能生效。 */
+:where(.ws-shell) button {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
