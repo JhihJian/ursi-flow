@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Task } from '@/api/types'
-import { buildTaskGraph, relationCreatesCycle } from './task-graph'
+import { buildTaskGraph, findOverlapParent, relationCreatesCycle } from './task-graph'
 
 function task(id: string, overrides: Partial<Task> = {}): Task {
   return {
@@ -155,6 +155,31 @@ describe('buildTaskGraph', () => {
       height: 0,
       hidden: 0,
     })
+  })
+})
+
+describe('findOverlapParent', () => {
+  const tasks = [task('parent'), task('child', { parent_id: 'parent' }), task('other')]
+  const layout = buildTaskGraph(tasks)
+  const node = (id: string) => layout.nodes.find((item) => item.id === id)!
+
+  it('returns the node under a dragged node once they overlap enough', () => {
+    const source = node('other')
+    const target = node('parent')
+    expect(findOverlapParent(layout.nodes, source, target.x, target.y)).toBe('parent')
+  })
+
+  it('ignores slight overlap and the dragged node itself', () => {
+    const source = node('other')
+    const target = node('parent')
+    expect(findOverlapParent(layout.nodes, source, target.x + 160, target.y)).toBeNull()
+    expect(findOverlapParent(layout.nodes, source, source.x, source.y)).toBeNull()
+  })
+
+  it('never suggests a task inside the dragged subtree', () => {
+    const source = node('parent')
+    const child = node('child')
+    expect(findOverlapParent(layout.nodes, source, child.x, child.y)).toBeNull()
   })
 })
 

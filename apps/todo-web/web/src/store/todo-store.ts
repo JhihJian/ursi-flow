@@ -18,7 +18,8 @@ import { relationCreatesCycle } from '@/lib/task-graph'
 
 export type DetailState =
   | { mode: 'view'; task: Task }
-  | { mode: 'new' }
+  /** 新建任务的详情面板；带 parentId 时保存后直接成为该任务的子任务。 */
+  | { mode: 'new'; parentId: string | null }
 
 export interface ProjectEditing {
   /** null 表示新建项目。 */
@@ -68,6 +69,7 @@ export interface TodoState {
   refreshAll: () => Promise<void>
   openTask: (task: Task) => void
   openNewTask: () => void
+  openNewTaskUnder: (parentId: string) => void
   closeDetail: () => void
   saveTask: (draft: TaskDraft) => Promise<void>
   removeTask: (id: string) => Promise<void>
@@ -231,13 +233,21 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   openNewTask: () =>
     set({
-      detail: { mode: 'new' },
+      detail: { mode: 'new', parentId: null },
+      projectEditing: null,
+    }),
+
+  openNewTaskUnder: (parentId) =>
+    set({
+      detail: { mode: 'new', parentId },
       projectEditing: null,
     }),
 
   closeDetail: () => set({ detail: null }),
 
   saveTask: async (draft) => {
+    const detail = get().detail
+    const parentId = detail?.mode === 'new' ? detail.parentId : null
     if (draft.id) {
       await api.updateTask(draft.id, {
         title: draft.title,
@@ -253,6 +263,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         priority: draft.priority,
         tags: draft.tags,
         project_id: get().selectedProjectId,
+        ...(parentId === null ? {} : { parent_id: parentId }),
       })
     }
     set({ detail: null })

@@ -481,6 +481,9 @@ pub fn create_task(conn: &Connection, request: &CreateTaskRequest) -> ApiResult<
     task.priority = request.priority.clone().unwrap_or(Priority::Medium);
     task.tags = request.tags.clone().unwrap_or_default();
     task.project_id = request.project_id.clone();
+    if let Some(parent_id) = &request.parent_id {
+        task.parent_id = relation_target(conn, &columns, "parent_id", &task.id, Some(parent_id))?;
+    }
     db::insert_task(conn, &task, &columns)?;
     Ok(task.id)
 }

@@ -82,6 +82,7 @@ export function createTask(input: {
   priority: TaskDraft['priority']
   tags: string[]
   project_id: string | null
+  parent_id?: string | null
 }): Promise<{ id: string }> {
   return request('/tasks', { method: 'POST', body: JSON.stringify(input) })
 }

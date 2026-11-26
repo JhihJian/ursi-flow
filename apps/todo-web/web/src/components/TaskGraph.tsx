@@ -1,8 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { prioritySymbol, STATUS_LABELS } from '@/lib/format'
+import type { GraphPositions } from '@/lib/graph-positions'
 import {
   buildTaskGraph,
+  findOverlapParent,
   type TaskGraphEdgeKind,
+  type TaskGraphLayout,
   type TaskGraphNode,
 } from '@/lib/task-graph'
 import { cx, errorMessage } from '@/lib/ui'
@@ -33,7 +36,17 @@ type GraphDrag =
       pointerY: number
       targetId: string | null
     }
-  | { kind: 'move'; id: string; x: number; y: number }
+  | { kind: 'move'; id: string; x: number; y: number; parentId: string | null }
+
+/** 记录当前所有根节点的位置，拖动期间用它冻结其它节点。 */
+function snapshotRoots(layout: TaskGraphLayout): GraphPositions {
+  const positions: GraphPositions = {}
+  const roots = new Set(layout.roots)
+  for (const node of layout.nodes) {
+    if (roots.has(node.id)) positions[node.id] = { x: node.x, y: node.y }
+  }
+  return positions
+}
 
 /** 手动位置的最小值，避免拖出画布左上角。 */
 const MIN_POSITION = 24
@@ -51,16 +64,16 @@ function targetAt(x: number, y: number): string | null {
 
 /**
  * 任务关系图：`parent_id` 显示为包含子任务的分组节点，`pre_id` 显示为前置依赖连线。
- * 拖动顶层节点调整位置并保存在浏览器本地；按住 Shift 拖到另一个节点上设父任务，
+ * 拖动顶层节点调整位置并保存在浏览器本地，拖到另一个节点上大量重叠时改设为它的子任务；
  * 从节点左侧端点拖到另一个任务，把它设为自己的前置（连成 目标 → 自己）；
- * 连线右键删除前置依赖，节点右键解除父子关系。
+ * 连线右键删除前置依赖，节点右键解除父子关系或新建子任务。
  */
 export function TaskGraph() {
   const tasks = useTodoStore((state) => state.graphTasks)
   const loading = useTodoStore((state) => state.graphLoading)
   const hasProject = useTodoStore((state) => state.selectedProjectId !== null)
   const openTask = useTodoStore((state) => state.openTask)
-  const openNewTask = useTodoStore((state) => state.openNewTask)
+  const openNewTaskUnder = useTodoStore((state) => state.openNewTaskUnder)
   const graphPositions = useTodoStore((state) => state.graphPositions)
   const resetGraphPosition = useTodoStore((state) => state.resetGraphPosition)
   const selectedId = useTodoStore((state) =>
@@ -69,15 +82,19 @@ export function TaskGraph() {
 
   const [drag, setDrag] = useState<GraphDrag | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  /** 开始拖动时把当前所有根节点的位置固定下来，拖动过程中其它节点不会跟着重排。 */
+  const dragBaseRef = useRef<GraphPositions>({})
 
   const positions = useMemo(
     () =>
       drag?.kind === 'move'
-        ? { ...graphPositions, [drag.id]: { x: drag.x, y: drag.y } }
+        ? { ...dragBaseRef.current, [drag.id]: { x: drag.x, y: drag.y } }
         : graphPositions,
     [graphPositions, drag],
   )
   const layout = useMemo(() => buildTaskGraph(tasks, positions), [tasks, positions])
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
   const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks])
   const nodesById = useMemo(
     () => new Map(layout.nodes.map((node) => [node.id, node])),
@@ -97,13 +114,19 @@ export function TaskGraph() {
         const moved = Math.hypot(event.clientX - session.startX, event.clientY - session.startY)
         if (moved < DRAG_THRESHOLD) return
         session.active = true
+        if (session.mode === 'move') dragBaseRef.current = snapshotRoots(layoutRef.current)
       }
       if (session.mode === 'move') {
+        const x = Math.max(MIN_POSITION, session.originX + event.clientX - session.startX)
+        const y = Math.max(MIN_POSITION, session.originY + event.clientY - session.startY)
+        const nodes = layoutRef.current.nodes
+        const source = nodes.find((node) => node.id === session.sourceId)
         setDrag({
           kind: 'move',
           id: session.sourceId,
-          x: Math.max(MIN_POSITION, session.originX + event.clientX - session.startX),
-          y: Math.max(MIN_POSITION, session.originY + event.clientY - session.startY),
+          x,
+          y,
+          parentId: source ? findOverlapParent(nodes, source, x, y) : null,
         })
         return
       }
@@ -127,10 +150,20 @@ export function TaskGraph() {
       if (cancelled) return
       const store = useTodoStore.getState()
       if (session.mode === 'move') {
-        store.setGraphPosition(session.sourceId, {
-          x: Math.max(MIN_POSITION, session.originX + event.clientX - session.startX),
-          y: Math.max(MIN_POSITION, session.originY + event.clientY - session.startY),
-        })
+        const x = Math.max(MIN_POSITION, session.originX + event.clientX - session.startX)
+        const y = Math.max(MIN_POSITION, session.originY + event.clientY - session.startY)
+        const nodes = layoutRef.current.nodes
+        const source = nodes.find((node) => node.id === session.sourceId)
+        const parentId = source ? findOverlapParent(nodes, source, x, y) : null
+        if (parentId) {
+          void store
+            .setTaskParent(session.sourceId, parentId)
+            .catch((error) =>
+              alert(`Failed to update task relation: ${errorMessage(error)}`),
+            )
+          return
+        }
+        store.setGraphPosition(session.sourceId, { x, y })
         return
       }
       const targetId = targetAt(event.clientX, event.clientY)
@@ -203,17 +236,17 @@ export function TaskGraph() {
     if (node.parentId) {
       const store = useTodoStore.getState()
       items.push({
-        label: 'Remove parent',
+        label: 'remove parent',
         onSelect: () => removeRelation(store.setTaskParent(node.id, null)),
       })
     }
     if (node.parentId === null && graphPositions[node.id]) {
       items.push({
-        label: 'Reset position',
+        label: 'reset position',
         onSelect: () => resetGraphPosition(node.id),
       })
     }
-    items.push({ label: 'New task', onSelect: openNewTask })
+    items.push({ label: 'new subtask', onSelect: () => openNewTaskUnder(node.id) })
     setMenu({ x: event.clientX, y: event.clientY, items })
   }
 
@@ -234,6 +267,7 @@ export function TaskGraph() {
               data-task-node={node.id}
               className={cx(
                 'task-graph-frame',
+                drag?.kind === 'move' && drag.parentId === node.id && 'is-drop-target',
                 drag?.kind === 'link' && drag.targetId === node.id && 'is-drop-target',
               )}
               style={{
@@ -255,10 +289,10 @@ export function TaskGraph() {
             <marker
               id={markerId}
               viewBox="0 0 8 8"
-              refX="7"
+              refX="8"
               refY="4"
-              markerWidth="6"
-              markerHeight="6"
+              markerWidth="7"
+              markerHeight="7"
               orient="auto-start-reverse"
             >
               <path d="M 0 0 L 8 4 L 0 8 z" className="task-graph-arrow" />
@@ -320,6 +354,7 @@ export function TaskGraph() {
                 node.parentId === null && 'is-movable',
                 drag?.kind === 'link' && drag.sourceId === node.id && 'is-linking',
                 drag?.kind === 'move' && drag.id === node.id && 'is-moving',
+                drag?.kind === 'move' && drag.parentId === node.id && 'is-drop-target',
                 drag?.kind === 'link' && drag.targetId === node.id && 'is-drop-target',
               )}
               style={{
@@ -343,12 +378,11 @@ export function TaskGraph() {
               onContextMenu={(event) => openNodeMenu(event, node)}
               onPointerDown={(event) => {
                 if (event.button !== 0) return
-                // 按住 Shift 拖到别的节点上建立父子关系，直接拖则调整位置。
-                if (event.shiftKey) {
+                // 子任务不能自由摆放，拖动表示更换父任务；顶层节点拖动是移动。
+                if (node.parentId !== null) {
                   beginLink(event, node.id, 'parent', false)
                   return
                 }
-                if (node.parentId !== null) return
                 sessionRef.current = {
                   mode: 'move',
                   sourceId: node.id,

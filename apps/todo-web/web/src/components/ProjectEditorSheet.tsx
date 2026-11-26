@@ -66,10 +66,10 @@ function ProjectForm({ id, project }: ProjectFormProps) {
         <div className="detail-modes" />
         <div className="detail-actions">
           <button type="button" className="btn" onClick={cancelProjectForm}>
-            Cancel
+            cancel
           </button>
           <button type="button" className="btn btn-primary" onClick={save}>
-            Save
+            save
           </button>
         </div>
       </footer>

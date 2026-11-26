@@ -153,6 +153,32 @@ describe('task actions', () => {
     expect(useTodoStore.getState().detail).toBeNull()
   })
 
+  it('creates a subtask from the graph node menu', async () => {
+    useTodoStore.setState({ selectedProjectId: 'p1' })
+    mocked.createTask.mockResolvedValue({ id: 'new' })
+
+    useTodoStore.getState().openNewTaskUnder('t1')
+    expect(useTodoStore.getState().detail).toEqual({ mode: 'new', parentId: 't1' })
+
+    await useTodoStore.getState().saveTask({
+      id: null,
+      title: 'Sub task',
+      priority: 'medium',
+      status: 'pending',
+      tags: [],
+      log: null,
+      result: null,
+    })
+
+    expect(mocked.createTask).toHaveBeenCalledWith({
+      title: 'Sub task',
+      priority: 'medium',
+      tags: [],
+      project_id: 'p1',
+      parent_id: 't1',
+    })
+  })
+
   it('closes the detail panel when the selected task is deleted', async () => {
     useTodoStore.setState({ detail: { mode: 'view', task } })
     mocked.deleteTask.mockResolvedValue({ success: true })

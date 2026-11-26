@@ -394,6 +394,7 @@ fn task_create_update_and_delete() {
             priority: Some(Priority::High),
             tags: Some(vec!["docs".into()]),
             project_id: Some("proj-a".into()),
+            parent_id: None,
         },
     )
     .unwrap();
@@ -465,6 +466,7 @@ fn status_changes_follow_core_state_machine() {
             priority: None,
             tags: None,
             project_id: Some("proj-a".into()),
+            parent_id: None,
         },
     )
     .unwrap();
@@ -565,6 +567,7 @@ fn process_record_survives_completion_and_can_be_cleared() {
             priority: None,
             tags: None,
             project_id: None,
+            parent_id: None,
         },
     )
     .unwrap();
@@ -618,6 +621,7 @@ fn append_result_joins_markdown_and_rejects_blank_text() {
             priority: None,
             tags: None,
             project_id: None,
+            parent_id: None,
         },
     )
     .unwrap();
@@ -654,6 +658,7 @@ fn null_clears_optional_fields_and_omitted_fields_keep_values() {
             priority: None,
             tags: None,
             project_id: None,
+            parent_id: None,
         },
     )
     .unwrap();
@@ -791,6 +796,7 @@ fn invalid_input_and_missing_rows_are_reported() {
             priority: None,
             tags: None,
             project_id: Some("nope".into()),
+            parent_id: None,
         },
     )
     .unwrap_err();
@@ -805,4 +811,50 @@ fn invalid_input_and_missing_rows_are_reported() {
 
     let missing_project = delete_project(&conn, "nope").unwrap_err();
     assert!(matches!(missing_project, AppError::NotFound(_)));
+}
+
+#[test]
+fn create_task_can_start_as_a_subtask() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+
+    let parent = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Parent".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: None,
+        },
+    )
+    .unwrap();
+
+    let child = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Child".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: Some(parent.clone()),
+        },
+    )
+    .unwrap();
+
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
+    let created = tasks.iter().find(|task| task.id == child).unwrap();
+    assert_eq!(created.parent_id.as_deref(), Some(parent.as_str()));
+
+    let missing = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Orphan".into(),
+            priority: None,
+            tags: None,
+            project_id: Some("proj-a".into()),
+            parent_id: Some("nope".into()),
+        },
+    );
+    assert!(matches!(missing, Err(AppError::NotFound(_))));
 }

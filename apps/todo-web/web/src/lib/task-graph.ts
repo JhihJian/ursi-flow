@@ -65,6 +65,8 @@ const ROOT_GAP = 24
 const PADDING = 24
 /** 回边绕到节点下方，底线之外要留出的空间。 */
 const BACK_EDGE_ROOM = 32
+/** 连线终点离节点边框的距离，给箭头留出可见空间。 */
+const ARROW_GAP = 8
 
 const STATUS_RANK: Record<TaskStatus, number> = {
   in_progress: 0,
@@ -419,6 +421,40 @@ function assignDepths(
   }
 }
 
+/** 拖动中的节点和哪个节点重叠最多，重叠到一半以上就返回那个节点。 */
+export function findOverlapParent(
+  nodes: TaskGraphNode[],
+  source: TaskGraphNode,
+  x: number,
+  y: number,
+): string | null {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const skip = new Set<string>([source.id])
+  const collect = (node: TaskGraphNode) => {
+    for (const childId of node.childIds) {
+      if (skip.has(childId)) continue
+      skip.add(childId)
+      const child = byId.get(childId)
+      if (child) collect(child)
+    }
+  }
+  collect(source)
+
+  let best: { id: string; ratio: number } | null = null
+  for (const node of nodes) {
+    if (skip.has(node.id)) continue
+    const width = Math.min(x + source.width, node.x + node.width) - Math.max(x, node.x)
+    const height = Math.min(y + source.height, node.y + node.height) - Math.max(y, node.y)
+    if (width <= 0 || height <= 0) continue
+    const smaller = Math.min(source.width * source.height, node.width * node.height)
+    if (smaller <= 0) continue
+    const ratio = (width * height) / smaller
+    if (ratio < 0.5) continue
+    if (!best || ratio > best.ratio) best = { id: node.id, ratio }
+  }
+  return best?.id ?? null
+}
+
 /**
  * 新边会不会在关系链上形成环。
  * parent 新边把 `from` 设为 `to` 的父任务，沿 `from` 的父链往上找 `to`；
@@ -480,7 +516,7 @@ function siblingPath(
   toX: number,
 ): string {
   const fromY = from.y + from.height
-  const toY = to.y
+  const toY = to.y - ARROW_GAP
   if (toY >= fromY) {
     const gap = toY - fromY
     if (gap <= CHILD_GAP + 2) {
@@ -571,7 +607,7 @@ function forwardPath(
   y2: number,
 ): string {
   const x1 = from.x + from.width
-  const x2 = to.x
+  const x2 = to.x - ARROW_GAP
   const mid = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
 }
@@ -584,7 +620,7 @@ function verticalPath(
   x2: number,
 ): string {
   const fromY = from.y + from.height
-  const toY = to.y
+  const toY = to.y - ARROW_GAP
   return `M ${x1} ${fromY} C ${x1} ${fromY + 12}, ${x2} ${toY - 12}, ${x2} ${toY}`
 }
 
@@ -598,5 +634,5 @@ function backPath(
   const x1 = from.x + from.width
   const bottom = Math.max(from.y + from.height, to.y + to.height)
   const exitX = x1 + 28
-  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 24}, ${x2} ${bottom + 24} L ${x2} ${to.y + to.height}`
+  return `M ${x1} ${y1} C ${exitX} ${y1}, ${exitX} ${bottom + 24}, ${x2} ${bottom + 24} L ${x2} ${to.y + to.height + ARROW_GAP}`
 }

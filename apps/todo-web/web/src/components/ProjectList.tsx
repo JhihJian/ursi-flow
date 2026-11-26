@@ -34,15 +34,15 @@ function ProjectItem({
   const open = project.task_count.pending + project.task_count.in_progress + project.task_count.blocked
 
   const menuItems: MenuItem[] = [
-    { label: 'New project', onSelect: startCreateProject },
-    { label: 'Edit project', onSelect: () => startEditProject(project.id) },
+    { label: 'new project', onSelect: startCreateProject },
+    { label: 'edit project', onSelect: () => startEditProject(project.id) },
     {
-      label: 'Delete project',
+      label: 'delete project',
       danger: true,
       onSelect: () => {
         const confirmItems: MenuItem[] = [
           {
-            label: 'Delete project',
+            label: 'delete project',
             danger: true,
             onSelect: () => {
               void removeProject(project.id).catch((error) =>
@@ -50,7 +50,7 @@ function ProjectItem({
               )
             },
           },
-          { label: 'Cancel', onSelect: () => {} },
+          { label: 'cancel', onSelect: () => {} },
         ]
         // 菜单已关闭，再在项目项位置弹出确认菜单。
         const rect = document
@@ -106,7 +106,7 @@ export function ProjectList() {
       onContextMenu={(event) => {
         // 项目项自己处理右键；落在空白处时提示新建项目。
         event.preventDefault()
-        showMenu(event.clientX, event.clientY, [{ label: 'New project', onSelect: startCreateProject }])
+        showMenu(event.clientX, event.clientY, [{ label: 'new project', onSelect: startCreateProject }])
       }}
     >
       <ul className="project-list">

@@ -76,9 +76,12 @@
   "title": "必填",
   "priority": "high|medium|low",
   "tags": ["..."],
-  "project_id": "可选"
+  "project_id": "可选",
+  "parent_id": "可选，直接建成该任务的子任务"
 }
 ```
+
+`parent_id` 指向已存在的任务，目标不存在返回 404；库里缺少 `parent_id` 列时返回 500。
 
 任务更新：
 

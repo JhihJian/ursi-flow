@@ -296,10 +296,10 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         </div>
         <div className="detail-actions">
           <button type="button" className="btn" onClick={closeDetail}>
-            Close
+            close
           </button>
           <button type="button" className="btn btn-primary" onClick={save}>
-            Save
+            save
           </button>
         </div>
       </footer>

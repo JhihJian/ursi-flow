@@ -94,14 +94,14 @@ function TaskRow({
   )
 
   const menuItems: MenuItem[] = [
-    { label: 'New task', onSelect: openNewTask },
+    { label: 'new task', onSelect: openNewTask },
     {
-      label: 'Delete task',
+      label: 'delete task',
       danger: true,
       onSelect: () => {
         const confirmItems: MenuItem[] = [
           {
-            label: 'Delete task',
+            label: 'delete task',
             danger: true,
             onSelect: () => {
               void removeTask(task.id).catch((error) =>
@@ -109,7 +109,7 @@ function TaskRow({
               )
             },
           },
-          { label: 'Cancel', onSelect: () => {} },
+          { label: 'cancel', onSelect: () => {} },
         ]
         const rect = document
           .querySelector(`[data-task-id="${task.id}"]`)
@@ -193,7 +193,7 @@ export function TaskSection() {
         if (!selectedProjectId) return
         event.preventDefault()
         openMenu(event.clientX, event.clientY, [
-          { label: 'New task', onSelect: openNewTask },
+          { label: 'new task', onSelect: openNewTask },
         ])
       }}
     >
@@ -202,7 +202,7 @@ export function TaskSection() {
           {view === 'graph' ? (
             <p className="task-graph-hint">
               <span>分组是子任务 · 虚线是前置依赖 · 完成项仅在与未完成任务相关时出现</span>
-              <span>拖节点调整位置（保存在本机）；Shift 拖到目标设父任务；左侧方块端点拖到目标，把目标设为自己的前置</span>
+              <span>拖节点调整位置（保存在本机），拖到另一个节点上重叠即可设为子任务；左侧方块端点拖到目标，把目标设为自己的前置</span>
             </p>
           ) : (
             <DayFilter />
@@ -228,7 +228,7 @@ export function TaskSection() {
                 disabled={Object.keys(graphPositions).length === 0}
                 onClick={clearGraphPositions}
               >
-                Reset layout
+                reset layout
               </button>
             ) : null}
             <ViewSwitch view={view} onChange={changeView} />

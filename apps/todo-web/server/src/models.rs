@@ -9,6 +9,8 @@ pub struct CreateTaskRequest {
     pub priority: Option<Priority>,
     pub tags: Option<Vec<String>>,
     pub project_id: Option<String>,
+    /// 直接建成某任务的子任务。
+    pub parent_id: Option<String>,
 }
 
 /// 省略字段表示不改，显式 `null` 表示清空。
