@@ -20,7 +20,7 @@ export function createExecutorModule(): WorkspaceModule {
       Status: ExecutorStatus,              // 可选：状态栏组件
     },
     collapsedSidebarSize: 32,             // 可选：折叠后那一节的高度
-    minSidebarSize: 380,                  // 可选：侧栏不得窄于该像素宽度，缺省 200
+    minSidebarSize: 340,                  // 可选：侧栏不得窄于该像素宽度，缺省 200
     keepMounted: false,
     actions: [...],
   }

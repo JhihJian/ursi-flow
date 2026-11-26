@@ -98,11 +98,11 @@
 .wsx-git-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex: none;
   margin-bottom: 12px;
-  /* 右侧留 8px：侧栏内容区到面板边没有内边距，不留白时最右的 ↓ 徽标会压在边框上。 */
-  padding: 0 8px 0 0;
+  /* 右侧留 6px：侧栏内容区到面板边没有内边距，不留白时最右的 ↓ 徽标会压在边框上。 */
+  padding: 0 6px 0 0;
   border: 0;
   background: none;
   font-size: 11px;
@@ -119,7 +119,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 1px 6px;
   border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
   background: none;
   font-family: inherit;
@@ -266,11 +266,26 @@
   font-size: 10px;
 }
 
-/* 推送/拉取按钮组：靠右贴齐摘要条尾部 */
+/* 推送/拉取按钮组：靠右贴齐摘要条尾部，两个按钮共用一层边框，省掉中间的两条边与内边距 */
 .wsx-git-sync {
   display: inline-flex;
-  gap: 4px;
+  flex: none;
   margin-left: auto;
+  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-git-sync .wsx-git-chip {
+  padding: 1px 5px;
+  border: 0;
+  gap: 2px;
+}
+
+.wsx-git-sync .wsx-git-chip + .wsx-git-chip {
+  border-left: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+}
+
+.wsx-git-sync .wsx-git-chip:hover:not(:disabled) {
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-git-sync-btn {
@@ -278,7 +293,6 @@
 }
 
 .wsx-git-sync-btn:disabled {
-  border-color: var(--wsx-line, var(--ws-line, #e5e5e5));
   color: var(--wsx-dim, var(--ws-muted, #999999));
   opacity: 0.45;
   cursor: default;

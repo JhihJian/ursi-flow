@@ -18,10 +18,10 @@ export function FsScope({ api, children }: { api: WorkspaceApi; children: ReactN
 /**
  * 侧边栏最小宽度，嵌入外壳与独立入口共用。
  * 侧栏左侧固定 144px 目录列 + 8px 间距，右侧 git 摘要条不换行：分支、变更计数、
- * ↑↓ 三个 chip 加右侧 8px 留白约需 208px，整栏至少 144 + 8 + 208 = 360，取 380
+ * ↑↓ 分段按钮加右侧 6px 留白约需 172px，整栏至少 144 + 8 + 172 = 324，取 340
  * 留出多位数的计数余量。分支名过长时自己省略号截断，不把计数与 ↑↓ 顶出可视区。
  */
-export const SIDEBAR_MIN_SIZE = 380
+export const SIDEBAR_MIN_SIZE = 340
 
 export interface FsSidebarProps extends ModuleSidebarProps {
   api: WorkspaceApi

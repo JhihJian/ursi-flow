@@ -43,7 +43,7 @@ watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通�
 ### 前端：二级侧边栏
 
 - 模块栏为二级侧边栏（参考 todo-web ProjectSidebar）：一级 144px 固定宽目录列表（名称 + 说明、点击切换、右键重命名/说明/移除，内联输入与内联确认，契约禁原生对话框）；二级为 git 摘要 + 虚拟化文件树。嵌入模式拖宽/折叠由外壳管理，模块内不嵌套可拖拽布局；standalone 预览页自带拖宽与折叠 rail（书脊式竖排）。
-- 侧栏最小宽度为 380px（`SIDEBAR_MIN_SIZE`，嵌入时由模块声明 `minSidebarSize` 交给外壳，独立入口的 Panel 用同一个常量）：144px 目录列 + 8px 间距 + git 摘要条约 208px（分支、变更计数、↑↓ 与右侧 8px 留白）。摘要条不换行，分支名过长时自己省略号截断（悬停 title 与分支弹层仍可看全名），不把计数和 ↑↓ 顶出可视区。
+- 侧栏最小宽度为 340px（`SIDEBAR_MIN_SIZE`，嵌入时由模块声明 `minSidebarSize` 交给外壳，独立入口的 Panel 用同一个常量）：144px 目录列 + 8px 间距 + git 摘要条约 172px（分支、变更计数、↑↓ 与右侧 6px 留白）。摘要条不换行，chip 内边距 1px/6px、间距 4px，↑↓ 共用一个分段框；分支名过长时自己省略号截断（悬停 title 与分支弹层仍可看全名），不把计数和 ↑↓ 顶出可视区。
 - 点击文件发布 `workspace.file` 选中，编辑器由外壳工作区区域渲染，不塞进窄栏；树行组件自写 + `@tanstack/react-virtual` 虚拟化。
 - Monaco 经 `@monaco-editor/react` + `monaco-editor` 本地打包（`loader.config` 指向本地 monaco-editor 包 + vite worker 导入），`React.lazy` 分块不进首屏；`.md` 文件默认走 ProseMirror 所见即所得编辑器（todo-web 同款，markdown-it + prosemirror-markdown），顶栏可切 Monaco 源码，同样懒加载分块。
 - 编辑器草稿与展开状态存内存（页面刷新即丢，后续可评估 sessionStorage）；文件内容不缓存，`apiBaseUrl` 由宿主注入，缺省 `/api/fs-web`。
