@@ -127,6 +127,15 @@ export const api = {
   refreshModelCatalog: (home: string) => request<ModelCatalog>('POST', '/api/models/catalog/refresh', home),
   putModelProviders: (home: string, providers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/models/providers', home, { providers, revision }),
+  /** 写单个模型的 modelOverrides（null 表示删除覆盖），只改 models.json 的这一个键。 */
+  putModelOverride: (
+    home: string,
+    provider: string,
+    modelId: string,
+    override: Record<string, unknown> | null,
+    revision: string,
+  ) =>
+    request<MutationResult>('PUT', '/api/models/override', home, { provider, modelId, override, revision }),
   getAuth: (home: string) => request<AuthListing>('GET', '/api/auth', home),
   /** 合并写回 auth.json 条目：只改提交里出现的 provider，null 删除条目。 */
   putAuthEntries: (

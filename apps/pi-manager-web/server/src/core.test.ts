@@ -8,7 +8,14 @@ import { readSnapshotSync, writeSnapshot, ConflictError } from './rw.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { toggleDisableModelInvocation, readDisableModelInvocation } from './skills.ts'
 import { readMcp, maskSecret } from './mcp-file.ts'
-import { readModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
+import {
+  readModels,
+  readAuth,
+  mergeAuth,
+  readModelCatalog,
+  mergeModelOverride,
+  readModelOverrides,
+} from './models-auth.ts'
 import { readCachedCatalog } from './models-runtime.ts'
 import { createHash } from 'node:crypto'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
@@ -857,4 +864,88 @@ test('runtime：缓存缺失或损坏都返回 null', () => {
     else process.env.PI_MANAGER_STATE = previous
     rmSync(stateDir, { recursive: true, force: true })
   }
+})
+
+test('override：写 modelOverrides 只改该模型，provider 其余字段与其它覆盖原样保留', async () => {
+  const dir = makeHome()
+  writeFileSync(
+    join(dir, 'models.json'),
+    JSON.stringify(
+      {
+        providers: {
+          'sub2api-local': { modelOverrides: { 'glm-5.3': { reasoning: true } } },
+          mine: { baseUrl: 'https://x/v1', models: [{ id: 'a' }] },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  const rev = readModels(dir).revision
+  await mergeModelOverride(dir, rev, 'sub2api-local', 'gpt-6.1-terra', { contextWindow: 500000 })
+  const written = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8'))
+  assert.deepEqual(written.providers['sub2api-local'].modelOverrides, {
+    'glm-5.3': { reasoning: true },
+    'gpt-6.1-terra': { contextWindow: 500000 },
+  })
+  assert.deepEqual(written.providers.mine, { baseUrl: 'https://x/v1', models: [{ id: 'a' }] })
+  assert.deepEqual([...readModelOverrides(dir).keys()].sort(), ['sub2api-local/glm-5.3', 'sub2api-local/gpt-6.1-terra'])
+})
+
+test('override：null 删除该条，最后一条删掉后连 modelOverrides 键一起移除', async () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { p: { modelOverrides: { m: { maxTokens: 100 } } } } }))
+  let rev = readModels(dir).revision
+  await mergeModelOverride(dir, rev, 'p', 'm', null)
+  let written = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8'))
+  assert.equal(written.providers.p, undefined)
+
+  rev = readModels(dir).revision
+  await mergeModelOverride(dir, rev, 'p', 'm2', { maxTokens: 200 })
+  written = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8'))
+  assert.deepEqual(written.providers.p, { modelOverrides: { m2: { maxTokens: 200 } } })
+})
+
+test('override：非法字段值被拒绝，不写文件', async () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: {} }))
+  const before = readFileSync(join(dir, 'models.json'), 'utf8')
+  const rev = readModels(dir).revision
+  await assert.rejects(() => mergeModelOverride(dir, rev, 'p', 'm', { contextWindow: 0 }))
+  await assert.rejects(() => mergeModelOverride(dir, rev, 'p', 'm', { maxTokens: -5 }))
+  await assert.rejects(() => mergeModelOverride(dir, rev, 'p', 'm', { input: ['audio'] }))
+  await assert.rejects(() => mergeModelOverride(dir, rev, 'bad name', 'm', { maxTokens: 1 }))
+  assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), before)
+})
+
+test('catalog：覆盖值优先于运行时目录，并标在 overriddenFields 里', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), '{}')
+  writeFileSync(
+    join(dir, 'models.json'),
+    JSON.stringify({ providers: { ext: { modelOverrides: { m: { contextWindow: 999000, input: ['text', 'image'] } } } } }),
+  )
+  const runtime = {
+    fetchedAt: 1,
+    cwd: '/tmp',
+    models: [
+      {
+        provider: 'ext',
+        id: 'm',
+        name: 'M',
+        contextWindow: 128000,
+        maxTokens: 8192,
+        reasoning: false,
+        images: false,
+        cost: null,
+      },
+    ],
+  }
+  const catalog = readModelCatalog(dir, readSettings(dir).data, runtime)
+  const item = catalog.candidates.find((c) => c.ref === 'ext/m')!
+  assert.equal(item.contextWindow, 999000)
+  assert.equal(item.maxTokens, 8192)
+  assert.equal(item.images, true)
+  assert.deepEqual(item.overriddenFields, ['contextWindow', 'input'])
+  assert.ok(catalog.modelsRevision)
 })

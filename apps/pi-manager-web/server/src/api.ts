@@ -8,7 +8,14 @@ import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
 import { listAgentProfiles, saveAgentProfile, deleteAgentProfile, readAgentsSettings, writeAgentsSettings, renderProfile } from './agents.ts'
 import { readMcp, mergeMcp } from './mcp-file.ts'
-import { readModels, mergeModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
+import {
+  readModels,
+  mergeModels,
+  readAuth,
+  mergeAuth,
+  readModelCatalog,
+  mergeModelOverride,
+} from './models-auth.ts'
 import { readCachedCatalog, refreshCatalog, catalogCwd } from './models-runtime.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { createStaticHandler } from './static.ts'
@@ -291,6 +298,35 @@ route('PUT', '/api/mcp/servers', async ({ home, body }) => {
 // ---------------------------------------------------------------------------
 
 route('GET', '/api/models', async ({ home }) => readModels(home))
+
+/**
+ * 写一个模型的 modelOverrides（models.json）。
+ * pi 用它对内置或扩展提供的模型改 contextWindow / maxTokens / reasoning / input，
+ * 不替换 provider 的模型列表——这是扩展注册 provider 唯一的元数据配置入口。
+ */
+route('PUT', '/api/models/override', async ({ home, body }) => {
+  const payload = await body<{
+    provider?: unknown
+    modelId?: unknown
+    override?: unknown
+    revision?: unknown
+  }>()
+  if (typeof payload.provider !== 'string' || typeof payload.modelId !== 'string') {
+    throw new HomeError('provider 与 modelId 必填', 400, 'invalid_request')
+  }
+  if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
+  if (payload.override !== null && (typeof payload.override !== 'object' || Array.isArray(payload.override))) {
+    throw new HomeError('override 必须是对象或 null', 400, 'invalid_request')
+  }
+  const revision = await mergeModelOverride(
+    home,
+    payload.revision,
+    payload.provider,
+    payload.modelId,
+    payload.override as Record<string, unknown> | null,
+  )
+  return { ok: true, revision }
+})
 
 /** 本机模型清单：settings 的默认/启用模型 + models.json + models-store + 运行时目录（含 context/maxOut）。 */
 function buildCatalog(home: string) {

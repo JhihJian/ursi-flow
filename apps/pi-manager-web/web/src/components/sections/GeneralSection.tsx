@@ -79,6 +79,23 @@ export function GeneralSection({ home }: { home: string }) {
     })
   }
 
+  /**
+   * 写 models.json 的 modelOverrides：pi 只支持在这里改内置或扩展提供模型的
+   * contextWindow / maxTokens，不会被扩展注册的 provider 覆盖掉。
+   */
+  async function saveOverride(
+    overrideProvider: string,
+    overrideModelId: string,
+    override: Record<string, unknown> | null,
+    label: string,
+  ): Promise<boolean> {
+    const ok = await runWrite(label, async () => {
+      await api.putModelOverride(home, overrideProvider, overrideModelId, override, catalog!.modelsRevision)
+      await reload()
+    })
+    return ok
+  }
+
   async function writeModel(nextProvider: string, nextModelId: string) {
     await runWrite('保存默认模型', async () => {
       const result = await api.putGeneralModel(home, nextProvider, nextModelId, listing!.revision)
@@ -209,6 +226,7 @@ export function GeneralSection({ home }: { home: string }) {
           catalog={catalog}
           onRefresh={refreshCatalog}
           refreshing={refreshing}
+          onSaveOverride={saveOverride}
           onSave={(next, label) =>
             runWrite(label, async () => {
               const result = await api.putGeneralKey(home, 'enabledModels', next, listing!.revision)

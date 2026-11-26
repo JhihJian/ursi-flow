@@ -10,6 +10,13 @@ import type { CatalogCandidate, ModelCatalog } from '../../api/types'
  * 顺序有实义：第一条启用项是新会话的启动模型，也是 Ctrl+P 循环的起点。
  */
 
+type TokenField = 'contextWindow' | 'maxTokens'
+
+const FIELD_LABEL: Record<TokenField, string> = {
+  contextWindow: '上下文窗口',
+  maxTokens: '输出上限',
+}
+
 const SOURCE_LABEL: Record<string, string> = {
   'settings.enabledModels': '已启用',
   'settings.default': '默认',
@@ -31,17 +38,27 @@ export function ScopedModelsPanel({
   onSave,
   onRefresh,
   refreshing,
+  onSaveOverride,
 }: {
   catalog: ModelCatalog
   onSave: (next: string[] | null, label: string) => Promise<boolean>
   onRefresh: () => Promise<void>
   refreshing: boolean
+  /** 写 models.json 的 modelOverrides；override 为 null 时删除该模型的覆盖。 */
+  onSaveOverride: (
+    provider: string,
+    modelId: string,
+    override: Record<string, unknown> | null,
+    label: string,
+  ) => Promise<boolean>
 }) {
   const [query, setQuery] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
   const [draft, setDraft] = useState('')
   /** null 表示跟随默认（只展开第一个有启用项的 provider），用户操作后固定为用户选择。 */
   const [expandedOverride, setExpandedOverride] = useState<Set<string> | null>(null)
+  /** 行内编辑 token 上限：同一时刻只编辑一个单元格。 */
+  const [editing, setEditing] = useState<{ ref: string; field: TokenField } | null>(null)
 
   // pi 里 enabledModels 不存在等于「全部可用」，此时所有候选都按启用显示；
   // 任何一次单条关掉都会落成显式清单（和 TUI 的 toggle(null) 行为一致）。
@@ -149,6 +166,32 @@ export function ScopedModelsPanel({
     }
     const ok = await onSave([...enabled, ref], `添加 ${ref}`)
     if (ok) setDraft('')
+  }
+
+  /** 写入 / 清除一个模型的 token 上限覆盖。空串表示删掉该字段。 */
+  async function commitTokenField(
+    item: CatalogCandidate,
+    field: TokenField,
+    raw: string,
+  ): Promise<void> {
+    setEditing(null)
+    const trimmed = raw.trim()
+    const next: Record<string, unknown> = { ...(item.override ?? {}) }
+    if (trimmed === '') {
+      delete next[field]
+    } else {
+      const value = Number(trimmed)
+      if (!Number.isFinite(value) || value <= 0) return
+      if (value === item[field]) return
+      next[field] = Math.round(value)
+    }
+    const empty = Object.keys(next).length === 0
+    await onSaveOverride(
+      item.provider,
+      item.modelId,
+      empty ? null : next,
+      trimmed === '' ? `清除 ${item.ref} 的${FIELD_LABEL[field]}` : `设置 ${item.ref} 的${FIELD_LABEL[field]}`,
+    )
   }
 
   function setGroupOpen(provider: string, open: boolean) {
@@ -286,8 +329,12 @@ export function ScopedModelsPanel({
                     <th className="col-state">State</th>
                     <th className="col-order">#</th>
                     <th>Model</th>
-                    <th className="col-num">Context</th>
-                    <th className="col-num">Max out</th>
+                    <th className="col-num" title="点击单元格可覆盖，写入 models.json 的 modelOverrides">
+                      Context
+                    </th>
+                    <th className="col-num" title="点击单元格可覆盖，写入 models.json 的 modelOverrides">
+                      Max out
+                    </th>
                     <th className="col-caps">能力</th>
                     <th className="col-actions" />
                   </tr>
@@ -317,13 +364,30 @@ export function ScopedModelsPanel({
                           {item.pattern ? ' · 模式' : ''}
                           {item.ref === firstEnabled ? ' · 启动首选' : ''}
                           {item.enabled && !item.resolvable ? ' · 目录里没有，由扩展或网关提供' : ''}
+                          {item.overriddenFields.length > 0
+                            ? ` · 已覆盖 ${item.overriddenFields.join('/')}`
+                            : ''}
                         </div>
                       </td>
                       <td className="col-num">
-                        {item.contextWindow ? formatTokens(item.contextWindow) : '—'}
+                        <TokenCell
+                          item={item}
+                          field="contextWindow"
+                          editing={editing?.ref === item.ref && editing.field === 'contextWindow'}
+                          onEdit={() => setEditing({ ref: item.ref, field: 'contextWindow' })}
+                          onCommit={(raw) => void commitTokenField(item, 'contextWindow', raw)}
+                          onCancel={() => setEditing(null)}
+                        />
                       </td>
                       <td className="col-num">
-                        {item.maxTokens ? formatTokens(item.maxTokens) : '—'}
+                        <TokenCell
+                          item={item}
+                          field="maxTokens"
+                          editing={editing?.ref === item.ref && editing.field === 'maxTokens'}
+                          onEdit={() => setEditing({ ref: item.ref, field: 'maxTokens' })}
+                          onCommit={(raw) => void commitTokenField(item, 'maxTokens', raw)}
+                          onCancel={() => setEditing(null)}
+                        />
                       </td>
                       <td className="col-caps">
                         {formatCaps(item)}
@@ -385,6 +449,7 @@ export function ScopedModelsPanel({
         pi 自己打开 /scoped-models 时会把空数组归一成全部可用，所以全部停用只在 settings.json 里保留。
         在「全部可用」状态关掉某一条或某个 provider，会把其余候选落成显式清单（与 pi 的 toggle 一致）。
         由 extensions/providers/ 注册的 provider 不写配置文件，只能手写 provider/modelId 或模式来启用。
+        Context 与 Max out 可直接点单元格覆盖，写入 models.json 的 modelOverrides，清空即删除覆盖。
       </p>
     </div>
   )
@@ -419,4 +484,55 @@ function formatAgo(at: number): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours} 小时前`
   return `${Math.floor(hours / 24)} 天前`
+}
+
+/**
+ * 一个 token 上限单元格：平时显示 200K 这类换算值，点击变成数字输入框。
+ * 覆盖值来自 models.json 的 modelOverrides（pi 只支持在这里改内置/扩展模型的元数据）。
+ */
+function TokenCell({
+  item,
+  field,
+  editing,
+  onEdit,
+  onCommit,
+  onCancel,
+}: {
+  item: CatalogCandidate
+  field: TokenField
+  editing: boolean
+  onEdit: () => void
+  onCommit: (raw: string) => void
+  onCancel: () => void
+}) {
+  const value = item[field]
+  const overridden = field in (item.override ?? {})
+  if (editing) {
+    return (
+      <input
+        className="cell-input"
+        autoFocus
+        type="number"
+        min={1}
+        defaultValue={value ?? ''}
+        placeholder="token 数"
+        aria-label={`${item.ref} 的${FIELD_LABEL[field]}`}
+        onBlur={(e) => onCommit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={`cell-token${overridden ? ' overridden' : ''}`}
+      title={`${item.ref} 的${FIELD_LABEL[field]}：${value ?? '未知'}。点击覆盖（写入 models.json 的 modelOverrides）`}
+      onClick={onEdit}
+    >
+      {value ? formatTokens(value) : '—'}
+    </button>
+  )
 }

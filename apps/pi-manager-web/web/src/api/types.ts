@@ -86,6 +86,10 @@ export interface CatalogCandidate {
   images: boolean | null
   /** 每百万 token 的美元单价，未知为 null。 */
   cost: { input: number; output: number } | null
+  /** models.json 的 modelOverrides 原文（无覆盖为 null）。 */
+  override: Record<string, unknown> | null
+  /** 已被覆盖的字段名。 */
+  overriddenFields: string[]
 }
 
 /** enabledModels 的三种形态：key 不存在 = 全部可用，空数组 = 按字面全部停用，非空 = 显式清单。 */
@@ -104,6 +108,8 @@ export interface ModelCatalog {
   catalogFetchedAt: number | null
   /** 运行时目录覆盖的 provider 数。 */
   catalogProviders: number
+  /** models.json 的 revision，写 modelOverrides 时用作乐观锁。 */
+  modelsRevision: string
 }
 
 export interface SkillItem {

@@ -164,6 +164,124 @@ function resolveMaskedApiKey(
 }
 
 // ---------------------------------------------------------------------------
+// models.json 的 modelOverrides：给内置或扩展提供的模型改元数据
+//
+// pi 的 models.json 支持 `providers.<provider>.modelOverrides.<modelId>`：只改
+// contextWindow / maxTokens / reasoning / input 等字段，不替换 provider 的模型列表。
+// 这是扩展注册的 provider（extensions/providers/）唯一的元数据配置入口——它们不写
+// 任何配置文件，所以无法用 `models` 重建，只能覆盖。
+// ---------------------------------------------------------------------------
+
+/** 可由管理台写入的覆盖字段（其余字段原样保留，页面不编辑）。 */
+export const OVERRIDABLE_FIELDS = ['contextWindow', 'maxTokens', 'reasoning', 'input'] as const
+export type OverridableField = (typeof OVERRIDABLE_FIELDS)[number]
+
+/** 一个模型的覆盖条目：键是 modelId，值是 pi 的 modelOverrides 对象。 */
+export type ModelOverrides = Record<string, Record<string, unknown>>
+
+function overridesKey(provider: string, modelId: string): string {
+  return `${provider}/${modelId}`.toLowerCase()
+}
+
+/** 读出全部生效中的 modelOverrides，按 `provider/modelId`（小写）索引。 */
+export function readModelOverrides(home: string): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>()
+  const path = modelsConfigPath(home)
+  if (!existsSync(path)) return out
+  let root: Record<string, unknown>
+  try {
+    root = readSnapshotSync<Record<string, unknown>>(path, parseJsonc).data
+  } catch {
+    return out
+  }
+  const providers = root.providers
+  if (providers === null || typeof providers !== 'object' || Array.isArray(providers)) return out
+  for (const [provider, rawEntry] of Object.entries(providers as Record<string, unknown>)) {
+    if (rawEntry === null || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) continue
+    const overrides = (rawEntry as Record<string, unknown>).modelOverrides
+    if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) continue
+    for (const [modelId, value] of Object.entries(overrides as Record<string, unknown>)) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) continue
+      out.set(overridesKey(provider, modelId), value as Record<string, unknown>)
+    }
+  }
+  return out
+}
+
+/**
+ * 写一条 modelOverrides：override 为 null 表示删除该条覆盖。
+ * 只触碰 `providers.<provider>.modelOverrides.<modelId>`，文件其余部分原样保留。
+ */
+export async function mergeModelOverride(
+  home: string,
+  expectedRevision: string,
+  provider: string,
+  modelId: string,
+  override: Record<string, unknown> | null,
+): Promise<string> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(provider)) {
+    throw new HomeError(`provider 名只能包含字母数字与 .-_：${provider}`, 400, 'invalid_request')
+  }
+  if (!modelId.trim()) throw new HomeError('modelId 不能为空', 400, 'invalid_request')
+  const path = modelsConfigPath(home)
+  let base: Record<string, unknown> = {}
+  if (existsSync(path)) {
+    base = readSnapshotSync<Record<string, unknown>>(path, parseJsonc).data
+  }
+  const providersRoot = base.providers
+  const providers: Record<string, unknown> =
+    providersRoot && typeof providersRoot === 'object' && !Array.isArray(providersRoot)
+      ? { ...(providersRoot as Record<string, unknown>) }
+      : {}
+  const existing = providers[provider]
+  const entry: Record<string, unknown> =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>) }
+      : {}
+  const currentOverrides = entry.modelOverrides
+  const overrides: Record<string, unknown> =
+    currentOverrides && typeof currentOverrides === 'object' && !Array.isArray(currentOverrides)
+      ? { ...(currentOverrides as Record<string, unknown>) }
+      : {}
+
+  if (override === null) {
+    if (!(modelId in overrides)) return readModels(home).revision
+    delete overrides[modelId]
+  } else {
+    const cleaned: Record<string, unknown> = { ...override }
+    for (const field of OVERRIDABLE_FIELDS) {
+      if (cleaned[field] === undefined) continue
+      if (field === 'contextWindow' || field === 'maxTokens') {
+        const value = cleaned[field]
+        if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+          throw new HomeError(`${field} 必须是正数（token 数），收到 ${String(value)}`, 400, 'invalid_request')
+        }
+      }
+      if (field === 'reasoning' && typeof cleaned[field] !== 'boolean') {
+        throw new HomeError('reasoning 必须是布尔值', 400, 'invalid_request')
+      }
+      if (field === 'input') {
+        const value = cleaned.input
+        if (!Array.isArray(value) || value.some((v) => v !== 'text' && v !== 'image')) {
+          throw new HomeError('input 只能是 text / image 组成的数组', 400, 'invalid_request')
+        }
+      }
+    }
+    overrides[modelId] = cleaned
+  }
+
+  // 只写了 modelOverrides 的条目是合法的：pi 用扩展或内置定义 provider，这里只覆盖模型。
+  if (Object.keys(overrides).length > 0) entry.modelOverrides = overrides
+  else delete entry.modelOverrides
+  if (Object.keys(entry).length > 0) providers[provider] = entry
+  else delete providers[provider]
+
+  const next = { ...base, providers }
+  await writeSnapshot(path, expectedRevision || undefined, () => `${JSON.stringify(next, null, 2)}\n`)
+  return readModels(home).revision
+}
+
+// ---------------------------------------------------------------------------
 // auth.json：条目级读写，凭据字段遮蔽后回显，原样提交即保留原文。
 //
 // pi 的凭据形状（dist/core/auth-storage.js 校验）：
@@ -379,6 +497,10 @@ export interface CatalogCandidate {
   images: boolean | null
   /** 每百万 token 的美元单价，未知为 null。 */
   cost: { input: number; output: number } | null
+  /** models.json 里该模型的 modelOverrides 原文（无覆盖为 null）。 */
+  override: Record<string, unknown> | null
+  /** 已被覆盖的字段名，供页面标「已覆盖」。 */
+  overriddenFields: string[]
 }
 
 /**
@@ -409,6 +531,8 @@ export interface ModelCatalog {
   catalogFetchedAt: number | null
   /** 运行时目录覆盖到的 provider 数；未采集为 0。 */
   catalogProviders: number
+  /** models.json 的 revision，写 modelOverrides 时作为乐观锁。 */
+  modelsRevision: string
 }
 
 interface StoreProviderRaw {
@@ -476,10 +600,12 @@ export function readModelCatalog(
     ? rawEnabled.filter((v): v is string => typeof v === 'string')
     : []
   const scope: ModelScope = !Array.isArray(rawEnabled) ? 'all' : enabledModels.length === 0 ? 'none' : 'explicit'
-  const modelsJson = readModels(home).providers
+  const modelsFile = readModels(home)
+  const modelsJson = modelsFile.providers
   const rawStore = readStoreProviders(home)
 
   // 运行时目录按 `provider/id` 索引，大小写不敏感查（网关返回的 id 大小写不统一）。
+  const overrides = readModelOverrides(home)
   const runtimeById = new Map<string, RuntimeModel>()
   for (const model of runtimeCatalog?.models ?? []) {
     runtimeById.set(`${model.provider}/${model.id}`.toLowerCase(), model)
@@ -504,6 +630,12 @@ export function readModelCatalog(
       return
     }
     const runtime = runtimeById.get(ref.toLowerCase()) ?? null
+    const override = overrides.get(ref.toLowerCase()) ?? null
+    // 生效值按 pi 的合并规则算：override 的标量字段直接替换，input 是数组整体替换。
+    // 这样刚写完覆盖就能看到新值，不必等下一次目录采集。
+    const overrideNumber = (field: string): number | null =>
+      typeof override?.[field] === 'number' ? (override[field] as number) : null
+    const overrideInput = Array.isArray(override?.input) ? (override.input as unknown[]) : null
     candidates.set(ref.toLowerCase(), {
       ref,
       ...splitRef(ref),
@@ -512,12 +644,15 @@ export function readModelCatalog(
       resolvable: resolvable || runtime !== null,
       enabled: false,
       enabledIndex: null,
-      displayName: runtime?.name ?? null,
-      contextWindow: runtime?.contextWindow ?? null,
-      maxTokens: runtime?.maxTokens ?? null,
-      reasoning: runtime?.reasoning ?? null,
-      images: runtime?.images ?? null,
+      displayName: typeof override?.name === 'string' ? override.name : (runtime?.name ?? null),
+      contextWindow: overrideNumber('contextWindow') ?? runtime?.contextWindow ?? null,
+      maxTokens: overrideNumber('maxTokens') ?? runtime?.maxTokens ?? null,
+      reasoning:
+        typeof override?.reasoning === 'boolean' ? override.reasoning : (runtime?.reasoning ?? null),
+      images: overrideInput ? overrideInput.includes('image') : (runtime?.images ?? null),
       cost: runtime?.cost ?? null,
+      override,
+      overriddenFields: override ? Object.keys(override) : [],
     })
   }
 
@@ -576,5 +711,6 @@ export function readModelCatalog(
     candidates: ordered,
     catalogFetchedAt: runtimeCatalog?.fetchedAt ?? null,
     catalogProviders: new Set((runtimeCatalog?.models ?? []).map((m) => m.provider)).size,
+    modelsRevision: modelsFile.revision,
   }
 }
