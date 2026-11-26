@@ -59,6 +59,34 @@ export interface GeneralListing {
   unmanagedKeys: string[]
 }
 
+export type CatalogSource =
+  | 'settings.default'
+  | 'settings.enabledModels'
+  | 'models.json'
+  | 'models-store.json'
+
+/** 启用模型列表的一行：一个 provider/modelId 引用或一条模式。 */
+export interface CatalogCandidate {
+  ref: string
+  provider: string
+  modelId: string
+  sources: CatalogSource[]
+  pattern: boolean
+  resolvable: boolean
+  enabled: boolean
+  enabledIndex: number | null
+}
+
+/** 本机模型清单：文件级可见的 provider/模型来源（只读汇总）。 */
+export interface ModelCatalog {
+  configured: { provider: string | null; modelId: string | null }
+  enabledModels: string[]
+  modelsJsonProviders: string[]
+  store: Array<{ provider: string; modelCount: number; checkedAt: number | null; ids: string[] }>
+  refs: string[]
+  candidates: CatalogCandidate[]
+}
+
 export interface SkillItem {
   /** 相对 skills/ 的目录路径（嵌套目录用 / 分隔）。 */
   relDir: string

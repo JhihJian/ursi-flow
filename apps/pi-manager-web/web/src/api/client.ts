@@ -9,6 +9,7 @@ import type {
   HomeCheck,
   HomeDefaults,
   McpListing,
+  ModelCatalog,
   ModelsListing,
   MutationResult,
   PluginsListing,
@@ -97,6 +98,9 @@ export const api = {
   getGeneral: (home: string) => request<GeneralListing>('GET', '/api/general', home),
   putGeneralKey: (home: string, key: string, value: unknown, revision: string) =>
     request<MutationResult>('PUT', '/api/general/key', home, { key, value, revision }),
+  /** 默认模型同时由 defaultProvider 与 defaultModel 两个 key 组成，必须一次写完。 */
+  putGeneralModel: (home: string, provider: string, modelId: string, revision: string) =>
+    request<MutationResult>('PUT', '/api/general/model', home, { provider, modelId, revision }),
   getSkills: (home: string) => request<SkillsListing>('GET', '/api/skills', home),
   toggleSkill: (home: string, relDir: string, disabled: boolean) =>
     request<{ ok: true; disabled: boolean }>('POST', '/api/skills/toggle', home, { relDir, disabled }),
@@ -118,6 +122,7 @@ export const api = {
   putMcpServers: (home: string, servers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/mcp/servers', home, { servers, revision }),
   getModels: (home: string) => request<ModelsListing>('GET', '/api/models', home),
+  getModelCatalog: (home: string) => request<ModelCatalog>('GET', '/api/models/catalog', home),
   putModelProviders: (home: string, providers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/models/providers', home, { providers, revision }),
   getAuth: (home: string) => request<AuthListing>('GET', '/api/auth', home),

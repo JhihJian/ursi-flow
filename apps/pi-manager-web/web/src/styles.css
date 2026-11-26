@@ -1261,6 +1261,90 @@ textarea {
   font-size: 12px;
 }
 
+/* 只读来源汇总（自定义模型分区底部） */
+.catalog-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--gray-200);
+  margin-top: var(--space-md);
+}
+
+/* 启用模型（enabledModels）面板 */
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--gray-200);
+}
+
+.section-head-inline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.scoped-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.scoped-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.scoped-toolbar-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.scoped-meta {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.col-order {
+  width: 36px;
+  text-align: right;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-actions {
+  width: 76px;
+  text-align: right;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+.catalog-summary-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.catalog-summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
 .section-caption {
   font-family: var(--font-serif);
   font-size: 11px;

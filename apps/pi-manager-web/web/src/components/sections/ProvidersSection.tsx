@@ -125,6 +125,7 @@ export function ProvidersSection({ home }: { home: string }) {
       )}
       <p className="mono-dim">
         凭据原文不会回传到页面。OAuth 条目由 pi CLI 登录刷新，这里可以改字段或删除。
+        由环境变量提供的密钥（如 provider 扩展读的 `*_API_KEY`）不写进 auth.json，本页看不到。
       </p>
 
       {creating ? (

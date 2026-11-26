@@ -32,9 +32,24 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- 「常规」分区编辑默认模型（provider/modelId）、默认思考级别、默认工具（`+name`/`-name` 修饰列表）与 codemode 开关；写入只触碰受管 key，文件里其余 key 原样保留。
+- 「常规」分区按 pi 的 settings schema 编辑：默认模型（`defaultProvider` + `defaultModel` 两个独立字符串，一次写入，同时填或同时清空）、默认思考级别（`off`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`）、默认工具（`+name`/`-name` 修饰列表）、codemode（`mode` 为 `on`/`only` 加可选 `inlineBudget`）；写入只触碰受管 key，文件里其余 key 原样保留。
+- 默认模型输入框按「已知模型清单」补全：清单合并 `enabledModels`、`models.json` 自建 provider 与 `models-store.json` 的运行目录，由 `GET /api/models/catalog` 提供。
+- 写 `settings.json` 用 2 空格缩进、不带结尾换行，与 pi 自身的写法一致，避免互相改写产生无意义 diff。
 - 「插件」分区列出 `packages` 条目与 `npm/` 安装目录核对结果；string 条目禁用编码为四空数组 object，启用还原；带资源过滤列表（extensions/skills/prompts/themes 非空）的条目拒绝禁用并解释原因；移除条目不删 `npm/` 目录。
 - 每次写入带乐观锁（revision = mtimeMs.size）；文件被其他进程修改后写入返回 409 并提示刷新，原文件保留。
+
+### 启用模型列表（enabledModels）
+
+对齐 pi TUI 的 `/scoped-models`：`enabledModels` 决定模型循环与启动选择，顺序有实义。
+
+#### 验收
+
+- 「常规」分区下半部是全宽的启用模型列表：逐条开关、序号列、上下移按钮，另有搜索过滤与「添加并启用」输入（接受 `provider/modelId` 或匹配模式）。
+- 顺序即 `Ctrl+P` 循环顺序，第一条启用项是新会话的启动首选，页面在该行标注「启动首选」；未限定清单时提示 pi 用默认模型。
+- 候选行为 `enabledModels` 已启用项（按清单顺序在前）与磁盘上可见模型（`models.json`、`models-store.json`、默认模型）的并集，每行标注来源；`*`/`?`/`[` 通配条目标为模式。
+- 磁盘目录里找不到的启用项（例如由 `extensions/providers/` 注册的 provider）保留并标注「文件目录里没有，由扩展或网关提供」，不静默丢弃。
+- 「全部启用」写为删除 `enabledModels` key（pi 语义：清单为空等于全部可用）；不提供「全部清空」，也不允许关掉最后一条启用项，避免落回同一语义而误导用户。
+- 每次改动都通过 `PUT /api/general/key` 带 revision 写回，只改 `enabledModels` 一个 key。
 
 ### 管理 Skills
 
@@ -59,6 +74,7 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 「MCP」分区按 `mcp.json` 的 `mcpServers` 条目列出 server（传输方式摘要），详情以 JSON 编辑，合并写回（保存单条不影响其余，置 null 删除）。
 - env/headers 里的字面量密钥回显为掩码（名字含凭据词或值是 `Bearer <token>` 短语）；原样提交掩码时服务端还原为原文，改成新值则写新值；`${VAR}` 引用标注后原样保留；`!command` 值标注警示且从不执行。
 - 「自定义模型」分区按 `models.json` 的 `providers` 条目编辑（baseUrl、apiKey、models 数组），合并写回语义同上；文件为 JSONC 时 UI 提示写回是纯 JSON、注释会丢。
+- 分区底部只读展示模型来源汇总：当前默认模型、`enabledModels` 条数、`models.json` 自建 provider 数，以及 `models-store.json` 缓存的内置 provider 目录（provider 名与模型数）。`models-store.json` 只读展示，不参与写回；由 `extensions/providers/` 注册的 provider 不写任何配置文件，页面明确说明管理台按文件管理、不加载扩展。
 - 首次保存创建文件（含 `mcpServers`/`providers` 包裹层）；运行状态与工具发现由 pi 会话负责，管理台不 spawn。
 
 ### 管理凭据
@@ -86,17 +102,18 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 执行会在该 home 下留下 pi 自己的运行产物：`sessions/` 里的会话文件，以及 SDK 首次运行初始化的空 `auth.json`、`models-store.json`（与 pi CLI 行为一致）。管理台不额外写入配置。
 - `GET /api/session/task?sessionId=<id>` 返回该任务状态（`running` / `done` / `error` / `cancelled`）、agent 与 subagent、最后一条助手文本、错误说明与累计输出长度；`GET /api/session/tasks` 列出全部任务，`?agent=<name>` 按 agent 过滤；`POST /api/session/cancel` 中止运行中的任务。
 - 同时运行的会话数受上限约束（默认 4，`PI_MANAGER_MAX_TASKS` 可调），超出返回 429；单次任务有超时（默认 600000 ms，`PI_MANAGER_TASK_TIMEOUT_MS` 可调），超时即中止并标记失败。
-- pi SDK 按需加载：未安装 `@earendil-works/pi-coding-agent` 时配置管理功能照常可用，执行接口返回 503。执行接口属于写操作，只接受回环来源。
+- pi SDK 按需加载：未安装 `@earendil-works/pi-coding-agent` 时配置管理功能照常可用，执行接口返回 503。
 
 ### 安全边界
 
 #### 验收
 
-- 读接口任意来源可访问（凭据字段已遮蔽）；所有写接口只接受回环来源，非回环返回 403 `read_only`。
+- 服务不区分来源：读写接口都接受任意客户端，安全边界由部署环境（可信局域网）承担，不做应用层鉴权。
 - 每次写入前把原文件备份为 `<name>.bak-manager`（避开 pi 自身的 `.bak_*` 系列），写入临时文件与目标同目录后原子 rename，文件模式 0600。
-- 服务监听 `0.0.0.0:8093`（`PI_MANAGER_PORT` 可覆盖），`/healthz` 暴露状态与写策略。
+- 服务监听 `0.0.0.0:8093`（`PI_MANAGER_PORT` 可覆盖），`/healthz` 暴露状态与写策略（`trusted-lan`）。
+- 凭据原文仍不外传：读接口一律遮蔽，只在提交瞬间经请求体传输。
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`mcp-file`、`models-auth`、`plugins`）只做文件级读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（按需加载 SDK、任务表、并发与超时上限）；`api.ts` 路由与回环闸门；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（按需加载 SDK、任务表、并发与超时上限）；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（开关、排序、模式输入）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

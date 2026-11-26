@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { ConflictError, readSnapshotSync, writeSnapshot } from './rw.ts'
 import { parseJsonc } from './jsonc.ts'
 import { HomeError } from './pi-home.ts'
@@ -329,4 +329,166 @@ export async function mergeAuth(
 function maskSecret(value: string): string {
   const tail = value.length > 8 ? value.slice(-4) : ''
   return `•••${tail ? `（末4位 ${tail}）` : ''}`
+}
+
+/** models-store.json：pi 运行态刷新后的 provider 目录缓存（只读展示，不参与写回）。 */
+export interface StoreProviderView {
+  provider: string
+  modelCount: number
+  /** 缓存时间（毫秒时间戳），未知为 null。 */
+  checkedAt: number | null
+  /** 前若干个模型 id，供页面展示目录规模。 */
+  ids: string[]
+}
+
+/** 候选模型的来源标记。 */
+export type CatalogSource = 'settings.default' | 'settings.enabledModels' | 'models.json' | 'models-store.json'
+
+/**
+ * 用于「启用模型」列表的一行：一个 provider/modelId 引用或一条模式。
+ * 扩展注册的 provider（extensions/providers/）不写任何配置文件，只能靠
+ * settings.json 里已有的条目或手写模式出现，因此 resolvable 会标 false。
+ */
+export interface CatalogCandidate {
+  ref: string
+  provider: string
+  modelId: string
+  sources: CatalogSource[]
+  /** 是否含通配或可选 :thinking 后缀，语义上不是单个模型。 */
+  pattern: boolean
+  /** 目录里能否确认该模型存在（models.json 或 models-store.json 命中）。 */
+  resolvable: boolean
+  enabled: boolean
+  /** 在 enabledModels 里的位置（0 起），未启用为 null。 */
+  enabledIndex: number | null
+}
+
+export interface ModelCatalog {
+  /** settings.json 的 defaultProvider / defaultModel。 */
+  configured: { provider: string | null; modelId: string | null }
+  /** settings.json 的 enabledModels（模型循环清单，也是本机真实配置的模型来源）。 */
+  enabledModels: string[]
+  /** models.json 里自建 provider 名。 */
+  modelsJsonProviders: string[]
+  /** models-store.json 缓存的内置 provider 目录。 */
+  store: StoreProviderView[]
+  /** 全部已知 provider/modelId 引用，供页面补全。 */
+  refs: string[]
+  /** 启用模型列表的候选行：启用项按 enabledModels 顺序在前，其余按 provider/引用排序。 */
+  candidates: CatalogCandidate[]
+}
+
+interface StoreProviderRaw {
+  provider: string
+  checkedAt: number | null
+  ids: string[]
+}
+
+function readStoreProviders(home: string): StoreProviderRaw[] {
+  const path = join(home, 'models-store.json')
+  if (!existsSync(path)) return []
+  let data: unknown
+  try {
+    data = JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/u, ''))
+  } catch {
+    return []
+  }
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return []
+  const out: StoreProviderRaw[] = []
+  for (const [provider, raw] of Object.entries(data as Record<string, unknown>)) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const entry = raw as Record<string, unknown>
+    const models = Array.isArray(entry.models) ? entry.models : []
+    const ids = models
+      .map((m) => (m && typeof m === 'object' ? (m as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string')
+    out.push({ provider, checkedAt: typeof entry.checkedAt === 'number' ? entry.checkedAt : null, ids })
+  }
+  out.sort((a, b) => a.provider.localeCompare(b.provider))
+  return out
+}
+
+/** models.json 里 provider 声明的模型 id。 */
+function modelsJsonModelIds(entry: Record<string, unknown>): string[] {
+  const models = entry.models
+  if (Array.isArray(models)) {
+    return models
+      .map((m) => (m && typeof m === 'object' ? (m as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string')
+  }
+  if (models && typeof models === 'object') return Object.keys(models as Record<string, unknown>)
+  return []
+}
+
+/** 通配符。模型 id 本身可以带 `:`（如 ollama 的 `qwen2.5-coder:7b`），不算模式。 */
+const PATTERN_CHARS = /[*?[]/
+
+function splitRef(ref: string): { provider: string; modelId: string } {
+  const slash = ref.indexOf('/')
+  return slash < 0
+    ? { provider: '', modelId: ref }
+    : { provider: ref.slice(0, slash), modelId: ref.slice(slash + 1) }
+}
+
+/** 本机模型清单：settings.json 的默认与启用模型 + models.json 自建 provider + 运行态目录缓存。 */
+export function readModelCatalog(home: string, settings: Record<string, unknown>): ModelCatalog {
+  const provider = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : null
+  const modelId = typeof settings.defaultModel === 'string' ? settings.defaultModel : null
+  const enabledModels = Array.isArray(settings.enabledModels)
+    ? settings.enabledModels.filter((v): v is string => typeof v === 'string')
+    : []
+  const modelsJson = readModels(home).providers
+  const rawStore = readStoreProviders(home)
+
+  const candidates = new Map<string, CatalogCandidate>()
+  const add = (ref: string, source: CatalogSource, resolvable: boolean) => {
+    const existing = candidates.get(ref)
+    if (existing) {
+      if (!existing.sources.includes(source)) existing.sources.push(source)
+      existing.resolvable ||= resolvable
+      return
+    }
+    candidates.set(ref, {
+      ref,
+      ...splitRef(ref),
+      sources: [source],
+      pattern: PATTERN_CHARS.test(ref),
+      resolvable,
+      enabled: false,
+      enabledIndex: null,
+    })
+  }
+
+  if (provider && modelId) add(`${provider}/${modelId}`, 'settings.default', false)
+  for (const raw of modelsJson) {
+    for (const id of modelsJsonModelIds(raw.entry)) add(`${raw.name}/${id}`, 'models.json', true)
+  }
+  for (const item of rawStore) for (const id of item.ids) add(`${item.provider}/${id}`, 'models-store.json', true)
+  // 已启用条目最后加入，保证 enabledIndex 取的是 settings 里的顺序。
+  enabledModels.forEach((ref, index) => {
+    add(ref, 'settings.enabledModels', false)
+    const candidate = candidates.get(ref)!
+    candidate.enabled = true
+    candidate.enabledIndex = index
+  })
+
+  const ordered = [...candidates.values()].sort((a, b) => {
+    if (a.enabled && b.enabled) return (a.enabledIndex ?? 0) - (b.enabledIndex ?? 0)
+    if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
+    return a.provider.localeCompare(b.provider) || a.ref.localeCompare(b.ref)
+  })
+
+  return {
+    configured: { provider, modelId },
+    enabledModels,
+    modelsJsonProviders: modelsJson.map((p) => p.name),
+    store: rawStore.map((item) => ({
+      provider: item.provider,
+      modelCount: item.ids.length,
+      checkedAt: item.checkedAt,
+      ids: item.ids.slice(0, 8),
+    })),
+    refs: ordered.map((c) => c.ref).sort(),
+    candidates: ordered,
+  }
 }

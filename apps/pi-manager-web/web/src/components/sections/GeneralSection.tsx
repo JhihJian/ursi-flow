@@ -1,24 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { GeneralListing } from '../../api/types'
+import type { GeneralListing, ModelCatalog } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { ErrorBanner, Field, Loading } from '../ui'
+import { ScopedModelsPanel } from './ScopedModelsPanel'
 
 /**
- * 常规：settings.json 的受管 key（默认模型/思考级别/默认工具/codemode）。
- * 单列窄表单；未知 key 只展示数量，不做编辑。
+ * 常规：settings.json 的受管 key（默认模型/启用模型/思考级别/默认工具/codemode）。
+ * 形状与 pi 1.6 的 settings schema 一致：默认模型是 defaultProvider + defaultModel
+ * 两个独立字符串，思考级别枚举来自 schema，codemode 只有 mode=on|only 加 inlineBudget。
+ * 未知 key 只展示数量，不做编辑。
  */
 
-const THINKING_LEVELS = ['', 'off', 'minimal', 'low', 'medium', 'high', 'ultrathought'] as const
+const THINKING_LEVELS = ['', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+const CODEMODE_MODES = ['', 'on', 'only'] as const
 
 export function GeneralSection({ home }: { home: string }) {
   const [listing, setListing] = useState<GeneralListing | null>(null)
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
   const runWrite = useAppStore((s) => s.runWrite)
 
   const reload = useCallback(async () => {
     try {
-      setListing(await api.getGeneral(home))
+      const [general, models] = await Promise.all([api.getGeneral(home), api.getModelCatalog(home)])
+      setListing(general)
+      setCatalog(models)
       setError(null)
     } catch (err) {
       setError(describeError(err))
@@ -30,20 +37,38 @@ export function GeneralSection({ home }: { home: string }) {
   }, [reload])
 
   if (error) return <ErrorBanner message={error} />
-  if (!listing) return <Loading />
+  if (!listing || !catalog) return <Loading />
 
-  const defaultModel = asModelRef(listing.managed.defaultModel)
+  const provider = typeof listing.managed.defaultProvider === 'string' ? listing.managed.defaultProvider : ''
+  const modelId = typeof listing.managed.defaultModel === 'string' ? listing.managed.defaultModel : ''
   const thinking = typeof listing.managed.defaultThinkingLevel === 'string' ? listing.managed.defaultThinkingLevel : ''
   const defaultTools = Array.isArray(listing.managed.defaultTools)
     ? (listing.managed.defaultTools as unknown[]).filter((v): v is string => typeof v === 'string')
     : []
-  const codemode = asCodemode(listing.managed.codemode)
+  const codemode = listing.managed.codemode as { mode?: unknown; inlineBudget?: unknown } | undefined
+  const codemodeMode = typeof codemode?.mode === 'string' ? codemode.mode : ''
+  const codemodeBudget = typeof codemode?.inlineBudget === 'number' ? String(codemode.inlineBudget) : ''
 
   async function writeKey(key: string, value: unknown, label: string) {
     await runWrite(label, async () => {
       const result = await api.putGeneralKey(home, key, value, listing!.revision)
       if (result.changed) await reload()
     })
+  }
+
+  async function writeModel(nextProvider: string, nextModelId: string) {
+    await runWrite('保存默认模型', async () => {
+      const result = await api.putGeneralModel(home, nextProvider, nextModelId, listing!.revision)
+      if (result.changed) await reload()
+    })
+  }
+
+  function writeCodemode(mode: string, budget: string) {
+    if (!mode) return writeKey('codemode', null, '保存 codemode')
+    const value: Record<string, unknown> = { mode }
+    const parsed = Number(budget)
+    if (budget && Number.isFinite(parsed) && parsed >= 0) value.inlineBudget = parsed
+    return writeKey('codemode', value, '保存 codemode')
   }
 
   return (
@@ -56,39 +81,36 @@ export function GeneralSection({ home }: { home: string }) {
         <div className="stack">
         <Field
           label="默认模型"
-          hint="provider/modelId，如 anthropic/claude-sonnet-4-5。留空表示未设置。"
+          hint={`defaultProvider + defaultModel 两个 key，如 ${catalog.configured.provider ?? 'sub2api-local'}/gpt-6.1-terra。留空表示交给 pi 自动选。`}
         >
           <div className="field-row">
             <input
               className="input"
-              defaultValue={defaultModel}
+              key={`${provider}/${modelId}`}
+              defaultValue={provider && modelId ? `${provider}/${modelId}` : ''}
               placeholder="provider/modelId"
+              list="model-catalog-refs"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const raw = (e.target as HTMLInputElement).value.trim()
-                  const [provider, ...rest] = raw.split('/')
-                  void writeKey(
-                    'defaultModel',
-                    raw && provider && rest.length > 0 ? { provider, modelId: rest.join('/') } : null,
-                    '保存默认模型',
-                  )
-                }
+                if (e.key !== 'Enter') return
+                const [nextProvider, ...rest] = (e.target as HTMLInputElement).value.trim().split('/')
+                void writeModel(nextProvider ?? '', rest.join('/'))
               }}
               onBlur={(e) => {
                 const raw = e.target.value.trim()
-                if (raw === defaultModel) return
-                const [provider, ...rest] = raw.split('/')
-                void writeKey(
-                  'defaultModel',
-                  raw && provider && rest.length > 0 ? { provider, modelId: rest.join('/') } : null,
-                  '保存默认模型',
-                )
+                if (raw === (provider && modelId ? `${provider}/${modelId}` : '')) return
+                const [nextProvider, ...rest] = raw.split('/')
+                void writeModel(raw ? (nextProvider ?? '') : '', raw ? rest.join('/') : '')
               }}
             />
+            <datalist id="model-catalog-refs">
+              {catalog.refs.map((ref) => (
+                <option key={ref} value={ref} />
+              ))}
+            </datalist>
           </div>
         </Field>
 
-        <Field label="默认思考级别" hint="对应 defaultThinkingLevel；未设置时由 pi 决定。">
+        <Field label="默认思考级别" hint="对应 defaultThinkingLevel；不同模型支持的级别不同，pi 会就近取值。">
           <select
             className="select"
             value={thinking}
@@ -116,23 +138,59 @@ export function GeneralSection({ home }: { home: string }) {
           />
         </Field>
 
-        <div className="row-between">
-          <div>
-            <div className="field-label">codemode 自动启用</div>
-            <div className="field-hint">defaultTools 以 +codemode 开头时视为 always。</div>
+        <Field
+          label="codemode 模式"
+          hint="on：保留直接工具并标注可从脚本调用的工具；only：所有脚本可调用工具都收进 codemode。"
+        >
+          <div className="field-row">
+            <select
+              className="select"
+              value={codemodeMode}
+              onChange={(e) => void writeCodemode(e.target.value, codemodeBudget)}
+            >
+              {CODEMODE_MODES.map((mode) => (
+                <option key={mode || 'unset'} value={mode}>
+                  {mode === '' ? '（未设置）' : mode}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input"
+              key={`budget-${codemodeBudget}`}
+              defaultValue={codemodeBudget}
+              placeholder="inlineBudget（默认 3000）"
+              onBlur={(e) => {
+                const next = e.target.value.trim()
+                if (next === codemodeBudget) return
+                void writeCodemode(codemodeMode, next)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+            />
           </div>
-          <SwitchInline
-            pressed={codemode === 'always'}
-            onToggle={(next) =>
-              void writeKey('codemode', next ? { mode: 'always' } : null, '保存 codemode')
-            }
-          />
-        </div>
+        </Field>
         </div>
         <p className="mono-dim">
           本页只覆盖 settings.json；凭据在「凭据」分区，插件条目在「插件」分区，
-          内置 subagent 开关在「Subagent」分区。
+          自建 provider 在「自定义模型」分区，内置 subagent 开关在「Subagent」分区。
         </p>
+      </div>
+
+      <div className="section-body">
+        <div className="section-head-inline">
+          <h2 className="section-caption">启用模型（enabledModels）</h2>
+          <span className="mono-dim">对齐 pi 的 /scoped-models：逐条开关、可排序、可加模式</span>
+        </div>
+        <ScopedModelsPanel
+          catalog={catalog}
+          onSave={(next, label) =>
+            runWrite(label, async () => {
+              const result = await api.putGeneralKey(home, 'enabledModels', next, listing!.revision)
+              if (result.changed) await reload()
+            })
+          }
+        />
       </div>
     </section>
   )
@@ -166,36 +224,4 @@ function ToolListInput({
       />
     </div>
   )
-}
-
-function SwitchInline({
-  pressed,
-  onToggle,
-}: {
-  pressed: boolean
-  onToggle: (next: boolean) => void
-}) {
-  return (
-    <button type="button" className="switch" aria-pressed={pressed} onClick={() => onToggle(!pressed)}>
-      <span className="switch-track" aria-hidden />
-    </button>
-  )
-}
-
-function asModelRef(value: unknown): string {
-  if (value && typeof value === 'object') {
-    const ref = value as { provider?: unknown; modelId?: unknown }
-    if (typeof ref.provider === 'string' && typeof ref.modelId === 'string') {
-      return `${ref.provider}/${ref.modelId}`
-    }
-  }
-  return ''
-}
-
-function asCodemode(value: unknown): 'unset' | 'automatic' | 'always' {
-  if (value && typeof value === 'object') {
-    const mode = (value as { mode?: unknown }).mode
-    if (mode === 'always' || mode === 'automatic') return mode
-  }
-  return 'unset'
 }

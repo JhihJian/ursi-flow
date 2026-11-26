@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { ModelsListing, ProviderView } from '../../api/types'
+import type { ModelCatalog, ModelsListing, ProviderView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
@@ -13,6 +13,7 @@ import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
 export function ModelsSection({ home }: { home: string }) {
   const [listing, setListing] = useState<ModelsListing | null>(null)
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -20,8 +21,9 @@ export function ModelsSection({ home }: { home: string }) {
 
   const reload = useCallback(async () => {
     try {
-      const data = await api.getModels(home)
+      const [data, models] = await Promise.all([api.getModels(home), api.getModelCatalog(home)])
       setListing(data)
+      setCatalog(models)
       setError(null)
       setCreating(false)
       setSelected((current) =>
@@ -39,7 +41,7 @@ export function ModelsSection({ home }: { home: string }) {
   }, [reload])
 
   if (error) return <ErrorBanner message={error} />
-  if (!listing) return <Loading />
+  if (!listing || !catalog) return <Loading />
 
   const selectedProvider = listing.providers.find((p) => p.name === selected) ?? null
 
@@ -98,8 +100,13 @@ export function ModelsSection({ home }: { home: string }) {
           </tbody>
         </table>
       ) : (
-        <EmptyState title="models.json 没有 provider" hint="点击右上角「新增 provider」。" />
+        <EmptyState
+          title="models.json 没有自建 provider"
+          hint="本机的 provider 可能由扩展（extensions/providers/）注册，扩展不写入 models.json。"
+        />
       )}
+
+      <ModelCatalogSummary catalog={catalog} />
 
       {creating ? (
         <ProviderEditor
@@ -215,6 +222,45 @@ function ProviderEditor({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * 只读模型来源汇总：pi 的实际模型清单通常分散在 settings.json（启用模型）、
+ * models.json（自建 provider）、models-store.json（运行态刷新的内置目录）。
+ * 这里把三者并列展示，避免只看 models.json 时误以为没配模型。
+ */
+function ModelCatalogSummary({ catalog }: { catalog: ModelCatalog }) {
+  const storeTotal = catalog.store.reduce((sum, item) => sum + item.modelCount, 0)
+  const configured = catalog.configured.provider && catalog.configured.modelId
+    ? `${catalog.configured.provider}/${catalog.configured.modelId}`
+    : '（未设置，交给 pi 自动选）'
+  return (
+    <div className="catalog-summary">
+      <div className="catalog-summary-head">
+        <span className="field-label">模型来源</span>
+        <span className="mono-dim">
+          settings.json 启用 {catalog.enabledModels.length} 条 · 自建 provider{' '}
+          {catalog.modelsJsonProviders.length} 个 · 运行目录 {catalog.store.length} 个 provider / {storeTotal} 个模型
+        </span>
+      </div>
+      <div className="catalog-summary-row">
+        <span className="cell-sub">当前默认</span>
+        <span className="cell-title">{configured}</span>
+      </div>
+      {catalog.store.length > 0 ? (
+        <div className="catalog-summary-row">
+          <span className="cell-sub">运行目录缓存</span>
+          <span className="cell-title">
+            {catalog.store.map((item) => `${item.provider}（${item.modelCount}）`).join('、')}
+          </span>
+        </div>
+      ) : null}
+      <p className="mono-dim">
+        运行目录来自 models-store.json，是 pi 刷新内置 provider 目录后的缓存，这里只读展示。
+        由扩展注册的 provider 不写进任何配置文件，管理台按文件管理，不加载扩展。
+      </p>
     </div>
   )
 }

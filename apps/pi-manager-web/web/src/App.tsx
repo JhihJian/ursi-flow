@@ -95,7 +95,7 @@ export function App() {
           {footer.message || `${homePath}`}
         </span>
         <span className="spacer" />
-        <span>只读通道任意来源 · 写操作限本机 · 凭据永不回显</span>
+        <span>可信局域网内可读写 · 凭据永不回显</span>
       </footer>
     </>
   )

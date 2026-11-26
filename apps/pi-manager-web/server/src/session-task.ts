@@ -18,7 +18,7 @@ import { HomeError } from './pi-home.ts'
  * 等价于父会话调用一次 Agent 工具；省略时起普通主会话，由它自己决定是否派生。
  *
  * 与管理台其余部分的分工：其他模块只读写配置文件，不启动会话；这里明确是"执行"
- * 能力，因此单独成模块、单独限流、并且只接受回环来源。session 写回该 home 的
+ * 能力，因此单独成模块、单独限流。session 写回该 home 的
  * sessions 目录，和 pi CLI / pi-web 的会话并列。
  *
  * SDK 按需加载：没装 @earendil-works/pi-coding-agent 时管理台仍能正常管理配置，

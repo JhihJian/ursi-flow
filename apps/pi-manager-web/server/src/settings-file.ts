@@ -12,6 +12,9 @@ import { parseJsonc } from './jsonc.ts'
  * 键序不变（JS 对象保序），不新增也不删除未知字段。
  */
 
+/** pi 自己写 settings.json 时用 2 空格缩进且不带结尾换行，这里保持一致，避免无意义的 diff。 */
+const render = (data: SettingsData): string => JSON.stringify(data, null, 2)
+
 export type SettingsData = Record<string, unknown>
 
 export interface SettingsSnapshot extends FileSnapshot<SettingsData> {
@@ -53,7 +56,7 @@ export function mutateSettings(
 /** 同步写（调用方已持有"读时快照"这一乐观锁），返回新 revision。 */
 function writeSettingsSync(home: string, data: SettingsData): string {
   const path = settingsPath(home)
-  const text = `${JSON.stringify(data, null, 2)}\n`
+  const text = render(data)
   writeAtomicWithBackup(path, text)
   const fd = openSync(path, 'r')
   try {
@@ -69,7 +72,7 @@ export async function writeSettings(
   expectedRevision: string,
   data: SettingsData,
 ): Promise<string> {
-  await writeSnapshot(settingsPath(home), expectedRevision, () => `${JSON.stringify(data, null, 2)}\n`)
+  await writeSnapshot(settingsPath(home), expectedRevision, () => render(data))
   const fresh = readSettings(home)
   return fresh.revision
 }

@@ -8,14 +8,13 @@ import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
 import { listAgentProfiles, saveAgentProfile, deleteAgentProfile, readAgentsSettings, writeAgentsSettings, renderProfile } from './agents.ts'
 import { readMcp, mergeMcp } from './mcp-file.ts'
-import { readModels, mergeModels, readAuth, mergeAuth } from './models-auth.ts'
+import { readModels, mergeModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { createStaticHandler } from './static.ts'
-import { isLoopback } from './http-util.ts'
 
 /**
  * pi-manager-web API：每个请求的 home 都来自 ?home= 参数，服务端无全局状态。
- * 读接口任意来源可访问（凭据字段已遮蔽）；写接口只允许回环来源。
+ * 读写接口均不限制来源，安全边界由部署环境的可信局域网承担；凭据字段永不原样回传。
  */
 
 const BODY_LIMIT = 512 * 1024
@@ -105,7 +104,16 @@ route('DELETE', '/api/homes', async ({ body }) => {
 // general：settings.json 的受管 key
 // ---------------------------------------------------------------------------
 
-const MANAGED_KEYS = ['defaultModel', 'defaultThinkingLevel', 'defaultTools', 'codemode', 'packages', 'showCacheMissNotices'] as const
+const MANAGED_KEYS = [
+  'defaultProvider',
+  'defaultModel',
+  'enabledModels',
+  'defaultThinkingLevel',
+  'defaultTools',
+  'codemode',
+  'packages',
+  'showCacheMissNotices',
+] as const
 
 route('GET', '/api/general', async ({ home }) => {
   const snap = readSettings(home)
@@ -132,6 +140,30 @@ route('PUT', '/api/general/key', async ({ home, req, body }) => {
     if (JSON.stringify(settings[payload.key!]) === JSON.stringify(payload.value)) return false
     if (payload.value === null) delete settings[payload.key!]
     else settings[payload.key!] = payload.value
+    return true
+  })
+  return { ok: true, ...result }
+})
+
+/** 默认模型在 settings.json 里是 defaultProvider + defaultModel 两个独立字符串，必须一起改。 */
+route('PUT', '/api/general/model', async ({ home, body }) => {
+  const payload = await body<{ provider?: unknown; modelId?: unknown; revision?: unknown }>()
+  if (typeof payload.revision !== 'string') throw new HomeError('缺少 revision', 400, 'missing_revision')
+  const provider = typeof payload.provider === 'string' ? payload.provider.trim() : ''
+  const modelId = typeof payload.modelId === 'string' ? payload.modelId.trim() : ''
+  if ((provider === '') !== (modelId === '')) {
+    throw new HomeError('provider 与 modelId 必须同时填写或同时清空', 400, 'invalid_request')
+  }
+  const result = mutateSettings(home, payload.revision, (settings) => {
+    const unchanged = (settings.defaultProvider ?? null) === (provider || null) && (settings.defaultModel ?? null) === (modelId || null)
+    if (unchanged) return false
+    if (provider && modelId) {
+      settings.defaultProvider = provider
+      settings.defaultModel = modelId
+    } else {
+      delete settings.defaultProvider
+      delete settings.defaultModel
+    }
     return true
   })
   return { ok: true, ...result }
@@ -258,6 +290,9 @@ route('PUT', '/api/mcp/servers', async ({ home, body }) => {
 // ---------------------------------------------------------------------------
 
 route('GET', '/api/models', async ({ home }) => readModels(home))
+
+/** 本机模型清单：settings 的默认/启用模型 + models.json 自建 provider + models-store 运行目录（只读）。 */
+route('GET', '/api/models/catalog', async ({ home }) => readModelCatalog(home, readSettings(home).data))
 
 route('PUT', '/api/models/providers', async ({ home, body }) => {
   const payload = await body<{ providers?: Record<string, Record<string, unknown> | null>; revision?: string }>()
@@ -439,11 +474,6 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
       const home = selfResolved
         ? (url.searchParams.get('home') ?? '')
         : await resolveRequestedHome(url.searchParams.get('home'))
-      const isWrite = req.method !== 'GET' && req.method !== 'HEAD'
-      if (isWrite && !isLoopback(req.socket.remoteAddress)) {
-        sendError(res, 403, 'read_only', '写操作只能从本机发起')
-        return true
-      }
       const result = await match.handler({
         home,
         url,

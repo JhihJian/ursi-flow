@@ -8,7 +8,7 @@ import { readSnapshotSync, writeSnapshot, ConflictError } from './rw.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { toggleDisableModelInvocation, readDisableModelInvocation } from './skills.ts'
 import { readMcp, maskSecret } from './mcp-file.ts'
-import { readModels, readAuth, mergeAuth } from './models-auth.ts'
+import { readModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
 
@@ -84,6 +84,19 @@ test('mutateSettings revision 过期拒绝', () => {
   const snap = readSettings(dir)
   writeFileSync(join(dir, 'settings.json'), '{"x": 1}')
   assert.throws(() => mutateSettings(dir, snap.revision, () => true), ConflictError)
+})
+
+test('mutateSettings 写回不带结尾换行（与 pi 自身写法一致）', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), '{\n  "theme": "dark"\n}')
+  const snap = readSettings(dir)
+  mutateSettings(dir, snap.revision, (settings) => {
+    settings.enabledModels = ['p/m']
+    return true
+  })
+  const text = readFileSync(join(dir, 'settings.json'), 'utf8')
+  assert.equal(text.endsWith('\n'), false)
+  assert.deepEqual(JSON.parse(text), { theme: 'dark', enabledModels: ['p/m'] })
 })
 
 // ---------------------------------------------------------------------------
@@ -194,6 +207,101 @@ test('models：JSONC 读入、apiKey 遮蔽、模型计数', () => {
   assert.equal(p.modelCount, 2)
   assert.ok(p.apiKeyMasked!.startsWith('•••'))
   assert.equal((p.entry.apiKey as string).includes('abcdefgh1234'), false)
+})
+
+test('catalog：默认模型来自 defaultProvider+defaultModel 两个 key，运行目录来自 models-store', () => {
+  const dir = makeHome()
+  writeFileSync(
+    join(dir, 'settings.json'),
+    JSON.stringify({
+      defaultProvider: 'sub2api-local',
+      defaultModel: 'gpt-6.1-terra',
+      enabledModels: ['sub2api-local/glm-5.3', 'sub2api-local/deepseek-flash'],
+    }),
+  )
+  writeFileSync(
+    join(dir, 'models-store.json'),
+    JSON.stringify({ deepseek: { models: [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }], checkedAt: 1763000000000 } }),
+  )
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  assert.deepEqual(catalog.configured, { provider: 'sub2api-local', modelId: 'gpt-6.1-terra' })
+  assert.deepEqual(catalog.enabledModels, ['sub2api-local/glm-5.3', 'sub2api-local/deepseek-flash'])
+  assert.deepEqual(catalog.modelsJsonProviders, [])
+  assert.equal(catalog.store[0].provider, 'deepseek')
+  assert.equal(catalog.store[0].modelCount, 2)
+  assert.ok(catalog.refs.includes('sub2api-local/gpt-6.1-terra'))
+  assert.ok(catalog.refs.includes('sub2api-local/glm-5.3'))
+  assert.ok(catalog.refs.includes('deepseek/deepseek-v4-pro'))
+})
+
+test('catalog：models-store 损坏时降级为空目录，不影响自建 provider', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'models-store.json'), 'not json')
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { mine: { baseUrl: 'https://x/v1' } } }))
+  const catalog = readModelCatalog(dir, {})
+  assert.deepEqual(catalog.store, [])
+  assert.deepEqual(catalog.modelsJsonProviders, ['mine'])
+  assert.equal(catalog.configured.provider, null)
+})
+
+test('settings：默认模型两 key 同时写入，清空时同时删除', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ theme: 'dark', defaultProvider: 'old', defaultModel: 'old-model' }))
+  const rev = readSettings(dir).revision
+  const first = mutateSettings(dir, rev, (settings) => {
+    settings.defaultProvider = 'sub2api-local'
+    settings.defaultModel = 'gpt-6.1-terra'
+    return true
+  })
+  assert.equal(first.changed, true)
+  const after = readSettings(dir)
+  assert.equal(after.data.defaultProvider, 'sub2api-local')
+  assert.equal(after.data.defaultModel, 'gpt-6.1-terra')
+  assert.equal(after.data.theme, 'dark')
+  const cleared = mutateSettings(dir, first.revision, (settings) => {
+    delete settings.defaultProvider
+    delete settings.defaultModel
+    return true
+  })
+  assert.equal(cleared.changed, true)
+  const final = readSettings(dir)
+  assert.equal(final.data.defaultProvider, undefined)
+  assert.equal(final.data.defaultModel, undefined)
+  assert.equal(final.data.theme, 'dark')
+})
+
+test('catalog：启用项按 enabledModels 顺序排在前面，模式与不可解析项单独标出', () => {
+  const dir = makeHome()
+  writeFileSync(
+    join(dir, 'settings.json'),
+    JSON.stringify({
+      defaultProvider: 'gateway',
+      defaultModel: 'big',
+      enabledModels: ['gateway/big', 'builtin/*', 'gateway/small'],
+    }),
+  )
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { mine: { baseUrl: 'https://x/v1', models: [{ id: 'a' }] } } }))
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  const refs = catalog.candidates.map((c) => c.ref)
+  assert.deepEqual(refs.slice(0, 3), ['gateway/big', 'builtin/*', 'gateway/small'])
+  assert.equal(catalog.candidates[0].enabledIndex, 0)
+  assert.equal(catalog.candidates[1].pattern, true)
+  assert.equal(catalog.candidates[2].resolvable, false)
+  const mine = catalog.candidates.find((c) => c.ref === 'mine/a')!
+  assert.equal(mine.resolvable, true)
+  assert.deepEqual(mine.sources, ['models.json'])
+  assert.equal(mine.enabled, false)
+  assert.equal(catalog.candidates[0].enabled, true)
+})
+
+test('catalog：默认模型与启用项重合时不重复入列', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ defaultProvider: 'p', defaultModel: 'm', enabledModels: ['p/m'] }))
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  const hits = catalog.candidates.filter((c) => c.ref === 'p/m')
+  assert.equal(hits.length, 1)
+  assert.deepEqual(hits[0].sources, ['settings.default', 'settings.enabledModels'])
+  assert.equal(hits[0].enabled, true)
 })
 
 test('auth：写入 api_key 条目，密钥不回传', async () => {

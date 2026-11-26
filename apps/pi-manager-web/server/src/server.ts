@@ -8,7 +8,7 @@ import { defaultHomeIfValid } from './pi-home.ts'
 
 /**
  * pi-manager-web 服务端：托管静态页面 + 同源 /api（文件级 pi home 配置管理）。
- * 写操作只对回环来源开放（api.ts 内执行），凭据字段永不原样回传。
+ * 读写接口均不限制来源，部署在可信局域网内；凭据字段永不原样回传。
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
     sendJson(res, 200, {
       status: 'ok',
       defaultHome: defaultHomeIfValid(),
-      writePolicy: 'loopback-only',
+      writePolicy: 'trusted-lan',
     })
     return
   }
