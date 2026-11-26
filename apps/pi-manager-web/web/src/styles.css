@@ -1371,12 +1371,35 @@ textarea {
   color: var(--gray-900);
 }
 
+.provider-badge {
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--gray-900);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--gray-900);
+  white-space: nowrap;
+}
+
 .provider-head .spacer {
   flex: 1;
 }
 
 .provider-table {
   margin-bottom: var(--space-sm);
+}
+
+/* 组内模型限高自滚：一个 provider 几十个模型时也不能把其他组头挤出视野 */
+.provider-table-wrap {
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.provider-table-wrap .item-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
 }
 
 .col-order {

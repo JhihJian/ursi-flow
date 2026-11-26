@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { CatalogCandidate, ModelCatalog } from '../../api/types'
 
 /**
@@ -35,7 +35,8 @@ export function ScopedModelsPanel({
   const [query, setQuery] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
   const [draft, setDraft] = useState('')
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  /** null 表示跟随默认（只展开第一个有启用项的 provider），用户操作后固定为用户选择。 */
+  const [expandedOverride, setExpandedOverride] = useState<Set<string> | null>(null)
 
   const enabled = catalog.enabledModels
   const enabledSet = new Set(enabled)
@@ -72,20 +73,10 @@ export function ScopedModelsPanel({
   }, [catalog.candidates])
 
   const providerNames = useMemo(() => groups.map((g) => g.provider), [groups])
-  const enabledProviderKey = groups
-    .filter((g) => g.enabledCount > 0)
-    .map((g) => g.provider)
-    .join('\u0000')
-
-  // 数据刷新后自动展开「有启用项」的 provider，用户手动展开的保持展开。
-  useEffect(() => {
-    const withEnabled = enabledProviderKey ? enabledProviderKey.split('\u0000') : []
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      for (const provider of withEnabled) next.add(provider)
-      return next
-    })
-  }, [enabledProviderKey])
+  // 默认只展开第一个有启用项的 provider：既能立刻看到启用的模型，也不把其余组头挤出视野。
+  const defaultOpen = groups.find((group) => group.enabledCount > 0)?.provider ?? ''
+  const expanded = expandedOverride ?? (defaultOpen ? new Set([defaultOpen]) : new Set<string>())
+  const allOpen = providerNames.length > 0 && providerNames.every((name) => expanded.has(name))
 
   const needle = query.trim().toLowerCase()
   const filtering = needle.length > 0 || providerFilter.length > 0
@@ -150,8 +141,8 @@ export function ScopedModelsPanel({
   }
 
   function setGroupOpen(provider: string, open: boolean) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
+    setExpandedOverride((prev) => {
+      const next = new Set(prev ?? expanded)
       if (open) next.add(provider)
       else next.delete(provider)
       return next
@@ -183,13 +174,9 @@ export function ScopedModelsPanel({
           <button
             type="button"
             className="btn small"
-            onClick={() =>
-              setExpanded((prev) =>
-                prev.size >= providerNames.length ? new Set() : new Set(providerNames),
-              )
-            }
+            onClick={() => setExpandedOverride(allOpen ? new Set() : new Set(providerNames))}
           >
-            {expanded.size >= providerNames.length ? '收起全部' : '展开全部'}
+            {allOpen ? '收起全部' : '展开全部'}
           </button>
           <button
             type="button"
@@ -207,6 +194,7 @@ export function ScopedModelsPanel({
         <span className="mono-dim">
           已启用 {enabled.length} / 候选 {total} · {groups.length} 个 provider
           {firstEnabled ? ` · 启动首选 ${firstEnabled}` : ' · 未限定，pi 用默认模型'}
+          {' · '}点 provider 名展开该组模型，组内最多显示一屏高，超出可单独滚动
         </span>
       </div>
 
@@ -215,6 +203,14 @@ export function ScopedModelsPanel({
         const allEnabled = group.enabledCount === group.candidates.length
         const partial = group.enabledCount > 0 && !allEnabled
         const onlyOneLeft = allEnabled && enabled.length === group.enabledCount
+        const enabledIds = group.candidates
+          .filter((c) => c.enabled)
+          .sort((a, b) => (a.enabledIndex ?? 0) - (b.enabledIndex ?? 0))
+          .map((c) => c.modelId)
+        const startsSession = group.firstIndex === 0
+        const headHint = enabledIds.length
+          ? `${group.provider}：已启用 ${enabledIds.length}/${group.candidates.length}\n${enabledIds.join('\n')}`
+          : `${group.provider}：未启用任何模型，共 ${group.candidates.length} 个候选`
         return (
           <div className="provider-group" key={group.provider}>
             <div className="provider-head">
@@ -222,6 +218,7 @@ export function ScopedModelsPanel({
                 type="button"
                 className="provider-toggle"
                 aria-expanded={open}
+                title={headHint}
                 onClick={() => setGroupOpen(group.provider, !open)}
               >
                 <span className="provider-caret">{open ? '▾' : '▸'}</span>
@@ -230,6 +227,7 @@ export function ScopedModelsPanel({
               <span className={`mono-dim provider-count${partial ? ' partial' : ''}`}>
                 {group.enabledCount}/{group.candidates.length}
               </span>
+              {startsSession ? <span className="provider-badge">启动首选</span> : null}
               <span className="spacer" />
               <button
                 type="button"
@@ -249,6 +247,7 @@ export function ScopedModelsPanel({
             </div>
 
             {open ? (
+              <div className="provider-table-wrap">
               <table className="item-table provider-table">
                 <thead>
                   <tr>
@@ -316,6 +315,7 @@ export function ScopedModelsPanel({
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : null}
           </div>
         )
@@ -339,7 +339,7 @@ export function ScopedModelsPanel({
       </div>
 
       <p className="mono-dim">
-        顺序即 Ctrl+P 循环顺序，第一条是新会话的启动模型。provider 右侧的开关是整组启停（对齐 pi 的
+        顺序即 Ctrl+P 循环顺序，第一条是新会话的启动模型。provider 右侧开关是整组启停（对齐 pi 的
         toggleProvider）。清单为空表示全部可用，所以「全部启用」是删掉 enabledModels，也至少保留一条启用项。
         由 extensions/providers/ 注册的 provider 不写配置文件，只能手写 provider/modelId 或模式来启用。
       </p>
