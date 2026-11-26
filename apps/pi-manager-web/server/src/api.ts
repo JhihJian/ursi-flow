@@ -749,8 +749,8 @@ route('POST', '/api/chat/prompt', async ({ res, body }) => {
   }
   if (typeof payload.text !== 'string') throw new HomeError('text 必填', 400, 'invalid_request')
   const mode = payload.mode === 'steer' ? 'steer' : 'followUp'
-  await promptChat(payload.sessionId, payload.text, mode)
-  sendJson(res, 202, { ok: true })
+  const result = await promptChat(payload.sessionId, payload.text, mode)
+  sendJson(res, 202, result)
   return HANDLED
 })
 

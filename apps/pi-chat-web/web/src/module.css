@@ -513,6 +513,33 @@
   overflow-wrap: anywhere;
 }
 
+/* 思考块与正文用同一种框，只把文字降一级，避免两种视觉重量互抢。 */
+.pichat-streaming.is-thinking .pichat-streaming-body {
+  max-height: 240px;
+  overflow-y: auto;
+  color: var(--gray-600);
+}
+
+/* 正在跑的工具：一条一行，工具名在前，不用图标。 */
+.pichat-tools {
+  flex: none;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pichat-tool {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pichat-tool-name {
+  font-weight: 500;
+}
+
 .pichat-pending {
   flex: none;
   margin-top: var(--space-xs);

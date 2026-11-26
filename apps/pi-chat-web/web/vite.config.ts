@@ -10,7 +10,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5192,
+    port: 5193,
     strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:8093',

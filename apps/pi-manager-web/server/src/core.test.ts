@@ -1355,10 +1355,13 @@ test('chat：对话可选项只读文件与缓存，不建会话', async () => {
     join(home, 'settings.json'),
     JSON.stringify({ defaultProvider: 'p', defaultModel: 'm', enabledModels: ['p/m'] }),
   )
-  const options = chatOptions(home)
+  const options = await chatOptions(home)
   assert.deepEqual(options.agents, [])
+  // 目录未采集时只回默认值，不编造模型候选。
+  assert.deepEqual(options.models, [])
   assert.equal(options.defaultModel, 'p/m')
+  assert.equal(options.catalogFetchedAt, null)
+  assert.equal(options.isScoped, false)
   assert.equal(options.sessionRoot, join(home, 'sessions'))
   assert.equal(options.sessionRootExists, false)
-  assert.ok(options.thinkingLevels.includes('high'))
 })

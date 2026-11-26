@@ -179,6 +179,46 @@ export function assertSessionFileIn(home: string, raw: string): string {
 }
 
 /**
+ * 新会话的初始模型与思考级别。
+ *
+ * 与 `chatOptions` 的默认值同一份规则：settings 的默认模型在范围内才生效，
+ * 否则用范围首项，再退到首个可用模型；思考级别按「范围里的 :level 钉住 >
+ * 该模型的单独设置 > 全局默认」取。SDK 的 `createAgentSession` 在未传 model 时
+ * 固定用 `scopedModels: []` 选初始模型（见 SDK 内部 `findInitialModel`），
+ * 因此范围与钉住值必须由调用方先算出来。
+ */
+function selectInitialModel(
+  scoped: ReadonlyArray<{ model: { provider: string; id: string }; thinkingLevel?: string }>,
+  available: ReadonlyArray<{ provider: string; id: string }>,
+  settings: {
+    getDefaultProvider(): string | undefined
+    getDefaultModel(): string | undefined
+    getModelThinkingLevel(provider: string, modelId: string): string | undefined
+    getDefaultThinkingLevel(): string | undefined
+  },
+): { model?: unknown; thinkingLevel?: ThinkingLevel } {
+  const ref = (model: { provider: string; id: string }) => `${model.provider}/${model.id}`
+  const provider = settings.getDefaultProvider()
+  const modelId = settings.getDefaultModel()
+  const savedDefault = provider && modelId ? `${provider}/${modelId}` : null
+  const defaultScoped = savedDefault ? scoped.find((entry) => ref(entry.model) === savedDefault) : undefined
+  const chosen = defaultScoped ?? scoped[0]
+  const model =
+    chosen?.model ??
+    (savedDefault ? available.find((entry) => ref(entry) === savedDefault) : undefined) ??
+    available[0]
+  if (!model) return {}
+  const pin =
+    chosen?.thinkingLevel ?? scoped.find((entry) => ref(entry.model) === ref(model))?.thinkingLevel
+  const level =
+    pin ??
+    settings.getModelThinkingLevel(model.provider, model.id) ??
+    settings.getDefaultThinkingLevel() ??
+    undefined
+  return { model, ...(level ? { thinkingLevel: level as ThinkingLevel } : {}) }
+}
+
+/**
  * 装配一个 AgentSession。参数校验全部前置：不装 SDK 也能拿到明确的参数错误。
  */
 export async function assembleSession(options: AssemblyOptions): Promise<AssembledSession> {
@@ -197,44 +237,54 @@ export async function assembleSession(options: AssemblyOptions): Promise<Assembl
     ? resolveCwd(sessionManager?.getCwd() || undefined)
     : resolveCwd(options.cwd)
 
-  // 会话与 pi CLI 共用分组规则：不传 sessionManager 时 SDK 按 agentDir + cwd
-  // 建 `<home>/sessions/--<escaped-cwd>--/`，这些会话 CLI 与 pi-web 都能接着聊。
-  const loader = new sdk.DefaultResourceLoader({
+  // 服务先建出来：它把该 home 的扩展与它们注册的 provider 都装进 modelRuntime。
+  // 不先做这一步，扩展注册的模型在下面的范围解析与显式模型校验里会找不到。
+  const services = await sdk.createAgentSessionServices({
     cwd,
     agentDir: options.home,
     // subagent 正文就是这个子会话的系统提示：追加在 pi 默认系统提示之后，
     // 替换会把工具协议一并丢掉。续聊时 transcript 里已经有那套提示，不再追加。
     ...(subagent && !resumeFile
-      ? { appendSystemPromptOverride: (base: string[]) => [...base, subagent.body] }
+      ? { resourceLoaderOptions: { appendSystemPromptOverride: (base: string[]) => [...base, subagent.body] } }
       : {}),
   })
-  await loader.reload()
+  const { settingsManager, modelRuntime } = services
+
+  // enabledModels 的范围与 :thinkingLevel 钉住交给 pi 自己的解析器（glob、模糊匹配都支持）。
+  const patterns = settingsManager.getEnabledModels() ?? []
+  const available = await modelRuntime.getAvailable()
+  let scoped: Array<{ model: { provider: string; id: string }; thinkingLevel?: string }> = []
+  if (patterns.length > 0 && available.length > 0) {
+    const resolved = await sdk.resolveModelScopeWithDiagnostics(patterns, modelRuntime)
+    scoped = resolved.scopedModels
+  }
 
   // subagent 定义的其余约束：frontmatter 的 tools / model / thinking。
   const subagentTools = subagent ? parseSubagentTools(subagentScalar(subagent, 'tools')) : null
-  const modelRef =
+  const explicitModelRef =
     options.model ?? (subagent && !resumeFile ? subagentScalar(subagent, 'model') : null)
-  const effectiveThinking =
-    thinking ?? (subagent && !resumeFile ? normalizeThinkingLevel(subagentScalar(subagent, 'thinking')) : null)
+  const subagentThinking =
+    subagent && !resumeFile ? normalizeThinkingLevel(subagentScalar(subagent, 'thinking')) : null
 
-  // 只有显式指定模型时才自建 ModelRuntime：它绑定该 home 的 auth.json / models.json，
-  // 不指定时 createAgentSession 自己就按 agentDir 建同样的 runtime。
-  const modelRuntime = modelRef
-    ? await sdk.ModelRuntime.create({
-        authPath: join(options.home, 'auth.json'),
-        modelsPath: join(options.home, 'models.json'),
-      })
-    : null
-  const model = modelRef && modelRuntime ? resolveModel(modelRuntime, modelRef, options.home) : null
+  // 续聊沿用会话文件里的模型与思考级别，不重选。
+  const explicitModel = explicitModelRef ? resolveModel(modelRuntime, explicitModelRef, options.home) : null
+  const initial = resumeFile ? {} : selectInitialModel(scoped, available, settingsManager)
+  const model = explicitModel ?? initial.model ?? null
+  const effectiveThinking = resumeFile
+    ? thinking
+    : (thinking ?? subagentThinking ?? initial.thinkingLevel ?? null)
 
   const created = await sdk.createAgentSession({
     cwd,
     agentDir: options.home,
-    resourceLoader: loader,
+    resourceLoader: services.resourceLoader,
+    settingsManager,
+    modelRuntime,
+    // 把范围交给会话：Ctrl+P 循环与扩展里的 cycleModel 因此跟选择器一致。
+    scopedModels: scoped as never,
     ...(sessionManager ? { sessionManager } : {}),
     ...(model ? { model: model as never } : {}),
-    ...(modelRuntime ? { modelRuntime } : {}),
-    ...(effectiveThinking ? { thinkingLevel: effectiveThinking as ThinkingLevel } : {}),
+    ...(effectiveThinking ? { thinkingLevel: effectiveThinking } : {}),
     // subagent 声明的工具集就是它的作用域；未声明则沿用 pi 的默认工具。续聊沿用文件里的记录。
     ...(subagentTools && subagentTools.length > 0 && !resumeFile ? { tools: subagentTools } : {}),
   })

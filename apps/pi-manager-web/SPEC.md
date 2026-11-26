@@ -179,13 +179,14 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 
 #### 验收
 
-- `server/src/session-runtime.ts` 装配会话：校验 home / cwd / 模型 / thinkingLevel / subagent，续聊只接受落在该 home `sessions/` 下的会话文件（`realpath` 校验），且不接受 cwd 与 subagent（文件里已记录工作目录与工具集）。一次性任务与对话共用这一份装配。
+- `server/src/session-runtime.ts` 装配会话：先 `createAgentSessionServices()` 建出该 home 的 settings / modelRuntime / resourceLoader（扩展注册的 provider 在这一步进表），再按该 home 合并后的 `enabledModels` 用 pi 的解析器算范围与 `:level` 钉住值，最后决定初始模型与思考级别；显式指定模型允许越出范围（等同 pi 的 `--model`）。校验 home / cwd / subagent，续聊只接受落在该 home `sessions/` 下的会话文件（`realpath` 校验），且不接受 cwd 与 subagent（文件里已记录工作目录与工具集）。一次性任务与对话共用这一份装配。
 - 释放统一走 `disposeSession()`：abort → `session.dispose()` → `modelRuntime.settleCredentialWrites()` → 删掉本进程写下的心跳文件。直接 `session.dispose()` 不发 `session_shutdown`，心跳扩展删不掉记录，会话模块会看到幽灵 running。
-- 新建会话不自建 SessionManager：沿用 `createAgentSession` 的默认布局，会话写进 `<home>/sessions/--<cwd>--/`；只有续聊才 `SessionManager.open(file)`。
+- 新建会话不自建 SessionManager：沿用 `createAgentSession` 的默认布局，会话写进 `<home>/sessions/--<cwd>--/`；只有续聊才 `SessionManager.open(file)`。`scopedModels` 一并交给会话，Ctrl+P 循环与选择器保持一致。
+- `GET /api/chat/options` 的模型候选与 pi 的 `/model` 选择器同一口径：`enabledModels` 支持 glob、模糊匹配与 `:thinkingLevel` 后缀，解析不到时回退全部可用；不在范围内的模型**不返回**。每个模型带 provider 显示名、显示名与支持的思考档位（`getSupportedThinkingLevels` 口径）及档位映射，默认模型与默认思考级别按「`settings` 默认值在范围内 → 范围首项 → 首个可见模型」与「`:level` 钉住 → 单模型设置 → 全局默认」决定。目录未采集时只返回默认值并标 `catalogFetchedAt: null`，不编造候选。
 - `POST /api/chat/session` 建会话或续聊，返回实际生效的 `model`、`thinkingLevel` 与会话文件；`sessionFile` 由调用方给出时 home 按会话文件反查。同一会话已有运行时则接到已有对话上，不并行追加同一份 JSONL。
-- `POST /api/chat/prompt` 在流式期间必须带排队方式（默认 `followUp`，可 `steer`）；`POST /api/chat/abort` 中止并把排队输入原样回传；`POST /api/chat/model` 只切本会话，不写 settings.json；`POST /api/chat/answer` 回执扩展 UI 请求；`POST /api/chat/close` 释放。
-- `GET /api/chat/stream?sessionId=` 用 SSE：首帧回放会话行文本（与 pi 会话文件同形状，浏览器用同一个 `parsePiJsonl` 解析），第二帧给 `isStreaming` 与当前 `partial`，随后转发 SDK 事件（`agent_start`、`message_*`、`tool_execution_*`、`queue_update`、`compaction_*`、`auto_retry_*`、`thinking_level_changed`、`agent_settled`）。消息落盘后整段重发 transcript，不依赖 `entry_appended`。
-- 扩展 UI 的 `confirm` / `select` / `input` / `notify` 转成帧等浏览器回执，服务端有兜底超时（默认 120 秒）；TUI 专属能力做成静默 stub。
+- `POST /api/chat/prompt` 只等受理预检就返回 202 `{ disposition: 'started' | 'queued' | 'handled' }`，不等整轮跑完；流式期间未带排队方式时按 `followUp` 处理。`POST /api/chat/abort` 先取消挂起的扩展对话框、再清队列并中止，把排队输入原样回传；`POST /api/chat/model` 只切本会话，不写 settings.json；`POST /api/chat/answer` 回执扩展 UI 请求；`POST /api/chat/close` 释放。
+- `GET /api/chat/stream?sessionId=` 用 SSE：首帧回放会话行文本（与 pi 会话文件同形状，浏览器用同一个 `parsePiJsonl` 解析），第二帧给状态快照（`isStreaming`、`partial`、`partialThinking`、排队数、模型与思考级别），然后重发仍然挂着的扩展 UI 请求，随后转发 SDK 事件（`agent_start`、`message_*`、`tool_execution_*`、`queue_update`、`compaction_*`、`auto_retry_*`、`thinking_level_changed`、`agent_settled`）。`message_update` 剥掉每帧携带的完整 `partial`，工具与压缩事件平铺转发；每 15 秒发一个 `heartbeat` 数据帧，让浏览器能判半开连接。消息落盘后整段重发 transcript，不依赖 `entry_appended`。
+- 扩展 UI 的 `confirm` / `select` / `input` / `notify` 转成帧等浏览器回执，服务端有兜底超时（默认 120 秒，扩展的正有限值可取更小）；取消、超时与释放都广播 `extension_ui_closed`。按 Esc 中止时先 abort 会话级 stop 信号，等确认的扩展不会把中止拖到超时。TUI 专属能力做成静默 stub。
 - 对话上限 `PI_MANAGER_MAX_CHATS`（默认 8）超出返回 429；空闲 30 分钟自动释放并保留会话文件；进程收到 SIGINT/SIGTERM 时释放全部对话。重启后按会话文件续聊。
 - 路由层支持 handler 接管响应（SSE 与 202），`/api/chat/` 自行解析入参、不参与统一 home 预校验。
 

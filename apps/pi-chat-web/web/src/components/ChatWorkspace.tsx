@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { ChatModelOption } from '@ursi/pi-manager-web/client'
 import { parsePiJsonl, TrajectoryViewer } from 'pi-agent-trajectory-viewer'
 import { useChatController } from '../chat-context'
 
@@ -8,28 +9,55 @@ const STATUS_TEXT: Record<string, string> = {
   error: '出错',
 }
 
+function refOf(model: ChatModelOption): string {
+  return `${model.provider}/${model.id}`
+}
+
+/** 档位的展示名：供应商有真实值映射时一并给出。 */
+function thinkingLabel(level: string, model: ChatModelOption | null): string {
+  const mapped = model?.thinkingLevelMap?.[level]
+  if (mapped && mapped !== level) return `${level} → ${mapped}`
+  return level
+}
+
 /**
  * 对话工作区：已落盘部分交给轨迹组件库渲染（与会话模块同一份解析），
- * 流式中的那一段单独渲染在末尾，落盘后由权威文本替换。
+ * 流式中的文本、思考与正在跑的工具单独渲染在末尾，落盘后由权威 transcript 替换。
  */
 export function ChatWorkspace() {
   const {
     active,
+    options,
+    optionsError,
+    home,
+    draft,
+    setDraft,
+    draftModel,
+    draftThinkingLevel,
+    activeModel,
     transcript,
     partial,
+    thinking,
     streaming,
     pending,
+    runningTools,
+    retry,
+    compacting,
+    connectionLost,
     error,
     notice,
     clearNotice,
     uiRequests,
     answer,
-    send,
+    submit,
     abort,
     switchModel,
+    setThinkingLevel,
     close,
-    options,
+    sending,
+    startNewChat,
   } = useChatController()
+
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -49,93 +77,123 @@ export function ChatWorkspace() {
     if (!body) return
     const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 240
     if (nearBottom) body.scrollTop = body.scrollHeight
-  }, [transcript, partial])
+  }, [transcript, partial, thinking, runningTools.length])
 
-  if (!active) {
-    return (
-      <div className="pichat pichat-workspace">
-        <div className="pichat-center">
-          <p>在左侧选择一份 pi home 并新建对话。</p>
-          <p className="pichat-hint">
-            对话用的是该 home 的模型、凭据、skills 与 agents；会话文件写进它的 sessions/，
-            聊完能在会话模块里看到完整轨迹。
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  const modelValue = active.model ?? ''
-  const [modelProvider, modelId] = modelValue.split('/')
+  const busy = streaming || pending > 0
+  const model = active ? activeModel : draftModel
+  const levels = model?.thinkingLevels.length ? model.thinkingLevels : []
+  const currentThinking = active ? (active.thinkingLevel ?? '') : draftThinkingLevel
   const uiRequest = uiRequests[0] ?? null
 
-  function submit(mode?: 'steer' | 'followUp') {
+  async function send(mode?: 'steer' | 'followUp') {
     const content = text.trim()
-    if (!content) return
+    if (!content || sending) return
     setText('')
-    void send(content, mode)
+    const result = await submit(content, mode)
+    if (!result.ok) {
+      // 发不出去就把文本放回输入框，不静默丢弃。
+      setText((current) => (current ? `${content}\n\n${current}` : content))
+      inputRef.current?.focus()
+    }
+  }
+
+  function stop() {
+    void abort().then((recalled) => {
+      if (!recalled) return
+      setText((current) => (current ? `${recalled}\n\n${current}` : recalled))
+      inputRef.current?.focus()
+    })
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      submit(streaming || pending > 0 ? 'followUp' : undefined)
+      void send(busy ? 'followUp' : undefined)
+      return
     }
     if (event.key === 'Escape' && streaming) {
       event.preventDefault()
-      void abort()
+      stop()
     }
   }
+
+  /** 换模型时把思考档位也落到新模型支持的值上。 */
+  function changeModel(nextRef: string) {
+    const next = options?.models.find((item) => refOf(item) === nextRef) ?? null
+    if (!next) return
+    const nextLevels = next.thinkingLevels
+    const target =
+      (currentThinking && nextLevels.includes(currentThinking) ? currentThinking : '') ||
+      options?.thinkingLevelPins[nextRef] ||
+      options?.defaultThinkingLevel ||
+      nextLevels[0] ||
+      ''
+    if (active) {
+      void switchModel(next.provider, next.id, target && nextLevels.includes(target) ? target : undefined)
+      return
+    }
+    setDraft({ model: nextRef, thinkingLevel: target })
+  }
+
+  function changeThinking(level: string) {
+    if (active) {
+      void setThinkingLevel(level)
+      return
+    }
+    setDraft({ thinkingLevel: level })
+  }
+
+  const modelValue = model ? refOf(model) : ''
+  const modelChoices = options?.models ?? []
 
   return (
     <div className="pichat pichat-workspace">
       <header className="pichat-bar">
-        <span className="pichat-bar-title">{active.name ?? active.sessionId.slice(0, 12)}</span>
-        <span className="pichat-bar-meta" title={active.home}>
-          {active.home}
+        <span className="pichat-bar-title">
+          {active ? (active.name ?? active.sessionId.slice(0, 12)) : '新对话'}
         </span>
-        <label className="pichat-bar-field">
-          <span className="pichat-label">模型</span>
-          <select
-            className="pichat-select is-inline"
-            value={modelValue}
-            onChange={(event) => {
-              const [provider, id] = event.target.value.split('/')
-              if (provider && id) void switchModel(provider, id)
-            }}
-            disabled={streaming}
-          >
-            {modelValue ? null : <option value="">默认模型</option>}
-            {(options?.models ?? []).map((model) => {
-              const value = `${model.provider}/${model.id}`
-              return (
-                <option key={value} value={value}>
-                  {value}
-                  {model.enabled ? '' : '（未启用）'}
-                </option>
-              )
-            })}
-          </select>
-        </label>
-        <span className={`pichat-bar-meta pichat-state is-${active.state}`}>
-          {STATUS_TEXT[active.state] ?? active.state}
+        <span className="pichat-bar-meta" title={active ? active.home : home}>
+          {active ? active.cwd : home || '未选 pi home'}
         </span>
-        {active.thinkingLevel ? (
-          <span className="pichat-bar-meta">思考 {active.thinkingLevel}</span>
+        {active ? (
+          <span className={`pichat-bar-meta pichat-state is-${active.state}`}>
+            {STATUS_TEXT[active.state] ?? active.state}
+          </span>
         ) : null}
         <span className="pichat-bar-actions">
           {streaming ? (
-            <button type="button" className="pichat-button is-sm" onClick={() => void abort()}>
+            <button type="button" className="pichat-button is-sm" onClick={stop}>
               停止
             </button>
           ) : null}
-          <button type="button" className="pichat-button is-sm" onClick={() => void close()}>
-            结束
-          </button>
+          {active ? (
+            <>
+              <button type="button" className="pichat-button is-sm" onClick={startNewChat}>
+                新对话
+              </button>
+              <button type="button" className="pichat-button is-sm" onClick={() => void close()}>
+                结束
+              </button>
+            </>
+          ) : null}
         </span>
       </header>
 
       {error ? <div className="pichat-banner is-error">{error}</div> : null}
+      {connectionLost ? (
+        <div className="pichat-banner">
+          <span>事件流断开，正在重连；重连后会补回这段输出。</span>
+        </div>
+      ) : null}
+      {retry ? (
+        <div className="pichat-banner">
+          <span>
+            正在重试（{retry.attempt}/{retry.maxAttempts}）：{retry.message}
+          </span>
+        </div>
+      ) : null}
+      {compacting ? <div className="pichat-banner">正在压缩上下文…</div> : null}
+      {optionsError ? <div className="pichat-banner is-error">{optionsError}</div> : null}
       {notice ? (
         <div className="pichat-banner">
           <span>{notice.message}</span>
@@ -159,20 +217,47 @@ export function ChatWorkspace() {
           </div>
         ) : (
           <div className="pichat-center">
-            <p>发一条消息开始这段对话。</p>
-            <p className="pichat-hint">模型、工具与凭据都来自 {active.home}。</p>
+            <p>{active ? '发一条消息开始这段对话。' : '选好模型，发第一条消息就建立对话。'}</p>
+            <p className="pichat-hint">
+              {active
+                ? `模型、工具与凭据都来自 ${active.home}；工作目录 ${active.cwd}。`
+                : draft.cwd
+                  ? `工作目录 ${draft.cwd}；模型与思考级别在下面选。`
+                  : '工作目录留空时用服务端默认目录；模型与思考级别在下面选。'}
+            </p>
           </div>
         )}
+
+        {thinking ? (
+          <div className="pichat-streaming is-thinking">
+            <div className="pichat-streaming-head">
+              <span className="pichat-streaming-tag">思考</span>
+            </div>
+            <pre className="pichat-streaming-body">{thinking}</pre>
+          </div>
+        ) : null}
 
         {partial ? (
           <div className="pichat-streaming">
             <div className="pichat-streaming-head">
               <span className="pichat-streaming-tag">正在输出</span>
-              <span>{active.model ?? '默认模型'}</span>
+              <span>{active?.model ?? '默认模型'}</span>
             </div>
             <pre className="pichat-streaming-body">{partial}</pre>
           </div>
         ) : null}
+
+        {runningTools.length > 0 ? (
+          <ul className="pichat-tools">
+            {runningTools.map((tool) => (
+              <li key={tool.id} className="pichat-tool">
+                <span className="pichat-tool-name">{tool.name}</span>
+                <span className="pichat-hint">正在执行…</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         {pending > 0 ? <div className="pichat-pending">排队中：{pending} 条</div> : null}
       </div>
 
@@ -181,6 +266,9 @@ export function ChatWorkspace() {
           <div className="pichat-ui-request-head">
             {uiRequest.kind === 'confirm' ? '需要确认' : uiRequest.kind === 'select' ? '请选择' : '请填写'}
             <span className="pichat-label">{uiRequest.title}</span>
+            {uiRequests.length > 1 ? (
+              <span className="pichat-count">还有 {uiRequests.length - 1} 个</span>
+            ) : null}
           </div>
           {uiRequest.message ? <p className="pichat-ui-request-msg">{uiRequest.message}</p> : null}
           {uiRequest.kind === 'confirm' ? (
@@ -251,38 +339,102 @@ export function ChatWorkspace() {
           className="pichat-textarea"
           value={text}
           placeholder={
-            streaming || pending > 0
+            busy
               ? '运行中：Enter 排队，Shift+Enter 换行，Esc 停止'
-              : 'Enter 发送，Shift+Enter 换行'
+              : active
+                ? '输入消息，Enter 发送，Shift+Enter 换行'
+                : '发出第一条消息即建立对话，Enter 发送'
           }
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
           rows={3}
         />
+
         <div className="pichat-composer-bar">
-          {modelProvider && modelId ? (
-            <span className="pichat-hint">
-              {modelProvider}/{modelId}
-            </span>
-          ) : null}
+          <label className="pichat-bar-field">
+            <span className="pichat-label">模型</span>
+            <select
+              className="pichat-select is-inline"
+              value={modelValue}
+              onChange={(event) => changeModel(event.target.value)}
+              disabled={streaming}
+              title={model ? `${refOf(model)}${model.name !== model.id ? ` · ${model.name}` : ''}` : ''}
+            >
+              {modelChoices.length === 0 ? (
+                <option value={modelValue}>{modelValue || '该 home 还没有模型目录'}</option>
+              ) : (
+                <>
+                  {!modelValue ? <option value="">未指定模型</option> : null}
+                  {modelValue && !modelChoices.some((item) => refOf(item) === modelValue) ? (
+                    <option value={modelValue}>{modelValue}（不在候选范围）</option>
+                  ) : null}
+                </>
+              )}
+              {groupByProvider(modelChoices).map((group) => (
+                <optgroup key={group.provider} label={group.providerName}>
+                  {group.models.map((item) => (
+                    <option key={refOf(item)} value={refOf(item)}>
+                      {item.name !== item.id ? `${item.name} · ${item.id}` : item.id}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+
+          <label className="pichat-bar-field">
+            <span className="pichat-label">思考</span>
+            <select
+              className="pichat-select is-inline"
+              value={currentThinking}
+              onChange={(event) => changeThinking(event.target.value)}
+              disabled={levels.length === 0}
+            >
+              {levels.length === 0 ? <option value={currentThinking}>{currentThinking || '该模型不支持思考'}</option> : null}
+              {levels.map((level) => (
+                <option key={level} value={level}>
+                  {thinkingLabel(level, model)}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div className="pichat-composer-actions">
-            {streaming || pending > 0 ? (
+            {busy ? (
               <>
-                <button type="button" className="pichat-button is-sm" onClick={() => submit('followUp')}>
+                <button type="button" className="pichat-button is-sm" onClick={() => void send('followUp')}>
                   排队发送
                 </button>
-                <button type="button" className="pichat-button is-sm" onClick={() => submit('steer')}>
+                <button type="button" className="pichat-button is-sm" onClick={() => void send('steer')}>
                   立即插话
                 </button>
               </>
             ) : (
-              <button type="button" className="pichat-button is-sm is-primary" onClick={() => submit()}>
-                发送
+              <button
+                type="button"
+                className="pichat-button is-sm is-primary"
+                disabled={sending || !text.trim()}
+                onClick={() => void send()}
+              >
+                {active ? '发送' : '建立对话并发送'}
               </button>
             )}
           </div>
         </div>
+        {options?.isScoped ? (
+          <p className="pichat-hint">候选模型按该 home 的 enabledModels 限定。</p>
+        ) : null}
       </div>
     </div>
   )
+}
+
+function groupByProvider(models: ChatModelOption[]): Array<{ provider: string; providerName: string; models: ChatModelOption[] }> {
+  const groups: Array<{ provider: string; providerName: string; models: ChatModelOption[] }> = []
+  for (const model of models) {
+    const existing = groups.find((group) => group.provider === model.provider)
+    if (existing) existing.models.push(model)
+    else groups.push({ provider: model.provider, providerName: model.providerName, models: [model] })
+  }
+  return groups
 }

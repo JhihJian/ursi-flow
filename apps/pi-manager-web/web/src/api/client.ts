@@ -236,7 +236,11 @@ export function createApiClient(base: string | (() => string) = '') {
   getChat: (sessionId: string) =>
     requestNoHome<ChatInfo>(base, 'GET', `/api/chat/session?sessionId=${encodeURIComponent(sessionId)}`),
   promptChat: (sessionId: string, text: string, mode?: 'steer' | 'followUp') =>
-    requestNoHome<{ ok: true }>(base, 'POST', '/api/chat/prompt', { sessionId, text, mode }),
+    requestNoHome<{ disposition: 'started' | 'queued' | 'handled' }>(base, 'POST', '/api/chat/prompt', {
+      sessionId,
+      text,
+      mode,
+    }),
   abortChat: (sessionId: string) =>
     requestNoHome<{ steering: string[]; followUp: string[] }>(base, 'POST', '/api/chat/abort', { sessionId }),
   setChatModel: (sessionId: string, provider: string, modelId?: string, thinkingLevel?: string) =>

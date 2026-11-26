@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react'
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
 import { useChatController } from '../chat-context'
 
@@ -25,9 +24,10 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 /**
- * 对话侧栏：pi home（即整套配置）选择 + 新建对话的参数 + 本模块打开的对话列表。
- * 结构与 todo-web 的项目栏一致：衬线小标题、等宽次信息、选中靠左侧竖线。
- * 历史会话不在这一栏，它在会话模块里。
+ * 对话侧栏：pi home（整套配置）、新对话的工作目录与 subagent、本模块打开的对话。
+ *
+ * 模型与思考级别属于「这场对话」，放在工作区的输入区上，跟 pi-web 的 composer
+ * 一致；侧栏只决定新对话落在哪儿。历史会话不在这一栏，它在会话模块里。
  */
 export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps) {
   const {
@@ -40,19 +40,16 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
     chats,
     activeId,
     selectChat,
+    startNewChat,
     draft,
     setDraft,
-    creating,
-    createChat,
+    sending,
     close,
   } = useChatController()
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const current = homes.find((entry) => entry.path === home)
   const validHomes = homes.filter((entry) => entry.valid)
   const running = chats.filter((chat) => chat.state === 'running').length
-
-  const modelOptions = useMemo(() => options?.models ?? [], [options])
 
   return (
     <div className="pichat pichat-sidebar-host">
@@ -69,8 +66,8 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
           <button
             type="button"
             className="pichat-rail-toggle"
-            title="重新读取该 home 的对话参数"
-            aria-label="重新读取对话参数"
+            title="重新读取该 home 的对话可选项"
+            aria-label="重新读取对话可选项"
             onClick={() => void refreshOptions()}
           >
             ↻
@@ -104,93 +101,61 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
 
           <div className="pichat-section-head">
             <span className="pichat-section">新对话</span>
-            <button
-              type="button"
-              className="pichat-rail-toggle"
-              aria-expanded={settingsOpen}
-              title={settingsOpen ? '收起新建对话的参数' : '展开新建对话的参数'}
-              aria-label={settingsOpen ? '收起新建对话的参数' : '展开新建对话的参数'}
-              onClick={() => setSettingsOpen((value) => !value)}
-            >
-              {settingsOpen ? '−' : '＋'}
-            </button>
           </div>
 
-          {settingsOpen ? (
-            <div className="pichat-new">
-              <label className="pichat-field">
-                <span className="pichat-label">模型</span>
-                <select
-                  className="pichat-select"
-                  value={draft.model}
-                  onChange={(event) => setDraft({ model: event.target.value })}
-                >
-                  <option value="">该 home 的默认模型</option>
-                  {modelOptions.map((model) => (
-                    <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>
-                      {model.provider}/{model.id}
-                      {model.enabled ? '' : '（未启用）'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {modelOptions.length === 0 ? (
-                <p className="pichat-hint">
-                  该 home 还没有采集到模型目录，先用默认模型；需要选择具体模型时去管理台的模型分区刷新。
-                </p>
-              ) : null}
-              <label className="pichat-field">
-                <span className="pichat-label">思考级别</span>
-                <select
-                  className="pichat-select"
-                  value={draft.thinkingLevel}
-                  onChange={(event) => setDraft({ thinkingLevel: event.target.value })}
-                >
-                  <option value="">该 home 的默认级别</option>
-                  {(options?.thinkingLevels ?? []).map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="pichat-field">
-                <span className="pichat-label">工作目录</span>
-                <input
-                  className="pichat-input"
-                  value={draft.cwd}
-                  placeholder={options?.defaultCwd ?? '服务端当前目录'}
-                  onChange={(event) => setDraft({ cwd: event.target.value })}
-                />
-              </label>
-              <label className="pichat-field">
-                <span className="pichat-label">subagent</span>
-                <select
-                  className="pichat-select"
-                  value={draft.subagent}
-                  onChange={(event) => setDraft({ subagent: event.target.value })}
-                >
-                  <option value="">普通主会话</option>
-                  {(options?.agents ?? []).map((agent) => (
-                    <option key={agent} value={agent}>
-                      {agent}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
+          <label className="pichat-field">
+            <span className="pichat-label">工作目录</span>
+            <input
+              className="pichat-input"
+              value={draft.cwd}
+              placeholder={options?.defaultCwd ?? '服务端当前目录'}
+              onChange={(event) => setDraft({ cwd: event.target.value })}
+            />
+          </label>
+          <label className="pichat-field">
+            <span className="pichat-label">subagent</span>
+            <select
+              className="pichat-select"
+              value={draft.subagent}
+              onChange={(event) => setDraft({ subagent: event.target.value })}
+            >
+              <option value="">普通主会话</option>
+              {(options?.agents ?? []).map((agent) => (
+                <option key={agent} value={agent}>
+                  {agent}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="pichat-hint">
+            模型与思考级别在输入区选。发出第一条消息时才建会话，对话直接落在该 home 的 sessions/ 里。
+          </p>
 
           <button
             type="button"
-            className="pichat-button is-primary is-block"
-            disabled={creating || !home}
-            onClick={() => void createChat()}
+            className="pichat-button is-block"
+            disabled={sending || !home}
+            onClick={startNewChat}
           >
-            {creating ? '创建中…' : '新建对话'}
+            开始新对话
           </button>
 
           {optionsError ? <p className="pichat-error">{optionsError}</p> : null}
+          {options && options.models.length === 0 ? (
+            <p className="pichat-hint">
+              该 home 还没有采集到模型目录：先用默认模型，需要选择具体模型时去管理台的模型分区刷新。
+            </p>
+          ) : null}
+          {options?.isScoped ? (
+            <p className="pichat-hint">
+              候选模型按该 home 的 enabledModels 限定（{options.models.length} 个）。
+            </p>
+          ) : null}
+          {(options?.scopeWarnings ?? []).map((warning) => (
+            <p key={warning} className="pichat-hint">
+              {warning}
+            </p>
+          ))}
 
           <div className="pichat-section-head">
             <span className="pichat-section">对话</span>
@@ -213,7 +178,9 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
                     </span>
                   </span>
                   <span className="pichat-item-meta">
-                    <span className="pichat-item-model">{chat.model ?? '默认模型'}</span>
+                    <span className="pichat-item-model">
+                      {chat.model ?? '默认模型'} · {chat.thinkingLevel ?? '—'}
+                    </span>
                     <span>{formatAge(chat.updatedAt)}</span>
                   </span>
                 </button>

@@ -385,6 +385,8 @@ export interface ChatInfo {
   state: 'idle' | 'running' | 'error'
   isStreaming: boolean
   partial: string
+  /** 当前流式中的思考文本。 */
+  partialThinking: string
   pendingCount: number
   error: string | null
   startedAt: number
@@ -399,20 +401,32 @@ export interface ChatListing {
 
 export interface ChatModelOption {
   provider: string
+  providerName: string
   id: string
-  enabled: boolean
+  name: string
+  reasoning: boolean
+  images: boolean
+  /** 该模型接受的思考档位。 */
+  thinkingLevels: string[]
+  /** 档位到供应商真实值的映射。 */
+  thinkingLevelMap: Record<string, string | null> | null
 }
 
-/** 对话可选项：模型、默认值、agent 清单与会话根。 */
+/** 对话可选项：模型范围、默认值、agent 清单与会话根。 */
 export interface ChatOptions {
+  /** 只含 `enabledModels` 范围内的模型；未采集目录时为空。 */
   models: ChatModelOption[]
+  isScoped: boolean
+  scopeWarnings: string[]
   defaultModel: string | null
   defaultThinkingLevel: string | null
-  thinkingLevels: string[]
+  /** `enabledModels` 里用 `:level` 钉住的档位，按 `provider/modelId` 索引。 */
+  thinkingLevelPins: Record<string, string>
   agents: string[]
   sessionRoot: string
   sessionRootExists: boolean
   defaultCwd: string
+  catalogFetchedAt: number | null
 }
 
 export interface ChatCreateInput {

@@ -34,6 +34,15 @@ export interface RuntimeModel {
   images: boolean | null
   /** 每百万 token 的美元单价，缺元数据时为 null。 */
   cost: { input: number; output: number } | null
+  /** 该模型接受的思考档位（pi `getSupportedThinkingLevels` 的口径）；老缓存里没有。 */
+  thinkingLevels?: string[]
+  /** 档位到供应商真实值的映射；没配过或老缓存时为 null。 */
+  thinkingLevelMap?: Record<string, string | null> | null
+}
+
+export interface RuntimeProvider {
+  id: string
+  name: string
 }
 
 export interface RuntimeCatalog {
@@ -43,6 +52,30 @@ export interface RuntimeCatalog {
   cwd: string
   /** 可用的模型（provider 已有可用凭据）；不含未鉴权的内置目录。 */
   models: RuntimeModel[]
+  /** provider 显示名；老缓存没有该字段时按 id 显示。 */
+  providers?: RuntimeProvider[]
+}
+
+/**
+ * 思考档位与「该模型是否支持」的判定。
+ *
+ * 与 pi-ai 的 `getSupportedThinkingLevels` 同一条规则：不支持思考的模型只有 `off`；
+ * `xhigh`/`max` 只在该模型显式映射过时出现；映射为 null 表示不支持。
+ * 这里复刻而不是 import：管理台只声明了 pi-coding-agent 一个依赖。
+ */
+const THINKING_LEVEL_ORDER = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+function supportedThinkingLevels(model: {
+  reasoning?: boolean
+  thinkingLevelMap?: Record<string, string | null | undefined>
+}): string[] {
+  if (!model.reasoning) return ['off']
+  return THINKING_LEVEL_ORDER.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level]
+    if (mapped === null) return false
+    if (level === 'xhigh' || level === 'max') return mapped !== undefined
+    return true
+  })
 }
 
 /**
@@ -88,6 +121,7 @@ function toRuntimeModel(model: {
   reasoning?: boolean
   input?: readonly string[]
   cost?: { input?: number; output?: number }
+  thinkingLevelMap?: Record<string, string | null | undefined>
 }): RuntimeModel {
   return {
     provider: model.provider,
@@ -101,6 +135,14 @@ function toRuntimeModel(model: {
       model.cost && typeof model.cost.input === 'number' && typeof model.cost.output === 'number'
         ? { input: model.cost.input, output: model.cost.output }
         : null,
+    thinkingLevels: supportedThinkingLevels(model),
+    thinkingLevelMap: model.thinkingLevelMap
+      ? Object.fromEntries(
+          Object.entries(model.thinkingLevelMap).filter((entry): entry is [string, string | null] =>
+            entry[1] === null || typeof entry[1] === 'string',
+          ),
+        )
+      : null,
   }
 }
 
@@ -131,6 +173,10 @@ export async function refreshCatalog(home: string, cwd: string): Promise<Runtime
       fetchedAt: Date.now(),
       cwd,
       models: models.sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)),
+      providers: session.modelRuntime.getProviders().map((provider) => ({
+        id: provider.id,
+        name: provider.name,
+      })),
     }
     writeCachedCatalog(home, cwd, catalog)
     return catalog
