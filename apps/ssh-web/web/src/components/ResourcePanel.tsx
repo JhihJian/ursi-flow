@@ -1,8 +1,13 @@
 import { useSshStore } from '../ssh-context'
 import type { ConnectionMetrics } from '../store/ssh-store'
+import type { ProcessUsage } from '../api/types'
 import {
+  diskPercent,
+  formatKb,
+  formatRate,
+  formatUptime,
   latencyText,
-  loadPercent,
+  memoryBreakdown,
   memoryPercent,
   memoryText,
   percentText,
@@ -10,9 +15,10 @@ import {
 } from '../resource-metrics'
 
 /**
- * 设备资源面板：只列当前有 live 终端的连接，每台设备一段 CPU 负载 / 内存 / 网络延迟，
- * 每项带最近 30 个采样的走势线。开合由状态栏的「资源」按钮控制，关闭不影响轮询，
- * 状态栏仍要显示缩略指标。
+ * 设备资源面板：只列当前有 live 终端的连接。
+ * 每台设备按 orca 资源面板的组织方式展示：内存构成条、带走势线的 CPU / 内存 / 延迟 / 磁盘、
+ * 内存占用最高的进程，以及采样时间。开合由状态栏的「资源」按钮控制，
+ * 关闭不影响轮询，状态栏仍要显示缩略指标。
  */
 export function ResourcePanel() {
   const connections = useSshStore((state) => state.connections)
@@ -74,6 +80,7 @@ export function ResourcePanel() {
 function DeviceSection({ name, metrics }: { name: string; metrics?: ConnectionMetrics }) {
   const sample = metrics?.sample ?? null
   const error = metrics?.error ?? null
+  const breakdown = sample ? memoryBreakdown(sample) : null
   const history = metrics?.history ?? []
 
   return (
@@ -85,11 +92,39 @@ function DeviceSection({ name, metrics }: { name: string; metrics?: ConnectionMe
       {error ? <p className="ssh-device-error">采样失败：{error}</p> : null}
       {sample ? (
         <>
+          <p className="ssh-device-meta">
+            已运行 {formatUptime(sample.uptime_secs)}
+            {sample.swap_total_kb > 0
+              ? ` · 交换 ${formatKb(sample.swap_total_kb - sample.swap_free_kb)} / ${formatKb(sample.swap_total_kb)}`
+              : ''}
+          </p>
+          {breakdown ? (
+            <>
+              <div className="ssh-memory-bar" aria-hidden="true">
+                <span className="ssh-memory-used" style={{ width: `${breakdown.usedPercent}%` }} />
+                <span className="ssh-memory-cache" style={{ width: `${breakdown.cachePercent}%` }} />
+              </div>
+              <p className="ssh-memory-legend">
+                <span>
+                  <i className="used" aria-hidden="true" />
+                  已用 {formatKb(breakdown.usedKb)}
+                </span>
+                <span>
+                  <i className="cache" aria-hidden="true" />
+                  缓存 {formatKb(breakdown.cacheKb)}
+                </span>
+                <span>
+                  <i className="free" aria-hidden="true" />
+                  空闲 {formatKb(breakdown.freeKb)}
+                </span>
+              </p>
+            </>
+          ) : null}
           <MetricRow
-            label="负载"
-            value={percentText(loadPercent(sample))}
-            detail={`1 分钟 ${sample.load1.toFixed(2)} · ${sample.cores} 核`}
-            samples={history.map((point) => point.loadPercent)}
+            label="CPU"
+            value={percentText(sample.cpu_percent)}
+            detail={`负载 ${sample.load1.toFixed(2)} / ${sample.load5.toFixed(2)} / ${sample.load15.toFixed(2)} · ${sample.cores} 核`}
+            samples={history.map((point) => point.cpuPercent)}
           />
           <MetricRow
             label="内存"
@@ -100,9 +135,17 @@ function DeviceSection({ name, metrics }: { name: string; metrics?: ConnectionMe
           <MetricRow
             label="延迟"
             value={latencyText(sample.latency_ms)}
-            detail="ssh 通道往返"
+            detail={`收 ${formatRate(metrics?.throughput?.rxBps ?? null)} · 发 ${formatRate(metrics?.throughput?.txBps ?? null)}`}
             samples={history.map((point) => point.latencyMs)}
           />
+          {sample.disk ? (
+            <MetricRow
+              label="磁盘"
+              value={percentText(diskPercent(sample))}
+              detail={`${formatKb(sample.disk.used_kb)} / ${formatKb(sample.disk.total_kb)} · /`}
+            />
+          ) : null}
+          {sample.processes.length > 0 ? <ProcessList processes={sample.processes} /> : null}
           <p className="ssh-device-foot">采样于 {sampledAtText(sample.sampled_at)}</p>
         </>
       ) : error ? null : (
@@ -121,14 +164,31 @@ function MetricRow({
   label: string
   value: string
   detail: string
-  samples: Array<number | null>
+  samples?: Array<number | null>
 }) {
   return (
     <div className="ssh-metric">
       <span className="ssh-metric-label">{label}</span>
       <span className="ssh-metric-value">{value}</span>
       <span className="ssh-metric-detail">{detail}</span>
-      <Sparkline samples={samples} />
+      {samples ? <Sparkline samples={samples} /> : null}
+    </div>
+  )
+}
+
+function ProcessList({ processes }: { processes: ProcessUsage[] }) {
+  return (
+    <div className="ssh-processes">
+      <div className="ssh-processes-title">进程 · 内存前 {processes.length}</div>
+      {processes.map((process) => (
+        <div className="ssh-process-row" key={process.pid}>
+          <span className="ssh-process-name" title={`${process.name}（pid ${process.pid}）`}>
+            {process.name}
+          </span>
+          <span className="ssh-process-rss">{formatKb(process.rss_kb)}</span>
+          <span className="ssh-process-mem">{process.mem_percent.toFixed(1)}%</span>
+        </div>
+      ))}
     </div>
   )
 }

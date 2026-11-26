@@ -1,5 +1,5 @@
 import { useSshStore } from '../ssh-context'
-import { latencyText, loadPercent, memoryPercent, percentText } from '../resource-metrics'
+import { latencyText, memoryPercent, percentText } from '../resource-metrics'
 import { STATE_LABEL } from '../terminal-state'
 
 /**
@@ -36,7 +36,7 @@ export function SshStatus() {
         {live ? (
           <>
             <span className="ssh-status-metric">
-              负载 {percentText(sample ? loadPercent(sample) : null)}
+              CPU {percentText(sample?.cpu_percent ?? null)}
             </span>
             <span className="ssh-status-metric">
               内存 {percentText(sample ? memoryPercent(sample) : null)}

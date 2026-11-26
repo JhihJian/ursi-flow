@@ -1,6 +1,6 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { ApiError, SshApi } from '../api/client'
-import { loadPercent, memoryPercent } from '../resource-metrics'
+import { memoryPercent } from '../resource-metrics'
 import type { Connection, ConnectionInput, HostMetrics, TmuxSession } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
@@ -40,7 +40,7 @@ export interface SessionsState {
 
 /** 面板走势线上的一个采样点；分母缺失的指标为 null，画线时跳过。 */
 export interface MetricsPoint {
-  loadPercent: number | null
+  cpuPercent: number | null
   memoryPercent: number | null
   latencyMs: number | null
 }
@@ -53,6 +53,8 @@ export interface ConnectionMetrics {
   sample: HostMetrics | null
   error: string | null
   history: MetricsPoint[]
+  /** 两次采样之间的网卡速率（字节/秒）；首轮没有上一样本时为 null。 */
+  throughput: { rxBps: number; txBps: number } | null
 }
 
 /** 走势线保留的采样点数（15s 一轮，约 7.5 分钟）。 */
@@ -117,6 +119,21 @@ function toMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/** 两次采样之间的网卡速率：计数器回绕或时间不变时按 0 处理。 */
+function throughputBetween(
+  previous: HostMetrics | null,
+  next: HostMetrics,
+): { rxBps: number; txBps: number } | null {
+  if (!previous) return null
+  const seconds = (Date.parse(next.sampled_at) - Date.parse(previous.sampled_at)) / 1000
+  if (!Number.isFinite(seconds) || seconds <= 0) return null
+  const grow = (before: number, after: number): number => (after >= before ? after - before : 0)
+  return {
+    rxBps: grow(previous.net_rx_bytes, next.net_rx_bytes) / seconds,
+    txBps: grow(previous.net_tx_bytes, next.net_tx_bytes) / seconds,
+  }
 }
 
 /** 关闭一组标签后选出新的激活标签：优先保持原激活位置，否则取最后一个。 */
@@ -255,10 +272,11 @@ export function createSshStore(
         if (!get().connections.some((connection) => connection.id === id)) return
         set((current) => {
           const previous = current.metricsByConnection[id]
+          const through = throughputBetween(previous?.sample ?? null, sample)
           const history = [
             ...(previous?.history ?? []),
             {
-              loadPercent: loadPercent(sample),
+              cpuPercent: sample.cpu_percent,
               memoryPercent: memoryPercent(sample),
               latencyMs: sample.latency_ms,
             },
@@ -266,7 +284,7 @@ export function createSshStore(
           return {
             metricsByConnection: {
               ...current.metricsByConnection,
-              [id]: { sample, error: null, history },
+              [id]: { sample, error: null, history, throughput: through },
             },
           }
         })
@@ -281,6 +299,7 @@ export function createSshStore(
                 sample: previous?.sample ?? null,
                 error: toMessage(error),
                 history: previous?.history ?? [],
+                throughput: previous?.throughput ?? null,
               },
             },
           }

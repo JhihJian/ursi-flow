@@ -4,8 +4,8 @@
 
 ## 组成
 
-- `server/`：Rust 服务（axum + portable-pty + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表、设备资源采样与 WebSocket 终端桥；WS 握手即在本地 PTY 中启动系统 `ssh -tt` 子进程并 attach 远端 tmux，服务端不维护会话状态，认证、跳板、`~/.ssh/config` 全部交给 OpenSSH 自身。资源采样每次请求跑一轮独立批量 ssh，读远端 `/proc` 并用通道一问一答量延迟。接口契约见 [server/HTTP.md](server/HTTP.md)。
-- `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。状态栏在终端已连接时缩略显示负载 / 内存 / 延迟，终端区右侧的资源面板（`components/ResourcePanel.tsx`）按连接展示三项指标与走势线。终端渲染层在 `web/src/terminal/`：主题与最小对比度、实测 cell 尺寸的 fit 调度、WebGL 策略、Unicode 宽度与链接解析。
+- `server/`：Rust 服务（axum + portable-pty + rusqlite）。托管静态页面、连接配置 CRUD、tmux 会话列表、设备资源采样与 WebSocket 终端桥；WS 握手即在本地 PTY 中启动系统 `ssh -tt` 子进程并 attach 远端 tmux，服务端不维护会话状态，认证、跳板、`~/.ssh/config` 全部交给 OpenSSH 自身。资源采样每次请求跑一轮独立批量 ssh，读远端 `/proc`、`ps` 并用通道一问一答量延迟。接口契约见 [server/HTTP.md](server/HTTP.md)。
+- `web/`：React + TypeScript + Vite 前端。xterm.js 终端面板，出版物风格界面（与 todo-web 一致）。状态栏在终端已连接时缩略显示 CPU / 内存 / 延迟，终端区右侧的资源面板（`components/ResourcePanel.tsx`）按连接展示内存构成条、CPU 使用率与 1/5/15 分钟负载、内存、磁盘、延迟与网卡速率、内存前 5 进程，各项带走势线。终端渲染层在 `web/src/terminal/`：主题与最小对比度、实测 cell 尺寸的 fit 调度、WebGL 策略、Unicode 宽度与链接解析。
 - `web/src/ssh-context.tsx`：模块的 controller（API 通道 + zustand store）工厂。API 前缀与 localStorage 键都由创建参数注入，不设模块级单例；独立入口传 `/api`，工作区嵌入由宿主传 `/api/ssh-web`（vite 代理重写回 8091 的 `/api`，HTTP 与 WS 同规则）。
 
 ## 渲染层来源

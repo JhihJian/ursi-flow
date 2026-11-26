@@ -83,7 +83,7 @@ WS 断开即终止 ssh 子进程，服务端无任何会话状态；持久性完
 
 ## 设备资源采样
 
-服务端不缓存采样：每次请求就是一轮独立的批量 ssh（不分配 PTY）。远端读完 `/proc` 后逐行输出 `key value`，随后在 ssh 通道上做一次问答应答量出网络往返延迟。
+服务端不缓存采样：每次请求就是一轮独立的批量 ssh（不分配 PTY）。远端先读两次 `/proc/stat` 算 CPU 使用率，再逐行输出 `key value`，随后在 ssh 通道上做一次问答应答量出网络往返延迟。
 
 ### `GET /connections/{id}/metrics`
 
@@ -94,17 +94,36 @@ WS 断开即终止 ssh 子进程，服务端无任何会话状态；持久性完
   "hostname": "host-1",
   "cores": 8,
   "load1": 0.42,
+  "load5": 0.38,
+  "load15": 0.3,
+  "cpu_percent": 12.7,
   "mem_total_kb": 16384000,
   "mem_available_kb": 9200000,
+  "mem_free_kb": 3100000,
+  "swap_total_kb": 2097152,
+  "swap_free_kb": 2097152,
+  "disk": { "total_kb": 102400000, "used_kb": 63488000 },
+  "uptime_secs": 3865349,
+  "net_rx_bytes": 540763071345,
+  "net_tx_bytes": 518578085308,
   "latency_ms": 7.3,
+  "processes": [
+    { "pid": 1234, "name": "node", "mem_percent": 5.6, "rss_kb": 1148888 }
+  ],
   "sampled_at": "2025-11-26T13:34:05.386Z"
 }
 ```
 
-- `load1`：远端 `/proc/loadavg` 第一列，1 分钟负载均值；百分比由调用方按 `load1 / cores` 换算。
-- `mem_total_kb` / `mem_available_kb`：远端 `/proc/meminfo` 的 `MemTotal` / `MemAvailable`，已用由调用方相减得到。
-- `cores`：`nproc`，缺失时回退 `getconf _NPROCESSORS_ONLN`，仍取不到按 1 计。
+- `load1` / `load5` / `load15`：远端 `/proc/loadavg` 前三列。
+- `cpu_percent`：同一轮里两次 `/proc/stat`（间隔 0.25s）的忙碌占比，取不到内核计数时为 `null`。
+- `mem_total_kb` / `mem_available_kb` / `mem_free_kb`：`/proc/meminfo` 的 `MemTotal` / `MemAvailable` / `MemFree`；已用 = Total - Available，可回收缓存 = Available - Free。
+- `swap_total_kb` / `swap_free_kb`：`/proc/meminfo` 的 `SwapTotal` / `SwapFree`。
+- `disk`：`df -kP /` 的总量与已用；`df` 不可用时为 `null`。
+- `uptime_secs`：`/proc/uptime` 第一列。
+- `net_rx_bytes` / `net_tx_bytes`：所有非 `lo` 网卡的累计字节数，速率由调用方按两次采样的差值除以时间得到。
 - `latency_ms`：在 ssh 通道上做一次一问一答的往返耗时（毫秒，一位小数），不含 ssh 握手；4 秒内没有应答时为 `null`。
+- `processes`：`ps -eo pid=,pmem=,rss=,comm= --sort=-rss` 的前 5 行（按常驻内存降序）；`ps` 不支持或失败时为空数组。
+- `cores`：`nproc`，缺失时回退 `getconf _NPROCESSORS_ONLN`，仍取不到按 1 计。
 - `sampled_at`：服务端采样时刻（RFC 3339，毫秒精度）。
 
 整轮采样 15 秒超时，同样以 `-o BatchMode=yes` 批量执行，需要免交互认证。SSH 失败（不可达、认证失败）或远端缺少 `/proc` 数据返回 502 `ssh_error`，消息里附 ssh 自身的 stderr（截断到 400 字符）。

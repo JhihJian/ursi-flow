@@ -31,14 +31,42 @@ export type ControlFrame = { type: 'input'; data: string } | { type: 'resize'; c
 /** WS 事件帧（服务端 → 前端）。 */
 export type EventFrame = { type: 'error'; message: string } | { type: 'closed'; message: string }
 
-/** 一次远端设备资源采样。CPU 取 1 分钟负载，内存已用 = MemTotal - MemAvailable。 */
+/** 一条进程的内存占用（按 RSS 取前几）。 */
+export interface ProcessUsage {
+  pid: number
+  name: string
+  /** ps 给出的物理内存占比（%）。 */
+  mem_percent: number
+  rss_kb: number
+}
+
+/** 根分区用量。 */
+export interface DiskUsage {
+  total_kb: number
+  used_kb: number
+}
+
+/** 一次远端设备资源采样。 */
 export interface HostMetrics {
   hostname: string
   cores: number
   load1: number
+  load5: number
+  load15: number
+  /** 两次 /proc/stat 间隔内的忙碌占比（%）；取不到内核计数时为 null。 */
+  cpu_percent: number | null
   mem_total_kb: number
   mem_available_kb: number
+  mem_free_kb: number
+  swap_total_kb: number
+  swap_free_kb: number
+  disk: DiskUsage | null
+  uptime_secs: number | null
+  /** 所有非 lo 网卡的累计字节数，速率由两次采样差值算出。 */
+  net_rx_bytes: number
+  net_tx_bytes: number
   /** ssh 通道往返耗时（毫秒，一位小数）；未收到 pong 时为 null。 */
   latency_ms: number | null
+  processes: ProcessUsage[]
   sampled_at: string
 }

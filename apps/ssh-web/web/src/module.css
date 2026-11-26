@@ -839,7 +839,7 @@
 
 .ssh-resources {
   display: flex;
-  flex: 0 0 264px;
+  flex: 0 0 288px;
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--ssh-gray-200);
@@ -944,6 +944,60 @@
   white-space: nowrap;
 }
 
+.ssh-device-meta {
+  margin: 0 0 var(--ssh-space-xs);
+  overflow: hidden;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 内存构成条：已用深色、可回收缓存中灰、空闲用轨道底色。 */
+.ssh-memory-bar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  background: var(--ssh-gray-200);
+}
+
+.ssh-memory-used {
+  background: var(--ssh-gray-900);
+}
+
+.ssh-memory-cache {
+  background: var(--ssh-gray-400);
+}
+
+.ssh-memory-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: var(--ssh-space-xs) 0 0;
+  color: var(--ssh-gray-600);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssh-memory-legend i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 3px;
+}
+
+.ssh-memory-legend i.used {
+  background: var(--ssh-gray-900);
+}
+
+.ssh-memory-legend i.cache {
+  background: var(--ssh-gray-400);
+}
+
+.ssh-memory-legend i.free {
+  background: var(--ssh-gray-200);
+}
+
 .ssh-metric {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -991,6 +1045,47 @@
   font-size: 11px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* 进程表：名称自适应裁切，数字列右对齐，与 orca 会话行的 CPU / 内存列同构。 */
+.ssh-processes {
+  margin-top: var(--ssh-space-sm);
+  padding-top: var(--ssh-space-xs);
+  border-top: 1px solid var(--ssh-gray-200);
+}
+
+.ssh-processes-title {
+  margin-bottom: 2px;
+  color: var(--ssh-gray-400);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.ssh-process-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 44px;
+  align-items: center;
+  gap: var(--ssh-space-sm);
+  padding: 2px 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssh-process-name {
+  overflow: hidden;
+  color: var(--ssh-gray-900);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-process-rss {
+  color: var(--ssh-gray-600);
+  text-align: right;
+}
+
+.ssh-process-mem {
+  color: var(--ssh-gray-400);
+  text-align: right;
 }
 
 .ssh-device-pending,
