@@ -1,10 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { cx } from '@/lib/ui'
 
 export interface MenuItem {
   label: string
   onSelect: () => void
   danger?: boolean
+  /** 菜单项左侧的图标，例如状态图标。 */
+  icon?: ReactNode
+  /** 当前选中项，右侧显示对勾。 */
+  checked?: boolean
+  /** 不可选的目标，菜单里保留但仍然显示，解释当前可用的下一步。 */
+  disabled?: boolean
 }
 
 export interface MenuState {
@@ -73,13 +80,24 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
           key={item.label}
           type="button"
           role="menuitem"
-          className={item.danger ? 'context-menu-item danger' : 'context-menu-item'}
+          disabled={item.disabled}
+          className={cx(
+            'context-menu-item',
+            item.danger && 'danger',
+            item.checked && 'is-checked',
+          )}
           onClick={() => {
             onClose()
             item.onSelect()
           }}
         >
-          {item.label}
+          {item.icon ? <span className="context-menu-icon">{item.icon}</span> : null}
+          <span className="context-menu-label">{item.label}</span>
+          {item.checked ? (
+            <span className="context-menu-check" aria-hidden="true">
+              ✓
+            </span>
+          ) : null}
         </button>
       ))}
     </div>,

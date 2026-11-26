@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import type { Task, TaskStatus } from '@/api/types'
 import { prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import type { GraphPositions } from '@/lib/graph-positions'
+import { STATUS_ORDER, nextStatuses, requiredInput } from '@/lib/task-status'
 import {
   buildTaskGraph,
   findOverlapParent,
@@ -229,6 +231,54 @@ export function TaskGraph() {
     )
   }
 
+  const applyStatus = (task: Task, status: TaskStatus) => {
+    const required = requiredInput(status)
+    let input: { result?: string; blockedReason?: string } = {}
+    if (required === 'result') {
+      const result = window.prompt(`Result for "${task.title}"?`)
+      if (result === null) return
+      if (!result.trim()) {
+        alert('Completing a task requires a result')
+        return
+      }
+      input = { result: result.trim() }
+    } else if (required === 'blocked_reason') {
+      const reason = window.prompt(`Why is "${task.title}" blocked?`)
+      if (reason === null) return
+      if (!reason.trim()) {
+        alert('A blocked task needs a reason')
+        return
+      }
+      input = { blockedReason: reason.trim() }
+    }
+    void useTodoStore
+      .getState()
+      .setTaskStatus(task.id, status, input)
+      .catch((error) => alert(`Failed to update task: ${errorMessage(error)}`))
+  }
+
+  /** 点击节点状态图标弹出状态列表，只放行状态机允许的下一步。 */
+  const openStatusMenu = (event: React.MouseEvent<HTMLButtonElement>, node: TaskGraphNode) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const task = byId.get(node.id)
+    if (!task) return
+    const reachable = new Set(nextStatuses(task.status))
+    const rect = event.currentTarget.getBoundingClientRect()
+    setMenu({
+      x: rect.left,
+      y: rect.bottom + 4,
+      heading: node.title,
+      items: STATUS_ORDER.map((status) => ({
+        label: STATUS_LABELS[status],
+        icon: <StatusIcon status={status} />,
+        checked: task.status === status,
+        disabled: !reachable.has(status),
+        onSelect: () => applyStatus(task, status),
+      })),
+    })
+  }
+
   const openNodeMenu = (event: React.MouseEvent, node: TaskGraphNode) => {
     event.preventDefault()
     event.stopPropagation()
@@ -371,6 +421,8 @@ export function TaskGraph() {
                 if (task) openTask(task)
               }}
               onKeyDown={(event) => {
+                // 状态图标是节点内的按钮，它自己的回车不打开详情。
+                if (event.target !== event.currentTarget) return
                 if (event.key !== 'Enter' && event.key !== ' ') return
                 event.preventDefault()
                 if (task) openTask(task)
@@ -415,7 +467,16 @@ export function TaskGraph() {
               {node.childIds.length > 0 ? (
                 <span className="task-graph-count">{node.childIds.length}</span>
               ) : null}
-              <StatusIcon status={node.status} size={11} />
+              <button
+                type="button"
+                className="task-graph-status"
+                aria-label={`${node.title} 的状态：${STATUS_LABELS[node.status]}`}
+                title={`${STATUS_LABELS[node.status]} · 点击切换状态`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => openStatusMenu(event, node)}
+              >
+                <StatusIcon status={node.status} size={11} />
+              </button>
             </div>
           )
         })}

@@ -356,7 +356,9 @@
 }
 
 .context-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
   width: 100%;
   padding: var(--space-xs) var(--space-sm);
   border: 0;
@@ -368,10 +370,36 @@
   cursor: pointer;
 }
 
-.context-menu-item:hover,
-.context-menu-item:focus-visible {
+.context-menu-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.context-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.context-menu-check {
+  flex: none;
+  color: var(--gray-400);
+}
+
+.context-menu-item:hover:not(:disabled),
+.context-menu-item:focus-visible:not(:disabled) {
   outline: none;
   background: var(--gray-200);
+}
+
+/* 状态机不接受的下一步仍然列出，但不可点。 */
+.context-menu-item:disabled {
+  color: var(--gray-400);
+  cursor: default;
+}
+
+.context-menu-item:disabled .context-menu-icon {
+  opacity: 0.45;
 }
 
 .context-menu-item.danger {
@@ -723,6 +751,25 @@
 /* 状态图标固定字号，不随标题长短被挤小。 */
 .task-graph-node .status-symbol {
   flex: none;
+}
+
+/* 状态图标本身就是切换入口，去掉按钮的默认外观。 */
+.task-graph-status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.task-graph-status:hover,
+.task-graph-status:focus-visible {
+  outline: none;
+  color: var(--gray-900);
+  transform: scale(1.15);
 }
 
 /* 左侧端点：空心方块，和圆形状态图标区分；没有前置任务时边框浅灰。 */

@@ -130,6 +130,33 @@ describe('task actions', () => {
     expect(mocked.updateTask).toHaveBeenCalledWith('t1', { project_id: 'p2' })
   })
 
+  it('switches status from the graph with the required input', async () => {
+    useTodoStore.setState({ graphTasks: [task] })
+    mocked.updateTask.mockResolvedValue({ success: true })
+
+    await useTodoStore.getState().setTaskStatus('t1', 'done', { result: 'shipped' })
+    expect(mocked.updateTask).toHaveBeenCalledWith('t1', {
+      status: 'done',
+      result: 'shipped',
+    })
+
+    vi.clearAllMocks()
+    await useTodoStore.getState().setTaskStatus('t1', 'blocked', {
+      blockedReason: 'waiting on API',
+    })
+    expect(mocked.updateTask).toHaveBeenCalledWith('t1', {
+      status: 'blocked',
+      blocked_reason: 'waiting on API',
+    })
+  })
+
+  it('ignores a graph status switch that changes nothing', async () => {
+    useTodoStore.setState({ graphTasks: [task] })
+    mocked.updateTask.mockResolvedValue({ success: true })
+    await useTodoStore.getState().setTaskStatus('t1', 'pending')
+    expect(mocked.updateTask).not.toHaveBeenCalled()
+  })
+
   it('creates new tasks in the selected project', async () => {
     useTodoStore.setState({ selectedProjectId: 'p1' })
     mocked.createTask.mockResolvedValue({ id: 'new' })

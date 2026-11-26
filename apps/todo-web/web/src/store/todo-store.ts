@@ -28,6 +28,12 @@ export interface ProjectEditing {
 
 export type MoveTarget = { status: TaskStatus } | { projectId: string }
 
+/** 状态迁移时必须同时提交的字段。 */
+export interface StatusInput {
+  result?: string
+  blockedReason?: string
+}
+
 /** 任务区有两种视图：任务表与任务关系图。 */
 export type TaskView = 'list' | 'graph'
 
@@ -74,6 +80,8 @@ export interface TodoState {
   saveTask: (draft: TaskDraft) => Promise<void>
   removeTask: (id: string) => Promise<void>
   moveTask: (task: Task, target: MoveTarget, blockedReason?: string) => Promise<void>
+  /** 关系图里直接切换状态，`done` 需要 result、`blocked` 需要 reason。 */
+  setTaskStatus: (id: string, status: TaskStatus, input?: StatusInput) => Promise<void>
   /** 关系图里的关系写入，`null` 表示解除；`parent_id` 与 `pre_id` 都走这里。 */
   setTaskParent: (id: string, parentId: string | null) => Promise<void>
   setTaskPredecessor: (id: string, preId: string | null) => Promise<void>
@@ -291,6 +299,22 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
     const detail = get().detail
     if (detail?.mode === 'view' && detail.task.id === task.id) set({ detail: null })
+    await get().refreshAll()
+  },
+
+  setTaskStatus: async (id, status, input = {}) => {
+    const task =
+      get().graphTasks.find((item) => item.id === id) ??
+      get().tasks.find((item) => item.id === id)
+    if (!task || task.status === status) return
+    // 完成与阻塞的必填字段跟着状态一起提交，避免服务端因缺字段拒绝。
+    await api.updateTask(id, {
+      status,
+      ...(status === 'done' ? { result: input.result ?? '' } : {}),
+      ...(status === 'blocked' ? { blocked_reason: input.blockedReason ?? '' } : {}),
+    })
+    const detail = get().detail
+    if (detail?.mode === 'view' && detail.task.id === id) set({ detail: null })
     await get().refreshAll()
   },
 

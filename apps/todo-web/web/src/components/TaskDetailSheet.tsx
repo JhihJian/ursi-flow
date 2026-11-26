@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
 import { copyText } from '@/lib/clipboard'
@@ -159,6 +159,21 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
   }
 
+  // 快捷键始终指向最新一次渲染的 save，避免闭包里拿到旧的编辑内容。
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      if (event.key.toLowerCase() !== 's') return
+      // 挡住浏览器自带的“保存网页”。
+      event.preventDefault()
+      saveRef.current()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   return (
     <section
       ref={sheetRef}
@@ -298,7 +313,12 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
           <button type="button" className="btn" onClick={closeDetail}>
             close
           </button>
-          <button type="button" className="btn btn-primary" onClick={save}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            title="Save (Ctrl+S)"
+            onClick={save}
+          >
             save
           </button>
         </div>
