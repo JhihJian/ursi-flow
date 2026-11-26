@@ -1,6 +1,6 @@
 # 仓库说明
 
-ursi-flow 是 npm workspaces 单仓：多个可独立部署的 Web 应用加一个工作区外壳。模块之间不互相 import，跨模块只在组合根接线。
+ursi-flow 是 npm workspaces 单仓：多个可独立部署的 Web 应用加一个工作区外壳。模块之间不互相 import，跨模块只在组合根接线。构建与测试入口在根 `package.json` 的 scripts，各应用的启动方式见其 README。
 
 ## File Map
 
@@ -16,21 +16,6 @@ ursi-flow 是 npm workspaces 单仓：多个可独立部署的 Web 应用加一�
 | `docs/design/deployment/DEPLOYMENT.md` | 单机部署方案：路由、构建发布、存储清理、卸载 |
 | `deploy/` | `Caddyfile.tmpl`、`units/`、`deploy.sh`、`prune.sh`、`uninstall.sh`、`deploy.env.example` |
 | `AGENTS.md` | 本文件 |
-
-## 命令
-
-```sh
-npm install
-npm run dev:shell-web      # 开发入口，5191
-npm run build:shell-web    # 入口静态产物
-npm run build:ursi-flow    # flow-web 依赖的引擎产物
-npm run test:todo-web      # 另有 test:flow-web、test:ursi-flow
-cargo build --release --manifest-path apps/{todo,ssh}-web/Cargo.toml
-
-deploy/deploy.sh           # 构建、渲染配置、安装单元、重启、冒烟
-deploy/prune.sh            # 报告可回收占用，--apply 执行
-deploy/uninstall.sh        # 卸载，默认保留数据与构建产物
-```
 
 ## 约定
 
