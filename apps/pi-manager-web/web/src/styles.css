@@ -1769,12 +1769,12 @@ textarea {
 }
 
 .sessions-item {
-  padding-left: 24px;
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);
   width: 100%;
-  padding: 6px var(--space-sm);
+  /* 组内子级缩进：与组头的目录名对齐，并让出状态点与左侧竖线。 */
+  padding: 6px var(--space-sm) 6px 26px;
   border: 0;
   border-bottom: 1px solid var(--gray-100, #f0f0f0);
   border-left: 2px solid transparent;
