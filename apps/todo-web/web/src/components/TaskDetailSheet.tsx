@@ -36,7 +36,8 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'medium')
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'pending')
   const [tags, setTags] = useState(task?.tags?.join(', ') ?? '')
-  const [note, setNote] = useState(task?.result ?? '')
+  const [log, setLog] = useState(task?.log ?? '')
+  const [result, setResult] = useState(task?.result ?? '')
   const [copied, setCopied] = useState(false)
   const [idCopied, setIdCopied] = useState(false)
   const [height, setHeight] = useState(readStoredHeight)
@@ -45,7 +46,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const heightRef = useRef(height)
 
-  const missingResult = status === 'done' && !note.trim()
+  const missingResult = status === 'done' && !result.trim()
 
   const applyHeight = useCallback((next: number) => {
     heightRef.current = next
@@ -115,7 +116,8 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
         .split(',')
         .map((tag) => tag.trim())
         .filter(Boolean),
-      note,
+      log,
+      result,
       timeInfo: task ? taskTimeInfo(task) : null,
     })
     try {
@@ -137,7 +139,9 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     // 完成任务必须写明结果，规则来自 todo-core 的状态机。
     if (missingResult) {
       alert('Completing a task requires a result')
-      sheetRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus()
+      sheetRef.current
+        ?.querySelector<HTMLElement>('[data-field="result"] .ProseMirror')
+        ?.focus()
       return
     }
     const parsedTags = tags
@@ -150,7 +154,8 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
       priority,
       status,
       tags: parsedTags,
-      result: note.trim() ? note : null,
+      log: log.trim() ? log : null,
+      result: result.trim() ? result : null,
     }).catch((error) => alert(`Failed to save task: ${errorMessage(error)}`))
   }
 
@@ -257,14 +262,31 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
           <span className="detail-meta-time">{task ? taskTimeInfo(task) : 'Not saved yet'}</span>
         </div>
 
-        <div className="detail-note">
-          <Suspense fallback={<p className="detail-note-empty">Loading editor…</p>}>
-            <MarkdownEditor
-              value={note}
-              placeholder="Write notes: # heading, **bold**, - list"
-              onChange={setNote}
-            />
-          </Suspense>
+        <div className="detail-fields">
+          <section className="detail-field">
+            <div className="detail-field-label">Record</div>
+            <div className="detail-note">
+              <Suspense fallback={<p className="detail-note-empty">Loading editor…</p>}>
+                <MarkdownEditor
+                  value={log}
+                  placeholder="Work notes: # heading, - list, **bold**"
+                  onChange={setLog}
+                />
+              </Suspense>
+            </div>
+          </section>
+          <section className="detail-field" data-field="result">
+            <div className="detail-field-label">Result</div>
+            <div className="detail-note">
+              <Suspense fallback={<p className="detail-note-empty">Loading editor…</p>}>
+                <MarkdownEditor
+                  value={result}
+                  placeholder="What was delivered"
+                  onChange={setResult}
+                />
+              </Suspense>
+            </div>
+          </section>
         </div>
       </div>
 

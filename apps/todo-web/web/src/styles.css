@@ -880,12 +880,36 @@
   color: var(--gray-400);
 }
 
-/* 所见即所得：编辑区就是渲染结果，不再分左右两栏。 */
+/* 记录与结果两个独立的 Markdown 编辑区，各占一半高度。 */
+.detail-fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+  padding-top: var(--space-xs);
+}
+
+.detail-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detail-field-label {
+  flex: none;
+  color: var(--gray-400);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .detail-note {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding-top: var(--space-xs);
   overflow: hidden;
 }
 

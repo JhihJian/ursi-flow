@@ -1,8 +1,9 @@
 use crate::db::{self, Columns};
 use crate::models::{
-    CreateProjectRequest, CreateResponse, CreateTaskRequest, DailyStatsResponse, DayCount, Priority,
-    Project, ProjectStats, ProjectsResponse, Stats, StatsResponse, Status, SuccessResponse, Task,
-    TaskCount, TasksResponse, UpdateProjectRequest, UpdateTaskRequest,
+    AppendResultRequest, AppendResultResponse, CreateProjectRequest, CreateResponse,
+    CreateTaskRequest, DailyStatsResponse, DayCount, Priority, Project, ProjectStats,
+    ProjectsResponse, Stats, StatsResponse, Status, SuccessResponse, Task, TaskCount, TasksResponse,
+    UpdateProjectRequest, UpdateTaskRequest,
 };
 use axum::{
     extract::{Path, Query},
@@ -189,6 +190,16 @@ pub async fn put_task(
     let conn = db::connect()?;
     update_task(&conn, &id, &request)?;
     Ok(Json(SuccessResponse { success: true }))
+}
+
+/// `POST /api/tasks/{id}/result/append`：把一段工作结果追加到已有结果之后。
+pub async fn post_task_result(
+    Path(id): Path<String>,
+    Json(request): Json<AppendResultRequest>,
+) -> ApiResult<Json<AppendResultResponse>> {
+    let conn = db::connect()?;
+    let result = append_task_result(&conn, &id, &request.text)?;
+    Ok(Json(AppendResultResponse { result }))
 }
 
 pub async fn remove_task(Path(id): Path<String>) -> ApiResult<Json<SuccessResponse>> {
@@ -499,12 +510,29 @@ pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> 
     if let Some(result) = &request.result {
         task.result = result.clone();
     }
+    if let Some(log) = &request.log {
+        task.log = log.clone();
+    }
     if let Some(blocked_reason) = &request.blocked_reason {
         task.blocked_reason = blocked_reason.clone();
     }
 
     db::update_task_row(conn, &task, &columns)?;
     Ok(())
+}
+
+/// 追加工作结果，拼接规则由 `todo_core::Task::append_result` 定义。
+pub fn append_task_result(conn: &Connection, id: &str, text: &str) -> ApiResult<String> {
+    let columns = Columns::load(conn, "tasks", &db::TASK_FIELDS)?;
+    if !columns.has("result") {
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "待办库缺少 result 列，无法追加结果"
+        )));
+    }
+    let mut task = read_task_by_id(conn, &columns, id)?;
+    task.append_result(text)?;
+    db::update_task_row(conn, &task, &columns)?;
+    Ok(task.result.unwrap_or_default())
 }
 
 pub fn delete_task(conn: &Connection, id: &str) -> ApiResult<()> {

@@ -36,6 +36,10 @@ async fn main() -> Result<()> {
         .route("/api/tasks", post(handlers::post_task))
         .route("/api/tasks/{id}", put(handlers::put_task))
         .route("/api/tasks/{id}", delete(handlers::remove_task))
+        .route(
+            "/api/tasks/{id}/result/append",
+            post(handlers::post_task_result),
+        )
         .route("/api/stats", get(handlers::get_stats))
         .route("/api/stats/daily", get(handlers::get_daily_stats))
         .fallback_service(ServeDir::new(static_dir()).fallback(ServeFile::new(index)));

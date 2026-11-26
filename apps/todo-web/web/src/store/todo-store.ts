@@ -165,6 +165,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         priority: draft.priority,
         status: draft.status,
         tags: draft.tags,
+        log: draft.log,
         result: draft.result,
       })
     } else {

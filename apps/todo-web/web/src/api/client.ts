@@ -94,12 +94,21 @@ export function updateTask(
     status: TaskStatus
     tags: string[]
     project_id: string | null
+    log: string | null
     result: string | null
   }>,
 ): Promise<{ success: boolean }> {
   return request(`/tasks/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: JSON.stringify(input),
+  })
+}
+
+/** 追加一段工作结果，返回追加后的完整结果。 */
+export function appendTaskResult(id: string, text: string): Promise<{ result: string }> {
+  return request(`/tasks/${encodeURIComponent(id)}/result/append`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
   })
 }
 

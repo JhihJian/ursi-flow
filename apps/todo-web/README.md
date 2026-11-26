@@ -7,7 +7,7 @@
 - `core/`：`todo-core` crate，任务与项目的实体、状态机与错误码，最早来自 SUMM-Todo，现在由本目录维护。
 - `server/`：Rust + axum + rusqlite，读写 `~/.ursi/todo/todo.db`，托管 `web/dist`，通过 `path = "../core"` 依赖上面的 crate。
 - `Cargo.toml`：workspace，成员为 `core` 与 `server`，构建产物在 `target/`。
-- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 正文用 ProseMirror 做成所见即所得编辑器。
+- `web/`：React 19 + TypeScript + Zustand + `@dnd-kit/core` + `react-resizable-panels`，Markdown 记录与结果用 ProseMirror 做成所见即所得编辑器。
 
 ## 本地开发
 
@@ -56,8 +56,10 @@ cd .. && cargo build --release
   - 删除都要二次确认，菜单标题行显示 `Delete "名称"?`，再点一次才执行。
 - 点击任务行或任务列表右键菜单里的 `New task`，详情面板会从任务列表下方升起；底部 `Close` 或 `Esc` 收起。
 - 详情标题行右侧的 `⧉` 可把面板内容复制成一份 Markdown 文档（标题作一级标题，状态、优先级、标签、时间作列表，正文原样接在后面），复制后图标短暂变成 `✓`。
-- 详情是一份连续文档：大标题、一行元信息（带 `status`、`pri`、`tags` 小标签的状态、优先级、标签与时间）、Markdown 正文，不切成表单块。优先级在这一行改。底部只有 `Close` 和 `Save`，删除任务走任务行的右键菜单。拖动顶部横条可调整面板高度，双击横条复位，高度会被记住。
-- 正文是所见即所得的 Markdown 编辑区：输入 `**加粗**` 立刻变成加粗文本，输入 `# ` 变成标题，`- ` 变成列表，`> ` 变成引用，不再需要预览或源码切换。选中文字后 `Ctrl/Cmd+B`、`Ctrl/Cmd+I`、`Ctrl/Cmd+\`` 可切换加粗、斜体、行内代码。
+- 详情是一份连续文档：大标题、一行元信息（带 `status`、`pri`、`tags` 小标签的状态、优先级、标签与时间）、`Record` 与 `Result` 两个 Markdown 编辑区，不切成表单块。优先级在这一行改。底部只有 `Close` 和 `Save`，删除任务走任务行的右键菜单。拖动顶部横条可调整面板高度，双击横条复位，高度会被记住。
+- `Record` 记录工作过程，`Result` 记录工作结果，两者都是可选字段，分别存到任务的 `log` 与 `result`。完成任务必须填 `Result`，完成或撤销完成都不会清空 `Record`。
+- 两个编辑区都是所见即所得的 Markdown：输入 `**加粗**` 立刻变成加粗文本，输入 `# ` 变成标题，`- ` 变成列表，`> ` 变成引用，不再需要预览或源码切换。选中文字后 `Ctrl/Cmd+B`、`Ctrl/Cmd+I`、`Ctrl/Cmd+\`` 可切换加粗、斜体、行内代码。
+- 服务端提供 `POST /api/tasks/{id}/result/append`（请求体 `{ "text": "..." }`）给 Agent 追加工作结果：新内容去掉首尾空白后与已有结果用空行分隔拼接，返回 `{ "result": "..." }`。字段与接口见 [server/HTTP.md](server/HTTP.md)。
 - 编辑区覆盖 CommonMark 子集：标题、段落、列表、引用、代码块、行内代码、链接、粗斜体、分隔线、图片。GFM 表格等扩展语法不在此编辑器内，输入后按普通文本保存。
 - 任务列表上方左侧的条形区显示最近 7 天每天新建的任务数，总宽固定，各天按数量占比分配宽度，悬停可看日期与数量；内容区较窄时先隐藏时间列，再隐藏条形区；点某天只看当天创建的任务，再点一次取消。日期标签以 `MM-DD` 显示在条形左侧；右侧仍放状态标签。
 - 按天或按状态筛选只影响任务表，不会关闭已经打开的详情面板。

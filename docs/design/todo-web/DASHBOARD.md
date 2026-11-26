@@ -82,9 +82,9 @@ Zustand store 保存项目、任务、当前选中项目和筛选条件。组件
 
 ### 连续文档
 
-详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（`status` 下拉、`pri` 下拉、`tags` 输入、`workspace` 输入、`session` 输入、时间）、Markdown 正文、底部 `Close` / `Save`。标题行右侧只有一个复制按钮 `⧉`，点击把面板内容拼成 Markdown 交给剪贴板：标题写成一级标题，状态、优先级、标签、时间写成无序列表，正文原样接在后面，逻辑在 `src/lib/task-markdown.ts`。复制成功时图标短暂变为 `✓`。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。每个控件前置 10px 的小标签（`status`、`pri`、`tags`、`workspace`、`session`），否则两个下拉挨在一起时看不出哪个是优先级。优先级改动保存后会按新优先级影响任务表排序。
+详情不是分块表单，而是从上到下一条连续的文档：大标题（无边框、随内容长高的 `textarea`、衬线体）、一行元信息（`status` 下拉、`pri` 下拉、`tags` 输入、`workspace` 输入、`session` 输入、时间）、`Record` 与 `Result` 两个 Markdown 编辑区、底部 `Close` / `Save`。标题行右侧只有一个复制按钮 `⧉`，点击把面板内容拼成 Markdown 交给剪贴板：标题写成一级标题，状态、优先级、标签、时间写成无序列表，记录与结果分别放进 `## Record` 和 `## Result` 小节，逻辑在 `src/lib/task-markdown.ts`。复制成功时图标短暂变为 `✓`。元信息里的下拉和输入框去掉边框，只在悬停和聚焦时描边，让整块看起来是一段文字而不是一堆控件。每个控件前置 10px 的小标签（`status`、`pri`、`tags`、`workspace`、`session`），否则两个下拉挨在一起时看不出哪个是优先级。优先级改动保存后会按新优先级影响任务表排序。
 
-正文是所见即所得的 Markdown 编辑区，没有源码与预览两栏，也不存在「写／预览」切换。做法对齐 prosemirror.net/examples/markdown：
+两个编辑区都是所见即所得的 Markdown 编辑区，没有源码与预览两栏，也不存在「写／预览」切换。做法对齐 prosemirror.net/examples/markdown：
 
 - `markdown-it`（commonmark，`html: false`）把库里的 Markdown 解析成文档，`prosemirror-markdown` 的 `MarkdownSerializer` 在每次改动后序列化回 Markdown 交给保存逻辑。文档结构是 `prosemirror-schema-basic` 加 `addListNodes`，覆盖标题、段落、引用、代码块、行内代码、链接、粗斜体、分隔线、图片和有序/无序列表。
 - 输入规则即时把语法变成样式：`**加粗**`、`*斜体*`、`` `代码` `` 去掉标记后套用 mark；`# `、`- `、`1. `、`> `、```` ``` ```` 和 `---` 在行首直接换块类型。行内规则的左侧边界接受任意非单词字符，所以中文标点后面接着写 `**加粗**` 也生效。
@@ -95,7 +95,7 @@ Zustand store 保存项目、任务、当前选中项目和筛选条件。组件
 
 编辑器只覆盖 CommonMark 子集。GFM 表格、任务列表、删除线不在 schema 里，输入后会按普通文本保存；真实待办库里没有这类内容，需要时再补 schema 与解析规则。原始 HTML 不会被解析成标签，写进去只是文本。
 
-任务模型只有 `result` 一个自由文本字段，正文即写在这里；状态切到 `done` 且正文为空时，底部提示 `Result required to finish`，保存会被拦下，规则与 `todo_core` 状态机一致。
+任务模型有两个自由文本字段：`log` 存工作过程的记录，`result` 存工作结果，两个编辑区共用同一套 Markdown 编辑器。两者都是可选字段，互不覆盖；完成任务与撤销完成都不动 `log`。状态切到 `done` 且 `Result` 为空时，底部提示 `Result required to finish`，保存会被拦下，规则与 `todo_core` 状态机一致。Agent 可通过 `POST /api/tasks/{id}/result/append` 往 `result` 追加一段 Markdown，服务端用空行分隔拼接，接口契约见[服务端契约](../../../apps/todo-web/server/HTTP.md)。
 
 ### 调整高度
 

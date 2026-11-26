@@ -150,10 +150,12 @@ pub struct Task {
     pub assignee: Option<Creator>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blocked_reason: Option<String>,
+    /// 工作结果，Markdown 文本，可选；完成任务时必须非空。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub artifacts: Vec<String>,
+    /// 工作过程的记录，Markdown 文本，可选，跨状态迁移保留。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -190,6 +192,22 @@ impl Task {
         }
     }
 
+    /// 以空行分隔追加一段工作结果，保留 Markdown 结构；空文本视为非法输入。
+    pub fn append_result(&mut self, text: &str) -> Result<(), TodoError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(TodoError::InvalidInput(
+                "Result text is required".to_string(),
+            ));
+        }
+
+        self.result = Some(match self.result.as_deref().map(str::trim) {
+            Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
+            _ => text.to_string(),
+        });
+        Ok(())
+    }
+
     pub fn transition(
         &mut self,
         target: Status,
@@ -217,7 +235,10 @@ impl Task {
                     .ok_or(TodoError::ResultRequired)?;
                 self.result = Some(result);
                 self.artifacts = ctx.artifacts.unwrap_or_default();
-                self.log = ctx.log;
+                // 过程记录独立于完成动作，缺失时不覆盖已有内容。
+                if ctx.log.is_some() {
+                    self.log = ctx.log;
+                }
                 self.finished_at = Some(Utc::now());
             }
             // in_progress -> blocked
@@ -244,7 +265,6 @@ impl Task {
             (Status::Done, Status::InProgress) => {
                 self.result = None;
                 self.artifacts = Vec::new();
-                self.log = None;
                 self.finished_at = None;
             }
             // in_progress -> pending (abandon)
@@ -368,6 +388,47 @@ mod tests {
         assert_eq!(task.artifacts, vec!["output.txt".to_string()]);
         assert_eq!(task.log.as_deref(), Some("all good"));
         assert!(task.finished_at.is_some());
+    }
+
+    #[test]
+    fn completing_keeps_process_record_when_log_is_omitted() {
+        let mut task = Task::new("1", "Test");
+        task.log = Some("- 看日志\n- 复现失败".into());
+        task.transition(Status::InProgress, TransitionContext::default())
+            .unwrap();
+        let ctx = TransitionContext {
+            result: Some("fixed".into()),
+            ..Default::default()
+        };
+        task.transition(Status::Done, ctx).unwrap();
+        assert_eq!(task.log.as_deref(), Some("- 看日志\n- 复现失败"));
+    }
+
+    #[test]
+    fn append_result_keeps_markdown_and_separates_paragraphs() {
+        let mut task = Task::new("1", "Test");
+        task.append_result("## 第一步\n\n已完成 **接口**")
+            .unwrap();
+        assert_eq!(task.result.as_deref(), Some("## 第一步\n\n已完成 **接口**"));
+
+        task.append_result("\n## 第二步\n")
+            .unwrap();
+        assert_eq!(
+            task.result.as_deref(),
+            Some("## 第一步\n\n已完成 **接口**\n\n## 第二步")
+        );
+    }
+
+    #[test]
+    fn append_result_ignores_blank_existing_value_and_rejects_empty_text() {
+        let mut task = Task::new("1", "Test");
+        task.result = Some("   ".into());
+        task.append_result("done").unwrap();
+        assert_eq!(task.result.as_deref(), Some("done"));
+
+        let err = task.append_result("  \n ").unwrap_err();
+        assert!(matches!(err, TodoError::InvalidInput(_)));
+        assert_eq!(task.result.as_deref(), Some("done"));
     }
 
     #[test]
@@ -525,7 +586,8 @@ mod tests {
         assert_eq!(task.status, Status::InProgress);
         assert!(task.result.is_none());
         assert!(task.artifacts.is_empty());
-        assert!(task.log.is_none());
+        // 过程记录不随撤销完成被清空。
+        assert_eq!(task.log.as_deref(), Some("done"));
         assert!(task.finished_at.is_none());
     }
 

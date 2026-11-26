@@ -134,6 +134,7 @@ describe('task actions', () => {
       priority: 'medium',
       status: 'pending',
       tags: ['a'],
+      log: null,
       result: null,
     })
 

@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
 use rusqlite::Connection;
 use todo_web_server::handlers::{
-    calculate_stats, create_project, create_task, daily_task_counts, delete_project, delete_task,
-    fetch_projects, fetch_tasks, update_project, update_task, AppError,
+    append_task_result, calculate_stats, create_project, create_task, daily_task_counts,
+    delete_project, delete_task, fetch_projects, fetch_tasks, update_project, update_task, AppError,
 };
 use todo_web_server::models::{
     CreateProjectRequest, CreateTaskRequest, Priority, Status, UpdateProjectRequest,
@@ -110,6 +110,7 @@ fn update(_id: &str) -> UpdateTaskRequest {
         project_id: None,
         blocked_reason: None,
         result: None,
+        log: None,
     }
 }
 
@@ -465,6 +466,95 @@ fn status_changes_follow_core_state_machine() {
     )
     .unwrap_err();
     assert!(matches!(rejected, AppError::BadRequest { .. }));
+}
+
+#[test]
+fn process_record_survives_completion_and_can_be_cleared() {
+    let conn = setup();
+    let id = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Record".into(),
+            priority: None,
+            tags: None,
+            project_id: None,
+        },
+    )
+    .unwrap();
+
+    update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            log: Some(Some("- 查日志\n- 定位到并发问题".into())),
+            ..update(&id)
+        },
+    )
+    .unwrap();
+    update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::InProgress),
+            ..update(&id)
+        },
+    )
+    .unwrap();
+    update_task(
+        &conn,
+        &id,
+        &UpdateTaskRequest {
+            status: Some(Status::Done),
+            result: Some(Some("fixed".into())),
+            ..update(&id)
+        },
+    )
+    .unwrap();
+
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
+    assert_eq!(task.log.as_deref(), Some("- 查日志\n- 定位到并发问题"));
+
+    let request: UpdateTaskRequest = serde_json::from_str(r#"{"log": null}"#).unwrap();
+    update_task(&conn, &id, &request).unwrap();
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
+    assert!(task.log.is_none());
+    assert_eq!(task.result.as_deref(), Some("fixed"));
+}
+
+#[test]
+fn append_result_joins_markdown_and_rejects_blank_text() {
+    let conn = setup();
+    let id = create_task(
+        &conn,
+        &CreateTaskRequest {
+            title: "Append".into(),
+            priority: None,
+            tags: None,
+            project_id: None,
+        },
+    )
+    .unwrap();
+
+    let first = append_task_result(&conn, &id, "## 第一步\n完成 **接口**").unwrap();
+    assert_eq!(first, "## 第一步\n完成 **接口**");
+
+    let second = append_task_result(&conn, &id, "## 第二步").unwrap();
+    assert_eq!(second, "## 第一步\n完成 **接口**\n\n## 第二步");
+
+    let task = fetch_tasks(&conn, None, None, None, None).unwrap().remove(0);
+    assert_eq!(task.result.as_deref(), Some(second.as_str()));
+
+    let empty = append_task_result(&conn, &id, "   ").unwrap_err();
+    assert!(matches!(
+        empty,
+        AppError::BadRequest {
+            code: "E_INVALID_INPUT",
+            ..
+        }
+    ));
+
+    let missing = append_task_result(&conn, "nope", "x").unwrap_err();
+    assert!(matches!(missing, AppError::NotFound(_)));
 }
 
 #[test]

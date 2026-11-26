@@ -85,7 +85,8 @@ export function createTodoModule(): WorkspaceModule {
             status: task.status,
             priority: task.priority,
             tags: task.tags,
-            note: task.result ?? '',
+            log: task.log ?? '',
+            result: task.result ?? '',
             timeInfo: null,
           })
           await copyText(markdown)

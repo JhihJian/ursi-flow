@@ -24,6 +24,19 @@ pub struct UpdateTaskRequest {
     pub blocked_reason: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub result: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub log: Option<Option<String>>,
+}
+
+/// 追加一段工作结果，服务端以空行分隔拼接到已有结果之后。
+#[derive(Debug, Deserialize)]
+pub struct AppendResultRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppendResultResponse {
+    pub result: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -33,9 +33,9 @@
 | `status` | `pending` \| `in_progress` \| `blocked` \| `done` \| `cancelled` | 状态 |
 | `assignee` | `human` \| `agent`? | 执行者 |
 | `blocked_reason` | string? | 阻塞原因 |
-| `result` | string? | 完成结果 |
+| `result` | string? | 工作结果，Markdown 文本 |
 | `artifacts` | string[] | 产出物 |
-| `log` | string? | 执行日志 |
+| `log` | string? | 工作过程的记录，Markdown 文本，跨状态迁移保留 |
 | `started_at` | datetime? | 开始时间 |
 | `finished_at` | datetime? | 完成或取消时间 |
 | `updated_at` | datetime? | 更新时间 |
@@ -54,6 +54,7 @@
 | `GET /api/tasks?project=&status=&period=&date=` | 任务列表，`date` 为 `YYYY-MM-DD` |
 | `POST /api/tasks` | 新建任务，初始状态 `pending`，返回 `{ "id": "..." }` |
 | `PUT /api/tasks/{id}` | 更新任务或切换状态 |
+| `POST /api/tasks/{id}/result/append` | 追加工作结果，返回 `{ "result": "..." }` |
 | `DELETE /api/tasks/{id}` | 删除任务 |
 | `GET /api/stats?period=daily\|weekly\|monthly\|all` | 周期统计 |
 | `GET /api/stats/daily?days=7&project=` | 最近 `days` 天每天创建的任务数，缺失日期补 0 |
@@ -89,11 +90,16 @@
   "tags": ["..."],
   "project_id": "传 null 解除归属",
   "blocked_reason": "传 null 清空",
-  "result": "传 null 清空"
+  "result": "传 null 清空",
+  "log": "传 null 清空"
 }
 ```
 
-更新时省略字段表示不改，传 `null` 表示清空。标题和项目名去掉首尾空白后不能为空；`priority` 与 `status` 只接受枚举值，非法值在反序列化阶段即返回 400。看板不提供 `content`、`parent_id`、`pre_id`、`due`、`assignee`、`artifacts`、`log` 的写入，读取时原样返回，写回时保持不变。
+更新时省略字段表示不改，传 `null` 表示清空。标题和项目名去掉首尾空白后不能为空；`priority` 与 `status` 只接受枚举值，非法值在反序列化阶段即返回 400。看板不提供 `content`、`parent_id`、`pre_id`、`due`、`assignee`、`artifacts` 的写入，读取时原样返回，写回时保持不变。
+
+### 追加结果
+
+`POST /api/tasks/{id}/result/append` 接受 `{ "text": "..." }`，去掉首尾空白后与已有 `result` 用空行分隔拼接，Markdown 结构保持不变。文本为空返回 400 `E_INVALID_INPUT`，任务不存在返回 404，库里没有 `result` 列返回 500。追加不触发状态机，已完成、已取消的任务同样可以追加。
 
 ## 状态机
 
@@ -104,7 +110,7 @@
 | `pending` | `in_progress`、`cancelled` | 进入进行中写 `started_at`；取消写 `finished_at` |
 | `in_progress` | `done`、`blocked`、`cancelled`、`pending` | 完成需要 `result`，写 `finished_at`；阻塞需要 `blocked_reason`；回到 `pending` 清空 `assignee` 与 `started_at` |
 | `blocked` | `in_progress`、`cancelled` | 恢复清空 `blocked_reason`；取消写 `finished_at` |
-| `done` | `in_progress` | 撤销完成，清空 `result`、`artifacts`、`log` 与 `finished_at` |
+| `done` | `in_progress` | 撤销完成，清空 `result`、`artifacts` 与 `finished_at`，保留 `log` |
 | `cancelled` | 无 | 终态 |
 
 同一状态重复提交是幂等的，不会改写开始和完成时间。其余迁移返回 `E_INVALID_TRANSITION`。字段编辑不触发状态机，只有 `status` 提交且与当前状态不同时才迁移。

@@ -78,6 +78,9 @@ export interface TaskInput {
   priority: Priority
   status: TaskStatus
   tags: string[]
+  /** 工作过程的记录，Markdown 文本。 */
+  log: string | null
+  /** 工作结果，Markdown 文本。 */
   result: string | null
 }
 
