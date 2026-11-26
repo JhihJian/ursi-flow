@@ -2,34 +2,34 @@
 	admin off
 }
 
-:8095 {
+@ENTRY_ADDR@ {
 	handle /api/fs-web/* {
-		reverse_proxy 127.0.0.1:8199
+		reverse_proxy @BACKEND_HOST@:@FS_PORT@
 	}
 	handle /api/ssh-web/* {
 		uri replace /api/ssh-web /api
-		reverse_proxy 127.0.0.1:8091
+		reverse_proxy @BACKEND_HOST@:@SSH_PORT@
 	}
 	handle /api/flow-web/* {
 		uri replace /api/flow-web /api
-		reverse_proxy 127.0.0.1:8094
+		reverse_proxy @BACKEND_HOST@:@FLOW_PORT@
 	}
 	handle /api/pi-sessions/* {
 		uri replace /api/pi-sessions /api
-		reverse_proxy 127.0.0.1:30200
+		reverse_proxy @BACKEND_HOST@:@PI_SESSIONS_PORT@
 	}
 	handle_path /api/pi-manager/* {
-		reverse_proxy 127.0.0.1:8093 {
+		reverse_proxy @BACKEND_HOST@:@PI_MANAGER_PORT@ {
 			flush_interval -1
 		}
 	}
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8090
+		reverse_proxy @BACKEND_HOST@:@TODO_PORT@
 	}
 
 	# 静态产物走单独的 handle，压缩只作用于这里，不干涉 SSE。
 	handle {
-		root * /data/dev/ursi-flow/apps/shell-web/dist
+		root * @ROOT@/apps/shell-web/dist
 		encode zstd gzip
 		try_files {path} /index.html
 		file_server

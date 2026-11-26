@@ -16,3 +16,4 @@ node_modules
 /apps/pi-sessions-web/web/node_modules/
 /apps/ursi-flow/dist/
 /apps/flow-web/web/dist/
+/deploy/deploy.env

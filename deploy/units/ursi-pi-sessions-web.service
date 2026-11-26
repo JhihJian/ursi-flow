@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@/apps/pi-sessions-web/server
-Environment=PI_SESSIONS_HOST=127.0.0.1
-Environment=PI_SESSIONS_PORT=30200
+Environment=PI_SESSIONS_HOST=@BACKEND_HOST@
+Environment=PI_SESSIONS_PORT=@PI_SESSIONS_PORT@
 ExecStart=@NODE@ src/main.mjs
 Restart=always
 RestartSec=2

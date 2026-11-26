@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@/apps/pi-manager-web/server
-Environment=PI_MANAGER_HOST=127.0.0.1
-Environment=PI_MANAGER_PORT=8093
+Environment=PI_MANAGER_HOST=@BACKEND_HOST@
+Environment=PI_MANAGER_PORT=@PI_MANAGER_PORT@
 ExecStart=@NODE@ src/server.ts
 Restart=always
 RestartSec=2

@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@/apps/ssh-web
-Environment=PORT=8091
-Environment=HOST=127.0.0.1
+Environment=PORT=@SSH_PORT@
+Environment=HOST=@BACKEND_HOST@
 Environment=SSH_WEB_STATIC_DIR=@ROOT@/apps/ssh-web/web/dist
 ExecStart=@ROOT@/apps/ssh-web/target/release/ssh-web-server
 Restart=always

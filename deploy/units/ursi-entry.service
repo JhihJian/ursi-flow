@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=@CADDY@ run --config @ROOT@/deploy/Caddyfile --adapter caddyfile
+ExecStart=@CADDY@ run --config @ENTRY_CONFIG@ --adapter caddyfile
 Restart=always
 RestartSec=2
 

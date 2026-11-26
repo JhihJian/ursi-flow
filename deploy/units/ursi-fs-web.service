@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@
-Environment=FS_WEB_HOST=127.0.0.1
-Environment=FS_WEB_PORT=8199
+Environment=FS_WEB_HOST=@BACKEND_HOST@
+Environment=FS_WEB_PORT=@FS_PORT@
 ExecStart=@NODE@ apps/fs-web/server/src/server.ts
 Restart=always
 RestartSec=2

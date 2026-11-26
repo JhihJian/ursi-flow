@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@/apps/flow-web/server
-Environment=FLOW_WEB_HOST=127.0.0.1
-Environment=FLOW_WEB_PORT=8094
+Environment=FLOW_WEB_HOST=@BACKEND_HOST@
+Environment=FLOW_WEB_PORT=@FLOW_PORT@
 ExecStart=@NODE@ src/main.ts
 Restart=always
 RestartSec=2
