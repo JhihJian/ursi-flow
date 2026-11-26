@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@ursi/workspace-shell": "*",
-    "pi-agent-trajectory-viewer": "file:../../../../pi-agent-trajectory-viewer",
+    "pi-agent-trajectory-viewer": "git+https://github.com/JhihJian/pi-agent-trajectory-viewer.git#v0.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
