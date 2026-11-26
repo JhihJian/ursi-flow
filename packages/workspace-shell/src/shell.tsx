@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type {
   ModuleSidebarProps,
@@ -21,12 +21,7 @@ import {
 } from './slots'
 import './shell.css'
 
-const DEFAULT_SIDEBAR_SIZE = 260
-const DEFAULT_SIDEBAR_MIN = 120
-const DEFAULT_SIDEBAR_MAX = 620
 const DEFAULT_COLLAPSED_SIZE = 32
-const DEFAULT_WORKSPACE_SIZE = 480
-const DEFAULT_WORKSPACE_MIN = 280
 
 /** localStorage 写入按 key 合并延迟，拖动分隔线时不会每帧写盘。 */
 const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>()
@@ -58,48 +53,20 @@ function saveNumber(key: string, value: number): void {
   )
 }
 
-function readJson<T>(key: string): T | null {
+/** 侧边栏只有一节展开，存单个模块 id；没有展开项时不写盘。 */
+function readExpandedId(key: string): string | null {
   try {
     const raw = window.localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : null
+    return raw && raw.trim() ? raw.trim() : null
   } catch {
     return null
   }
 }
 
-/** 侧边栏高度权重延迟写盘，拖动时不必每帧写 localStorage。 */
-const pendingJsonWrites = new Map<string, ReturnType<typeof setTimeout>>()
-
-function saveJsonDebounced(key: string, value: unknown): void {
-  const timer = pendingJsonWrites.get(key)
-  if (timer) clearTimeout(timer)
-  pendingJsonWrites.set(
-    key,
-    setTimeout(() => {
-      pendingJsonWrites.delete(key)
-      try {
-        window.localStorage.setItem(key, JSON.stringify(value))
-      } catch (error) {
-        console.error(error)
-      }
-    }, 150),
-  )
-}
-
-function readStringList(key: string): string[] | null {
+function saveExpandedId(key: string, moduleId: string | null): void {
   try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : null
-  } catch {
-    return null
-  }
-}
-
-function saveStringList(key: string, value: string[]): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
+    if (moduleId) window.localStorage.setItem(key, moduleId)
+    else window.localStorage.removeItem(key)
   } catch (error) {
     console.error(error)
   }
@@ -117,168 +84,48 @@ function useStoredSize(key: string, fallback: number): [number, (pixels: number)
   return [size, save]
 }
 
-/** 侧边栏堆叠：展开的模块按权重分高度，折叠的模块固定一条窄条。 */
+/** 侧边栏堆叠：同一时刻只有一节展开，其余模块压成一条横向窄条。 */
 function SidebarStack({
   modules,
-  expandedIds,
+  expandedId,
   onToggle,
-  storageKey,
   workspaceVisibleIds,
 }: {
   modules: WorkspaceModule[]
-  expandedIds: string[]
+  expandedId: string | null
   onToggle: (moduleId: string, expanded: boolean) => void
-  storageKey: string
   workspaceVisibleIds: Set<string>
 }) {
-  const sizesKey = `${storageKey}:sidebar-sizes`
-  const defaults = useMemo(() => {
-    const result: Record<string, number> = {}
-    for (const module of modules) result[module.id] = module.sidebarDefaultSize ?? DEFAULT_SIDEBAR_SIZE
-    return result
-  }, [modules])
-  const [sizes, setSizes] = useState<Record<string, number>>(() => ({
-    ...defaults,
-    ...(readJson<Record<string, number>>(sizesKey) ?? {}),
-  }))
-  const sizesRef = useRef(sizes)
-  sizesRef.current = sizes
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
-
-  useEffect(() => {
-    saveJsonDebounced(sizesKey, sizes)
-  }, [sizesKey, sizes])
-
-  const expandedModules = modules.filter((module) => expandedIds.includes(module.id))
-
-  const startDrag = (belowId: string) => (event: React.PointerEvent) => {
-    event.preventDefault()
-    const belowModule = modules.find((module) => module.id === belowId)
-    const belowElement = sectionRefs.current[belowId]
-    if (!belowModule || !belowElement) return
-    const index = expandedModules.findIndex((module) => module.id === belowId)
-    const aboveModule = index > 0 ? expandedModules[index - 1] : undefined
-    const aboveElement = aboveModule ? sectionRefs.current[aboveModule.id] : null
-    const belowHeight = belowElement.getBoundingClientRect().height
-    const aboveHeight = aboveElement?.getBoundingClientRect().height ?? 0
-    const startY = event.clientY
-    const minOf = (module: WorkspaceModule) => module.sidebarMinSize ?? DEFAULT_SIDEBAR_MIN
-    const maxOf = (module: WorkspaceModule) => module.sidebarMaxSize ?? DEFAULT_SIDEBAR_MAX
-
-    const onMove = (moveEvent: PointerEvent) => {
-      const delta = moveEvent.clientY - startY
-      if (aboveModule) {
-        const clamped = Math.min(
-          Math.max(delta, minOf(aboveModule) - aboveHeight),
-          belowHeight - minOf(belowModule),
-        )
-        setSizes((previous) => ({
-          ...previous,
-          [aboveModule.id]: Math.min(
-            Math.max(aboveHeight + clamped, minOf(aboveModule)),
-            maxOf(aboveModule),
-          ),
-          [belowModule.id]: Math.min(
-            Math.max(belowHeight - clamped, minOf(belowModule)),
-            maxOf(belowModule),
-          ),
-        }))
-        return
-      }
-      setSizes((previous) => ({
-        ...previous,
-        [belowModule.id]: Math.min(
-          Math.max(belowHeight + delta, minOf(belowModule)),
-          maxOf(belowModule),
-        ),
-      }))
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
-
   return (
     <div className="ws-sidebar-stack">
-      {modules.map((module, index) => {
-        const expanded = expandedIds.includes(module.id)
-        const collapsedSize = module.collapsedSidebarSize ?? DEFAULT_COLLAPSED_SIZE
+      {modules.map((module) => {
+        const expanded = module.id === expandedId
         const sidebarProps: ModuleSidebarProps = {
           collapsed: !expanded,
           collapse: () => onToggle(module.id, false),
           expand: () => onToggle(module.id, true),
         }
-        const style = expanded
-          ? {
-              flexGrow: sizes[module.id] ?? module.sidebarDefaultSize ?? DEFAULT_SIDEBAR_SIZE,
-              flexShrink: 1,
-              flexBasis: 0,
-              minHeight: module.sidebarMinSize ?? DEFAULT_SIDEBAR_MIN,
-            }
-          : { flexGrow: 0, flexShrink: 0, flexBasis: collapsedSize }
         return (
-          <Fragment key={module.id}>
-            {expanded && index > 0 && expandedModules.length > 1 ? (
-              <div
-                className="ws-stack-gutter"
-                role="separator"
-                aria-orientation="horizontal"
-                title={`拖动调整 ${module.title} 侧边栏高度`}
-                onPointerDown={startDrag(module.id)}
-              />
-            ) : null}
-            <section
-              className={expanded ? 'ws-sidebar-section' : 'ws-sidebar-section ws-sidebar-section-collapsed'}
-              style={style}
-              ref={(element) => {
-                sectionRefs.current[module.id] = element
-              }}
-            >
-              <Slot name={sidebarSlotName(module.id)} className="ws-slot" />
-              <ModuleHost
-                module={module}
-                sidebarProps={sidebarProps}
-                workspaceVisible={workspaceVisibleIds.has(module.id)}
-                statusVisible={expanded}
-              />
-            </section>
-          </Fragment>
+          <section
+            key={module.id}
+            className={expanded ? 'ws-sidebar-section' : 'ws-sidebar-section ws-sidebar-section-collapsed'}
+            style={
+              expanded
+                ? { flex: '1 1 0', minHeight: 0 }
+                : { flex: `0 0 ${module.collapsedSidebarSize ?? DEFAULT_COLLAPSED_SIZE}px` }
+            }
+          >
+            <Slot name={sidebarSlotName(module.id)} className="ws-slot" />
+            <ModuleHost
+              module={module}
+              sidebarProps={sidebarProps}
+              workspaceVisible={workspaceVisibleIds.has(module.id)}
+              statusVisible={expanded}
+            />
+          </section>
         )
       })}
     </div>
-  )
-}
-
-/** 工作区里一个展开模块的列，宽度按模块独立记住。 */
-function WorkspaceColumn({
-  module,
-  storageKey,
-  index,
-}: {
-  module: WorkspaceModule
-  storageKey: string
-  index: number
-}) {
-  const [size, save] = useStoredSize(
-    `${storageKey}:workspace:${module.id}`,
-    DEFAULT_WORKSPACE_SIZE,
-  )
-  return (
-    <Fragment>
-      {index > 0 ? <Separator className="ws-separator" /> : null}
-      <Panel
-        id={module.id}
-        className="ws-workspace-panel"
-        defaultSize={size}
-        minSize={DEFAULT_WORKSPACE_MIN}
-        onResize={(panelSize) => save(panelSize.inPixels)}
-      >
-        <Slot name={workspaceSlotName(module.id)} className="ws-slot" />
-      </Panel>
-    </Fragment>
   )
 }
 
@@ -371,15 +218,13 @@ function findView(views: WorkspaceView[], selection: Selection | null): Workspac
   return views.find((view) => view.kind === selection.kind) ?? null
 }
 
-/** 工作区：宿主页面优先；否则按 profile 顺序并排展开模块的 Workspace。 */
+/** 工作区：宿主页面优先；否则渲染展开模块的那一列，没有展开模块时显示占位。 */
 function WorkspaceArea({
-  modules,
+  module,
   views,
-  storageKey,
 }: {
-  modules: WorkspaceModule[]
+  module: WorkspaceModule | null
   views: WorkspaceView[]
-  storageKey: string
 }) {
   const { selection } = useWorkspace()
   const view = findView(views, selection)
@@ -391,7 +236,7 @@ function WorkspaceArea({
       </div>
     )
   }
-  if (modules.length === 0) {
+  if (!module) {
     return (
       <div className="ws-placeholder">
         <span className="ws-placeholder-title">Work space</span>
@@ -400,11 +245,9 @@ function WorkspaceArea({
     )
   }
   return (
-    <Group orientation="horizontal" className="ws-workspace-group">
-      {modules.map((module, index) => (
-        <WorkspaceColumn key={module.id} module={module} storageKey={storageKey} index={index} />
-      ))}
-    </Group>
+    <div className="ws-workspace-column">
+      <Slot name={workspaceSlotName(module.id)} className="ws-slot" />
+    </div>
   )
 }
 
@@ -466,39 +309,32 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
   const enabledKey = enabled.map((module) => module.id).join(',')
 
   const expandedKey = `${storageKey}:expanded`
-  const [expandedIds, setExpandedIds] = useState<string[]>(() => {
-    const stored = readStringList(expandedKey)
-    if (stored) return stored.filter((id) => profile.modules.includes(id))
-    const declared = enabled.filter((module) => module.defaultExpanded).map((module) => module.id)
-    if (declared.length > 0) return declared
-    return enabled[0] ? [enabled[0].id] : []
+  const [expandedId, setExpandedId] = useState<string | null>(() => {
+    const stored = readExpandedId(expandedKey)
+    if (stored && profile.modules.includes(stored)) return stored
+    const declared = enabled.find((module) => module.defaultExpanded)
+    return declared ? declared.id : (enabled[0]?.id ?? null)
   })
 
   useEffect(() => {
-    saveStringList(expandedKey, expandedIds)
-  }, [expandedKey, expandedIds])
+    saveExpandedId(expandedKey, expandedId)
+  }, [expandedKey, expandedId])
 
   // profile 或模块集合变化后，丢掉不再启用的展开项。
   useEffect(() => {
-    setExpandedIds((previous) => {
-      const next = previous.filter((id) => enabled.some((module) => module.id === id))
-      return next.length === previous.length ? previous : next
-    })
+    setExpandedId((previous) =>
+      previous && enabled.some((module) => module.id === previous) ? previous : null,
+    )
   }, [enabledKey, enabled])
 
   const onExpandedChange = useCallback((moduleId: string, expanded: boolean) => {
-    setExpandedIds((previous) => {
-      const has = previous.includes(moduleId)
-      if (has === expanded) return previous
-      return expanded ? [...previous, moduleId] : previous.filter((id) => id !== moduleId)
-    })
+    setExpandedId((previous) => (expanded ? moduleId : previous === moduleId ? null : previous))
   }, [])
 
   const { selection, select } = useWorkspace()
   const view = findView(views, selection)
-  const expandedModules = enabled.filter((module) => expandedIds.includes(module.id))
-  const visibleModules = view ? [] : expandedModules
-  const visibleIds = new Set(visibleModules.map((module) => module.id))
+  const expandedModule = view ? null : (enabled.find((module) => module.id === expandedId) ?? null)
+  const visibleIds = new Set(expandedModule ? [expandedModule.id] : [])
 
   /** 交给模块操作的外壳能力：启用集合按当前 profile 计算，reveal 只做展开与视图回退。 */
   const shell = useMemo<ShellHandle>(() => {
@@ -510,9 +346,7 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
         if (!enabledIds.has(moduleId)) {
           throw new Error(`模块 ${moduleId} 未在当前 profile 中启用`)
         }
-        setExpandedIds((previous) =>
-          previous.includes(moduleId) ? previous : [...previous, moduleId],
-        )
+        setExpandedId(moduleId)
         // 宿主页面占着工作区时先退回模块视图，否则展开后仍然看不见目标模块。
         if (selection && viewKinds.has(selection.kind)) select(null)
       },
@@ -537,15 +371,14 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
           >
             <SidebarStack
               modules={enabled}
-              expandedIds={expandedIds}
+              expandedId={expandedId}
               onToggle={onExpandedChange}
-              storageKey={storageKey}
               workspaceVisibleIds={visibleIds}
             />
           </Panel>
           <Separator className="ws-separator" />
           <Panel id="workspace" className="ws-workspace" minSize={320}>
-            <WorkspaceArea modules={visibleModules} views={views} storageKey={storageKey} />
+            <WorkspaceArea module={expandedModule} views={views} />
           </Panel>
           <Separator className="ws-separator" />
           <Panel
@@ -568,7 +401,7 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
       </div>
       <footer className="ws-statusbar">
         <div className="ws-status-left">
-          <StatusSegments modules={expandedModules} selection={selection} />
+          <StatusSegments modules={expandedModule ? [expandedModule] : []} selection={selection} />
         </div>
         <span className="ws-status-extra">{status}</span>
       </footer>

@@ -41,13 +41,7 @@ export interface WorkspaceModule {
   /** 工作区内容。不得包含模块标题区，标题在侧边栏。 */
   Workspace: ComponentType
   context: ModuleContext
-  /** 侧边栏展开高度，缺省 260px。 */
-  sidebarDefaultSize?: number
-  /** 侧边栏最小高度，缺省 120px。 */
-  sidebarMinSize?: number
-  /** 侧边栏最大高度（占侧栏总高的上限），缺省 620px。 */
-  sidebarMaxSize?: number
-  /** 侧边栏折叠后的高度，缺省 32px。 */
+  /** 侧边栏折叠后的高度，缺省 32px。展开的那一节占满剩余高度。 */
   collapsedSidebarSize?: number
   /** 默认展开侧边栏；profile 里没有任何模块声明时默认展开第一个。 */
   defaultExpanded?: boolean

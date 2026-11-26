@@ -51,8 +51,6 @@ interface DemoSpec {
   panes: number
   /** 该模块发布的选中类型。 */
   kind: string
-  sidebarDefaultSize: number
-  sidebarMinSize: number
   /** 组合根注入的跨模块能力；示例里由文件模块提供。 */
   openRootInFiles?: (root: string) => Promise<{ id: string; label: string }>
 }
@@ -142,8 +140,6 @@ function createDemoModule(spec: DemoSpec): WorkspaceModule {
       summary: (selection) => selection.label ?? selection.id,
       Status: () => <DemoStatus spec={spec} />,
     },
-    sidebarDefaultSize: spec.sidebarDefaultSize,
-    sidebarMinSize: spec.sidebarMinSize,
     actions: [
       ...(spec.openRootInFiles
         ? [
@@ -260,8 +256,6 @@ function createSharedContextModule(): WorkspaceModule {
     Sidebar: SharedSidebar,
     Workspace: SharedWorkspace,
     context: { Status: SharedStatus },
-    sidebarDefaultSize: 260,
-    sidebarMinSize: 160,
     actions: [],
   }
 }
@@ -360,8 +354,6 @@ function createFilesModule(): WorkspaceModule & {
         return <span>文件 {roots.length}</span>
       },
     },
-    sidebarDefaultSize: 320,
-    sidebarMinSize: 180,
     actions: [],
   }
 }
@@ -372,8 +364,6 @@ const TASKS: DemoSpec = {
   rows: ['整理需求', '拆分模块', '补测试', '更新文档'],
   panes: 1,
   kind: 'demo.task',
-  sidebarDefaultSize: 320,
-  sidebarMinSize: 180,
 }
 
 const SANDBOX: DemoSpec = {
@@ -382,8 +372,6 @@ const SANDBOX: DemoSpec = {
   rows: ['web-preview', 'pi-agent', 'browser-01'],
   panes: 2,
   kind: 'demo.sandbox',
-  sidebarDefaultSize: 260,
-  sidebarMinSize: 160,
 }
 
 /** 组合根：组合根是唯一同时看见两个模块的地方，跨模块的边在这里显式接线。 */

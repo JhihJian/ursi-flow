@@ -150,29 +150,6 @@
   overflow: hidden;
 }
 
-/* 侧边栏堆叠的拖拽分隔条：拖动调整上下两节高度 */
-.ws-stack-gutter {
-  position: relative;
-  flex: none;
-  height: 6px;
-  cursor: ns-resize;
-}
-
-.ws-stack-gutter::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1px;
-  transform: translateY(-50%);
-  background: transparent;
-}
-
-.ws-stack-gutter:hover::before {
-  background: var(--ws-ink);
-}
-
 /* 模块侧边栏的标准外框（SidebarFrame） */
 .ws-section {
   display: flex;
@@ -294,15 +271,11 @@
   height: 100%;
 }
 
-.ws-workspace-group {
+/* 侧边栏同一时刻只有一节展开，工作区因此只有一列。 */
+.ws-workspace-column {
   height: 100%;
-  width: 100%;
   min-width: 0;
-}
-
-.ws-workspace-panel {
-  min-width: 0;
-  height: 100%;
+  overflow: hidden;
 }
 
 .ws-workspace-view {

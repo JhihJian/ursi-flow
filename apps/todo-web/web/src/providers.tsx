@@ -13,7 +13,6 @@ import {
 } from '@dnd-kit/core'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Task } from './api/types'
-import { MuteButton } from './components/MuteButton'
 import { TaskDragPreview } from './components/TaskSection'
 import { useNotificationPolling } from './hooks/useNotificationPolling'
 import { errorMessage, readDropData, readTaskDrag } from './lib/ui'
@@ -103,7 +102,6 @@ export function TodoProvider({ children }: { children: ReactNode }) {
       <DragOverlay dropAnimation={null}>
         {draggingTask ? <TaskDragPreview task={draggingTask} /> : null}
       </DragOverlay>
-      <MuteButton />
     </DndContext>
   )
 }

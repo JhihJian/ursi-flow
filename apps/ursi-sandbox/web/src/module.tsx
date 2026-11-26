@@ -49,9 +49,6 @@ export function createSandboxModule(options: SandboxModuleOptions = {}): Workspa
     Sidebar: SandboxSidebar,
     Workspace: SandboxWorkspace,
     context: { Status: SandboxStatus },
-    sidebarDefaultSize: 360,
-    sidebarMinSize: 200,
-    sidebarMaxSize: 680,
     actions: [],
   }
 }

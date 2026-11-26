@@ -41,9 +41,6 @@ export function createSshModule(options: SshWebModuleOptions = {}): WorkspaceMod
     Sidebar: SshSidebar,
     Workspace: SshWorkspaceArea,
     context: { Status: SshStatus },
-    sidebarDefaultSize: 320,
-    sidebarMinSize: 160,
-    sidebarMaxSize: 620,
     /** 折叠即卸载，远端 tmux 会话继续运行；重新展开后按会话重新 attach。 */
     keepMounted: false,
   }

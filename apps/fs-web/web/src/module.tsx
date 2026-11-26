@@ -131,9 +131,6 @@ export function createFsModule(
       summary: (selected) => keyName(selected.id),
       Status: FsStatus,
     },
-    sidebarDefaultSize: 360,
-    sidebarMinSize: 200,
-    sidebarMaxSize: 760,
     actions: [],
   }
 }

@@ -13,8 +13,8 @@ export interface SidebarFrameProps {
 
 /**
  * 侧边栏内容的标准外框：展开态渲染「标题 + 折叠按钮 + 内容」，
- * 折叠态渲染整条可点击的窄条。模块可以用它省掉重复的折叠 UI，
- * 也可以按同样形态自己实现，外壳只依赖 collapsed / collapse / expand 三个约定。
+ * 折叠态渲染一条可点击的横向窄条。折叠是上下方向：按钮用 ↑ / ↓，
+ * 不用左右箭头，因为侧边栏堆叠的是高度而不是宽度。
  */
 export function SidebarFrame({
   title,
@@ -34,7 +34,9 @@ export function SidebarFrame({
         aria-label={`${text}。展开 ${title}`}
         onClick={expand}
       >
-        <span className="ws-section-rail-toggle">»</span>
+        <span className="ws-section-rail-toggle" aria-hidden="true">
+          ↓
+        </span>
         <span className="ws-section-rail-title">{title}</span>
         {items.map((item) => (
           <span key={item.label} className="ws-section-rail-item">
@@ -57,7 +59,7 @@ export function SidebarFrame({
           aria-label={`折叠 ${title}`}
           onClick={collapse}
         >
-          «
+          ↑
         </button>
       </header>
       <div className="ws-section-body">{children}</div>

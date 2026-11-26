@@ -125,6 +125,8 @@
 
 /* Sidebar */
 .sidebar {
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
 }
 
@@ -146,6 +148,8 @@
 }
 
 .sidebar-head .sidebar {
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
 }
 
@@ -242,8 +246,20 @@
   color: var(--gray-600);
 }
 
+/* 项目列表占满侧栏剩余高度：空白处也要能右键新建项目。 */
+.project-list-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-xs) 0;
+  overflow-y: auto;
+}
+
 .project-list {
   list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .project-item {

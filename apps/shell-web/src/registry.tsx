@@ -99,8 +99,9 @@ function RegistryView({
             <div className="app-registry-row">
               <dt>sidebar</dt>
               <dd>
-                default {module.sidebarDefaultSize ?? 260} · min {module.sidebarMinSize ?? 120} ·
-                max {module.sidebarMaxSize ?? 620}
+                折叠条 {module.collapsedSidebarSize ?? 32}px · 默认
+                {module.defaultExpanded ? '展开' : '折叠'} · 工作区
+                {module.keepMounted ? '常驻' : '折叠即卸载'}
               </dd>
             </div>
             <div className="app-registry-row">

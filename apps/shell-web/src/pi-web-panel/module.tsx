@@ -159,9 +159,6 @@ export function createPiWebModule(options: PiWebModuleOptions = {}): WorkspaceMo
     },
     /** 折叠时保留 iframe，避免会话、终端、草稿被重置。 */
     keepMounted: true,
-    sidebarDefaultSize: 200,
-    sidebarMinSize: 120,
-    sidebarMaxSize: 360,
     actions: [],
   }
 }

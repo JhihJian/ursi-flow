@@ -1,7 +1,7 @@
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { useEffect, useRef, useState } from 'react'
 import { cx } from '@/lib/ui'
-import { TodoSidebar } from './TodoSidebar'
+import { ProjectSidebar } from './ProjectSidebar'
 import { TodoWorkspace } from './TodoWorkspace'
 
 const SIDEBAR_COLLAPSED_SIZE = 32
@@ -52,10 +52,10 @@ export function Workspace() {
           setSidebarCollapsed(collapsed)
         }}
       >
-        <TodoSidebar
+        <ProjectSidebar
           collapsed={sidebarCollapsed}
-          collapse={collapseSidebar}
-          expand={expandSidebar}
+          onCollapse={collapseSidebar}
+          onExpand={expandSidebar}
         />
       </Panel>
       <Separator className="separator" title="Drag to resize, double-click to reset" />

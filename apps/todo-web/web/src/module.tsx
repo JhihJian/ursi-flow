@@ -85,9 +85,6 @@ export function createTodoModule(options: TodoModuleOptions = {}): WorkspaceModu
       summary: (selection) => selection.label ?? `Task ${selection.id}`,
       Status: TodoStatus,
     },
-    sidebarDefaultSize: 320,
-    sidebarMinSize: 180,
-    sidebarMaxSize: 560,
     actions: [
       {
         id: 'open-project-in-files',

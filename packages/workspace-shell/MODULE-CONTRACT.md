@@ -19,9 +19,6 @@ export function createExecutorModule(): WorkspaceModule {
       summary: (selection) => selection.label ?? selection.id,
       Status: ExecutorStatus,              // 可选：状态栏组件
     },
-    sidebarDefaultSize: 280,
-    sidebarMinSize: 160,
-    sidebarMaxSize: 560,
     collapsedSidebarSize: 32,
     keepMounted: false,
     actions: [...],
@@ -34,6 +31,8 @@ export function createExecutorModule(): WorkspaceModule {
 ## 2. 侧边栏：两种形态都由模块渲染
 
 - `Sidebar` 收到 `{ collapsed, collapse, expand }`。折叠时渲染一条横向窄条，展开时渲染完整内容。
+- 外壳是手风琴：同一时刻只有一节展开，展开的那节占满侧栏剩余高度；折叠这一节不会让别的节跟着变高。
+- 折叠方向是上下，不是左右。折叠按钮用 ↑，窄条上的展开提示用 ↓。
 - 窄条上给出标题与 2–3 项关键信息（状态、数量），整条可点击展开，并带 `aria-label`。
 - 折叠态不要依赖折叠时的高度值，外壳会把这一节压到 `collapsedSidebarSize`（缺省 32px）。
 - 可以用外壳导出的 `SidebarFrame` 省掉重复的标题行与窄条：
@@ -57,7 +56,7 @@ export function createExecutorModule(): WorkspaceModule {
 
 - `Workspace` 是模块的主体，不含标题区、不含「折叠 / 展开」入口。
 - 工作区只在侧边栏展开时显示。声明 `keepMounted: true` 时折叠后仍挂载（隐藏），适合 iframe、终端这类不能重置的模块；否则折叠即卸载，重新展开从头开始。
-- 不要假设工作区一定有确定宽度：多模块同时展开时一列可能只有 300–500px。用 `flex`、`min-width: 0`，表格允许横向滚动或收列。
+- 工作区常与右侧控制面板并排，宽度不固定。用 `flex`、`min-width: 0`，表格允许横向滚动或收列。
 - 滚动放在模块自己的容器上，不要让整页滚动。
 
 ## 4. 上下文：选中与状态栏
@@ -168,7 +167,7 @@ run: async (selection, shell) => {
 ## 14. 检查清单
 
 - [ ] `id` 唯一、小写短横线；`title` 简短
-- [ ] `Sidebar` 同时处理展开与折叠两种形态
+- [ ] `Sidebar` 同时处理展开与折叠两种形态，折叠是上下方向（窄条横向铺开）
 - [ ] `Workspace` 不含模块标题区
 - [ ] `context.kind` 全局唯一；只清除自己的选中
 - [ ] `Provider` 不渲染 DOM；样式作用域在 `Sidebar` / `Workspace` 内部
