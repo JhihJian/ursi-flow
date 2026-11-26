@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/connections", get(handlers::get_connections))
         .route("/api/connections", post(handlers::post_connection))
+        .route("/api/connections/test", post(handlers::test_connection))
         .route(
             "/api/connections/{id}",
             get(handlers::get_connection)

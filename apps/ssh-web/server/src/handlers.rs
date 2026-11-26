@@ -7,8 +7,34 @@ use crate::app::{app_state, bad_request, not_found, AppError, AppResult};
 use crate::db;
 use crate::models::{
     Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse, SuccessResponse,
-    UpdateConnectionRequest,
+    TestConnectionRequest, TestConnectionResponse, UpdateConnectionRequest,
 };
+
+/// `POST /api/connections/test`：验证一条尚未保存的 ssh 命令能否连上远端。
+/// 只测传输层与认证（批量 ssh 执行 `hostname`），不读 tmux、不写库。
+pub async fn test_connection(
+    Json(request): Json<TestConnectionRequest>,
+) -> AppResult<Json<TestConnectionResponse>> {
+    let command = crate::models::validate_ssh_command(&request.command).map_err(bad_request)?;
+    let config = Connection {
+        id: 0,
+        name: String::new(),
+        command,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+    let response = match crate::session::probe_connection(&config).await {
+        Ok(host) => TestConnectionResponse {
+            ok: true,
+            detail: (!host.is_empty()).then_some(host),
+        },
+        Err(error) => TestConnectionResponse {
+            ok: false,
+            detail: Some(format!("{error:#}")),
+        },
+    };
+    Ok(Json(response))
+}
 
 /// `GET /api/connections`：连接列表。
 pub async fn get_connections() -> AppResult<Json<ConnectionsResponse>> {

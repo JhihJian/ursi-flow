@@ -13,6 +13,12 @@ export interface ConnectionInput {
   command: string
 }
 
+/** 连接自检结果：ok 为 true 时 detail 是远端主机名，否则是失败原因。 */
+export interface TestConnectionResponse {
+  ok: boolean
+  detail: string | null
+}
+
 /** 远端一条 tmux 会话。 */
 export interface TmuxSession {
   name: string

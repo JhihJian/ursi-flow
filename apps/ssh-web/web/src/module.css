@@ -727,6 +727,27 @@
   padding: var(--ssh-space-sm) var(--ssh-space-md);
 }
 
+/* 自检失败：原因在前，覆盖保存的次按钮在后。 */
+.ssh-sheet-verify {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ssh-space-md);
+  padding: 0 var(--ssh-space-md) var(--ssh-space-sm);
+}
+
+.ssh-sheet-verify-text {
+  flex: 1;
+  color: var(--ssh-danger);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.ssh-sheet-verify .ssh-btn {
+  flex: none;
+  padding: var(--ssh-space-xs) var(--ssh-space-sm);
+}
+
 .ssh-field {
   display: flex;
   flex: 1 1 160px;

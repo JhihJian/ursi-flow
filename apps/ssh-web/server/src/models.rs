@@ -39,6 +39,18 @@ pub struct ConnectionsResponse {
     pub connections: Vec<Connection>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct TestConnectionRequest {
+    pub command: String,
+}
+
+/// 连接自检结果：ok 为 true 时 detail 是远端主机名，否则是失败原因（含 OpenSSH stderr）。
+#[derive(Debug, Serialize)]
+pub struct TestConnectionResponse {
+    pub ok: bool,
+    pub detail: Option<String>,
+}
+
 /// 远端一条 tmux 会话：名称、attach 的客户端数、创建时间（unix 秒）。
 #[derive(Debug, Clone, Serialize)]
 pub struct TmuxSession {

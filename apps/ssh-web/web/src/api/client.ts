@@ -1,4 +1,10 @@
-import type { Connection, ConnectionInput, HostMetrics, TmuxSessionsResponse } from './types'
+import type {
+  Connection,
+  ConnectionInput,
+  HostMetrics,
+  TestConnectionResponse,
+  TmuxSessionsResponse,
+} from './types'
 
 export interface SshApiOptions {
   /** API 前缀。缺省 `/api`（独立入口的同源代理）；嵌入工作区时由宿主注入 `/api/ssh-web`。 */
@@ -45,6 +51,11 @@ export class SshApi {
 
   createConnection(input: ConnectionInput): Promise<{ id: number }> {
     return this.request('/connections', { method: 'POST', body: JSON.stringify(input) })
+  }
+
+  /** 自检一条尚未保存的 ssh 命令：只验证能否连上，不读远端 tmux。 */
+  testConnection(command: string): Promise<TestConnectionResponse> {
+    return this.request('/connections/test', { method: 'POST', body: JSON.stringify({ command }) })
   }
 
   updateConnection(id: number, input: Partial<ConnectionInput>): Promise<{ success: boolean }> {

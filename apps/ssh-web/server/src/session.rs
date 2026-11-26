@@ -260,6 +260,8 @@ async fn exec_collect(
             .args(&args)
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
+            // 超时分支会丢掉 future，不杀子进程会在超时后留下悬挂的 ssh。
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -271,6 +273,21 @@ async fn exec_collect(
         String::from_utf8_lossy(&output.stderr).into_owned(),
         code,
     ))
+}
+
+/// 连接自检：批量 ssh 跑一次 `hostname`，只验证传输层与认证，不碰远端 tmux。
+/// 成功返回远端主机名；失败时错误消息带 OpenSSH 自己的 stderr。
+pub async fn probe_connection(connection: &ConnectionConfig) -> Result<String> {
+    let (out, err, code) = exec_collect(connection, "hostname").await?;
+    if code == 0 {
+        return Ok(out.trim().to_string());
+    }
+    let detail = err.trim();
+    Err(anyhow!(if detail.is_empty() {
+        format!("ssh 连接失败（exit {code}）")
+    } else {
+        format!("ssh 连接失败：{detail}")
+    }))
 }
 
 /// 远端无 tmux 时由脚本打印的标记。用显式探测替代「退出码 127」，

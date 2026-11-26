@@ -30,6 +30,17 @@
 
 返回 `{"id": 1}`，状态 201。
 
+### `POST /connections/test`
+
+保存前的连接自检：只验证传输层与认证，不读远端 tmux、不写库。批量 ssh（`BatchMode=yes`）执行一次 `hostname`，`command` 校验规则同 POST。返回：
+
+```json
+{"ok": true, "detail": "bogon"}
+{"ok": false, "detail": "ssh 连接失败：ssh: Could not resolve hostname bad-host: ..."}
+```
+
+`ok` 为 true 时 `detail` 是远端主机名，否则是 OpenSSH 的失败原因。HTTP 状态恒为 200：连不上是自检结果而不是接口错误。需要交互密码的远端在这里会因 `BatchMode=yes` 报认证失败，这类连接仍可由用户在确认后保存，再到终端里输入密码。
+
 ### `PUT /connections/{id}`
 
 更新连接。字段全部可选，只更新出现的字段；`name`/`command` 提供即替换（校验规则同 POST）。返回 `{"success": true}`；连接不存在返回 404。

@@ -1,7 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { ApiError, SshApi } from '../api/client'
 import { memoryPercent } from '../resource-metrics'
-import type { Connection, ConnectionInput, HostMetrics, TmuxSession } from '../api/types'
+import type { Connection, ConnectionInput, HostMetrics, TestConnectionResponse, TmuxSession } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
 
@@ -109,6 +109,8 @@ export interface SshStoreState {
   setResourcesOpen: (open: boolean) => void
   toggleResources: () => void
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
+  /** 自检一条 ssh 命令：只验证能否连上，不读远端 tmux。 */
+  verifyConnection: (command: string) => Promise<TestConnectionResponse>
   removeConnection: (id: number) => Promise<void>
   setEditor: (editor: EditorTarget | null) => void
   setNotice: (message: string | null) => void
@@ -336,6 +338,8 @@ export function createSshStore(
       }
       set({ editor: null })
     },
+
+    verifyConnection: (command) => api.testConnection(command),
 
     removeConnection: async (id) => {
       await api.deleteConnection(id)
