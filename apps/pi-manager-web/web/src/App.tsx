@@ -9,6 +9,7 @@ import { SkillsSection } from './components/sections/SkillsSection'
 import { AgentsSection } from './components/sections/AgentsSection'
 import { PluginsSection } from './components/sections/PluginsSection'
 import { McpSection } from './components/sections/McpSection'
+import { SessionsSection } from './components/sections/SessionsSection'
 import { EmptyState, ErrorBanner, Loading } from './components/ui'
 
 /**
@@ -83,7 +84,7 @@ export function App() {
               if (!mounted.has(id)) return null
               return (
                 <div key={id} hidden={id !== section} style={id !== section ? { display: 'none' } : undefined}>
-                  <SectionContent id={id} home={homePath} />
+                  <SectionContent id={id} home={homePath} active={id === section} />
                 </div>
               )
             })
@@ -101,7 +102,7 @@ export function App() {
   )
 }
 
-function SectionContent({ id, home }: { id: SectionId; home: string }) {
+function SectionContent({ id, home, active }: { id: SectionId; home: string; active: boolean }) {
   switch (id) {
     case 'general':
       return <GeneralSection home={home} />
@@ -117,6 +118,8 @@ function SectionContent({ id, home }: { id: SectionId; home: string }) {
       return <PluginsSection home={home} />
     case 'mcp':
       return <McpSection home={home} />
+    case 'sessions':
+      return <SessionsSection home={home} active={active} />
     default:
       return <ErrorBanner message="未知分区" />
   }

@@ -12,7 +12,7 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[Flow Core](flow-core/SPEC.md) 是无状态推进 SDK，[Flow Runtime](flow-runtime/SPEC.md) 的引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。
 
-独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），只读写文件不运行会话，与 Pi Web 和 CLI 互补。
+独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），也能按 agent 执行一次性会话任务并查看该 home 的运行中会话，与 Pi Web 和 CLI 互补。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 

@@ -228,6 +228,36 @@ export interface PluginsListing {
   revision: string
 }
 
+/** 心跳文件里的一个活会话。 */
+export interface LiveSession {
+  sessionId: string
+  sessionFile: string | null
+  /** subagent 子会话指向父会话文件。 */
+  parentSessionFile: string | null
+  cwd: string
+  name: string | null
+  mode: string
+  model: string | null
+  status: 'running' | 'idle'
+  startedAt: number
+  updatedAt: number
+  host: string
+  pid: number
+  /** 心跳来自本机时为 true。 */
+  sameHost: boolean
+}
+
+export interface LiveSessionsListing {
+  sessions: LiveSession[]
+  heartbeatDir: string
+  /** extensions/ 下是否检测到心跳扩展。 */
+  pluginDetected: boolean
+  /** 已超时或进程已退出的心跳数。 */
+  stale: number
+  now: number
+  warnings: string[]
+}
+
 export interface MutationResult {
   ok: true
   revision: string

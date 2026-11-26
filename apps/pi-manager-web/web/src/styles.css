@@ -605,6 +605,10 @@ textarea {
   color: var(--danger);
 }
 
+.state-mark.running {
+  color: var(--gray-900);
+}
+
 /* 兼容旧 split view 类：转为表格列表之外的左右布局仍可用 */
 .split-view {
   display: flex;

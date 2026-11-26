@@ -3,6 +3,7 @@ import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
 import { HomeRegistry, type HomeEntry } from './homes.ts'
 import { startSessionTask, getTask, listTasks, cancelSessionTask, taskCapacity } from './session-task.ts'
+import { readLiveSessions } from './live-sessions.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { ConflictError } from './rw.ts'
 import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } from './skills.ts'
@@ -459,6 +460,15 @@ route('GET', '/api/session/tasks', async ({ url }) => {
   if (!raw || !raw.trim()) return { tasks: listTasks(), capacity: taskCapacity() }
   const agent = resolveAgent(raw)
   return { tasks: listTasks(agent.path), capacity: taskCapacity() }
+})
+
+/**
+ * 该 home 的跨进程运行态：读心跳扩展写的文件，与任务表无关。
+ * 路径在 /api/session/ 下，路由层不预校验 home，这里自己 realpath。
+ */
+route('GET', '/api/session/live', async ({ url }) => {
+  const home = await resolveRequestedHome(url.searchParams.get('home'))
+  return readLiveSessions(home)
 })
 
 route('POST', '/api/session/cancel', async ({ body }) => {

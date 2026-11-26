@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseJsonc, stripJsonComments } from './jsonc.ts'
 import { readSnapshotSync, writeSnapshot, ConflictError } from './rw.ts'
@@ -20,6 +20,7 @@ import { readCachedCatalog } from './models-runtime.ts'
 import { createHash } from 'node:crypto'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
+import { readLiveSessions } from './live-sessions.ts'
 
 function makeHome(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-manager-test-'))
@@ -948,4 +949,55 @@ test('catalog：覆盖值优先于运行时目录，并标在 overriddenFields �
   assert.equal(item.images, true)
   assert.deepEqual(item.overriddenFields, ['contextWindow', 'input'])
   assert.ok(catalog.modelsRevision)
+})
+
+// ---------------------------------------------------------------------------
+// 跨进程会话心跳
+// ---------------------------------------------------------------------------
+
+function writeBeat(home: string, beat: Record<string, unknown>): void {
+  const dir = join(home, 'state', 'running-sessions')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `${String(beat.sessionId)}.json`), JSON.stringify(beat))
+}
+
+test('live sessions：只留新鲜心跳，running 排在 idle 前，死进程与坏文件计入 stale', () => {
+  const dir = makeHome()
+  const now = Date.now()
+  const base = { version: 1, host: hostname(), pid: process.pid, cwd: '/tmp/p', mode: 'tui', model: 'p/m' }
+  writeBeat(dir, { ...base, sessionId: 'idle', status: 'idle', updatedAt: now })
+  writeBeat(dir, { ...base, sessionId: 'running', status: 'running', updatedAt: now - 1000 })
+  writeBeat(dir, { ...base, sessionId: 'expired', status: 'running', updatedAt: now - 120_000 })
+  writeBeat(dir, { ...base, sessionId: 'dead', pid: 2147483647, status: 'running', updatedAt: now })
+  mkdirSync(join(dir, 'extensions'), { recursive: true })
+  writeFileSync(join(dir, 'extensions', 'pi-session-heartbeat.ts'), '')
+
+  const listing = readLiveSessions(dir)
+  assert.equal(listing.pluginDetected, true)
+  assert.deepEqual(listing.sessions.map((s) => s.sessionId), ['running', 'idle'])
+  assert.equal(listing.stale, 2)
+  assert.equal(listing.sessions[0].sessionFile, null)
+})
+
+test('live sessions：跨机条目只按 updatedAt 判活，坏 JSON 不阻塞其余条目', () => {
+  const dir = makeHome()
+  const now = Date.now()
+  const base = { version: 1, host: 'other-host', pid: 1, status: 'running', cwd: '/x', mode: 'rpc' }
+  writeBeat(dir, { ...base, sessionId: 'remote-live', updatedAt: now })
+  writeBeat(dir, { ...base, sessionId: 'remote-stale', updatedAt: now - 120_000 })
+  writeFileSync(join(dir, 'state', 'running-sessions', 'broken.json'), '{not json')
+
+  const listing = readLiveSessions(dir)
+  assert.deepEqual(listing.sessions.map((s) => s.sessionId), ['remote-live'])
+  assert.equal(listing.sessions[0].sameHost, false)
+  assert.equal(listing.stale, 2)
+  assert.ok(listing.warnings.length >= 1)
+})
+
+test('live sessions：没有心跳目录时返回空清单', () => {
+  const dir = makeHome()
+  const listing = readLiveSessions(dir)
+  assert.deepEqual(listing.sessions, [])
+  assert.equal(listing.stale, 0)
+  assert.equal(listing.pluginDetected, false)
 })

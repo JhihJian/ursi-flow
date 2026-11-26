@@ -8,6 +8,7 @@ import type {
   GeneralListing,
   HomeCheck,
   HomeDefaults,
+  LiveSessionsListing,
   McpListing,
   ModelCatalog,
   ModelsListing,
@@ -144,6 +145,8 @@ export const api = {
     revision: string,
   ) => request<MutationResult>('PUT', '/api/auth/entries', home, { entries, revision }),
   getPlugins: (home: string) => request<PluginsListing>('GET', '/api/plugins', home),
+  /** 该 home 的跨进程运行态：读心跳扩展写的文件。 */
+  getLiveSessions: (home: string) => request<LiveSessionsListing>('GET', '/api/session/live', home),
   mutatePluginEntry: (home: string, action: 'enable' | 'disable' | 'remove', index: number, revision: string) =>
     request<MutationResult>('POST', '/api/plugins/entry', home, { action, index, revision }),
 }

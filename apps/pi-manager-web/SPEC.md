@@ -140,9 +140,9 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 同时运行的会话数受上限约束（默认 4，`PI_MANAGER_MAX_TASKS` 可调），超出返回 429；单次任务有超时（默认 600000 ms，`PI_MANAGER_TASK_TIMEOUT_MS` 可调），超时即中止并标记失败。
 - pi SDK 按需加载：未安装 `@earendil-works/pi-coding-agent` 时配置管理功能照常可用，执行接口返回 503。
 
-### 会话心跳（跨进程运行态）
+### 查看运行中的 pi 会话
 
-pi 不维护跨进程的会话注册表，运行态只存在于进程内存里。管理台要看见 CLI、pi-web 与 SDK 起的会话，统一约定用一个 pi 扩展把运行态写到 home 目录。
+pi 不维护跨进程的会话注册表，运行态只存在于进程内存里。管理台要看见 CLI、pi-web 与 SDK 起的会话，统一约定用一个 pi 扩展把运行态写到 home 目录，再用只读接口汇总到页面。
 
 #### 验收
 
@@ -151,6 +151,10 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 - `session_start` 写入并每 15 秒续写 `updatedAt`，`session_shutdown` 与进程退出删除本进程写下的文件；写临时文件后原子 rename，权限 0600。
 - 同机条目按 pid 判活，进程消失即清；跨机与无法解析的条目按 `updatedAt` 超过 30 分钟清理。读取方可在 60 秒未续写时视为失联，不依赖清扫时机。
 - 心跳写入失败只影响心跳，不影响会话；`host` 与 `pid` 让读取方区分同机多进程、同进程多会话与 subagent 子会话。
+- `GET /api/session/live?home=<路径>` 只读心跳目录，返回 `sessions`、`heartbeatDir`、`pluginDetected`、`stale`、`now`、`warnings`。超过 60 秒未续写或同机 pid 已退出的条目不进 `sessions`，只计入 `stale`；`running` 排在 `idle` 前，同一状态按最近心跳倒序。
+- 心跳目录不存在时返回空清单而不是报错；坏文件与读取失败写进 `warnings` 并跳过，不阻塞其余条目。
+- 页面「会话」分区只读展示状态、名称或 session id、模型、cwd 与最近心跳时间；打开时每 5 秒轮询，切到其他分区停止轮询，详情面板给出会话文件、父会话、主机与 pid、开始时间。
+- `extensions/` 下未检测到扩展且没有会话时，页面提示安装路径与 `/reload`；有会话时不再提示。分区不提供启动、切换、取消会话的操作。
 
 ### 安全边界
 
@@ -164,6 +168,6 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回与心跳过滤。
 - `extension/`：`pi-session-heartbeat.ts` 是安装到 pi home 的扩展，负责写会话心跳文件；`README.md` 记录安装方式与文件约定。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与八个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`sections/SessionsSection.tsx` 是只读会话运行态；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
