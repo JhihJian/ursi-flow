@@ -43,7 +43,7 @@ function RuleRow({ draft, index, count, change, remove }: {
   return <li className="grid items-start gap-2 border-b border-line px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto]">
     <label className="text-xs text-txt3">规则 ID<Input required maxLength={64} value={draft.id} onChange={e => change({ id: e.target.value })} /></label>
     <label className="text-xs text-txt3">标签名称<Input required maxLength={64} value={draft.label} onChange={e => change({ label: e.target.value })} /></label>
-    <label className="text-xs text-txt3">元数据键<Input required maxLength={128} spellCheck={false} placeholder="ursi/executorProtocol" value={draft.metaKey} onChange={e => change({ metaKey: e.target.value })} /></label>
+    <label className="text-xs text-txt3">元数据键<Input required maxLength={128} spellCheck={false} placeholder="example/serviceKind" value={draft.metaKey} onChange={e => change({ metaKey: e.target.value })} /></label>
     <label className="text-xs text-txt3">等于值<Input required maxLength={256} spellCheck={false} placeholder="1" value={draft.equals} onChange={e => change({ equals: e.target.value })} /></label>
     <Button type="button" variant="ghost" size="icon" icon="trash" title={`删除第 ${index + 1} 条规则`} aria-label={`删除第 ${index + 1} 条规则`} disabled={count <= 1} onClick={remove} />
   </li>

@@ -71,7 +71,7 @@ const result = await engine.start({ flow: { id, text, path }, variables, cwd })
 
 ## 没有宿主
 
-Flow Runtime 只做推进，不提供守护进程、Unix socket、HTTP、MCP adapter、模型 SDK 或包修订管理。这些职责在本仓库中已整体移除：需要长期运行的服务、执行器平台调用和客户端入口时，由使用方在自己的进程里实现 `prompt` 与 `command` 两个端口。
+Flow Runtime 只做推进，不提供守护进程、Unix socket、HTTP、MCP adapter、模型 SDK 或包修订管理。这些职责在本仓库中已整体移除：需要长期运行的服务和客户端入口时，由使用方在自己的进程里实现 `prompt` 与 `command` 两个端口。
 
 这样切分的直接收益：
 
@@ -96,7 +96,6 @@ Flow Core 表达四种动作：`新建Agent`、`confirm`、`执行自定义命�
 
 - `cd apps/ursi-flow && npm test`：SDK 用例覆盖解析、变量、命令与并行推进；引擎用例覆盖推进、确认、拒绝与恢复；闭环与命令行用例覆盖 `FLOW.md` 到结果。
 - `cd apps/ursi-flow && npm run test:pack`：打包后在仓库外离线安装并跑 SDK 用例。
-- `cd workbench/server && cargo test`：Workbench 只保留 v2 业务接口。
 - `spec_validate`：模块结构与文档引用有效。
 
 ## 风险

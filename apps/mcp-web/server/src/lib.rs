@@ -117,12 +117,7 @@ pub struct RecognitionRule {
 }
 
 pub fn default_recognition_rules() -> Vec<RecognitionRule> {
-    vec![RecognitionRule {
-        id: "executor-v1".into(),
-        label: "执行器 v1".into(),
-        meta_key: "ursi/executorProtocol".into(),
-        equals: "1".into(),
-    }]
+    Vec::new()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,7 +150,7 @@ fn stored_check<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Protoco
 /// The host owns persistence. Insert must enforce MAX_SERVERS atomically.
 /// Updates touch only the named field, never recreating a removed record.
 pub trait ServerRepository: Send + Sync {
-    /// Seed an uninitialized store with `default_recognition_rules`, never a saved empty list.
+    /// 读取识别规则；未初始化的存储返回 `default_recognition_rules` 的结果，当前为空。
     fn recognition_rules(&self) -> Result<Vec<RecognitionRule>, Error>;
     /// Atomically save the ordered rules and clear every stored protocol check.
     fn replace_recognition_rules(&self, rules: &[RecognitionRule]) -> Result<(), Error>;

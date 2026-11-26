@@ -10,7 +10,7 @@
 bash apps/mcp-web/scripts/package.sh
 ```
 
-压缩包和 SHA-256 文件生成在 `apps/mcp-web/dist/`。解压后按[启动说明](app/DEPLOY.md)启动。运行机器无需 Workbench、Flow 或构建工具。构建机可运行 `python3 apps/mcp-web/scripts/smoke.py <解压目录>/mcp-webd`，检查独立启动、资源读取和重启持久化。
+压缩包和 SHA-256 文件生成在 `apps/mcp-web/dist/`。解压后按[启动说明](app/DEPLOY.md)启动。运行机器无需其他服务、Flow 或构建工具。构建机可运行 `python3 apps/mcp-web/scripts/smoke.py <解压目录>/mcp-webd`，检查独立启动、资源读取和重启持久化。
 
 ## 嵌入应用
 

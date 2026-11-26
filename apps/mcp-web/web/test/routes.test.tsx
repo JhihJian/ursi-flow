@@ -51,7 +51,7 @@ it('只在显式协议检查后更新列表标签，复查失败保留标签，�
   let row: McpServer = server
   const checkedAt = Date.UTC(2026, 6, 28)
   const probe = vi.fn()
-    .mockImplementationOnce(() => ({ status: 'checked', checkedAt, labels: ['执行器 v1'] }))
+    .mockImplementationOnce(() => ({ status: 'checked', checkedAt, labels: ['团队服务'] }))
     .mockImplementationOnce(() => { throw new Error('暂时无法连接') })
     .mockImplementationOnce(() => ({ status: 'checked', checkedAt, labels: [] }))
   const { user } = mount('/admin/mcp-servers', (path, { method, body }) => {
@@ -66,9 +66,9 @@ it('只在显式协议检查后更新列表标签，复查失败保留标签，�
   })
   const button = await screen.findByRole('button', { name: '检查协议' })
   expect(probe).not.toHaveBeenCalled()
-  expect(screen.queryByText('执行器 v1')).not.toBeInTheDocument()
+  expect(screen.queryByText('团队服务')).not.toBeInTheDocument()
   await user.click(button)
-  expect(await screen.findByText('执行器 v1')).toHaveAttribute('title', '上次协议检查时匹配的标签')
+  expect(await screen.findByText('团队服务')).toHaveAttribute('title', '上次协议检查时匹配的标签')
   await user.click(screen.getByRole('button', { name: '刷新登记' }))
   expect(probe).toHaveBeenCalledTimes(1)
   await user.click(screen.getByRole('link', { name: '浏览资源' }))
@@ -77,31 +77,31 @@ it('只在显式协议检查后更新列表标签，复查失败保留标签，�
   const recheck = screen.getByRole('button', { name: '重新检查协议' })
   await user.click(recheck)
   expect(await screen.findByRole('alert')).toHaveTextContent('暂时无法连接')
-  expect(screen.getByText('执行器 v1')).toBeVisible()
+  expect(screen.getByText('团队服务')).toBeVisible()
   await user.click(recheck)
   expect(await screen.findByText('未匹配识别规则')).toBeVisible()
   await user.click(screen.getByRole('link', { name: '返回服务列表' }))
   await screen.findByRole('button', { name: '检查协议' })
-  expect(screen.queryByText('执行器 v1')).not.toBeInTheDocument()
+  expect(screen.queryByText('团队服务')).not.toBeInTheDocument()
 })
 
 it('识别规则可编辑保存并按新规则重新检查', async () => {
   let saved: unknown[] | null = null
-  const server2 = { ...server, protocolCheck: { status: 'checked', checkedAt: 1, labels: ['执行器 v1'] } }
+  const server2 = { ...server, protocolCheck: { status: 'checked', checkedAt: 1, labels: ['团队服务'] } }
   const { user } = mount('/admin/mcp-servers', (path, { method, body }) => {
     if (path === '/mcp-recognition-rules') {
       if (method === 'PUT') {
         saved = JSON.parse(String(body))
         return saved
       }
-      return saved ?? [{ id: 'executor-v1', label: '执行器 v1', metaKey: 'ursi/executorProtocol', equals: '1' }]
+      return saved ?? [{ id: 'team-v1', label: '团队服务', metaKey: 'example/serviceKind', equals: '1' }]
     }
     if (path === '/mcp-servers') return [saved ? server : server2]
     throw new Error(path)
   })
-  await screen.findByText('执行器 v1')
+  await screen.findByText('团队服务')
   await user.click(screen.getByRole('link', { name: '识别规则' }))
-  await screen.findByDisplayValue('ursi/executorProtocol')
+  await screen.findByDisplayValue('example/serviceKind')
   await user.type(screen.getByLabelText('标签名称'), '（已授权）')
   await user.click(screen.getByRole('button', { name: '添加规则' }))
   await user.type(screen.getAllByLabelText('规则 ID')[1], 'analysis')
@@ -112,32 +112,32 @@ it('识别规则可编辑保存并按新规则重新检查', async () => {
   await user.click(await screen.findByRole('button', { name: '保存规则' }))
   expect(await screen.findByText(/已保存 2 条识别规则/)).toBeVisible()
   expect(saved).toEqual([
-    { id: 'executor-v1', label: '执行器 v1（已授权）', metaKey: 'ursi/executorProtocol', equals: '1' },
+    { id: 'team-v1', label: '团队服务（已授权）', metaKey: 'example/serviceKind', equals: '1' },
     { id: 'analysis', label: '分析', metaKey: 'ursi/serviceKind', equals: 'analysis' },
   ])
-  expect(screen.queryByText('执行器 v1')).not.toBeInTheDocument()
+  expect(screen.queryByText('团队服务')).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '返回服务列表' })).toHaveAttribute('href', '/admin/mcp-servers')
 })
 
 it('拒绝重复规则并在放弃修改后还原列表', async () => {
-  const seed = [{ id: 'executor-v1', label: '执行器 v1', metaKey: 'ursi/executorProtocol', equals: '1' }]
+  const seed = [{ id: 'team-v1', label: '团队服务', metaKey: 'example/serviceKind', equals: '1' }]
   const put = vi.fn()
   const { user } = mount('/admin/mcp-recognition-rules', (path, { method }) => {
     if (path === '/mcp-recognition-rules' && method === 'PUT') { put(); return seed }
     if (path === '/mcp-recognition-rules') return seed
     throw new Error(path)
   })
-  await screen.findByDisplayValue('ursi/executorProtocol')
+  await screen.findByDisplayValue('example/serviceKind')
   await user.click(screen.getByRole('button', { name: '添加规则' }))
-  await user.type(screen.getAllByLabelText('规则 ID')[1], 'executor-v1')
+  await user.type(screen.getAllByLabelText('规则 ID')[1], 'team-v1')
   await user.type(screen.getAllByLabelText('标签名称')[1], '重复 ID')
-  await user.type(screen.getAllByLabelText('元数据键')[1], 'ursi/executorProtocol')
+  await user.type(screen.getAllByLabelText('元数据键')[1], 'example/serviceKind')
   await user.type(screen.getAllByLabelText('等于值')[1], '1')
-  expect(await screen.findByText(/规则 ID「executor-v1」重复/)).toBeVisible()
+  expect(await screen.findByText(/规则 ID「team-v1」重复/)).toBeVisible()
   expect(screen.getByRole('button', { name: '保存全部规则' })).toBeDisabled()
   expect(put).not.toHaveBeenCalled()
   await user.click(screen.getByRole('button', { name: '放弃修改' }))
-  expect(screen.getByDisplayValue('ursi/executorProtocol')).toBeVisible()
+  expect(screen.getByDisplayValue('example/serviceKind')).toBeVisible()
   expect(screen.getAllByLabelText('规则 ID')).toHaveLength(1)
   await user.type(screen.getByLabelText('标签名称'), '新名')
   await user.click(screen.getByRole('button', { name: '保存全部规则' }))

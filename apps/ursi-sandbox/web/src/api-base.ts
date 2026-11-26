@@ -3,7 +3,7 @@
  *
  * 独立部署时缺省用相对路径（与 server.mjs 同源）；嵌入工作台外壳时由
  * createSandboxModule({ apiBase }) 覆盖为宿主注入的代理前缀（如 /sbx）。
- * 所有 fetch 与 Workbench 的 WS 地址都从这里取基准，不再散落硬编码。
+ * 所有 fetch 与 沙箱工作台的 WS 地址都从这里取基准，不再散落硬编码。
  */
 let apiBase = './'
 export function setApiBase(value: string) {

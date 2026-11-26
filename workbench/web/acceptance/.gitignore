@@ -1,3 +1,0 @@
-# 联合验收的临时运行目录与证据文件，由 npm run test:acceptance 每次重建。
-.run/
-evidence/

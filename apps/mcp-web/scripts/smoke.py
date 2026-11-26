@@ -25,7 +25,7 @@ class Peer(http.server.BaseHTTPRequestHandler):
         result = {
             'server/discover': {'resultType': 'complete', 'supportedVersions': ['2026-07-28'],
                                 'capabilities': {'resources': {}}, 'ttlMs': 0, 'cacheScope': 'private',
-                                '_meta': {'ursi/executorProtocol': '1',
+                                '_meta': {'example/serviceKind': '1',
                                           'io.modelcontextprotocol/serverInfo': {'name': 'delivery-smoke', 'version': '1'}}},
             'resources/list': {'resources': [{'name': 'Smoke', 'uri': 'memo:smoke'}]},
             'resources/read': {'contents': [{'uri': 'memo:smoke', 'text': 'standalone resource'}]},
@@ -43,7 +43,7 @@ class Peer(http.server.BaseHTTPRequestHandler):
 
 @contextlib.contextmanager
 def run(binary, cwd, data, token_file):
-    # No inherited PATH, Node, toolchain, or Workbench settings.
+    # No inherited PATH, Node, toolchain, or unrelated settings.
     env = {'MCP_WEB_BIND': '0.0.0.0:0', 'MCP_WEB_DATA_DIR': str(data),
            'MCP_WEB_TOKEN_FILE': str(token_file), 'SMOKE_TOKEN': 'not-a-platform-credential'}
     with subprocess.Popen([binary], cwd=cwd, env=env, stderr=subprocess.PIPE, text=True) as process:
@@ -150,17 +150,19 @@ def check(binary, root, endpoint):
         extra = call(url, registry, 'POST', {**draft, 'credentialEnv': 'SMOKE_TOKEN'})
         call(url, registry + '/' + extra['id'], 'DELETE')
         rules_path = api + '/mcp-recognition-rules'
-        assert call(url, rules_path) == [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
+        assert call(url, rules_path) == []
+        rule = [{'id': 'team-v1', 'label': '团队服务', 'metaKey': 'example/serviceKind', 'equals': '1'}]
+        assert call(url, rules_path, 'PUT', rule) == rule
         check_result = call(url, detail + '/protocol-check', 'POST')
         assert check_result['status'] == 'checked' and check_result['checkedAt'] > 0
-        assert check_result['labels'] == ['执行器 v1']
+        assert check_result['labels'] == ['团队服务']
         assert call(url, registry)[0]['protocolCheck'] == check_result
-        custom = [{'id': 'executor-v1', 'label': '执行器 v1', 'metaKey': 'ursi/executorProtocol', 'equals': '1'},
-                  {'id': 'smoke', 'label': '烟雾测试', 'metaKey': 'ursi/executorProtocol', 'equals': '1'}]
+        custom = [{'id': 'team-v1', 'label': '团队服务', 'metaKey': 'example/serviceKind', 'equals': '1'},
+                  {'id': 'smoke', 'label': '烟雾测试', 'metaKey': 'example/serviceKind', 'equals': '1'}]
         assert call(url, rules_path, 'PUT', custom) == custom
         assert call(url, registry)[0].get('protocolCheck') is None
         check_result = call(url, detail + '/protocol-check', 'POST')
-        assert check_result['labels'] == ['执行器 v1', '烟雾测试']
+        assert check_result['labels'] == ['团队服务', '烟雾测试']
         assert call(url, rules_path, 'PUT', []) == []
         assert call(url, registry)[0].get('protocolCheck') is None
         check_result = call(url, detail + '/protocol-check', 'POST')

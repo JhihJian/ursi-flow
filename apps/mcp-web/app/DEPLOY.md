@@ -1,6 +1,6 @@
 # 启动独立 MCP 管理台
 
-交付包包含 Linux 可执行文件 `mcp-webd` 和同目录的 `web/` 管理页面。保留二者的相对位置，即可从任意工作目录启动。运行环境只需与包匹配的 Linux 架构，不依赖 Workbench、Flow、Node.js 或 Rust 工具链。
+交付包包含 Linux 可执行文件 `mcp-webd` 和同目录的 `web/` 管理页面。保留二者的相对位置，即可从任意工作目录启动。运行环境只需与包匹配的 Linux 架构，不依赖其他服务、Flow、Node.js 或 Rust 工具链。
 
 ## 首次启动
 

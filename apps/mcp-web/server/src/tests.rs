@@ -168,7 +168,7 @@ async fn peer(
     if method == "initialize" {
         assert_eq!(q["params"]["clientInfo"]["name"], "fixture-client");
         assert_eq!(q["params"]["protocolVersion"], "2025-11-25");
-        return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"},"_meta":{"ursi/executorProtocol":"1"}})))).into_response();
+        return ([("mcp-session-id","session")],Json(reply(json!({"protocolVersion":"2025-06-18","capabilities":{"resources":{}},"serverInfo":{"name":"fixture","version":"1"},"_meta":{"example/serviceKind":"1"}})))).into_response();
     }
     assert_eq!(h["mcp-session-id"], "session");
     assert_eq!(h["mcp-protocol-version"], "2025-06-18");
@@ -549,14 +549,14 @@ async fn modern_discovery_reports_versions_and_skips_undeclared_resources() {
     peer.abort();
 }
 
-fn executor_discovery(id: &Value, declaration: Option<Value>) -> Value {
+fn discovery_with_declaration(id: &Value, declaration: Option<Value>) -> Value {
     let mut reply = json!({"jsonrpc":"2.0","id":id,"result":{
         "resultType":"complete","supportedVersions":["2026-07-28","2025-06-18"],
         "capabilities":{"tools":{},"resources":{}},"ttlMs":0,"cacheScope":"private",
-        "_meta":{"io.modelcontextprotocol/serverInfo":{"name":"executor","version":"1"}}
+        "_meta":{"io.modelcontextprotocol/serverInfo":{"name":"fixture","version":"1"}}
     }});
     if let Some(declaration) = declaration {
-        reply["result"]["_meta"]["ursi/executorProtocol"] = declaration;
+        reply["result"]["_meta"]["example/serviceKind"] = declaration;
     }
     reply
 }
@@ -579,18 +579,18 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
                         .unwrap()
                         .push(q["method"].as_str().unwrap().into());
                     match mode.load(std::sync::atomic::Ordering::Relaxed) {
-                        0 => Json(executor_discovery(&q["id"], Some(json!("1")))).into_response(),
+                        0 => Json(discovery_with_declaration(&q["id"], Some(json!("1")))).into_response(),
                         1 => {
-                            let reply = executor_discovery(&q["id"], None);
+                            let reply = discovery_with_declaration(&q["id"], None);
                             (
                                 [("content-type", "text/event-stream")],
                                 format!("data: {reply}\n\n"),
                             )
                                 .into_response()
                         }
-                        2 => Json(executor_discovery(&q["id"], Some(json!(1)))).into_response(),
-                        3 => Json(executor_discovery(&q["id"], Some(json!("2")))).into_response(),
-                        4 => Json(executor_discovery(&json!("wrong-id"), Some(json!("1"))))
+                        2 => Json(discovery_with_declaration(&q["id"], Some(json!(1)))).into_response(),
+                        3 => Json(discovery_with_declaration(&q["id"], Some(json!("2")))).into_response(),
+                        4 => Json(discovery_with_declaration(&json!("wrong-id"), Some(json!("1"))))
                             .into_response(),
                         _ => StatusCode::BAD_GATEWAY.into_response(),
                     }
@@ -608,8 +608,17 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
     let app = f.store.routes();
     let api = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    f.store
+        .replace_recognition_rules(vec![RecognitionRule {
+            id: "team-v1".into(),
+            label: "团队服务".into(),
+            meta_key: "example/serviceKind".into(),
+            equals: "1".into(),
+        }])
+        .await
+        .unwrap();
     let mut forged = json!(cfg);
-    forged["protocolCheck"] = json!({"status":"declaredV1","checkedAt":1,"labels":["执行器 v1"]});
+    forged["protocolCheck"] = json!({"status":"declaredV1","checkedAt":1,"labels":["团队服务"]});
     assert_eq!(
         client
             .post(&registry)
@@ -647,7 +656,7 @@ async fn protocol_api_persists_only_successful_correlated_declarations() {
     assert!(f.calls.lock().unwrap().is_empty());
 
     for (wire_case, status, labels) in [
-        (0, "checked", json!(["执行器 v1"])),
+        (0, "checked", json!(["团队服务"])),
         (4, "checked", json!([])),
         (5, "checked", json!([])),
         (1, "checked", json!([])),
@@ -690,7 +699,7 @@ async fn recognition_rules_round_trip_and_recheck_under_new_labels() {
             let calls = calls.clone();
             async move {
                 calls.lock().unwrap().push(q["method"].as_str().unwrap().into());
-                Json(executor_discovery(&q["id"], Some(json!("1"))))
+                Json(discovery_with_declaration(&q["id"], Some(json!("1"))))
             }
         }),
     );
@@ -735,7 +744,9 @@ async fn recognition_rules_round_trip_and_recheck_under_new_labels() {
         }
     };
     let seed = get().await;
-    assert_eq!(seed, json!([{"id":"executor-v1","label":"执行器 v1","metaKey":"ursi/executorProtocol","equals":"1"}]));
+    assert_eq!(seed, json!([]));
+    let rule = json!([{"id":"team-v1","label":"团队服务","metaKey":"example/serviceKind","equals":"1"}]);
+    assert_eq!(put(rule.clone()).await, rule);
     let endpoint = format!("{base}/mcp-servers/{id}/protocol-check");
     let check: Value = client
         .post(&endpoint)
@@ -747,10 +758,10 @@ async fn recognition_rules_round_trip_and_recheck_under_new_labels() {
         .json()
         .await
         .unwrap();
-    assert_eq!(check["labels"], json!(["执行器 v1"]));
+    assert_eq!(check["labels"], json!(["团队服务"]));
     let custom = json!([
-        {"id":"executor-v1","label":"执行器 v1","metaKey":"ursi/executorProtocol","equals":"1"},
-        {"id":"analysis","label":"分析服务","metaKey":"ursi/executorProtocol","equals":"1"},
+        {"id":"team-v1","label":"团队服务","metaKey":"example/serviceKind","equals":"1"},
+        {"id":"analysis","label":"分析服务","metaKey":"example/serviceKind","equals":"1"},
         {"id":"empty","label":"永不匹配","metaKey":"ursi/serviceKind","equals":"analysis"}
     ]);
     assert_eq!(put(custom.clone()).await, custom);
@@ -776,7 +787,7 @@ async fn recognition_rules_round_trip_and_recheck_under_new_labels() {
         .json()
         .await
         .unwrap();
-    assert_eq!(check["labels"], json!(["执行器 v1", "分析服务"]));
+    assert_eq!(check["labels"], json!(["团队服务", "分析服务"]));
     assert_eq!(put(json!([])).await, json!([]));
     let row: Value = client
         .get(format!("{base}/mcp-servers"))
@@ -808,7 +819,7 @@ async fn protocol_check_serializes_per_service_without_overwriting_settings_or_r
                 let (send, wait) = tokio::sync::oneshot::channel();
                 started.send(send).unwrap();
                 wait.await.unwrap();
-                Json(executor_discovery(&q["id"], Some(json!("1"))))
+                Json(discovery_with_declaration(&q["id"], Some(json!("1"))))
             }
         }),
     );

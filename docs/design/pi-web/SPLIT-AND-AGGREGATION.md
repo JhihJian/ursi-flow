@@ -53,7 +53,7 @@ references:
 | settings、skills、plugins、subagent、MCP、模型与凭据 | pi-manager-web | 已覆盖 |
 | 一次性任务执行 | pi-manager-web | 已覆盖（`/api/session/*`），缺界面 |
 | 会话运行态（谁在跑、跑到哪） | 管理台采集，会话模块展示 | 本设计补上 |
-| 交互式对话（流式、工具确认、打断、续聊） | pi-chat-web（运行时在管理台） | 见 [Pi 交互对话](pi-chat-web/CHAT.md) |
+| 交互式对话（流式、工具确认、打断、续聊） | pi-chat-web（运行时在管理台） | 见 [Pi 交互对话](../pi-chat-web/CHAT.md) |
 | 文件浏览、git diff、worktrees、open-in-explorer | fs-web 等既有模块 | 不在本设计范围 |
 | 终端（本地 PTY） | ssh-web 已有远端终端，本地 PTY 另议 | 不做 |
 | 推送通知、app 更新、provider 用量、project-trust | 无 | 不做 |
@@ -193,7 +193,7 @@ interface LiveSessionFeed {
 
 ## 交互式对话的位置
 
-聚合后剩下的是 pi-web 的核心能力：交互式对话。它不再挤进管理台或会话模块，而是独立成第三个模块 `pi-chat-web`，详见 [Pi 交互对话](pi-chat-web/CHAT.md)：
+聚合后剩下的是 pi-web 的核心能力：交互式对话。它不再挤进管理台或会话模块，而是独立成第三个模块 `pi-chat-web`，详见 [Pi 交互对话](../pi-chat-web/CHAT.md)：
 
 - 运行时归管理台（SDK、home、凭据、限流都在它手里，对话与一次性任务共用 `session-runtime.ts`），对话界面归 chat 模块，历史轨迹仍归会话模块。
 - chat 编译期依赖管理台的公开客户端 `@ursi/pi-manager-web/client`，运行期依赖管理台服务；不 import 管理台的 store 与组件。

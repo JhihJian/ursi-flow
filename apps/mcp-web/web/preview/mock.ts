@@ -17,15 +17,15 @@ let servers: McpServer[] = [
     settings: { allowedTools: ['search_docs'], githubToolsets: [], githubReadOnly: false },
   },
   {
-    id: 'sandbox', name: '沙箱执行器', url: 'https://mcp.sandbox.internal/mcp',
-    protocolCheck: { status: 'checked', checkedAt: now - 2 * hour, labels: ['ursi-executor'] },
+    id: 'sandbox', name: '沙箱服务', url: 'https://mcp.sandbox.internal/mcp',
+    protocolCheck: { status: 'checked', checkedAt: now - 2 * hour, labels: ['sandbox'] },
     settings: { allowedTools: [], githubToolsets: [], githubReadOnly: false },
   },
 ]
 
 let rules: RecognitionRule[] = [
-  { id: 'github-enterprise', label: 'GitHub 企业版', metaKey: 'ursi/executorProtocol', equals: 'github' },
-  { id: 'ursi-executor', label: 'URSI 执行器', metaKey: 'ursi/executorProtocol', equals: '1' },
+  { id: 'github-enterprise', label: 'GitHub 企业版', metaKey: 'example/serviceKind', equals: 'github' },
+  { id: 'sandbox', label: '沙箱平台', metaKey: 'example/serviceKind', equals: '1' },
 ]
 
 const tools: CatalogEntry[] = [

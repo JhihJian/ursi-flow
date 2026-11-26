@@ -75,7 +75,7 @@ function DeleteDialog({ server, close, removed }: { server: McpServer; close: ()
     <Button disabled={deletion.busy} onClick={close}>取消</Button>
     <Button variant="danger" loading={deletion.busy} onClick={() => void deletion.run(signal => client.removeServer(server.id, signal), removed)}>确认删除</Button>
   </>}>
-    <p className="break-words text-sm">移除「{server.name}」后，引用它的配方将无法读取资源。已生成的工作包会保留。</p>
+    <p className="break-words text-sm">移除「{server.name}」后，引用它的配方将无法读取资源。</p>
     <p className="mt-2 break-all font-mono text-xs text-txt3">{server.url}</p>
     {deletion.error && <p role="alert" className="mt-3 text-sm text-err">{deletion.error}</p>}
   </Modal>
