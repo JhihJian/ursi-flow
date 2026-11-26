@@ -1706,7 +1706,70 @@ textarea {
   overflow-y: auto;
 }
 
+.sessions-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px var(--space-sm);
+  border: 0;
+  border-bottom: 1px solid var(--gray-200);
+  background: rgba(26, 26, 26, 0.03);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sessions-group-head:hover {
+  background: rgba(26, 26, 26, 0.07);
+}
+
+.sessions-group-caret {
+  flex: none;
+  width: 10px;
+  font-size: 9px;
+  color: var(--gray-400);
+}
+
+.sessions-group-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sessions-group-name {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-group-path {
+  font-size: 9px;
+  color: var(--gray-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-group-count {
+  flex: none;
+  font-size: 9px;
+  color: var(--gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.sessions-group-count.is-running {
+  color: var(--gray-900);
+  font-weight: 600;
+}
+
 .sessions-item {
+  padding-left: 24px;
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);
@@ -1766,10 +1829,6 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sessions-item-cwd {
-  font-size: 9px;
 }
 
 .sessions-item-time {

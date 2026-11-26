@@ -16,6 +16,7 @@ const WIDTH_KEY = 'pi-manager.sessions-width'
 const WIDTH_DEFAULT = 300
 const WIDTH_MIN = 220
 const WIDTH_MAX = 560
+const COLLAPSED_KEY = 'pi-manager.sessions-collapsed'
 
 function loadWidth(): number {
   try {
@@ -46,6 +47,56 @@ function sessionLabel(session: LiveSession): string {
   return session.name || session.sessionId.slice(0, 12)
 }
 
+function loadCollapsedGroups(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as unknown
+    if (Array.isArray(raw)) return new Set(raw.filter((item): item is string => typeof item === 'string'))
+  } catch {
+    /* ignore */
+  }
+  return new Set()
+}
+
+interface CwdGroup {
+  cwd: string
+  sessions: LiveSession[]
+  running: number
+  latest: number
+}
+
+/** 按 cwd 聚合：有运行中会话的组在前，然后按最近心跳倒序。 */
+function groupByCwd(sessions: LiveSession[]): CwdGroup[] {
+  const map = new Map<string, LiveSession[]>()
+  for (const session of sessions) {
+    const key = session.cwd?.trim() || '（无 cwd）'
+    const list = map.get(key)
+    if (list) list.push(session)
+    else map.set(key, [session])
+  }
+  const groups: CwdGroup[] = []
+  for (const [cwd, items] of map) {
+    groups.push({
+      cwd,
+      sessions: items,
+      running: items.filter((item) => item.status === 'running').length,
+      latest: Math.max(...items.map((item) => item.updatedAt)),
+    })
+  }
+  groups.sort((a, b) => {
+    if (a.running > 0 !== b.running > 0) return a.running > 0 ? -1 : 1
+    if (a.latest !== b.latest) return b.latest - a.latest
+    return a.cwd.localeCompare(b.cwd)
+  })
+  return groups
+}
+
+/** 目录名：取最后一段；根目录保留 /。 */
+function cwdName(cwd: string): string {
+  if (cwd === '/' || /^[A-Za-z]:[\\/]?$/.test(cwd)) return cwd
+  const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
+  return parts[parts.length - 1] || cwd
+}
+
 export function SessionsPanel({
   home,
   open,
@@ -59,6 +110,7 @@ export function SessionsPanel({
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [width, setWidth] = useState(loadWidth)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(loadCollapsedGroups)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   const reload = useCallback(async () => {
@@ -86,7 +138,25 @@ export function SessionsPanel({
   const sessions = listing?.sessions ?? []
   const running = sessions.filter((s) => s.status === 'running').length
   const idle = sessions.length - running
+  const groups = groupByCwd(sessions)
   const selectedSession = sessions.find((s) => s.sessionId === selected) ?? null
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedGroups]))
+    } catch {
+      /* ignore */
+    }
+  }, [collapsedGroups])
+
+  function toggleGroup(cwd: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(cwd)) next.delete(cwd)
+      else next.add(cwd)
+      return next
+    })
+  }
 
   function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
     dragRef.current = { startX: event.clientX, startWidth: width }
@@ -161,30 +231,61 @@ export function SessionsPanel({
         </p>
       ) : null}
 
-      <div className="sessions-panel-list">
-        {sessions.length > 0 ? (
-          sessions.map((session) => (
-            <button
-              key={session.sessionId}
-              type="button"
-              className={`sessions-item${session.sessionId === selected ? ' is-selected' : ''}`}
-              title={session.sessionFile ?? session.sessionId}
-              onClick={() => setSelected(session.sessionId)}
-            >
-              <span
-                className={`sessions-dot${session.status === 'running' ? ' is-running' : ''}`}
-                aria-label={session.status === 'running' ? '运行中' : '空闲'}
-              />
-              <span className="sessions-item-main">
-                <span className="sessions-item-name">{sessionLabel(session)}</span>
-                <span className="sessions-item-meta">{session.model ?? '模型未知'}</span>
-                <span className="sessions-item-cwd">{session.cwd || '（无 cwd）'}</span>
-              </span>
-              <span className="sessions-item-time">
-                {listing ? formatAgo(session.updatedAt, listing.now) : '—'}
-              </span>
-            </button>
-          ))
+      <div className="sessions-panel-list" role="tree" aria-label="按 cwd 聚合的会话">
+        {groups.length > 0 ? (
+          groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.cwd)
+            return (
+              <div key={group.cwd} className="sessions-group" role="treeitem" aria-expanded={!collapsed}>
+                <button
+                  type="button"
+                  className="sessions-group-head"
+                  title={group.cwd}
+                  onClick={() => toggleGroup(group.cwd)}
+                >
+                  <span className="sessions-group-caret" aria-hidden>{collapsed ? '▸' : '▾'}</span>
+                  <span className={`sessions-dot${group.running > 0 ? ' is-running' : ''}`} aria-hidden />
+                  <span className="sessions-group-main">
+                    <span className="sessions-group-name">{cwdName(group.cwd)}</span>
+                    <span className="sessions-group-path">{group.cwd}</span>
+                  </span>
+                  <span className={`sessions-group-count${group.running > 0 ? ' is-running' : ''}`}>
+                    {group.running}/{group.sessions.length}
+                  </span>
+                </button>
+                {!collapsed ? (
+                  <div role="group">
+                    {group.sessions.map((session) => (
+                      <button
+                        key={session.sessionId}
+                        type="button"
+                        role="treeitem"
+                        aria-selected={session.sessionId === selected}
+                        className={`sessions-item${session.sessionId === selected ? ' is-selected' : ''}`}
+                        title={session.sessionFile ?? session.sessionId}
+                        onClick={() => setSelected(session.sessionId)}
+                      >
+                        <span
+                          className={`sessions-dot${session.status === 'running' ? ' is-running' : ''}`}
+                          aria-label={session.status === 'running' ? '运行中' : '空闲'}
+                        />
+                        <span className="sessions-item-main">
+                          <span className="sessions-item-name">{sessionLabel(session)}</span>
+                          <span className="sessions-item-meta">
+                            {session.model ?? '模型未知'}
+                            {session.parentSessionFile ? ' · 子会话' : ''}
+                          </span>
+                        </span>
+                        <span className="sessions-item-time">
+                          {listing ? formatAgo(session.updatedAt, listing.now) : '—'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })
         ) : (
           <p className="sessions-panel-empty">
             没有正在运行的 pi 会话。新开会话或 <code>/reload</code> 后出现。
