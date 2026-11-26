@@ -15,6 +15,9 @@
   --ssh-terminal-bg: var(--ssh-gray-900);
   --ssh-terminal-line: #4a4a4a;
   --ssh-danger: #b43c3c;
+  /* 主操作专色：取终端亮色主题的 indigo 蓝，白字对比 7:1，替代纯黑实底。 */
+  --ssh-accent: #3c5a7d;
+  --ssh-accent-deep: #334c69;
   /* 暗底上的错误色：砖红在白底够深，在 #1a1a1a 上要提亮一档才读得清。 */
   --ssh-danger-soft: #d08a8a;
 
@@ -42,7 +45,8 @@
   background: var(--ssh-white);
 }
 
-.ssh-embed button {
+/* :where() 保持零特异性：按钮类自己的颜色（主操作白字、危险砖红）不被这条继承规则盖掉。 */
+.ssh-embed :where(button) {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
@@ -742,12 +746,19 @@
 }
 
 .ssh-btn-primary {
-  background: var(--ssh-gray-900);
+  border-color: var(--ssh-accent);
+  background: var(--ssh-accent);
   color: var(--ssh-white);
 }
 
 .ssh-btn-primary:hover {
-  background: var(--ssh-black);
+  border-color: var(--ssh-accent-deep);
+  background: var(--ssh-accent-deep);
+}
+
+.ssh-btn-primary:disabled:hover {
+  border-color: var(--ssh-accent);
+  background: var(--ssh-accent);
 }
 
 .ssh-btn-danger {
