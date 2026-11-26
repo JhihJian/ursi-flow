@@ -204,7 +204,7 @@ export async function chatOptions(home: string): Promise<ChatOptionsView> {
   const cwd = catalogCwd()
   // 与真实会话同一份合并规则：全局 settings.json 叠加项目级 .pi/settings.json。
   const settings = sdk.SettingsManager.create(cwd, home)
-  const catalog = readCachedCatalog(home, cwd)
+  const catalog = readCachedCatalog(home)
   const all = catalog?.models ?? []
   const provider = settings.getDefaultProvider() ?? ''
   const modelId = settings.getDefaultModel() ?? ''

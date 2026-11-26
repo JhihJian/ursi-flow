@@ -855,14 +855,14 @@ test('runtime：缓存缺失或损坏都返回 null', () => {
   const previous = process.env.PI_WEB_STATE
   process.env.PI_WEB_STATE = stateDir
   try {
-    assert.equal(readCachedCatalog('/tmp/pi-home-x', '/tmp'), null)
+    assert.equal(readCachedCatalog('/tmp/pi-home-x'), null)
     const file = join(stateDir, 'model-catalog')
     mkdirSync(file, { recursive: true })
-    const key = createHash('sha256').update('/tmp/pi-home-x\u0000/tmp').digest('hex').slice(0, 16)
+    const key = createHash('sha256').update('/tmp/pi-home-x').digest('hex').slice(0, 16)
     writeFileSync(join(file, `${key}.json`), 'not json')
-    assert.equal(readCachedCatalog('/tmp/pi-home-x', '/tmp'), null)
+    assert.equal(readCachedCatalog('/tmp/pi-home-x'), null)
     writeFileSync(join(file, `${key}.json`), JSON.stringify({ fetchedAt: 7, cwd: '/tmp', models: [] }))
-    assert.deepEqual(readCachedCatalog('/tmp/pi-home-x', '/tmp'), { fetchedAt: 7, cwd: '/tmp', models: [] })
+    assert.deepEqual(readCachedCatalog('/tmp/pi-home-x'), { fetchedAt: 7, cwd: '/tmp', models: [] })
   } finally {
     if (previous === undefined) delete process.env.PI_WEB_STATE
     else process.env.PI_WEB_STATE = previous

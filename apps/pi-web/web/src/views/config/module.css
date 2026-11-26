@@ -56,7 +56,6 @@
   --ok: #2f7a45;
   --warn: #91650f;
 
-  --sidebar-width: 200px;
   --list-width: 260px;
 }
 
@@ -85,58 +84,6 @@ outline: 1px solid var(--gray-900);
   outline-offset: 1px;
 }
 
-.pi-manager-root .home-bar {
-display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  flex: none;
-  min-height: 44px;
-  padding: var(--space-sm) var(--space-lg);
-  border-bottom: 1px solid var(--gray-900);
-  background: var(--white);
-}
-
-.pi-manager-root .home-bar-title {
-font-family: var(--font-serif);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pi-manager-root .home-bar-home {
-display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: baseline;
-  gap: var(--space-sm);
-}
-
-.pi-manager-root .home-bar-name {
-font-size: 12px;
-  color: var(--gray-900);
-  white-space: nowrap;
-}
-
-.pi-manager-root .home-bar-path {
-min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--gray-400);
-  user-select: text;
-}
-
-.pi-manager-root .home-bar-flag {
-flex: none;
-  font-size: 12px;
-  color: var(--danger);
-}
-
-.pi-manager-root .home-bar-home.invalid .home-bar-path {
-color: var(--gray-400);
-}
-
 .pi-manager-root .app-main {
 flex: 1;
   display: flex;
@@ -144,7 +91,7 @@ flex: 1;
 }
 
 .pi-manager-root .config-sidebar {
-width: var(--sidebar-width);
+width: 100%;
   flex: none;
   min-height: 100%;
   padding: var(--space-md);
@@ -449,8 +396,9 @@ flex: 1;
   display: flex;
   flex-direction: column;
   padding: var(--space-sm) var(--space-lg) var(--space-lg);
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+  /* 小屏也要能用：内容超宽时横向滚动，滚动条按版面约定隐藏。 */
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .pi-manager-root .section-head {
@@ -1498,7 +1446,6 @@ position: absolute;
 
 @media (max-width: 900px) {
 .pi-manager-root {
---sidebar-width: 56px;
     --list-width: 200px;
 }
 
@@ -1857,29 +1804,6 @@ font-size: 10px;
 .pi-manager-root .sessions-rail-count.is-running {
 color: var(--gray-900);
   font-weight: 600;
-}
-
-.pi-manager-root .home-bar-sessions {
-display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--gray-200);
-  background: none;
-  font-size: 11px;
-  color: var(--gray-600);
-  cursor: pointer;
-}
-
-.pi-manager-root .home-bar-sessions:hover {
-border-color: var(--gray-900);
-  color: var(--gray-900);
-}
-
-.pi-manager-root .home-bar-sessions[aria-pressed='true'] {
-border-color: var(--gray-900);
-  color: var(--gray-900);
 }
 
 /* 模块宿主自己的两条辅助样式：home 摘要行与侧栏内边距。 */

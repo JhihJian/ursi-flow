@@ -79,16 +79,20 @@ function supportedThinkingLevels(model: {
 }
 
 /**
- * 缓存文件位置：状态目录下的 model-catalog/，按 home + cwd 分键，跨重启稳定。
+ * 缓存文件位置：状态目录下的 model-catalog/，按 home 分键，跨重启稳定。
+ *
+ * 目录是一份 home 的能力，不随服务进程 cwd 变化：配置页与对话页读同一份，
+ * 否则换个启动目录就「配置有模型、对话没目录」。采集时的 cwd 只作为元数据
+ * 记录在文件里。
  */
-function catalogFile(home: string, cwd: string): string {
-  const key = createHash('sha256').update(`${home}\u0000${cwd}`).digest('hex').slice(0, 16)
+function catalogFile(home: string): string {
+  const key = createHash('sha256').update(home).digest('hex').slice(0, 16)
   return join(statePaths().catalogDir, `${key}.json`)
 }
 
 /** 读缓存；不存在或损坏都返回 null（页面据此提示刷新）。 */
-export function readCachedCatalog(home: string, cwd: string): RuntimeCatalog | null {
-  const file = catalogFile(home, cwd)
+export function readCachedCatalog(home: string): RuntimeCatalog | null {
+  const file = catalogFile(home)
   if (!existsSync(file)) return null
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
@@ -101,8 +105,8 @@ export function readCachedCatalog(home: string, cwd: string): RuntimeCatalog | n
   }
 }
 
-function writeCachedCatalog(home: string, cwd: string, catalog: RuntimeCatalog): void {
-  const file = catalogFile(home, cwd)
+function writeCachedCatalog(home: string, catalog: RuntimeCatalog): void {
+  const file = catalogFile(home)
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   const temp = `${file}.tmp-${process.pid}`
   writeFileSync(temp, `${JSON.stringify(catalog)}\n`, { encoding: 'utf8', mode: 0o600 })
@@ -175,7 +179,7 @@ export async function refreshCatalog(home: string, cwd: string): Promise<Runtime
         name: provider.name,
       })),
     }
-    writeCachedCatalog(home, cwd, catalog)
+    writeCachedCatalog(home, catalog)
     return catalog
   } finally {
     session.dispose()

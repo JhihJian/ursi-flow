@@ -49,7 +49,6 @@ export interface ChatDraft {
   model: string
   thinkingLevel: string
   cwd: string
-  subagent: string
 }
 
 export interface RunningTool {
@@ -141,7 +140,7 @@ export interface ChatController {
   canOpenTrajectory: boolean
 }
 
-const EMPTY_DRAFT: ChatDraft = { model: '', thinkingLevel: '', cwd: '', subagent: '' }
+const EMPTY_DRAFT: ChatDraft = { model: '', thinkingLevel: '', cwd: '' }
 
 /** 模型不支持思考时唯一可用的档位。 */
 const NO_THINKING = 'off'
@@ -630,7 +629,6 @@ export function ChatProvider({
             ...(draft.cwd.trim() ? { cwd: draft.cwd.trim() } : {}),
             ...(model ? { model } : {}),
             ...(thinkingLevel ? { thinkingLevel } : {}),
-            ...(draft.subagent ? { subagent: draft.subagent } : {}),
           })
           setChats((current) => [
             target as ChatInfo,

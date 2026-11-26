@@ -24,7 +24,7 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 /**
- * 对话侧栏：pi home（整套配置）、新对话的工作目录与 subagent、本模块打开的对话。
+ * 对话侧栏：pi home（整套配置）、新对话的工作目录、本模块打开的对话。
  *
  * 模型与思考级别属于「这场对话」，放在工作区的输入区上，跟 pi-web 的 composer
  * 一致；侧栏只决定新对话落在哪儿。历史会话不在这一栏，它在会话模块里。
@@ -84,11 +84,16 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
               title={home}
             >
               {validHomes.length === 0 ? <option value="">没有可用的 pi home</option> : null}
-              {validHomes.map((entry) => (
-                <option key={entry.id} value={entry.path}>
-                  {entry.name} · {shortPath(entry.path)}
-                </option>
-              ))}
+              {validHomes.map((entry) => {
+                // 清单里的名字常取自路径短名（如 ~/.pi/agent），此时不重复拼一遍路径。
+                const short = shortPath(entry.path)
+                const label = entry.name.includes(short) ? entry.name : `${entry.name} · ${short}`
+                return (
+                  <option key={entry.id} value={entry.path}>
+                    {label}
+                  </option>
+                )
+              })}
             </select>
           </label>
           {home ? (
@@ -111,21 +116,6 @@ export function ChatSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
               placeholder={options?.defaultCwd ?? '服务端当前目录'}
               onChange={(event) => setDraft({ cwd: event.target.value })}
             />
-          </label>
-          <label className="pichat-field">
-            <span className="pichat-label">subagent</span>
-            <select
-              className="pichat-select"
-              value={draft.subagent}
-              onChange={(event) => setDraft({ subagent: event.target.value })}
-            >
-              <option value="">普通主会话</option>
-              {(options?.agents ?? []).map((agent) => (
-                <option key={agent} value={agent}>
-                  {agent}
-                </option>
-              ))}
-            </select>
           </label>
           <p className="pichat-hint">
             模型与思考级别在输入区选。发出第一条消息时才建会话，对话直接落在该 home 的 sessions/ 里。

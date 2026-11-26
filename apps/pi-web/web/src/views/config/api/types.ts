@@ -412,7 +412,7 @@ export interface ChatModelOption {
   thinkingLevelMap: Record<string, string | null> | null
 }
 
-/** 对话可选项：模型范围、默认值、agent 清单与会话根。 */
+/** 对话可选项：模型范围、默认值与会话根。 */
 export interface ChatOptions {
   /** 只含 `enabledModels` 范围内的模型；未采集目录时为空。 */
   models: ChatModelOption[]
@@ -422,7 +422,6 @@ export interface ChatOptions {
   defaultThinkingLevel: string | null
   /** `enabledModels` 里用 `:level` 钉住的档位，按 `provider/modelId` 索引。 */
   thinkingLevelPins: Record<string, string>
-  agents: string[]
   sessionRoot: string
   sessionRootExists: boolean
   defaultCwd: string
@@ -434,6 +433,5 @@ export interface ChatCreateInput {
   cwd?: string
   model?: string
   thinkingLevel?: string
-  subagent?: string | null
   sessionFile?: string
 }

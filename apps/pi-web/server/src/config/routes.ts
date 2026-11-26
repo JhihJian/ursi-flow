@@ -412,7 +412,7 @@ route('PUT', '/api/config/models/override', 'required', async ({ home, body }) =
 
 /** 本机模型清单：settings 的默认/启用模型 + models.json + models-store + 运行时目录（含 context/maxOut）。 */
 function buildCatalog(home: string) {
-  return readModelCatalog(home, readSettings(home).data, readCachedCatalog(home, catalogCwd()))
+  return readModelCatalog(home, readSettings(home).data, readCachedCatalog(home))
 }
 
 route('GET', '/api/config/models/catalog', 'required', async ({ home }) => buildCatalog(home))

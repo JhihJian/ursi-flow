@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
 import type { SessionRow } from '../api'
-import { primaryLive, type LiveSessionInfo } from '../live'
+import { primaryLive } from '../live'
 import type { SessionGroup } from '../lib/format'
 import {
   dailyBuckets,
@@ -84,20 +84,10 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     if (selectedDays.size === 1) return `筛选 ${[...selectedDays][0].slice(5)}`
     return `筛选 ${selectedDays.size} 天`
   }, [selectedDays])
-  /** 运行态：只接注入来源，按会话文件路径与磁盘行对齐。 */
-  const liveRows = useMemo(() => {
-    const rowsByPath = new Map(allRows.map((row) => [row.path, row] as const))
-    return [...liveByPath.entries()]
-      .map(([path, list]) => ({ session: primaryLive(list), row: rowsByPath.get(path) ?? null, path }))
-      .filter((item): item is { session: LiveSessionInfo; row: SessionRow | null; path: string } =>
-        Boolean(item.session),
-      )
-      .sort((a, b) => {
-        if (a.session.status !== b.session.status) return a.session.status === 'running' ? -1 : 1
-        return b.session.updatedAt - a.session.updatedAt
-      })
-  }, [liveByPath, allRows])
+  const liveForRow = (row: SessionRow) => primaryLive(liveByPath.get(row.path))
 
+  // 运行态不单独成列表：存活会话在下面的项目分组里用绿点标出（按会话文件路径
+  // 对齐），与磁盘列表是同一份清单；还没写文件的对话在对话视图里看。
   const groups = groupSessions(allRows, query, selectedDays)
   const { pinned, rest } = splitPinnedGroups(groups, pinnedProjects)
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
@@ -168,8 +158,6 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
       ],
     })
   }
-
-  const liveForRow = (row: SessionRow) => primaryLive(liveByPath.get(row.path))
 
   const renderGroup = (group: SessionGroup) => {
     const isFolded = isFoldedGroup(group.key)
@@ -401,46 +389,6 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
                     ? `所选的 ${selectedDays.size} 天里没有会话`
                     : '这个目录下没有 .jsonl 会话文件'}
               </p>
-            ) : null}
-
-            {liveRows.length > 0 ? (
-              <section className="pinned-section live-section">
-                <h3 className="section-label">
-                  运行中 <span className="session-group-count">{liveRows.length}</span>
-                </h3>
-                <ul className="session-items">
-                  {liveRows.map(({ session, row }) => (
-                    <li key={session.sessionId}>
-                      <button
-                        type="button"
-                        className={`session-item${row && row.id === selected?.id ? ' active' : ''}`}
-                        title={
-                          row
-                            ? `${session.name ?? session.sessionId}\n${session.sessionFile ?? ''}`
-                            : `文件还没写入：${session.sessionFile ?? session.sessionId}`
-                        }
-                        onClick={() => {
-                          if (row) select(row)
-                        }}
-                        disabled={!row}
-                      >
-                        <span className="name">
-                          <span
-                            className={`session-live-dot is-${session.status}`}
-                            aria-label={session.status === 'running' ? '运行中' : '空闲'}
-                          />
-                          {session.name ?? row?.name ?? session.sessionId.slice(0, 12)}
-                          {!session.sameHost ? '（远程）' : ''}
-                        </span>
-                        <span className="meta">
-                          <span>{session.model ?? '模型未知'}</span>
-                          <span>{session.sameHost ? (row ? formatAge(row.modified) : '待写入') : session.host}</span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
             ) : null}
 
             {liveError ? (

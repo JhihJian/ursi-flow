@@ -65,6 +65,12 @@ export function GeneralSection({ home }: { home: string }) {
 
   const provider = typeof listing.managed.defaultProvider === 'string' ? listing.managed.defaultProvider : ''
   const modelId = typeof listing.managed.defaultModel === 'string' ? listing.managed.defaultModel : ''
+  // 未显式设置默认模型时，pi 会自动选启用清单里的第一个可解析模型；界面把
+  // 这个生效值亮出来，避免「默认为空」看起来像配置丢了。
+  const effectiveDefault =
+    provider && modelId
+      ? `${provider}/${modelId}`
+      : (catalog.candidates.find((candidate) => candidate.enabled && !candidate.pattern)?.ref ?? '')
   const thinking = typeof listing.managed.defaultThinkingLevel === 'string' ? listing.managed.defaultThinkingLevel : ''
   const defaultTools = Array.isArray(listing.managed.defaultTools)
     ? (listing.managed.defaultTools as unknown[]).filter((v): v is string => typeof v === 'string')
@@ -140,23 +146,30 @@ export function GeneralSection({ home }: { home: string }) {
         <div className="stack">
         <Field
           label="默认模型"
-          hint={`defaultProvider + defaultModel 两个 key，如 ${catalog.configured.provider ?? 'sub2api-local'}/gpt-6.1-terra。留空表示交给 pi 自动选。`}
+          hint={
+            provider && modelId
+              ? 'defaultProvider + defaultModel 两个 key，留空表示交给 pi 自动选。'
+              : `未显式设置，pi 自动选：${effectiveDefault || '（没有可解析的启用模型）'}`
+          }
         >
           <div className="field-row">
             <input
               className="input"
               key={`${provider}/${modelId}`}
-              defaultValue={provider && modelId ? `${provider}/${modelId}` : ''}
+              defaultValue={effectiveDefault}
               placeholder="provider/modelId"
               list="model-catalog-refs"
               onKeyDown={(e) => {
                 if (e.key !== 'Enter') return
-                const [nextProvider, ...rest] = (e.target as HTMLInputElement).value.trim().split('/')
+                const raw = (e.target as HTMLInputElement).value.trim()
+                if (raw === effectiveDefault) return
+                const [nextProvider, ...rest] = raw.split('/')
                 void writeModel(nextProvider ?? '', rest.join('/'))
               }}
               onBlur={(e) => {
                 const raw = e.target.value.trim()
-                if (raw === (provider && modelId ? `${provider}/${modelId}` : '')) return
+                // 展示的可能是 pi 自动选出的生效值；没改就不落盘，避免把自动选择固化为显式设置。
+                if (raw === effectiveDefault) return
                 const [nextProvider, ...rest] = raw.split('/')
                 void writeModel(raw ? (nextProvider ?? '') : '', raw ? rest.join('/') : '')
               }}

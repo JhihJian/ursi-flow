@@ -9,7 +9,6 @@ import type {
   GeneralListing,
   HomeCheck,
   HomeDefaults,
-  LiveSessionsListing,
   McpListing,
   ModelCatalog,
   ModelsListing,
@@ -19,7 +18,6 @@ import type {
   DiscoveryResult,
   SkillContent,
   SkillsListing,
-  SessionTaskListing,
   SessionDisk,
   ChatInfo,
   ChatOptions,
@@ -186,7 +184,6 @@ function toChatOptions(profile: RuntimeProfileView): ChatOptions {
     defaultModel: profile.models.default,
     defaultThinkingLevel: profile.models.defaultThinkingLevel,
     thinkingLevelPins: profile.models.thinkingLevelPins,
-    agents: profile.subagents,
     sessionRoot: profile.sessionsRoot,
     sessionRootExists: true,
     defaultCwd: profile.cwdDefault,
@@ -281,12 +278,12 @@ export function createApiClient(base: string | (() => string) = '') {
   getSkills: (home: string) => request<SkillsListing>(base, 'GET', '/api/config/skills', home),
   /** 单个 skill 的完整内容：frontmatter 原条目 + 正文。 */
   getSkillContent: (home: string, relDir: string) =>
-    request<SkillContent>(base, 'GET', `/api/skills/content?relDir=${encodeURIComponent(relDir)}`, home),
+    request<SkillContent>(base, 'GET', `/api/config/skills/content?relDir=${encodeURIComponent(relDir)}`, home),
   toggleSkill: (home: string, relDir: string, disabled: boolean) =>
     request<{ ok: true; disabled: boolean }>(base, 'POST', '/api/config/skills/toggle', home, { relDir, disabled }),
   getAgents: (home: string) => request<AgentsListing>(base, 'GET', '/api/config/agents', home),
   getAgentProfile: (home: string, file: string) =>
-    request<AgentProfile>(base, 'GET', `/api/agents/profile?file=${encodeURIComponent(file)}`, home),
+    request<AgentProfile>(base, 'GET', `/api/config/agents/profile?file=${encodeURIComponent(file)}`, home),
   putAgentProfile: (
     home: string,
     payload: {
@@ -346,15 +343,10 @@ export function createApiClient(base: string | (() => string) = '') {
     revision: string,
   ) => request<MutationResult>(base, 'PUT', '/api/config/auth/entries', home, { entries, revision }),
   getPlugins: (home: string) => request<PluginsListing>(base, 'GET', '/api/config/plugins', home),
-  /** 该 home 的跨进程运行态：读心跳扩展写的文件。 */
-  getLiveSessions: (home: string) =>
-    requestNoHome<LiveSessionsListing>(base, 'GET', `/api/sessions?state=live&home=${encodeURIComponent(home)}`),
   mutatePluginEntry: (home: string, action: 'enable' | 'disable' | 'remove', index: number, revision: string) =>
     request<MutationResult>(base, 'POST', '/api/config/plugins/entry', home, { action, index, revision }),
 
   // ---- 会话与任务（给会话模块和任务分区用） ----
-  getSessionTasks: (home: string) =>
-    requestNoHome<SessionTaskListing>(base, 'GET', `/api/session/tasks?home=${encodeURIComponent(home)}`),
   getSessionDisk: async (home: string): Promise<SessionDisk> => {
     const result = await requestNoHome<{ root: string; exists: boolean }>(
       base,
@@ -365,8 +357,6 @@ export function createApiClient(base: string | (() => string) = '') {
   },
   cancelSessionTask: (sessionId: string) =>
     requestNoHome<{ ok: true }>(base, 'POST', `/api/sessions/${encodeURIComponent(sessionId)}/abort`),
-  /** 跨 home 的运行态：会话模块按会话文件绝对路径匹配。 */
-  getLiveFeed: () => requestNoHome<LiveSessionsListing>(base, 'GET', '/api/sessions?state=live'),
 
   // ---- 会话实体：对话就是这个实体在运行，不再有独立的 chat 资源 ----
 
