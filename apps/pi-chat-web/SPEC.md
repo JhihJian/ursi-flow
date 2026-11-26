@@ -54,6 +54,7 @@ references:
 - `createPiChatModule({ managerApiBaseUrl, storageKey, openSessionInSessions?, onNotice? })` 返回 `WorkspaceModule & { commands }`；`managerApiBaseUrl` 只能是同源路径前缀。
 - 侧栏用平台的 `SidebarFrame`：展开态是 home 选择、新建对话参数、本模块打开的对话列表；折叠态一条窄条显示运行中数量与当前 home。
 - 工作区只放对话：顶部一行状态与操作，中间轨迹与流式块，底部输入区；不含模块标题。
+- 版面与灰阶沿用 `apps/todo-web`：衬线小标题、等宽正文、方角、选中靠左侧竖线；轨迹组件库的配色映射与会话模块同一份。
 - 重型依赖（轨迹组件库）由工作区 `lazy` 加载，侧栏与首屏不背它；`localStorage` 键以 `storageKey` 为前缀。
 - 独立入口与嵌入模式共用同一对组件与同一份状态；独立入口的接口前缀默认同源，开发时由代理转发到管理台。
 
@@ -63,4 +64,4 @@ references:
 - `web/src/chat-context.tsx`：home、对话参数草稿、对话列表、SSE 连接、流式文本、扩展 UI 请求与错误状态。
 - `web/src/components/ChatSidebar.tsx`：home 选择、新建对话参数、对话列表。
 - `web/src/components/ChatWorkspace.tsx`：轨迹渲染、流式块、扩展 UI 提示与输入区。
-- `web/src/main.tsx` 与 `index.html`：独立入口；`module.css` 是 `./module.css` 导出给宿主的样式。
+- `web/src/main.tsx` 与 `index.html`：独立入口；`module.css` 是 `./module.css` 导出给宿主的样式，`standalone.css` 只服务独立入口的两栏版面。

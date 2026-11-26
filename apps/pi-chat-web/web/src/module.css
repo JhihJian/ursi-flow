@@ -1,26 +1,39 @@
 /*
- * 对话模块的作用域样式。所有规则挂在 .pichat 下，不写 html/body/:root。
- * 轨迹组件库自己的样式由 ChatWorkspace 引入，这里只管模块骨架。
+ * pi 对话模块样式。
+ *
+ * 灰阶、字体与间距与 apps/todo-web 一致：衬线小标题、等宽正文、方角、选中靠左侧竖线。
+ * 所有规则挂在 .pichat 容器内（侧栏与工作区各包一层），不写 html/body/#root，
+ * 也不碰宿主样式；独立入口的页面级复位在 standalone.css。
  */
 
 .pichat {
-  --pichat-border: var(--gray-200, #e2ddd4);
-  --pichat-text: var(--gray-900, #1d1b18);
-  --pichat-muted: var(--gray-600, #6e6860);
-  --pichat-bg: var(--white, #fff);
-  --pichat-accent: #1d1b18;
+  --black: #000000;
+  --gray-900: #1a1a1a;
+  --gray-600: #666666;
+  --gray-400: #999999;
+  --gray-200: #e5e5e5;
+  --gray-100: #f5f5f5;
+  --white: #ffffff;
+  --danger: #b43c3c;
+
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "DejaVu Sans Mono", "Liberation Mono",
+    "Cascadia Mono", "Consolas", "Courier New", monospace;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
 
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
+  position: relative;
   min-height: 0;
-  background: var(--pichat-bg);
-  color: var(--pichat-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray-900);
+  background: var(--white);
 }
 
 .pichat *,
@@ -29,383 +42,720 @@
   box-sizing: border-box;
 }
 
-.pichat-sidebar {
+/* 保留滚动、隐藏滚动条：与看板、会话模块的出版物式版面一致。 */
+.pichat,
+.pichat * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pichat *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.pichat button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ===== 容器 ===== */
+
+.pichat-sidebar-host {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 4px 0 12px;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
+}
+
+.pichat-workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ===== 侧栏 ===== */
+
+.pichat-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-md) var(--space-md) var(--space-sm);
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .pichat-field {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .pichat-label {
-  color: var(--pichat-muted);
+  color: var(--gray-600);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
-.pichat-input {
+.pichat-select,
+.pichat-input,
+.pichat-textarea {
   width: 100%;
   min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid var(--pichat-border);
-  border-radius: 0;
-  background: #fff;
-  color: inherit;
-  font: inherit;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--gray-900);
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.pichat-input.is-inline {
+.pichat-select {
+  cursor: pointer;
+}
+
+.pichat-select:focus,
+.pichat-input:focus,
+.pichat-textarea:focus {
+  outline: none;
+  border-color: var(--black);
+}
+
+.pichat-textarea {
+  min-height: 64px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.pichat-select.is-inline {
   width: auto;
-  max-width: 190px;
-  padding: 2px 4px;
+  max-width: 200px;
+  padding: 1px var(--space-xs);
+  border-color: transparent;
+  font-size: 11px;
+  color: var(--gray-600);
+}
+
+.pichat-select.is-inline:hover {
+  border-color: var(--gray-200);
+}
+
+.pichat-select.is-inline:focus {
+  border-color: var(--gray-900);
+  color: var(--gray-900);
+}
+
+.pichat-note {
+  margin: 0;
+  overflow: hidden;
+  color: var(--gray-400);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pichat-hint {
   margin: 0;
-  color: var(--pichat-muted);
+  color: var(--gray-400);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
 .pichat-error {
   margin: 0;
-  color: #a4231f;
+  color: var(--danger);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-.pichat-sidebar-head {
+/* 分组标题：与看板的 section-label、会话栏的分组同一形状。 */
+.pichat-section-head {
   display: flex;
+  flex: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--pichat-border);
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding: var(--space-sm) 0 var(--space-xs);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pichat-section-head .pichat-section {
+  flex: 1;
+}
+
+.pichat-section {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-400);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
 .pichat-count {
-  color: var(--pichat-muted);
+  color: var(--gray-400);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pichat-rail-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gray-400);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pichat-rail-toggle:hover {
+  color: var(--gray-900);
+  background: var(--gray-200);
 }
 
 .pichat-new {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0 var(--space-xs);
 }
 
-.pichat-primary {
-  margin-top: 2px;
-  padding: 6px 8px;
-  border: 1px solid var(--pichat-accent);
-  border-radius: 0;
-  background: var(--pichat-accent);
-  color: #fff;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+/* 新建按钮跟在上面的字段下面，两种状态都保持同样的间距。 */
+.pichat-body > .pichat-button {
+  margin-top: var(--space-sm);
 }
 
-.pichat-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.pichat-rail-toggle {
-  padding: 2px 6px;
-  border: 1px solid var(--pichat-border);
-  border-radius: 0;
-  background: #fff;
-  color: inherit;
-  font: inherit;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
+/* 对话列表：一条一行，选中只有左侧竖线与浅底。 */
 .pichat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-xs) 0 0;
   list-style: none;
 }
 
+.pichat-list .pichat-note {
+  padding: var(--space-sm) var(--space-xs);
+}
+
 .pichat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: block;
   width: 100%;
-  padding: 5px 6px;
+  padding: var(--space-sm) var(--space-xs);
   border: 0;
   border-left: 2px solid transparent;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  background: none;
   text-align: left;
   cursor: pointer;
 }
 
 .pichat-item:hover {
-  background: #f6f4f1;
+  background: var(--gray-100);
 }
 
 .pichat-item.is-active {
-  border-left-color: var(--pichat-accent);
-  background: #f1eeea;
+  border-left-color: var(--black);
+  background: var(--gray-200);
 }
 
-.pichat-item-main {
+.pichat-item-head {
   display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
+  align-items: baseline;
+  gap: var(--space-sm);
 }
 
 .pichat-item-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pichat-item-meta {
-  overflow: hidden;
-  color: var(--pichat-muted);
-  font-size: 10px;
+  font-weight: 500;
+  color: var(--gray-900);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pichat-item-state {
-  color: var(--pichat-muted);
-  font-size: 10px;
-}
-
-.pichat-dot {
-  width: 7px;
-  height: 7px;
   flex: none;
-  border-radius: 50%;
-  background: #bdb7ad;
+  color: var(--gray-400);
+  font-size: 10px;
+  letter-spacing: 0.3px;
 }
 
-.pichat-dot.is-running {
-  background: #2f7d32;
+.pichat-item-state.is-running {
+  color: var(--gray-900);
 }
 
-.pichat-dot.is-error {
-  background: #a4231f;
+.pichat-item-state.is-error {
+  color: var(--danger);
 }
 
-.pichat-empty-line {
-  padding: 4px 6px;
-  color: var(--pichat-muted);
+.pichat-item-meta {
+  display: flex;
+  gap: var(--space-sm);
+  overflow: hidden;
+  color: var(--gray-400);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 模型名可能很长，先截它；最近活动时间始终可见。 */
+.pichat-item-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pichat-item-meta > span:last-child {
+  flex: none;
 }
 
 .pichat-link {
   align-self: flex-start;
+  margin-top: var(--space-sm);
   padding: 0;
   border: 0;
-  background: transparent;
-  color: var(--pichat-muted);
-  font: inherit;
+  background: none;
+  color: var(--gray-400);
   font-size: 11px;
-  text-decoration: underline;
   cursor: pointer;
 }
 
+.pichat-link:hover {
+  color: var(--gray-900);
+  text-decoration: underline;
+}
+
+/* ===== 按钮：沿用看板的 .btn / .btn-primary / .btn-sm ===== */
+
+.pichat-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--gray-900);
+  background: var(--white);
+  color: var(--gray-900);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pichat-button:hover:not(:disabled) {
+  background: var(--gray-200);
+}
+
+.pichat-button.is-primary {
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.pichat-button.is-primary:hover:not(:disabled) {
+  background: var(--black);
+}
+
+.pichat-button.is-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 11px;
+}
+
+.pichat-button.is-block {
+  width: 100%;
+}
+
+.pichat-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ===== 工作区 ===== */
+
 .pichat-bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex: none;
   flex-wrap: wrap;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--pichat-border);
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-md);
+  padding: 10px var(--space-lg);
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .pichat-bar-title {
+  max-width: 42ch;
+  overflow: hidden;
+  font-family: var(--font-serif);
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .pichat-bar-meta {
-  overflow: hidden;
   max-width: 34ch;
-  color: var(--pichat-muted);
+  overflow: hidden;
+  color: var(--gray-600);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pichat-bar-field {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+/* 运行态在标题行只用一个词，正常状态不抢视线。 */
+.pichat-state.is-running {
+  color: var(--gray-900);
+}
+
+.pichat-state.is-error {
+  color: var(--danger);
 }
 
 .pichat-bar-actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: var(--space-sm);
   margin-left: auto;
-}
-
-.pichat-button {
-  padding: 3px 8px;
-  border: 1px solid var(--pichat-border);
-  border-radius: 0;
-  background: #fff;
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.pichat-button.is-primary {
-  border-color: var(--pichat-accent);
-  background: var(--pichat-accent);
-  color: #fff;
-}
-
-.pichat-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .pichat-banner {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--pichat-border);
-  background: #faf8f5;
+  flex: none;
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--gray-200);
   font-size: 12px;
 }
 
 .pichat-banner.is-error {
-  background: #fdf3f2;
-  color: #a4231f;
+  border-bottom-color: var(--danger);
+  color: var(--danger);
 }
 
-.pichat-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 8px 10px 12px;
-}
-
-.pichat-empty {
+.pichat-thread {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-  padding: 24px 12px;
-  color: var(--pichat-muted);
+  min-height: 0;
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
-.pichat-empty p {
-  margin: 0;
+/* 空态：跟会话模块的居中提示同一形状。 */
+.pichat-center {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.pichat-center .pichat-hint {
+  max-width: 52ch;
 }
 
 .pichat-streaming {
-  margin-top: 10px;
-  border: 1px solid var(--pichat-border);
-  background: #fbfaf8;
+  flex: none;
+  margin-top: var(--space-md);
+  border: 1px solid var(--gray-200);
 }
 
 .pichat-streaming-head {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--pichat-border);
-  color: var(--pichat-muted);
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--gray-400);
   font-size: 11px;
+}
+
+.pichat-streaming-tag {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
 .pichat-streaming-body {
   margin: 0;
-  padding: 8px;
-  font: inherit;
+  padding: var(--space-sm);
+  font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .pichat-pending {
-  margin-top: 6px;
-  color: var(--pichat-muted);
+  flex: none;
+  margin-top: var(--space-xs);
+  color: var(--gray-400);
   font-size: 11px;
 }
 
+/* 扩展 UI 请求：会话内的确认条，不用全局弹窗。 */
 .pichat-ui-request {
-  margin: 0 10px 8px;
-  padding: 8px;
-  border: 1px solid var(--pichat-accent);
-  background: #faf8f5;
+  flex: none;
+  margin: 0 var(--space-lg) var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--gray-900);
+  background: var(--white);
 }
 
 .pichat-ui-request-head {
   display: flex;
-  gap: 8px;
   align-items: baseline;
+  gap: var(--space-sm);
+  font-family: var(--font-serif);
   font-size: 12px;
+  font-weight: 600;
 }
 
 .pichat-ui-request-msg {
-  margin: 6px 0 0;
+  margin: var(--space-xs) 0 0;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .pichat-ui-request-actions {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
   align-items: center;
-  margin-top: 8px;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
-.pichat-input-area {
+.pichat-ui-request-actions .pichat-input {
+  flex: 1;
+  width: auto;
+}
+
+/* 输入区：贴底，与看板的 detail-footer 同一分隔方式。 */
+.pichat-composer {
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px 10px;
-  border-top: 1px solid var(--pichat-border);
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg) var(--space-md);
+  border-top: 1px solid var(--gray-200);
 }
 
-.pichat-textarea {
-  width: 100%;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--pichat-border);
-  border-radius: 0;
-  background: #fff;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.6;
-  resize: vertical;
-}
-
-.pichat-input-actions {
+.pichat-composer-bar {
   display: flex;
-  gap: 6px;
   align-items: center;
+  gap: var(--space-sm);
 }
 
-.pichat-input-actions .pichat-hint {
+/* 动作在右、模型提示在左，与看板的贴底操作栏一致。 */
+.pichat-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   margin-left: auto;
+}
+
+/* ===== 轨迹组件库：把上游的暖色调映射到本模块的灰阶 ===== */
+
+/* 与 apps/pi-sessions-web 的映射保持一致，改动时两边同步。 */
+.pichat {
+  --dsw-radius-xs: 0px;
+  --dsw-radius-sm: 0px;
+  --dsw-radius-md: 0px;
+  --dsw-radius-lg: 0px;
+  --dsw-radius-xl: 0px;
+  --dsw-radius-panel: 0px;
+  --dsw-font-family: var(--font-mono);
+  --ds-font-family-code: var(--font-mono);
+
+  --dsw-alias-label-primary: var(--gray-900);
+  --dsw-alias-label-primary-dimmed: var(--gray-900);
+  --dsw-alias-label-primary-foreground: var(--white);
+  --dsw-alias-label-primary-inverted: var(--white);
+  --dsw-alias-label-secondary: var(--gray-600);
+  --dsw-alias-label-tertiary: var(--gray-400);
+  --dsw-alias-label-caption: var(--gray-400);
+  --dsw-alias-label-dimmed: var(--gray-400);
+  --dsw-alias-text-primary: var(--gray-900);
+  --dsw-alias-text-secondary: var(--gray-600);
+  --dsw-alias-text-tertiary: var(--gray-400);
+
+  --dsw-alias-bg-base: var(--white);
+  --dsw-alias-bg-layer-1: var(--white);
+  --dsw-alias-bg-layer-2: var(--gray-100);
+  --dsw-alias-bg-layer-3: var(--gray-200);
+  --dsw-alias-bg-module-platform: var(--white);
+  --dsw-alias-settings-card-fill: var(--white);
+  --dsw-alias-markdown-code-block: var(--gray-100);
+
+  --dsw-alias-border-l1: var(--gray-200);
+  --dsw-alias-border-l2: var(--gray-200);
+  --dsw-alias-border-l2-darkmode-thin: var(--gray-200);
+  --dsw-alias-border-l3: var(--gray-400);
+  --dsw-alias-border-l4: var(--gray-400);
+  --dsw-alias-border-inverted: var(--gray-900);
+  --dsw-alias-border-inverted2: var(--gray-900);
+  --dsw-alias-settings-card-stroke: var(--gray-200);
+
+  --dsw-alias-brand-primary: var(--gray-900);
+  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--gray-900);
+  --dsw-alias-brand-primary-invert: var(--white);
+  --dsw-alias-brand-text: var(--gray-900);
+  --dsw-alias-state-business-primary: var(--gray-900);
+  --dsw-alias-state-business-tertiary: var(--gray-200);
+  --dsw-alias-button-primary-fill: var(--gray-900);
+  --dsw-alias-button-primary-hover: var(--black);
+  --dsw-alias-button-contrast-fill: var(--gray-900);
+  --dsw-alias-button-ghost-active-fill: var(--gray-200);
+  --dsw-alias-button-ghost-active-border: var(--gray-900);
+  --dsw-alias-button-tool-bar-fill: transparent;
+  --dsw-alias-button-tool-bar-fill-invisible: transparent;
+
+  --dsw-alias-interactive-bg-hover: rgba(0, 0, 0, 0.05);
+  --dsw-alias-interactive-bg-active: rgba(0, 0, 0, 0.09);
+  --dsw-alias-interactive-bg-hover-solid: var(--gray-200);
+  --dsw-alias-bg-multi-select: rgba(0, 0, 0, 0.08);
+
+  --dsw-alias-state-error-primary: var(--danger);
+  --dsw-alias-state-error-secondary: var(--danger);
+  --dsw-alias-state-success-primary: var(--gray-900);
+  --dsw-alias-state-success-tertiary: var(--gray-100);
+  --dsw-alias-state-warn-label: var(--danger);
+  --dsw-alias-state-warn-tertiary: rgba(180, 60, 60, 0.08);
+
+  --dsw-alias-scrollbar-bg-l2: transparent;
+  --dsw-alias-scrollbar-hover-l2: var(--gray-400);
+
+  --dsw-focus-ring-color: var(--gray-900);
+
+  --viewer-user: var(--gray-900);
+  --viewer-user-tint: var(--gray-200);
+  --viewer-message: #3f6f74;
+  --viewer-message-tint: #eef4f4;
+  --viewer-tool: #86603f;
+  --viewer-tool-tint: #f5f0ea;
+  --viewer-subtool: #a98a6d;
+  --viewer-subtool-tint: #f7f3ef;
+  --viewer-context: #6f6a85;
+  --viewer-context-tint: #f0eff5;
+  --viewer-error: var(--danger);
+}
+
+.pichat .trajectory-ledger [class*='highlight'],
+.pichat .trajectory-ledger [class*='floating'] {
+  box-shadow: 0 0 0 1px var(--gray-200);
+}
+
+.pichat .trajectory-ledger th,
+.pichat .trajectory-ledger [class*='header'] {
+  font-family: var(--font-serif);
+  letter-spacing: 0.5px;
+}
+
+.pichat [class*='_span_'][data-timeline-span='user'] {
+  background: var(--viewer-user);
+}
+
+.pichat [class*='_span_'][data-timeline-span='context'] {
+  background: var(--viewer-context);
+}
+
+.pichat [class*='_span_'][data-timeline-span='message'] {
+  --trajectory-assistant-decoding-color: var(--viewer-message);
+  --trajectory-assistant-ttft-color: color-mix(in srgb, var(--viewer-message) 55%, #ffffff);
+  background: var(--viewer-message);
+}
+
+.pichat [class*='_span_'][data-timeline-span='tool'] {
+  background: var(--viewer-tool);
+}
+
+.pichat [class*='_span_'][data-timeline-span='subtool'] {
+  background: var(--viewer-subtool);
+}
+
+.pichat [class*='_span_'][data-error='true'] {
+  background: var(--viewer-error);
+}
+
+.pichat [class*='_tagUser_'] {
+  color: var(--viewer-user);
+  background: var(--viewer-user-tint);
+}
+
+.pichat [class*='_tagMessage_'] {
+  color: var(--viewer-message);
+  background: var(--viewer-message-tint);
+}
+
+.pichat [class*='_tagTool_'] {
+  color: var(--viewer-tool);
+  background: var(--viewer-tool-tint);
+}
+
+.pichat [class*='_tagSubtool_'] {
+  color: var(--viewer-subtool);
+  background: var(--viewer-subtool-tint);
+}
+
+.pichat [class*='_tagContext_'] {
+  color: var(--viewer-context);
+  background: var(--viewer-context-tint);
+}
+
+.pichat [class*='_tagSystem_'] {
+  color: var(--gray-400);
+  background: transparent;
+}
+
+.pichat [class*='assistantVioletBright'] {
+  color: var(--viewer-message);
+  background: var(--viewer-message-tint);
+}
+
+.pichat [class*='contextGreen'] {
+  color: var(--viewer-context);
+  background: var(--viewer-context-tint);
+}
+
+.pichat [class*='toolAmber'] {
+  color: var(--viewer-tool);
+  background: var(--viewer-tool-tint);
+}
+
+.pichat [class*='subtoolAmber'] {
+  color: var(--viewer-subtool);
+  background: var(--viewer-subtool-tint);
+}
+
+.pichat [class*='kindTagIcon'] {
+  color: inherit;
+  opacity: 0.7;
 }

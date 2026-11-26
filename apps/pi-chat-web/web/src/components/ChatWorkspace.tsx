@@ -53,8 +53,8 @@ export function ChatWorkspace() {
 
   if (!active) {
     return (
-      <div className="pichat">
-        <div className="pichat-empty">
+      <div className="pichat pichat-workspace">
+        <div className="pichat-center">
           <p>在左侧选择一份 pi home 并新建对话。</p>
           <p className="pichat-hint">
             对话用的是该 home 的模型、凭据、skills 与 agents；会话文件写进它的 sessions/，
@@ -88,9 +88,8 @@ export function ChatWorkspace() {
   }
 
   return (
-    <div className="pichat">
+    <div className="pichat pichat-workspace">
       <header className="pichat-bar">
-        <span className={`pichat-dot is-${active.state}`} aria-hidden />
         <span className="pichat-bar-title">{active.name ?? active.sessionId.slice(0, 12)}</span>
         <span className="pichat-bar-meta" title={active.home}>
           {active.home}
@@ -98,7 +97,7 @@ export function ChatWorkspace() {
         <label className="pichat-bar-field">
           <span className="pichat-label">模型</span>
           <select
-            className="pichat-input is-inline"
+            className="pichat-select is-inline"
             value={modelValue}
             onChange={(event) => {
               const [provider, id] = event.target.value.split('/')
@@ -118,17 +117,19 @@ export function ChatWorkspace() {
             })}
           </select>
         </label>
-        <span className="pichat-bar-meta">{STATUS_TEXT[active.state] ?? active.state}</span>
+        <span className={`pichat-bar-meta pichat-state is-${active.state}`}>
+          {STATUS_TEXT[active.state] ?? active.state}
+        </span>
         {active.thinkingLevel ? (
           <span className="pichat-bar-meta">思考 {active.thinkingLevel}</span>
         ) : null}
         <span className="pichat-bar-actions">
           {streaming ? (
-            <button type="button" className="pichat-button" onClick={() => void abort()}>
+            <button type="button" className="pichat-button is-sm" onClick={() => void abort()}>
               停止
             </button>
           ) : null}
-          <button type="button" className="pichat-button" onClick={() => void close()}>
+          <button type="button" className="pichat-button is-sm" onClick={() => void close()}>
             结束
           </button>
         </span>
@@ -144,7 +145,7 @@ export function ChatWorkspace() {
         </div>
       ) : null}
 
-      <div className="pichat-body" ref={bodyRef}>
+      <div className="pichat-thread" ref={bodyRef}>
         {parsed?.ok ? (
           <TrajectoryViewer
             turns={parsed.value.turns}
@@ -153,11 +154,11 @@ export function ChatWorkspace() {
             sessionRevision={0}
           />
         ) : parsed && !parsed.ok ? (
-          <div className="pichat-empty">
+          <div className="pichat-center">
             <p className="pichat-error">解析会话内容失败：{parsed.message}</p>
           </div>
         ) : (
-          <div className="pichat-empty">
+          <div className="pichat-center">
             <p>发一条消息开始这段对话。</p>
             <p className="pichat-hint">模型、工具与凭据都来自 {active.home}。</p>
           </div>
@@ -166,8 +167,8 @@ export function ChatWorkspace() {
         {partial ? (
           <div className="pichat-streaming">
             <div className="pichat-streaming-head">
-              <span className="pichat-dot is-running" aria-hidden />
-              正在输出
+              <span className="pichat-streaming-tag">正在输出</span>
+              <span>{active.model ?? '默认模型'}</span>
             </div>
             <pre className="pichat-streaming-body">{partial}</pre>
           </div>
@@ -186,12 +187,16 @@ export function ChatWorkspace() {
             <div className="pichat-ui-request-actions">
               <button
                 type="button"
-                className="pichat-button is-primary"
+                className="pichat-button is-sm is-primary"
                 onClick={() => void answer(uiRequest.requestId, true)}
               >
                 同意
               </button>
-              <button type="button" className="pichat-button" onClick={() => void answer(uiRequest.requestId, false)}>
+              <button
+                type="button"
+                className="pichat-button is-sm"
+                onClick={() => void answer(uiRequest.requestId, false)}
+              >
                 拒绝
               </button>
             </div>
@@ -202,13 +207,17 @@ export function ChatWorkspace() {
                 <button
                   key={option}
                   type="button"
-                  className="pichat-button"
+                  className="pichat-button is-sm"
                   onClick={() => void answer(uiRequest.requestId, option)}
                 >
                   {option}
                 </button>
               ))}
-              <button type="button" className="pichat-link" onClick={() => void answer(uiRequest.requestId, undefined)}>
+              <button
+                type="button"
+                className="pichat-link"
+                onClick={() => void answer(uiRequest.requestId, undefined)}
+              >
                 取消
               </button>
             </div>
@@ -222,8 +231,13 @@ export function ChatWorkspace() {
                 void answer(uiRequest.requestId, typeof value === 'string' ? value : '')
               }}
             >
-              <input name="value" className="pichat-input" placeholder={uiRequest.placeholder ?? ''} autoFocus />
-              <button type="submit" className="pichat-button is-primary">
+              <input
+                name="value"
+                className="pichat-input"
+                placeholder={uiRequest.placeholder ?? ''}
+                autoFocus
+              />
+              <button type="submit" className="pichat-button is-sm is-primary">
                 提交
               </button>
             </form>
@@ -231,36 +245,42 @@ export function ChatWorkspace() {
         </div>
       ) : null}
 
-      <div className="pichat-input-area">
+      <div className="pichat-composer">
         <textarea
           ref={inputRef}
           className="pichat-textarea"
           value={text}
-          placeholder={streaming || pending > 0 ? '运行中：Enter 排队，Shift+Enter 换行，Esc 停止' : 'Enter 发送，Shift+Enter 换行'}
+          placeholder={
+            streaming || pending > 0
+              ? '运行中：Enter 排队，Shift+Enter 换行，Esc 停止'
+              : 'Enter 发送，Shift+Enter 换行'
+          }
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
           rows={3}
         />
-        <div className="pichat-input-actions">
-          {streaming || pending > 0 ? (
-            <>
-              <button type="button" className="pichat-button" onClick={() => submit('followUp')}>
-                排队发送
-              </button>
-              <button type="button" className="pichat-button" onClick={() => submit('steer')}>
-                立即插话
-              </button>
-            </>
-          ) : (
-            <button type="button" className="pichat-button is-primary" onClick={() => submit()}>
-              发送
-            </button>
-          )}
+        <div className="pichat-composer-bar">
           {modelProvider && modelId ? (
             <span className="pichat-hint">
               {modelProvider}/{modelId}
             </span>
           ) : null}
+          <div className="pichat-composer-actions">
+            {streaming || pending > 0 ? (
+              <>
+                <button type="button" className="pichat-button is-sm" onClick={() => submit('followUp')}>
+                  排队发送
+                </button>
+                <button type="button" className="pichat-button is-sm" onClick={() => submit('steer')}>
+                  立即插话
+                </button>
+              </>
+            ) : (
+              <button type="button" className="pichat-button is-sm is-primary" onClick={() => submit()}>
+                发送
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -4,18 +4,22 @@ import { ChatSidebar } from './components/ChatSidebar'
 import { ChatWorkspace } from './components/ChatWorkspace'
 import 'pi-agent-trajectory-viewer/style.css'
 import './module.css'
+import './standalone.css'
 
-/** 独立入口：同一对组件，不经过工作台外壳。接口前缀默认同源。 */
+/**
+ * 独立入口：同一对组件，不经过工作台外壳。接口前缀默认同源。
+ * 版面是固定的两栏，折叠由外壳负责，这里不出折叠控件。
+ */
 function StandaloneApp() {
   return (
     <ChatProvider options={{ storageKey: 'pi-chat-standalone' }}>
-      <div style={{ display: 'flex', height: '100dvh', minHeight: 0 }}>
-        <div style={{ width: 340, flex: 'none', minHeight: 0, overflow: 'hidden', borderRight: '1px solid #e2ddd4' }}>
+      <div className="solo">
+        <aside className="solo-sidebar">
           <ChatSidebar collapsed={false} collapse={() => undefined} expand={() => undefined} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+        </aside>
+        <main className="solo-workspace">
           <ChatWorkspace />
-        </div>
+        </main>
       </div>
     </ChatProvider>
   )

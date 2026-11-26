@@ -18,8 +18,10 @@ const ChatSidebarLazy = lazy(() =>
 
 function WorkspaceFallback() {
   return (
-    <div className="pichat">
-      <div className="pichat-empty">加载对话视图…</div>
+    <div className="pichat pichat-workspace">
+      <div className="pichat-center">
+        <p className="pichat-hint">加载对话视图…</p>
+      </div>
     </div>
   )
 }
