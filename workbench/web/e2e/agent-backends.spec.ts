@@ -12,7 +12,7 @@ test('从后端设置检查并返回草稿，只能选择就绪且兼容的后�
     const req = route.request()
     const url = new URL(req.url())
     if (req.method() === 'GET') {
-      if (url.pathname === '/api/v1/flows' || url.pathname === '/api/v2/patches/work') return route.fulfill({ json: [] })
+      if (url.pathname === '/api/v2/patches/work') return route.fulfill({ json: [] })
       if (url.pathname === '/api/v2/patches/config') return route.fulfill({ json: [{ id: configPackageId, name: '核对配置', directoryId: 'private-directory' }] })
       if (url.pathname === '/api/v2/agent-backends') {
         if (!url.search) return route.fulfill({ json: rows })

@@ -5,7 +5,7 @@ test.describe('对话模块', () => {
 
   test('新建会话、流式回复、刷新保留与响应式布局', async ({ page }) => {
     await page.route('**/api/**', route => { throw Error(`本地对话发出了网络 API 请求：${route.request().method()}`) })
-    await page.goto('/flows')
+    await page.goto('/work-items')
     await navigate(page, '对话')
     await expect(page).toHaveURL(/\/chat$/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('对话')

@@ -4,7 +4,6 @@ depends-on:
   - ../server/SPEC.md
   - ./acceptance/SPEC.md
 references:
-  - ../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
   - ../../docs/design/workbench/WEB-WORK-MANAGEMENT.md
   - ../../docs/design/executor-platform/OVERVIEW.md
   - README.md

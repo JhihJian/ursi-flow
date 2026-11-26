@@ -10,7 +10,6 @@ Workbench 将**发布执行器定义**与**发起一次执行尝试**分开。�
 
 | 路径 | 请求如何选择 | 配置与后端来源 |
 | --- | --- | --- |
-| [Flow](FLOW-EXECUTOR-DESIGN.md) | 省略两个目标字段 | 部署者固定本机适配器、Flow ID 和修订。启动时核对目录修订，不从执行器目录选取定义。 |
 | [Agent 按版本运行](PI-AGENT-EXECUTOR-DESIGN.md) | 提交 `executorRef` | 使用已发布修订保存的配置快照和后端绑定。编辑配置包或发布新版不会改变旧修订的快照。 |
 | [Agent 草稿试跑](PI-AGENT-EXECUTOR-DESIGN.md#何时读取配置) | 提交 `previewDefinition` | 读取配置包当前内容，从管理员登记的后端中选取就绪且兼容的一个，固定为本次尝试的快照和绑定。试跑不发布修订。 |
 
@@ -19,7 +18,7 @@ Workbench 将**发布执行器定义**与**发起一次执行尝试**分开。�
 ## 尝试如何完成
 
 1. **准备输入。** Workbench 记录本次请求，把可选工作包的文件复制到 `inputs/`，为输出分配独立的 `artifacts/` 目录。Agent 尝试同时保存只读配置快照。
-2. **交给后端执行。** Workbench 通过[执行器 MCP 协议](../../EXECUTOR-MCP.md)向适配器发起启动、查询或取消。Workbench 持有尝试记录、输入和已发布的制品，后端持有自身的运行记录。例如，Flow Run 与节点历史由 `ursi-flowd` 保存。
+2. **交给后端执行。** Workbench 通过[执行器 MCP 协议](../../EXECUTOR-MCP.md)向适配器发起启动、查询或取消。Workbench 持有尝试记录、输入和已发布的制品，后端持有自身的运行记录。
 3. **发布结果。** Workbench 确认终态并收集完 `artifacts/` 后，才通过 `artifactDirectoryId` 提供只读制品目录。状态待核实时，调用方可继续查询。
 
 ## 回执丢失与重试

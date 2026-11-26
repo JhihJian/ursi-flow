@@ -10,7 +10,7 @@ test('类别与状态组合筛选，刷新和清除单个条件保留另一维�
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/v2/work-items') return route.fulfill({ json: items })
-    expect(['/api/v2/patches/work', '/api/v1/flows']).toContain(path)
+    expect(['/api/v2/patches/work', '/api/v2/work-items']).toContain(path)
     return route.fulfill({ json: [] })
   })
   await page.goto('/work-items?category=continuous')

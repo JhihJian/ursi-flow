@@ -3,7 +3,6 @@ parent: ../../../SPEC.md
 depends-on:
   - ../../shared/SPEC.md
 references:
-  - ../../../../../docs/design/workbench/WEB-SHELL-AND-FLOW.md
 ---
 # 本地演示对话
 

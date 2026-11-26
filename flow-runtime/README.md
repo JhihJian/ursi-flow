@@ -37,7 +37,7 @@ const answered = await engine.respond(result.runId, result.pending.stepId, '通�
 | `src/logs` | 过程日志的实体定义：运行头、节点进入、执行器回执与拒绝、确认待决与应答、选边、终态，以及可恢复快照和 `LogStore` 端口。 |
 | `src/store` | `FileLogStore`：把日志实体落到文件，每条运行一个目录，事件按行追加，快照原子替换。 |
 
-引擎只依赖 Flow Core 的 `ready`/`submit` 和 `LogStore` 端口。进程管理、HTTP、MCP、模型 SDK 都在宿主侧，见 [ursi-flow-host](../flow-host/README.md)。
+引擎只依赖 Flow Core 的 `ready`/`submit` 和 `LogStore` 端口。进程管理、HTTP、MCP、模型 SDK 都不在本库内，需要时由使用方实现两个执行器方法。
 
 ## 能力边界
 
@@ -69,6 +69,5 @@ npm ci && npm run build && npm test
 
 ## 相关入口
 
-- 常驻服务、独立 CLI、MCP adapter 与本地/平台执行器：[ursi-flow-host](../flow-host/README.md)。
 - 无状态推进 SDK：[Flow Core](../flow-core/README.md)。
 - Flow 文件格式：[Flow 规范](../flow-core/docs/flow-spec.md)。

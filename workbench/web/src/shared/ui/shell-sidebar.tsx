@@ -34,7 +34,7 @@ export function ShellSidebar({ groups, mode, palette, signedIn, onNavigate, onTo
   const mono = palette === 'mono'
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <Link to="/flows" className="flex items-center gap-3 px-5 py-6" aria-label="ursi-flow 首页" onClick={onNavigate}>
+      <Link to="/work-items" className="flex items-center gap-3 px-5 py-6" aria-label="ursi-flow 首页" onClick={onNavigate}>
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-primary-foreground">
           <Icon name="workflow" size={23} />
         </span>

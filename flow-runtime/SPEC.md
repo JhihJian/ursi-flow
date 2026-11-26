@@ -11,7 +11,7 @@ references:
 
 ## 功能意图
 
-把 FLOW.md 推到最终结果的库，只有三部分：引擎、过程日志实体、日志文件存储。执行 Agent 的唯一外部依赖是 `prompt(agentName, instruct)`。进程管理、Socket、MCP 与模型 SDK 由宿主提供，见 [Flow Host](../flow-host/SPEC.md)。
+把 FLOW.md 推到最终结果的库，只有三部分：引擎、过程日志实体、日志文件存储。执行 Agent 的唯一外部依赖是 `prompt(agentName, instruct)`，执行命令依赖 `command(invocation)`。库不提供守护进程、Socket、MCP 与模型 SDK。
 
 ## 关键功能与验收
 

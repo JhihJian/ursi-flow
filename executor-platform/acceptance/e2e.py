@@ -233,22 +233,13 @@ class Integration(PlatformCase):
         cls.start_platform(HERE / 'backend.py', {})
         cls.publish_revisions()
 
-        # Workbench gives the spawned daemon its own consumer credential.
-        launcher = cls.root / 'flowd'
-        node = shlex.quote(shutil.which('node'))
-        daemon = shlex.quote(str(BUILD / 'runtime/machine/daemon.js'))
-        launcher.write_text(f'#!/bin/sh\nexec {node} {daemon}\n', encoding='utf-8')
-        launcher.chmod(0o700)
-        (cls.root / 'workspace').mkdir()
         browser, wb_port = uuid4().hex, port()
         cls.wb = Api(wb_port, browser)
         cls.start_service('ursi-server', {
-            'URSI_FLOW_ENABLED': '1', 'URSI_FLOWD_BIN': str(launcher),
-            'URSI_DATA_DIR': str(cls.root / 'wb'), 'URSI_WORKSPACE_DIR': str(cls.root / 'workspace'),
+            'URSI_DATA_DIR': str(cls.root / 'wb'),
             'URSI_EXECUTOR_PLATFORM_URL': cls.management.origin, 'URSI_EXECUTOR_PLATFORM_TOKEN': cls.wb_token,
-            'URSI_EXECUTOR_PLATFORM_RUNTIME_TOKEN': cls.rt_token, 'URSI_API_TOKEN': browser,
-            'URSI_LISTEN_ADDR': f'0.0.0.0:{wb_port}',
-        }, cls.wb, 'v1/flows')
+            'URSI_API_TOKEN': browser, 'URSI_LISTEN_ADDR': f'0.0.0.0:{wb_port}',
+        }, cls.wb, 'v2/work-items')
 
     def verify_receipt(self, api, directory, attempt, marker):
         data = api.request('GET', f'v2/directories/{directory}/file?path=receipt.json')
@@ -454,34 +445,6 @@ class Integration(PlatformCase):
         receipt = self.wait_attempt(self.runtime, path, attempt, 'failed')
         self.assertIsNone(receipt.get('artifactDirectoryId'), receipt)
         self.verify_fixture_calls(attempt)
-
-    def test_flow(self):
-        wb = self.wb.request
-        wb('POST', 'v1/flows', {'id': 'audit', 'files': {'FLOW.md': (HERE / 'FLOW.md').read_text()}})
-        marker = 'e2e-flow-' + uuid4().hex
-        job = wb('POST', 'v1/flows/audit/runs', {'workspace': 'default', 'variables': {'材料': marker}, 'executorRef': REF})
-        self.assertEqual(job['executorRef'], REF)
-        run = 'v1/runs/' + job['id']
-        deadline = time.monotonic() + 35
-        while job['status'] == 'running' and time.monotonic() < deadline:
-            time.sleep(.2)
-            job = wb('GET', run)
-        history = wb('GET', run + '/history')
-        self.assertEqual(job['status'], 'completed', (job.get('error'), history.get('nodeRuns')))
-        nodes = history['nodeRuns']
-        self.assertEqual([n['nodeRef'] for n in nodes], ['review', 'rework'])
-        self.assertEqual(nodes[0]['outcome'], {'result': '退回', 'variables': {'回执': marker}})
-        decision = history['routeDecisions'][0]
-        self.assertEqual((decision['sourceNodeRunId'], decision['result'], decision['destination']),
-                         (nodes[0]['id'], '退回', {'kind': 'node', 'ref': 'rework'}))
-        attempt = nodes[0]['attemptId']
-        path = 'v2/executor-attempts/' + attempt
-        receipt = self.runtime.request('GET', path)
-        self.assertEqual(receipt['status'], 'succeeded')
-        self.assertEqual(receipt['attemptId'], attempt)
-        self.verify_receipt(self.runtime, receipt['artifactDirectoryId'], attempt, marker)
-        self.verify_events(self.runtime, self.consumer, path, 'submit_flow_outcome')
-
 
 class RpcFailureIntegration(PlatformCase):
     @classmethod

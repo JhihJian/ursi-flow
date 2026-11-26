@@ -10,7 +10,7 @@ references:
 
 ## 功能意图
 
-ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用户通过 Web、HTTP API 或本机 CLI 维护流程包、启动和停止运行、查看节点结果。[Flow Runtime](flow-runtime/SPEC.md) 是只做推进的库：引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。[Flow Host](flow-host/SPEC.md) 提供 daemon、CLI、MCP adapter 与执行器调用。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。工作台与 Runtime 使用各自的凭证消费同一修订。
+ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[Flow Core](flow-core/SPEC.md) 是无状态推进 SDK，[Flow Runtime](flow-runtime/SPEC.md) 的引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。工作台通过 Server v2 管理工作清单与文件型工作包。独立执行器平台管理配置包、资源、执行器修订和执行尝试。
 
 独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。完整的 [Pi Web](apps/pi-web/README.md) 以 git subtree 接入，在浏览器里使用本机 Pi agent，与 CLI 共享同一份 `~/.pi/agent` 配置。[Pi 管理台](apps/pi-manager-web/SPEC.md) 对任意给定的 pi home 提供文件级配置管理（settings、skills、subagent、MCP、模型、凭据），只读写文件不运行会话，与 Pi Web 和 CLI 互补。
 
@@ -56,31 +56,10 @@ ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。用�
 - 关闭 Flow 时仍可创建工作项、独立更改类别和状态，并按两者组合筛选，也可独立维护工作包和配置包的文件。
 - 配置平台 MCP 服务后，可按工作项保存的资源与 Python 配方生成工作包。删除工作项后，包、文件与生成来源仍可读取。
 
-### 两个产品使用同一执行器修订
+### 用引擎跑完一份 Flow
 
 #### 验收
 
-- 发布新版后，Workbench 工作包直跑和已指定旧版的 Flow 节点仍使用旧版快照。Workbench 可读取自己的只读制品；Runtime 读取节点结果，校验结果名和变量后选边。两者不能互读尝试。
-
-### 校验与发布流程包
-
-#### 验收
-
-- 校验含 `FLOW.md` 及其引用文件的草稿后，目录中的已发布包不变。非法更新保留原修订。
-- 按预期修订更新成功后，新运行使用新修订。提交过期修订返回冲突。
-
-### 不依赖工作台办理 Flow
-
-#### 验收
-
-- 独立 CLI 直连 Flow Host 的 daemon，可列出和读取包、创建、校验、发布、启动与停止运行、修改运行配置，并查询节点结果与路由记录。
-- 启动运行必须先确定工作目录：daemon 运行配置里保存工作区根目录，未指定目录的运行在 `<工作区根目录>/<Run ID>` 新建目录执行；工作区未配置时拒绝启动并提示去配置。
-- 含确认节点的运行挂起后，用 `run respond` 提交一个结果名继续；`run trajectory` 按节点执行读取 Pi 会话切片。daemon 未启动时 CLI 报连接错误，不退回演示数据。
-
-### 在受信工作区执行与查询
-
-#### 验收
-
-- 启用 Flow 时，v1 HTTP 从已发布的包发起运行，只接受管理员映射的 `default` 工作区。命令在该目录执行，运行历史可查到节点结果与命令输出。
-- 通过 HTTP 启动的运行可由连接同一 daemon 的 CLI 查询和停止；删除流程包或正常重启服务后，已完成运行的历史仍可读取。
-- Web 通过同源 API 读取和修改运行配置，页面不做访问令牌验证；服务只接受 IP 字面量、`localhost` 或登记域名作为 Host，写请求必须是同源页面发起，否则返回 403 且配置不变。
+- 引擎接收 `FLOW.md` 原文与启动变量，返回 `completed`、`awaiting_input` 或 `failed`，并保留每一步的结果与变量。
+- 执行 Agent 只需实现 `prompt(agentName, instruct)`，执行命令只需实现 `command(invocation)`；引擎不读取模型配置、不启动子进程、不接触网络。
+- 过程日志按运行写入文件，事件序号单调递增，快照可恢复；`respond` 对等待中的确认步骤提交结果，`resume` 从快照继续。

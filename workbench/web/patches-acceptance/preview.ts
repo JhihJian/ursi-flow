@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import {
-  acceptanceDir, dataDir, homeDir, logDir, runDir, viteBin, webRoot, workspaceDir,
+  acceptanceDir, dataDir, homeDir, logDir, runDir, workspaceDir,
 } from './fixtures/paths'
 import { host, origin, ports } from './fixtures/ports'
 import { assertPortFree, killAll, killStale, startServer, startWeb } from './fixtures/process'
@@ -42,8 +42,6 @@ const runtime: Runtime = {
     URSI_LISTEN_ADDR: `${host}:${ports.api}`,
     URSI_EXECUTOR_PLATFORM_URL: origin(1),
     URSI_EXECUTOR_PLATFORM_TOKEN: randomBytes(32).toString('hex'),
-    URSI_FLOW_ENABLED: '0',
-    URSI_FLOWD_BIN: path.join(acceptanceDir, '.run/absent-flowd'),
     URSI_AGENT_BIN: path.join(acceptanceDir, '.run/absent-agent'),
   },
   webEnv: {

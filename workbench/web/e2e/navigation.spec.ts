@@ -4,18 +4,16 @@ test('深链保留、401 后重新登录、刷新和退出', async ({ page }) =>
   let count = 0
   await page.route('**/api/**', async route => {
     count++
-    // 登录后的可选模块探测用替身返回空集合，本用例只验证 flow-config 的 401 处理。
     const path = new URL(route.request().url()).pathname
-    if (path === '/api/v1/flows') return route.fulfill({ json: [] })
-    expect(path).toBe('/api/v1/flow-config')
+    expect(path).toBe('/api/v2/work-items')
     if (route.request().headers().authorization !== 'Bearer test-canary') return route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } })
-    return route.fulfill({ json: { model: 'configured', executor: 'local-pi', maxConcurrent: 2 } })
+    return route.fulfill({ json: [{ id: 'w1', title: '本周反馈', category: 'continuous', status: 'active', description: '整理结论' }] })
   })
-  await page.goto('/flow-config'); await expect(page.getByLabel('访问令牌')).toBeVisible(); expect(count).toBe(0)
+  await page.goto('/work-items'); await expect(page.getByLabel('访问令牌')).toBeVisible(); expect(count).toBe(0)
   await page.getByLabel('访问令牌').fill('invalid'); await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveText('令牌无效或已过期，请重新输入。'); await expect(page.getByLabel('访问令牌')).toHaveValue(''); await page.getByLabel('访问令牌').fill('test-canary')
-  await page.getByRole('button', { name: '登录', exact: true }).click(); await expect(page.getByLabel('模型')).toHaveValue('configured')
-  await page.reload(); await expect(page.getByLabel('模型')).toHaveValue('configured'); await expect(page).toHaveURL(/\/flow-config$/)
+  await page.getByRole('button', { name: '登录', exact: true }).click(); await expect(page.getByText('本周反馈')).toBeVisible()
+  await page.reload(); await expect(page.getByText('本周反馈')).toBeVisible(); await expect(page).toHaveURL(/\/work-items$/)
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('test-canary'); await expectNoOverflow(page)
   await openNavigation(page); await page.getByRole('button', { name: '退出登录' }).click(); await expect(page.getByLabel('访问令牌')).toBeVisible()
   expect(await page.evaluate(() => JSON.stringify(sessionStorage))).not.toContain('test-canary')
