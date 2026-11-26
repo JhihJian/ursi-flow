@@ -3,6 +3,8 @@
 
 .flow-sidebar,
 .flow-workspace {
+  /* 模块内统一 border-box：工作区高度已经包含内边距，否则底部会被外壳裁掉。 */
+  box-sizing: border-box;
   --flow-ink: #1a1a1a;
   --flow-muted: #666666;
   --flow-faint: #999999;
@@ -22,6 +24,11 @@
 }
 
 /* ---- 侧边栏 ---- */
+
+.flow-sidebar *,
+.flow-workspace * {
+  box-sizing: border-box;
+}
 
 .flow-sidebar {
   display: flex;
@@ -372,32 +379,6 @@
   padding-top: var(--flow-space-sm);
 }
 
-@container flow (max-width: 900px) {
-  .flow-columns {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-
-  .flow-column,
-  .flow-column-config {
-    overflow: visible;
-  }
-
-  .flow-column-structure .flow-graph {
-    flex: none;
-    max-height: 420px;
-  }
-
-  .flow-column-runs .flow-runs {
-    flex: none;
-    overflow: visible;
-  }
-
-  .flow-column-runs .flow-run {
-    flex: none;
-    overflow: visible;
-  }
-}
 
 .flow-config,
 .flow-structure,
@@ -886,6 +867,10 @@
   overscroll-behavior-y: contain;
   margin-top: var(--flow-space-sm);
   padding: var(--flow-space-sm) var(--flow-space-md);
+  border: 1px solid var(--flow-line);
+  /* 详情贴着列底，底线用更深的灰标出边界，避免看起来被截断。 */
+  border-bottom: 1px solid var(--flow-line-strong);
+  background: var(--flow-paper);
 }
 
 .flow-node.is-floating .flow-node-head {
@@ -905,4 +890,52 @@
 .flow-graph::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* 容器窄于 900px 时退回单列：按内容自然排列，整列自己滚动，不再压到下一块。 */
+@container flow (max-width: 900px) {
+  .flow-columns {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  /* min-height: auto 让自动行按内容撑开，否则行会被压扁、内容互相重叠。 */
+  .flow-column {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .flow-column-config .flow-config {
+    flex: none;
+    overflow: visible;
+  }
+
+  .flow-column-structure .flow-structure {
+    flex: none;
+  }
+
+  .flow-column-structure .flow-graph {
+    flex: none;
+    min-height: 0;
+    max-height: 420px;
+  }
+
+  .flow-node.is-floating {
+    flex: none;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .flow-column-runs .flow-runs {
+    flex: none;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .flow-column-runs .flow-run {
+    flex: none;
+    overflow: visible;
+  }
 }
