@@ -5,10 +5,22 @@ import { WorkspaceApi, keyName, keySegments } from './api.ts'
 import { useEditorStore } from './editor-store.ts'
 import { reloadParentOf } from './explorer.tsx'
 import { useGitStore } from './git-store.ts'
+import { useTreeStore } from './tree-store.ts'
 import { FsScope, FsSidebar, FsWorkspace } from './parts.tsx'
 
 export interface FsWebModuleOptions {
   apiBaseUrl?: string
+}
+
+/**
+ * fs 模块对外提供的具名能力：由工厂导出，交给组合根注入给需要的模块。
+ * 调用方只认识目录路径这类普通值，不需要知道 fs 的 workspaceId、树结构或 API 形状。
+ */
+export interface FsCommands {
+  /** 按绝对路径查找已登记的目录；只读，不产生登记。 */
+  findRoot: (root: string) => Promise<{ id: string; label: string; root: string } | null>
+  /** 按绝对路径打开目录：已登记则激活，未登记则登记后激活。会修改 fs 的目录清单。 */
+  openRoot: (root: string) => Promise<{ id: string; label: string; root: string }>
 }
 
 const KIND = 'workspace.file'
@@ -30,8 +42,40 @@ function FsStatus() {
 }
 
 /** fs-web 模块工厂。apiBaseUrl 由宿主注入，缺省走开发代理。 */
-export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModule {
+export function createFsModule(
+  options: FsWebModuleOptions = {},
+): WorkspaceModule & { commands: FsCommands } {
   const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/fs-web')
+
+  const normalize = (root: string) => root.replace(/\/+$/, '') || '/'
+
+  /**
+   * 命令直接走工厂闭包里的 api 与 store，不依赖 Provider 是否已挂载：
+   * fs 未在当前 profile 里展开时，跨模块调用依然要能工作。
+   */
+  const commands: FsCommands = {
+    findRoot: async (root) => {
+      const target = normalize(root)
+      const list = await api.workspaces()
+      const hit = list.find((item) => normalize(item.root) === target)
+      return hit ? { id: hit.id, label: hit.label, root: hit.root } : null
+    },
+    openRoot: async (root) => {
+      const existing = await commands.findRoot(root)
+      if (existing) {
+        useTreeStore.getState().setApi(api)
+        await useTreeStore.getState().loadWorkspaces()
+        useTreeStore.getState().selectWorkspace(existing.id)
+        return existing
+      }
+      // 登记会持久化到 fs 的目录清单，属于越权面最大的操作，失败原因必须原样抛给调用方。
+      const created = await api.addWorkspace(root)
+      useTreeStore.getState().setApi(api)
+      await useTreeStore.getState().loadWorkspaces()
+      useTreeStore.getState().selectWorkspace(created.id)
+      return { id: created.id, label: created.label, root: created.root }
+    },
+  }
 
   const Provider = ({ children }: { children: ReactNode }) => (
     <FsScope api={api}>{children}</FsScope>
@@ -76,6 +120,7 @@ export function createFsModule(options: FsWebModuleOptions = {}): WorkspaceModul
   }
 
   return {
+    commands,
     id: 'fs-web',
     title: '文件',
     Provider,

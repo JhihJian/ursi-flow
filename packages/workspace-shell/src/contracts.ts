@@ -56,14 +56,30 @@ export interface WorkspaceModule {
   actions?: WorkspaceAction[]
 }
 
+/**
+ * 外壳交给模块操作的能力。
+ * 模块不 import 其它模块，也不读其它模块的 store；跨模块流程靠组合根注入的
+ * 具名函数 + 这里的导航能力拼起来，编译期就能检查边是否存在。
+ */
+export interface ShellHandle {
+  /** 该模块是否在当前 profile 中启用。跨模块操作据此给出禁用原因。 */
+  enabled: (moduleId: string) => boolean
+  /** 展开某模块的侧边栏并让它出现在工作区；宿主页面正在显示时退回模块视图。 */
+  reveal: (moduleId: string) => void
+}
+
 /** 上下文操作：由模块声明，外壳只在右侧控制面板按选中渲染。 */
 export interface WorkspaceAction {
   id: string
   label: string
-  appliesTo: (selection: Selection | null) => boolean
-  run: (selection: Selection) => Promise<void>
-  disabledReason?: (selection: Selection) => string | null
-  confirm?: string
+  appliesTo: (selection: Selection | null, shell: ShellHandle) => boolean
+  run: (selection: Selection, shell: ShellHandle) => Promise<void>
+  disabledReason?: (selection: Selection, shell: ShellHandle) => string | null
+  /**
+   * 执行前的确认文案。用函数形式可以把实际参数（目标目录、目标主机）写进确认里，
+   * 让用户看到这次操作到底要动什么，而不是只看到一句笼统的提醒。
+   */
+  confirm?: string | ((selection: Selection, shell: ShellHandle) => string)
 }
 
 /** 不占侧边栏的宿主页面，例如全局设置；选中这类 kind 时占用整个工作区。 */

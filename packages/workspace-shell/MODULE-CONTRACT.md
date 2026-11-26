@@ -91,27 +91,56 @@ export function createExecutorModule(): WorkspaceModule {
 - 不要用 `alert` / `prompt` / `confirm`；错误交给 `onNotify`（或控制面板的错误位）展示。
 - `localStorage` 键加模块前缀（`executor.xxx`），并允许宿主注入 `storageKey`，避免两个实例互相覆盖。
 
-## 8. 操作：注册，不自造按钮
+## 8. 跨模块：能力由工厂导出，组合根注入
+
+一个模块不能读另一个模块的 store，也不能拿另一个模块的数据去调它的内部 API。跨模块流程一律走这条路径：
+
+1. **接收方导出具名命令。** 工厂返回 `{ ...module, commands }`，命令只接受普通值（路径、字符串），自行校验并返回普通值或引用，绝不返回实体、store 或 API 对象。
+2. **发送方只声明它需要的形状。** `createTodoModule({ openRootInFiles })` 里的 `openRootInFiles` 是一个函数类型，todo 不 import 文件模块的任何东西。
+3. **组合根接线。** `registry.tsx` 同时拿到两个工厂，把接收方的命令传给发送方。删掉接收方会直接编译失败，不会留到运行期才发现。
+4. **导航用 `ShellHandle`。** 操作回调收到 `shell`：`shell.enabled(moduleId)` 判断接收方是否在当前 profile 启用（据此写 `disabledReason`），`shell.reveal(moduleId)` 展开接收方侧边栏并退回模块视图。
+
+```tsx
+// 组合根
+const files = createFsModule({ apiBaseUrl: '/api/fs-web' })
+const todo = createTodoModule({ openRootInFiles: files.commands.openRoot })
+
+// 发送方的操作
+disabledReason: (_selection, shell) =>
+  shell.enabled('fs-web') ? null : '文件模块未在当前 profile 中启用',
+run: async (selection, shell) => {
+  await openRootInFiles(projectPath)
+  shell.reveal('fs-web')
+},
+```
+
+约束：
+
+- 跨模块传递的只有**普通值**。接收方把参数当作不可信输入：按 id 的，id 必须先在它自己的可见清单里；按路径的，必须校验并让用户在该操作的 `confirm` 里看到实际路径。
+- 会改变接收方持久状态的命令（例如登记目录）必须由调用方声明 `confirm`，确认文案用函数形式带出实际参数。
+- 禁止用事件总线或字符串意图名代替这条边：那样在 import 图里看不见依赖，删模块只有运行期才炸。
+
+## 9. 操作：注册，不自造按钮
 
 - 「执行」「取消」「打开会话」这类动作注册成 `actions[]`，外壳按 `appliesTo(selection)` 渲染在右侧控制面板。
 - `run` 抛错由外壳展示；耗时操作自己维护进行中状态并禁用重复点击。
 - 有破坏性的操作给 `confirm` 文案；不可执行时用 `disabledReason` 返回原因，而不是静默失败。
 - 不要在面板里重复放同样的按钮，那会让同一次操作出现两个入口。
 
-## 9. 性能与加载
+## 10. 性能与加载
 
 - 面板内容按需 `lazy` 加载，重依赖（编辑器、图表、ProseMirror 这类）单独分块，别进首屏包。
 - 单模块首屏同步代码控制在几百 KB 量级；超出的部分切块。
 - 列表超过约 200 行时考虑虚拟化或分页。
 - `Provider` 在模块启用时就会挂载，注意别在里面做重请求；列表加载放在 `Provider` 或侧边栏里按需触发。
 
-## 10. 无障碍
+## 11. 无障碍
 
 - 折叠窄条整条可点击，带 `aria-label` 描述「什么 · 状态 · 展开某栏」。
 - 操作按钮的禁用原因写进 `title`，不要只靠颜色。
 - 折叠、展开、选择都要能用键盘完成。
 
-## 11. 交付物
+## 12. 交付物
 
 每个模块至少包含：
 
@@ -120,7 +149,7 @@ export function createExecutorModule(): WorkspaceModule {
 - 单元测试覆盖选中映射、侧边栏折叠态文案、操作可用性判断；有 API 交互的补 e2e。
 - 文档里写明：依赖哪些服务、需要哪些环境变量、数据归属在哪。
 
-## 12. 反面清单（都踩过）
+## 13. 反面清单（都踩过）
 
 | 反例 | 后果 |
 | --- | --- |
@@ -133,8 +162,10 @@ export function createExecutorModule(): WorkspaceModule {
 | 面板内放「执行」按钮，同时注册 action | 同一操作两个入口 |
 | 浮层用全局 `position: fixed` | 多区域布局下坐标错位 |
 | 依赖 `keepMounted` 之外的方式保活 | 折叠即卸载，iframe 与终端状态丢失 |
+| 发送方直接 import 接收方的 store 或 api | 模块边界失效，删模块编译不报错、运行期才炸 |
+| 用字符串意图名替代命令注入 | 依赖关系在 import 图里不可见，等于手写第二套类型系统 |
 
-## 13. 检查清单
+## 14. 检查清单
 
 - [ ] `id` 唯一、小写短横线；`title` 简短
 - [ ] `Sidebar` 同时处理展开与折叠两种形态
@@ -145,4 +176,7 @@ export function createExecutorModule(): WorkspaceModule {
 - [ ] 轮询/通知/键盘监听可关闭或可移除
 - [ ] 动作注册在 `actions`，有 `disabledReason` / `confirm`
 - [ ] 需要保活的模块声明 `keepMounted`
+- [ ] 跨模块能力以 `commands` 从工厂导出，接收方自行校验参数
+- [ ] 跨模块操作的 `disabledReason` 用 `shell.enabled` 判断接收方启用状态
+- [ ] 会改接收方持久状态的操作带 `confirm`，文案里带出实际参数
 - [ ] 有 `SPEC.md`、单测、独立运行说明

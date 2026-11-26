@@ -56,13 +56,25 @@ parent: ../../SPEC.md
 
 ### 右侧控制面板
 
-模块通过 `actions` 声明操作项，含 `appliesTo`、`run`、可选 `disabledReason` 与 `confirm`。
+模块通过 `actions` 声明操作项，含 `appliesTo`、`run`、可选 `disabledReason` 与 `confirm`。三个回调都收到 `ShellHandle`。
 
 #### 验收
 
-- 控制面板只列已启用模块中 `appliesTo(selection)` 为真的操作，未选中时为空态说明。
-- 操作执行期间按钮显示进行中文案并禁用其他操作；失败时在面板内显示错误，不丢失当前选中。
-- 声明 `confirm` 的操作先请求确认，取消后不执行。
+- 控制面板只列已启用模块中 `appliesTo(selection, shell)` 为真的操作，未选中时为空态说明。
+- 操作执行期间按钮显示进行中文案并禁用其他操作；失败时在面板内显示错误，不丢失当前选中；`onError` 缺省写 `console.error`，宿主传入时以宿主为准。
+- 声明 `confirm` 的操作先请求确认，取消后不执行；`confirm` 为函数时用实际参数生成文案。
+- `shell.enabled(moduleId)` 反映当前 profile 的启用集合，模块据此为跨模块操作给出禁用原因。
+- `shell.reveal(moduleId)` 展开该模块侧边栏；目标模块不在当前 profile 时报错；宿主页面正占用工作区时先退回模块视图。
+
+### 跨模块协作
+
+模块之间不互相 import，也不共享 store 或 API 实例。接收方由工厂导出具名 `commands`，组合根把它注入给发送方。
+
+#### 验收
+
+- 接收方工厂返回的 `commands` 只接受与返回普通值，不暴露实体、store 或 API 对象。
+- 发送方的工厂参数只声明它需要的函数形状，不 import 接收方代码；删除接收方后工程无法通过类型检查。
+- 组合根是唯一同时引用两端的地方，接线的边在注册表页可见。
 
 ### 状态栏
 

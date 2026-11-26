@@ -23,6 +23,8 @@ npm run dev:shell-web
 
 示例模块在 `src/skeleton/modules.tsx`：任务与文件演示列表选中、沙箱演示一个模块两列工作区、终端演示侧边栏与工作区共享 `Provider` 状态（点「新建会话」，右边数字同步变）。右上「宿主页面」演示 `views` 占用整个工作区。预览数据全在内存，不写后端。
 
+预览页也演示了跨模块契约：文件模块由工厂导出具名命令，任务模块通过注入使用它。在「任务」里选中一项，控制面板出现「在文件模块打开项目目录」，执行后文件模块被登记并自动展开。切到「仅任务」profile 后同一操作显示禁用原因。
+
 ## 页面 profile
 
 profile 只声明启用哪些模块与顺序，不再描述区域布局：
@@ -62,6 +64,18 @@ cd apps/ssh-web/server && ...               # 8091
 - 侧边栏的折叠形态由模块渲染；外壳只提供 `SidebarFrame` 作为可选外框。
 
 接入分三步：模块自己导出接入代码（如 `todo-web/web/src/module.tsx`），宿主 `package.json` 声明依赖，再在 `src/registry.tsx` 调用工厂并写进 profile。
+
+## 跨模块协作
+
+模块之间不互相 import，也不共享 store 或 API 实例。跨模块流程走三步：
+
+1. 接收方工厂导出具名命令，例如 `createFsModule()` 返回的 `commands.openRoot(root)`。
+2. 发送方只声明它需要的函数形状，例如 `createTodoModule({ openRootInFiles })`，不认识文件模块的任何代码。
+3. 组合根 `registry.tsx` 把两者接起来，并在注册表页列出这条依赖边。
+
+当前有一条真实的边：任务模块的「在文件模块打开项目目录」会调用文件模块的 `openRoot`，登记并激活该目录，然后 `shell.reveal('fs-web')` 展开文件模块。目标模块不在当前 profile 时，该操作显示禁用原因而不是消失。
+
+会改变接收方持久状态的操作必须带 `confirm`，确认文案里带出实际路径，避免一次误点就把任意目录登记成可浏览的文件根。
 
 ## 标题栏与状态栏
 

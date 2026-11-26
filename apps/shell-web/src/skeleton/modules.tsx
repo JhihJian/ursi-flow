@@ -4,9 +4,15 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import type { ModuleSidebarProps, WorkspaceModule } from '@ursi/workspace-shell'
+import type {
+  ModuleSidebarProps,
+  Selection,
+  ShellHandle,
+  WorkspaceModule,
+} from '@ursi/workspace-shell'
 import { SidebarFrame, useWorkspace } from '@ursi/workspace-shell'
 
 /**
@@ -47,6 +53,8 @@ interface DemoSpec {
   kind: string
   sidebarDefaultSize: number
   sidebarMinSize: number
+  /** 组合根注入的跨模块能力；示例里由文件模块提供。 */
+  openRootInFiles?: (root: string) => Promise<{ id: string; label: string }>
 }
 
 /** 工作区占位块：不画模块标题，只标出自己所在的位置与尺寸。 */
@@ -137,6 +145,26 @@ function createDemoModule(spec: DemoSpec): WorkspaceModule {
     sidebarDefaultSize: spec.sidebarDefaultSize,
     sidebarMinSize: spec.sidebarMinSize,
     actions: [
+      ...(spec.openRootInFiles
+        ? [
+            {
+              id: `${spec.id}.open-project-in-files`,
+              label: '在文件模块打开项目目录',
+              appliesTo: (selection: Selection | null) =>
+                selection?.kind === spec.kind,
+              disabledReason: (_selection: Selection, shell: ShellHandle) => {
+                if (!shell.enabled('files')) return '文件模块未在当前 profile 中启用'
+                return null
+              },
+              confirm: '会在文件模块里登记并打开该目录。继续？',
+              run: async (selection: Selection, shell: ShellHandle) => {
+                const root = `/projects/${selection.id}`
+                await spec.openRootInFiles!(root)
+                shell.reveal('files')
+              },
+            },
+          ]
+        : []),
       {
         id: `${spec.id}.open`,
         label: '打开选中项',
@@ -238,22 +266,112 @@ function createSharedContextModule(): WorkspaceModule {
   }
 }
 
+/**
+ * 文件模块：演示「工厂导出具名命令 + 工厂私有状态」的正确形状。
+ * 命令与状态都归工厂，其它模块只能拿到命令返回的普通值，拿不到 store。
+ */
+function createFilesModule(): WorkspaceModule & {
+  commands: { openRoot: (root: string) => Promise<{ id: string; label: string }> }
+} {
+  const opened: string[] = []
+  const listeners = new Set<() => void>()
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+  const read = () => opened.join('|')
+  const append = (root: string) => {
+    if (opened.includes(root)) {
+      // 已登记则只换到最前面，模拟「激活已有目录」。
+      opened.splice(opened.indexOf(root), 1)
+    }
+    opened.unshift(root)
+    for (const listener of listeners) listener()
+  }
+
+  const commands = {
+    openRoot: async (root: string) => {
+      append(root)
+      return { id: root, label: root.split('/').filter(Boolean).pop() ?? root }
+    },
+  }
+
+  function useOpenedRoots(): string[] {
+    const key = useSyncExternalStore(subscribe, read, read)
+    return key ? key.split('|') : []
+  }
+
+  const Sidebar = ({ collapsed, collapse, expand }: ModuleSidebarProps) => {
+    const roots = useOpenedRoots()
+    return (
+      <SidebarFrame
+        title="文件"
+        collapsed={collapsed}
+        collapse={collapse}
+        expand={expand}
+        items={[{ label: '目录', value: String(roots.length) }]}
+      >
+        {roots.length === 0 ? (
+          <p className="sk-hint sk-hint-pad">
+            还没有目录。切到「任务」，选中一项后用控制面板的「在文件模块打开项目目录」。
+          </p>
+        ) : (
+          <ul className="sk-list">
+            {roots.map((root) => (
+              <li key={root}>
+                <span className="sk-row sk-row-static" title={root}>
+                  {root}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SidebarFrame>
+    )
+  }
+
+  const Workspace = () => {
+    const roots = useOpenedRoots()
+    return (
+      <div className="sk-workspace">
+        <div className="sk-workspace-grid" data-panes={1}>
+          <div className="sk-block">
+            <span className="sk-block-label">
+              {roots[0] ? `文件 · ${roots[0]}` : '文件 · 工作区'}
+            </span>
+            <span className="sk-block-size">
+              {roots.length > 0 ? `已登记目录 ${roots.length}` : '由其它模块经命令写入'}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return {
+    commands,
+    id: 'files',
+    title: '文件',
+    Sidebar,
+    Workspace,
+    context: {
+      Status: () => {
+        const roots = useOpenedRoots()
+        return <span>文件 {roots.length}</span>
+      },
+    },
+    sidebarDefaultSize: 320,
+    sidebarMinSize: 180,
+    actions: [],
+  }
+}
+
 const TASKS: DemoSpec = {
   id: 'tasks',
   title: '任务',
   rows: ['整理需求', '拆分模块', '补测试', '更新文档'],
   panes: 1,
   kind: 'demo.task',
-  sidebarDefaultSize: 320,
-  sidebarMinSize: 180,
-}
-
-const FILES: DemoSpec = {
-  id: 'files',
-  title: '文件',
-  rows: ['packages/', 'apps/', 'docs/', 'README.md'],
-  panes: 1,
-  kind: 'demo.file',
   sidebarDefaultSize: 320,
   sidebarMinSize: 180,
 }
@@ -268,9 +386,19 @@ const SANDBOX: DemoSpec = {
   sidebarMinSize: 160,
 }
 
+/** 组合根：组合根是唯一同时看见两个模块的地方，跨模块的边在这里显式接线。 */
+const files = createFilesModule()
+
+/**
+ * 跨模块依赖说明，仅用于预览页展示；真实工程里这条边就是 registry.tsx 的一行 import。
+ */
+export const SKELETON_WIRES = [
+  { from: '任务', to: '文件', capability: 'openRootInFiles → files.commands.openRoot' },
+]
+
 export const SKELETON_MODULES: WorkspaceModule[] = [
-  createDemoModule(TASKS),
-  createDemoModule(FILES),
+  createDemoModule({ ...TASKS, openRootInFiles: files.commands.openRoot }),
+  files,
   createSharedContextModule(),
   createDemoModule(SANDBOX),
 ]
