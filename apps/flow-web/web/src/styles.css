@@ -685,6 +685,9 @@
 .flow-graph {
   max-height: 520px;
   overflow: auto;
+  /* 图可以滚动，但不占滚动条宽度：结构区已经有边框与留白分隔。 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   overscroll-behavior: contain;
   border: 1px solid var(--flow-line);
   background: var(--flow-paper);
@@ -802,4 +805,17 @@
 
 .flow-node.is-floating {
   margin-top: var(--flow-space-sm);
+  padding: var(--flow-space-sm) var(--flow-space-md);
+}
+
+/* 点开节点时是单条详情，不受列表里的 6em 截断限制。 */
+.flow-node.is-floating .flow-prompt {
+  max-height: none;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.flow-graph::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
