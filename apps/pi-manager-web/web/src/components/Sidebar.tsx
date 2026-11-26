@@ -90,6 +90,7 @@ function HomeItem({
   const removeHome = useAppStore((s) => s.removeHome)
   const createHome = useAppStore((s) => s.createHome)
   const [editing, setEditing] = useState<EditingField>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   const menuItems: MenuItem[] = home.listed
     ? [
@@ -123,14 +124,18 @@ function HomeItem({
       <li className="preset-item preset-item-editing">
         <InlineInput
           initial={isName ? home.name : (home.description ?? '')}
-          placeholder={isName ? '显示名称' : '一句话说明（可留空清除）'}
+          placeholder={isName ? 'agent 名（同一清单内唯一）' : '一句话说明（可留空清除）'}
           onDone={(value) => {
             setEditing(null)
+            setRenameError(null)
             const text = value.trim()
+            const report = (failure: string | null) => {
+              if (failure) setRenameError(failure)
+            }
             if (isName) {
-              if (text && text !== home.name) void updateHome(home.id, { name: text })
+              if (text && text !== home.name) void updateHome(home.id, { name: text }).then(report)
             } else if (text !== (home.description ?? '')) {
-              void updateHome(home.id, { description: text })
+              void updateHome(home.id, { description: text }).then(report)
             }
           }}
         />
@@ -150,6 +155,7 @@ function HomeItem({
         openMenu(event.clientX, event.clientY, menuItems, home.description || undefined)
       }}
     >
+      {renameError ? <span className="preset-error">{renameError}</span> : null}
       <span className="preset-main">
         <span className="preset-name">
           {home.name}
@@ -288,7 +294,12 @@ export function Sidebar({
   return (
     <nav className="config-sidebar" aria-label="pi home 与配置分区">
       <div className="config-sidebar-head">
-        <span className="config-sidebar-heading">Pi home</span>
+        <span
+          className="config-sidebar-heading"
+          title="每份 pi home 就是一个 agent：自带模型、凭据、skills 与 agents，这份清单也是 agent 清单"
+        >
+          Pi home
+        </span>
         <button
           type="button"
           className="rail-toggle"
