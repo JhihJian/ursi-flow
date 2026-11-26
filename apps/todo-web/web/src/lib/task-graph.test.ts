@@ -66,6 +66,16 @@ describe('buildTaskGraph', () => {
     expect(layout.edges.some((edge) => edge.back)).toBe(true)
   })
 
+  it('keeps every node the same size whatever the title length', () => {
+    const layout = buildTaskGraph([
+      task('short', { title: '短标题' }),
+      task('long', { title: '很长的任务标题'.repeat(6) }),
+    ])
+    expect(layout.nodes).toHaveLength(2)
+    expect(layout.nodes[0].width).toBe(layout.nodes[1].width)
+    expect(layout.nodes[0].height).toBe(layout.nodes[1].height)
+  })
+
   it('returns an empty layout without tasks', () => {
     expect(buildTaskGraph([])).toEqual({
       nodes: [],

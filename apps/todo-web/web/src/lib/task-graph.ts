@@ -42,14 +42,12 @@ export interface TaskGraphLayout {
   hidden: number
 }
 
+/** 节点尺寸固定，标题过长时由 CSS 截断，不靠文字长度撑大节点。 */
+const NODE_WIDTH = 200
 const NODE_HEIGHT = 40
 const ROW_GAP = 12
 const COLUMN_GAP = 64
 const PADDING = 16
-const MIN_WIDTH = 132
-const MAX_WIDTH = 224
-const CHAR = 12
-const LABEL_LIMIT = 40
 /** 回边绕到节点下方，底线之外要留出的空间。 */
 const BACK_EDGE_ROOM = 32
 
@@ -66,15 +64,6 @@ const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 }
 /** 未结束的任务：待办、进行中与阻塞都还要在图上出现。 */
 export function isOpenTask(task: Task): boolean {
   return task.status !== 'done' && task.status !== 'cancelled'
-}
-
-function labelOf(title: string): string {
-  const trimmed = title.trim()
-  return trimmed.length > LABEL_LIMIT ? `${trimmed.slice(0, LABEL_LIMIT - 1)}…` : trimmed
-}
-
-function widthOf(label: string): number {
-  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, label.length * CHAR + 52))
 }
 
 /**
@@ -102,17 +91,16 @@ export function buildTaskGraph(tasks: Task[]): TaskGraphLayout {
 
   const nodes = new Map<string, TaskGraphNode>()
   for (const task of shown) {
-    const label = labelOf(task.title)
     nodes.set(task.id, {
       id: task.id,
       title: task.title,
-      label,
+      label: task.title.trim(),
       status: task.status,
       priority: task.priority,
       depth: 0,
       x: 0,
       y: 0,
-      width: widthOf(label),
+      width: NODE_WIDTH,
       height: NODE_HEIGHT,
     })
   }
@@ -224,19 +212,11 @@ function place(
   const depths = [...rows.keys()].sort((left, right) => left - right)
   for (const depth of depths) rows.get(depth)!.sort(compareNodes)
 
-  const columnWidths = new Map<number, number>()
-  for (const depth of depths) {
-    columnWidths.set(
-      depth,
-      Math.max(...rows.get(depth)!.map((node) => node.width)),
-    )
-  }
-
   const xOf = new Map<number, number>()
   let x = PADDING
   for (const depth of depths) {
     xOf.set(depth, x)
-    x += columnWidths.get(depth)! + COLUMN_GAP
+    x += NODE_WIDTH + COLUMN_GAP
   }
 
   const tallest = Math.max(...depths.map((depth) => rows.get(depth)!.length))
