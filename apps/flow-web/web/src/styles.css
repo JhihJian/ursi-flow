@@ -670,8 +670,9 @@
 }
 
 .flow-graph {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  max-height: 520px;
+  overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--flow-line);
   background: var(--flow-paper);
   padding: var(--flow-space-sm);

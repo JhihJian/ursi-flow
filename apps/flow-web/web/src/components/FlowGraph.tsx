@@ -61,16 +61,22 @@ export function FlowGraph({
               <>
                 <rect
                   className="flow-graph-label-bg"
-                  x={edge.labelX - edge.label.length * 3.2 - 3}
-                  y={edge.labelY - 1}
-                  width={edge.label.length * 6.4 + 6}
-                  height={13}
+                  x={
+                    edge.labelAnchor === 'middle'
+                      ? edge.labelX - edge.labelWidth / 2
+                      : edge.labelAnchor === 'end'
+                        ? edge.labelX - edge.labelWidth
+                        : edge.labelX
+                  }
+                  y={edge.labelY}
+                  width={edge.labelWidth}
+                  height={edge.labelHeight}
                 />
                 <text
                   className="flow-graph-edge-label"
                   x={edge.labelX}
-                  y={edge.labelY + 10}
-                  textAnchor="middle"
+                  y={edge.labelY + edge.labelHeight - 3}
+                  textAnchor={edge.labelAnchor}
                 >
                   {edge.label}
                 </text>

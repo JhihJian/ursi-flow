@@ -48,8 +48,10 @@ describe('结构图布局', () => {
     expect(byKey.get('draft')?.depth).toBe(1)
     expect(byKey.get('review')?.depth).toBe(2)
     expect(byKey.get('finish')?.depth).toBe(3)
-    expect(byKey.get('draft')!.x).toBeLessThan(byKey.get('review')!.x)
-    expect(byKey.get('review')!.x).toBeLessThan(byKey.get('finish')!.x)
+    // 从上到下分层：层的先后体现在 y 上。
+    expect(byKey.get('start')!.y).toBeLessThan(byKey.get('draft')!.y)
+    expect(byKey.get('draft')!.y).toBeLessThan(byKey.get('review')!.y)
+    expect(byKey.get('review')!.y).toBeLessThan(byKey.get('finish')!.y)
     expect(layout.edges.map((edge) => edge.label)).toContain('送审')
     expect(layout.width).toBeGreaterThan(0)
     expect(layout.height).toBeGreaterThan(0)
@@ -94,6 +96,89 @@ describe('结构图布局', () => {
     expect(entries.map((edge) => edge.to).sort()).toEqual(['lint', 'test'])
     expect(entries.every((edge) => edge.label === undefined)).toBe(true)
     expect(layout.nodes.find((item) => item.key === 'merge')?.kind).toBe('command')
+  })
+
+  it('回边与跨层边各走自己的车道，标签不互相遮挡', () => {
+    // 复刻「Flow 运行观测能力开发」的形状：一条主链、多级回退、并行与跨层结束边。
+    const nodes: FlowNodeView[] = [
+      node('contract', '建立实现契约', [
+        ['契约通过', { kind: 'node', ref: 'facts' }],
+        ['需要重做', { kind: 'node', ref: 'contract' }],
+      ]),
+      node('facts', '补齐运行事实', [
+        ['事实层完成', { kind: 'node', ref: 'inspector' }],
+        ['需要调整契约', { kind: 'node', ref: 'contract' }],
+      ]),
+      node('inspector', '实现运行历史查询', [
+        ['查询能力完成', { kind: 'node', ref: 'publisher' }],
+        ['需要补齐运行事实', { kind: 'node', ref: 'facts' }],
+      ]),
+      node('publisher', '实现实时状态发布', [
+        ['发布能力完成', { kind: 'node', ref: 'adapters' }],
+        ['需要补齐查询能力', { kind: 'node', ref: 'inspector' }],
+      ]),
+      node('adapters', '接入外部展示形态', [
+        ['展示能力完成', { kind: 'node', ref: 'prepare' }],
+        ['需要补齐实时能力', { kind: 'node', ref: 'publisher' }],
+      ]),
+      node('prepare', '准备验收检查', [['开始检查', { kind: 'parallel', ref: 'checks' }]]),
+      node('test', '运行测试', [['已执行', { kind: 'node', ref: 'merge' }]], 'command'),
+      node('quality', '运行质量检查', [['已执行', { kind: 'node', ref: 'merge' }]], 'command'),
+      node('merge', '汇总检查结果', [['已执行', { kind: 'node', ref: 'accept' }]], 'command'),
+      node('accept', '执行验收门禁', [
+        ['通过', { kind: 'finish' }],
+        ['返工', { kind: 'node', ref: 'refine' }],
+        ['无法验收', { kind: 'finish' }],
+      ]),
+      node('refine', '根据验收结果返工', [
+        ['已返工', { kind: 'node', ref: 'prepare' }],
+        ['无法安全返工', { kind: 'finish' }],
+      ]),
+    ]
+    const layout = layoutFlow(
+      detail(nodes, {
+        startNodeRef: 'contract',
+        parallels: [
+          { ref: 'checks', branches: ['test', 'quality'], joinRef: 'merge', joinName: '汇总检查结果' },
+        ],
+      }),
+    )
+
+    const rect = (edge: (typeof layout.edges)[number]) => {
+      const left =
+        edge.labelAnchor === 'middle'
+          ? edge.labelX - edge.labelWidth / 2
+          : edge.labelAnchor === 'end'
+            ? edge.labelX - edge.labelWidth
+            : edge.labelX
+      return {
+        left,
+        right: left + edge.labelWidth,
+        top: edge.labelY,
+        bottom: edge.labelY + edge.labelHeight,
+        label: edge.label,
+      }
+    }
+    const labels = layout.edges.filter((edge) => edge.label !== undefined).map(rect)
+    expect(labels.length).toBeGreaterThan(10)
+    for (let first = 0; first < labels.length; first += 1) {
+      for (let second = first + 1; second < labels.length; second += 1) {
+        const a = labels[first]
+        const b = labels[second]
+        const overlaps =
+          a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+        expect(overlaps, `${a.label} / ${b.label}`).toBe(false)
+      }
+    }
+
+    // 跨节点的回边全部走左侧留白：标签右对齐贴在各自车道内侧。
+    const backs = layout.edges.filter(
+      (edge) => edge.back && edge.from !== edge.to && edge.label !== undefined,
+    )
+    expect(backs.length).toBeGreaterThan(3)
+    expect(backs.every((edge) => edge.labelAnchor === 'end')).toBe(true)
+    expect(layout.width).toBeGreaterThan(0)
+    expect(layout.height).toBeGreaterThan(0)
   })
 
   it('长名字截断，孤立节点仍然出现在第一层', () => {
