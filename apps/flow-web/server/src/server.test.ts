@@ -175,6 +175,7 @@ test('启动运行到完成，运行可查询、可列出', async () => {
   assert.equal(runs[0].status, 'completed')
   assert.equal(runs[0].flowId, 'two-steps')
   assert.equal(runs[0].executor, 'fake')
+  assert.deepEqual(runs[0].variables, { 任务: '补测试' })
 })
 
 test('缺少必填变量时启动同步失败，不留运行目录', async () => {

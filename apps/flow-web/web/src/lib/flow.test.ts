@@ -11,6 +11,7 @@ import {
   nodeKindLabel,
   outcomeLabel,
   resumeDisabledReason,
+  runVariableSummary,
   sidebarItems,
   statusLabel,
   statusTone,
@@ -134,6 +135,21 @@ describe('状态与文案', () => {
     expect(stopDisabledReason({ status: 'unconfirmed', active: false })).toBeNull()
     expect(stopDisabledReason({ status: 'running', active: false })).toBeNull()
     expect(stopDisabledReason({ status: 'running', active: true })).toBe('运行还在执行')
+  })
+
+  it('运行列表只展示前几项关键变量，过长时收尾', () => {
+    expect(runVariableSummary({ 任务: '补测试', 修改记录: '尚未修改' }, ['任务', '修改记录'])).toBe(
+      '任务=补测试 · 修改记录=尚未修改',
+    )
+    expect(
+      runVariableSummary({ 任务: 'a', 修改记录: 'b', 备注: 'c' }, ['任务', '修改记录', '备注']),
+    ).toBe('任务=a · 修改记录=b …')
+    expect(runVariableSummary({ 任务: 'x'.repeat(40) }, ['任务'])).toBe(
+      `任务=${'x'.repeat(23)}…`,
+    )
+    expect(runVariableSummary({ 任务: { a: 1 } }, ['任务'])).toBe('任务={"a":1}')
+    expect(runVariableSummary({ 其他: 1 }, ['任务'])).toBe('其他=1')
+    expect(runVariableSummary({}, ['任务'])).toBe('无变量')
   })
 
   it('不可执行的 Flow 给出原因', () => {

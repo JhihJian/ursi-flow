@@ -163,6 +163,38 @@ export function eventSummary(event: LogEvent): string {
   }
 }
 
+/**
+ * 运行列表里的关键变量：按 Flow 声明的顺序取前几项，
+ * 值压成一行，过长或太多时用省略号收尾。
+ */
+export function runVariableSummary(
+  variables: Record<string, unknown>,
+  names: string[],
+  limit = 2,
+): string {
+  const entries = names
+    .filter((name) => variables[name] !== undefined)
+    .map((name) => `${name}=${previewValue(variables[name])}`)
+  if (entries.length === 0) {
+    const fallback = Object.entries(variables).map(
+      ([name, value]) => `${name}=${previewValue(value)}`,
+    )
+    if (fallback.length === 0) return '无变量'
+    const shown = fallback.slice(0, limit)
+    return `${shown.join(' · ')}${fallback.length > shown.length ? ' …' : ''}`
+  }
+  const shown = entries.slice(0, limit)
+  return `${shown.join(' · ')}${entries.length > shown.length ? ' …' : ''}`
+}
+
+function previewValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return value.length > 24 ? `${value.slice(0, 23)}…` : value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  const text = JSON.stringify(value)
+  return text.length > 24 ? `${text.slice(0, 23)}…` : text
+}
+
 export function formatTime(iso: string | undefined): string {
   if (iso === undefined) return '-'
   const date = new Date(iso)

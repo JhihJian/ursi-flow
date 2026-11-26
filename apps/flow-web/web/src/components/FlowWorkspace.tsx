@@ -3,6 +3,7 @@ import {
   flowAvailability,
   formatTime,
   missingVariables,
+  runVariableSummary,
   statusLabel,
   statusTone,
 } from '../lib/flow'
@@ -18,7 +19,7 @@ export function FlowWorkspace() {
   const {
     config,
     detail,
-    flows,
+    flowId,
     draft,
     executorId,
     setExecutor,
@@ -39,12 +40,12 @@ export function FlowWorkspace() {
     () => (detail === undefined ? [] : missingVariables(detail, draft)),
     [detail, draft],
   )
-  const flowNames = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const flow of flows) map.set(flow.id, flow.name)
-    return map
-  }, [flows])
   const canStart = availability === null && missing.length === 0 && busy === null
+  // 运行记录只看当前 Flow：Flow 名在小标题已经出现过，列表里不再重复。
+  const flowRuns = runs.filter((item) => item.flowId === flowId)
+  const executorTitle = (id: string) =>
+    config?.executors.find((executor) => executor.id === id)?.title ?? (id || '未知执行器')
+  const variableNames = detail?.variables.map((variable) => variable.name) ?? []
   // 运行进度：取最后一条带节点的事件，只用来在结构图上标注。
   const currentRef = run?.events
     .filter((event) => event.nodeRef !== undefined)
@@ -171,27 +172,34 @@ export function FlowWorkspace() {
             <section className="flow-runs">
               <div className="flow-section-head">
                 <span>运行记录</span>
-                <span className="flow-count">{runs.length} 次</span>
+                <span className="flow-count">{flowRuns.length} 次</span>
               </div>
-              {runs.length === 0 ? (
-                <p className="flow-empty">还没有运行记录。填好变量后点「开始运行」。</p>
+              {flowRuns.length === 0 ? (
+                <p className="flow-empty">这个 Flow 还没有运行记录。填好变量后点「开始运行」。</p>
               ) : (
                 <ul className="flow-run-list">
-                  {runs.map((item) => (
+                  {flowRuns.map((item) => (
                     <li key={item.runId}>
                       <button
                         type="button"
                         className={`flow-run-item${item.runId === runId ? ' is-selected' : ''}`}
                         onClick={() => void selectRun(item.runId)}
                       >
-                        <span className={`flow-chip tone-${statusTone(item.status)}`}>
-                          {statusLabel(item.status)}
+                        <span className="flow-run-item-head">
+                          <span className={`flow-chip tone-${statusTone(item.status)}`}>
+                            {statusLabel(item.status)}
+                          </span>
+                          <span className="flow-run-time">{formatTime(item.startedAt)}</span>
                         </span>
-                        <span className="flow-run-flow">
-                          {flowNames.get(item.flowId) ?? (item.flowId || '未命名')}
+                        <span
+                          className="flow-run-vars"
+                          title={JSON.stringify(item.variables)}
+                        >
+                          {runVariableSummary(item.variables, variableNames)}
                         </span>
-                        <span className="flow-run-steps">{item.stepCount} 步</span>
-                        <span className="flow-run-time">{formatTime(item.startedAt)}</span>
+                        <span className="flow-run-foot">
+                          {executorTitle(item.executor)} · {item.stepCount} 步
+                        </span>
                       </button>
                     </li>
                   ))}

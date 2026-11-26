@@ -31,6 +31,8 @@ export interface RunSummary {
   updatedAt: string
   /** 已完成的步骤数。 */
   stepCount: number
+  /** 最近一次快照里的变量，列表用来展示关键变量。 */
+  variables: FlowVariables
   failure?: { code: string; message: string }
 }
 
@@ -183,6 +185,7 @@ export function createRunService(options: {
         startedAt: state.startedAt,
         updatedAt: state.startedAt,
         stepCount: 0,
+        variables: {},
       })
     }
     return summaries
@@ -210,6 +213,7 @@ export function createRunService(options: {
         startedAt: header?.startedAt ?? state.startedAt,
         updatedAt: state.startedAt,
         stepCount: 0,
+        variables: snapshot?.context.variables ?? {},
       }
     }
     return {
@@ -220,6 +224,7 @@ export function createRunService(options: {
       startedAt: header.startedAt,
       updatedAt: snapshot.updatedAt,
       stepCount: snapshot.context.steps.length,
+      variables: snapshot.context.variables,
       ...(snapshot.failure === undefined ? {} : { failure: snapshot.failure }),
     }
   }

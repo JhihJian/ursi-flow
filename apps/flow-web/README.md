@@ -54,7 +54,7 @@ cd ../server && npm start
 | `PUT /api/config` | 保存 flow home（绝对路径，目录不存在时创建） |
 | `GET /api/flows` | 扫描 flow home，返回每个包的摘要 |
 | `GET /api/flows/:id` | 单个包的起始节点、变量、节点、结果边与并行结构 |
-| `GET /api/runs` | 运行清单，按开始时间倒序 |
+| `GET /api/runs` | 运行清单，按开始时间倒序；每条带执行器标识、步数与最近一次快照的变量 |
 | `POST /api/runs` | 用启动变量开始一次运行，返回 `runId` |
 | `GET /api/runs/:runId` | 运行状态、待决确认、过程事件与变量 |
 | `POST /api/runs/:runId/confirm` | 提交人工确认结果 |

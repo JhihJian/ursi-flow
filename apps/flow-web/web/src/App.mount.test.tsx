@@ -170,6 +170,17 @@ describe('启动运行与人工确认', () => {
     })
 
     const state: { calls: string[]; bodies: string[] } = { calls: [], bodies: [] }
+    const listed: unknown[] = []
+    const summaryOf = (status: string) => ({
+      runId: 'run-1',
+      flowId: 'gate',
+      executor: 'fake',
+      status,
+      startedAt: '2024-03-04T05:06:07.000Z',
+      updatedAt: '2024-03-04T05:06:08.000Z',
+      stepCount: 2,
+      variables: {},
+    })
     vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
       const path = new URL(input, 'http://localhost').pathname
       const method = init?.method ?? 'GET'
@@ -192,7 +203,7 @@ describe('启动运行与人工确认', () => {
       if (path === '/api/flows')
         return reply({ flowHome: '/home/me/.ursi/flow', flows: [flow] })
       if (path === '/api/flows/gate') return reply({ flow })
-      if (path === '/api/runs' && method === 'GET') return reply({ runs: [] })
+      if (path === '/api/runs' && method === 'GET') return reply({ runs: listed })
       if (path === '/api/runs' && method === 'POST') {
         state.bodies.push(String(init?.body ?? ''))
         return reply({ runId: 'run-1' })
@@ -209,8 +220,10 @@ describe('启动运行与人工确认', () => {
             },
           }),
         })
-      if (path === '/api/runs/run-1/confirm')
+      if (path === '/api/runs/run-1/confirm') {
+        listed.splice(0, listed.length, summaryOf('completed'))
         return reply({ run: runOf('completed', { stepCount: 2 }) })
+      }
       return new Response('{}', { status: 404 })
     })
 
@@ -255,6 +268,13 @@ describe('启动运行与人工确认', () => {
     }
     expect(state.calls).toContain('POST /api/runs/run-1/confirm')
     expect(JSON.parse(state.bodies[0])).toMatchObject({ executor: 'fake' })
+
+    // 运行列表：关键变量 + 执行器 + 步数，且不再重复 Flow 名。
+    const row = container.querySelector('.flow-run-item')
+    expect(row?.textContent).toContain('无变量')
+    expect(row?.textContent).toContain('Fake 执行器')
+    expect(row?.textContent).toContain('2 步')
+    expect(row?.textContent).not.toContain('确认门禁')
 
     act(() => root.unmount())
     container.remove()

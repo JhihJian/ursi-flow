@@ -485,10 +485,9 @@
 }
 
 .flow-run-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--flow-space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   padding: var(--flow-space-xs) var(--flow-space-sm);
   border: none;
@@ -499,17 +498,31 @@
   color: inherit;
 }
 
-.flow-run-item:hover,
-.flow-run-item.is-selected {
-  background: var(--flow-wash);
+.flow-run-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--flow-space-sm);
 }
 
-.flow-run-flow {
-  font-family: var(--flow-serif);
-  font-size: 13px;
+.flow-run-vars {
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  color: var(--flow-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.flow-run-foot {
+  font-family: var(--flow-mono);
+  font-size: 10.5px;
+  color: var(--flow-faint);
+}
+
+.flow-run-item:hover,
+.flow-run-item.is-selected {
+  background: var(--flow-wash);
 }
 
 .flow-run-steps,

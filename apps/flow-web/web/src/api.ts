@@ -75,6 +75,8 @@ export interface RunSummary {
   startedAt: string
   updatedAt: string
   stepCount: number
+  /** 最近一次快照里的变量。 */
+  variables: FlowVariables
   failure?: { code: string; message: string }
 }
 
