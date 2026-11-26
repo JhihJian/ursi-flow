@@ -244,7 +244,7 @@ export function SessionsPanel({
                   onClick={() => toggleGroup(group.cwd)}
                 >
                   <span className="sessions-group-caret" aria-hidden>{collapsed ? '▸' : '▾'}</span>
-                  <span className={`sessions-dot${group.running > 0 ? ' is-running' : ''}`} aria-hidden />
+                  {/* cwd 是分组不是会话，不显示会话状态点；运行状态由右侧 n/m 计数表达。 */}
                   <span className="sessions-group-main">
                     <span className="sessions-group-name">{cwdName(group.cwd)}</span>
                     <span className="sessions-group-path">{group.cwd}</span>
