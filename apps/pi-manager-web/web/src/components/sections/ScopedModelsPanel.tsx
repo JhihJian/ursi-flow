@@ -14,7 +14,8 @@ const SOURCE_LABEL: Record<string, string> = {
   'settings.enabledModels': '已启用',
   'settings.default': '默认',
   'models.json': 'models.json',
-  'models-store.json': '运行目录',
+  'models-store.json': '缓存目录',
+  runtime: '模型目录',
 }
 
 interface ProviderGroup {
@@ -28,9 +29,13 @@ interface ProviderGroup {
 export function ScopedModelsPanel({
   catalog,
   onSave,
+  onRefresh,
+  refreshing,
 }: {
   catalog: ModelCatalog
   onSave: (next: string[] | null, label: string) => Promise<boolean>
+  onRefresh: () => Promise<void>
+  refreshing: boolean
 }) {
   const [query, setQuery] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
@@ -184,6 +189,15 @@ export function ScopedModelsPanel({
           >
             {allOpen ? '收起全部' : '展开全部'}
           </button>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => void onRefresh()}
+            disabled={refreshing}
+            title="加载该 pi home 的扩展后重新采集模型目录，读取 context / 输出上限 / 能力"
+          >
+            {refreshing ? '采集目录…' : '刷新模型目录'}
+          </button>
           {allScope ? (
             <button
               type="button"
@@ -216,7 +230,10 @@ export function ScopedModelsPanel({
           {' · '}
           {groups.length} 个 provider
           {firstEnabled ? ` · 启动首选 ${firstEnabled}` : ''}
-          {' · '}点 provider 名展开该组模型，组内最多显示一屏高，超出可单独滚动
+          {' · '}
+          {catalog.catalogFetchedAt
+            ? `模型目录采集于 ${formatAgo(catalog.catalogFetchedAt)}（${catalog.catalogProviders} 个 provider 有可用凭据）`
+            : '模型目录尚未采集，context 与输出上限未知，点「刷新模型目录」'}
         </span>
       </div>
 
@@ -269,6 +286,9 @@ export function ScopedModelsPanel({
                     <th className="col-state">State</th>
                     <th className="col-order">#</th>
                     <th>Model</th>
+                    <th className="col-num">Context</th>
+                    <th className="col-num">Max out</th>
+                    <th className="col-caps">能力</th>
                     <th className="col-actions" />
                   </tr>
                 </thead>
@@ -292,11 +312,21 @@ export function ScopedModelsPanel({
                       <td>
                         <div className="cell-title">{item.modelId}</div>
                         <div className="cell-sub">
+                          {item.displayName ? `${item.displayName} · ` : ''}
                           {item.sources.map((source) => SOURCE_LABEL[source] ?? source).join(' · ')}
                           {item.pattern ? ' · 模式' : ''}
                           {item.ref === firstEnabled ? ' · 启动首选' : ''}
-                          {item.enabled && !item.resolvable ? ' · 文件目录里没有，由扩展或网关提供' : ''}
+                          {item.enabled && !item.resolvable ? ' · 目录里没有，由扩展或网关提供' : ''}
                         </div>
+                      </td>
+                      <td className="col-num">
+                        {item.contextWindow ? formatTokens(item.contextWindow) : '—'}
+                      </td>
+                      <td className="col-num">
+                        {item.maxTokens ? formatTokens(item.maxTokens) : '—'}
+                      </td>
+                      <td className="col-caps">
+                        {formatCaps(item)}
                       </td>
                       <td className="col-actions">
                         {item.enabled && item.enabledIndex !== null ? (
@@ -358,4 +388,35 @@ export function ScopedModelsPanel({
       </p>
     </div>
   )
+}
+
+/** pi `--list-models` 的换算口径：200K / 1M。 */
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) {
+    const millions = count / 1_000_000
+    return millions % 1 === 0 ? `${millions}M` : `${millions.toFixed(1)}M`
+  }
+  if (count >= 1_000) {
+    const thousands = count / 1_000
+    return thousands % 1 === 0 ? `${thousands}K` : `${thousands.toFixed(1)}K`
+  }
+  return String(count)
+}
+
+/** 能力列：思考 / 图片 / 价格。未知（未采集目录）显示问号。 */
+function formatCaps(item: CatalogCandidate): string {
+  if (item.reasoning === null && item.images === null) return '—'
+  const parts: string[] = []
+  if (item.reasoning) parts.push('思考')
+  if (item.images) parts.push('图片')
+  return parts.length > 0 ? parts.join(' · ') : '纯文本'
+}
+
+function formatAgo(at: number): string {
+  const minutes = Math.floor((Date.now() - at) / 60_000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return `${Math.floor(hours / 24)} 天前`
 }

@@ -19,7 +19,9 @@ export function GeneralSection({ home }: { home: string }) {
   const [listing, setListing] = useState<GeneralListing | null>(null)
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const runWrite = useAppStore((s) => s.runWrite)
+  const setFooter = useAppStore((s) => s.setFooter)
 
   const reload = useCallback(async () => {
     try {
@@ -27,14 +29,35 @@ export function GeneralSection({ home }: { home: string }) {
       setListing(general)
       setCatalog(models)
       setError(null)
+      return models
     } catch (err) {
       setError(describeError(err))
+      return null
     }
   }, [home])
 
+  // 运行时目录是 context / 输出上限的唯一来源：首次打开自动采集一次，
+  // 之后只在用户点「刷新模型目录」时重新采集（它会加载扩展并访问网关）。
+  const refreshCatalog = useCallback(async () => {
+    setRefreshing(true)
+    setFooter('busy', '采集模型目录…')
+    try {
+      const models = await api.refreshModelCatalog(home)
+      setCatalog(models)
+      setError(null)
+      setFooter('ok', `模型目录已更新：${models.candidates.length} 个候选`)
+    } catch (err) {
+      setFooter('error', `采集模型目录失败：${describeError(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [home, setFooter])
+
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void reload().then((models) => {
+      if (models && models.catalogFetchedAt === null) void refreshCatalog()
+    })
+  }, [reload, refreshCatalog])
 
   if (error) return <ErrorBanner message={error} />
   if (!listing || !catalog) return <Loading />
@@ -184,6 +207,8 @@ export function GeneralSection({ home }: { home: string }) {
         </div>
         <ScopedModelsPanel
           catalog={catalog}
+          onRefresh={refreshCatalog}
+          refreshing={refreshing}
           onSave={(next, label) =>
             runWrite(label, async () => {
               const result = await api.putGeneralKey(home, 'enabledModels', next, listing!.revision)

@@ -1414,6 +1414,22 @@ textarea {
   text-align: right;
 }
 
+/* 数值列（context / max-out）：右对齐等宽，方便竖着比 */
+.col-num {
+  width: 76px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray-600);
+  white-space: nowrap;
+}
+
+.col-caps {
+  width: 110px;
+  color: var(--gray-600);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 .row-actions {
   display: inline-flex;
   gap: var(--space-xs);

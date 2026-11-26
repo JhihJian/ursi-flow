@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { listAgentProfiles, type AgentProfile } from './agents.ts'
 import { HomeError } from './pi-home.ts'
+import { loadSdk, type Sdk } from './sdk.ts'
 
 /**
  * 一次性会话任务：用 pi SDK 在指定 pi home 下起一个 AgentSession，跑完一轮就结束。
@@ -73,26 +74,7 @@ const live = new Map<string, { abort: () => Promise<void>; dispose: () => void }
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 type ThinkingLevel = (typeof THINKING_LEVELS)[number]
 
-const SDK_PACKAGE = '@earendil-works/pi-coding-agent'
-
-type Sdk = typeof import('@earendil-works/pi-coding-agent')
 type AgentSession = Awaited<ReturnType<Sdk['createAgentSession']>>['session']
-
-let sdkPromise: Promise<Sdk> | null = null
-
-async function loadSdk(): Promise<Sdk> {
-  if (!sdkPromise) {
-    sdkPromise = import(SDK_PACKAGE).catch((error: unknown) => {
-      sdkPromise = null
-      throw new HomeError(
-        `执行接口需要 pi SDK（${SDK_PACKAGE}）：${error instanceof Error ? error.message : String(error)}`,
-        503,
-        'sdk_unavailable',
-      )
-    })
-  }
-  return sdkPromise
-}
 
 export function taskCapacity(): { running: number; limit: number } {
   let running = 0

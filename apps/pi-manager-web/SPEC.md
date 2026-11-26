@@ -48,7 +48,10 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 默认只展开第一个有启用项的 provider，其余收起；用户手动点过之后按用户选择，不被数据刷新覆盖。
 - 组内模型区限高（`min(46vh, 420px)`）内部滚动、表头 sticky。一个 provider 有几十个模型时也只占一屏，不会把其他 provider 组头挤出视野。页面不依赖整体长滚动。
 - 过滤有两个入口：模型名输入框与 provider 下拉；任一过滤生效时命中组自动展开。
-- 组内逐条开关、序号列、上下移按钮，行内标注来源；底部「添加并启用」接受 `provider/modelId` 或匹配模式。
+- 组内逐条开关、序号列、上下移按钮，行内标注来源与显示名；底部「添加并启用」接受 `provider/modelId` 或匹配模式。
+- 模型行展示运行时能力：Context（上下文窗口）、Max out（单次输出上限）、能力（思考 / 图片）、显示名与来源。换算口径对齐 `pi --list-models`（200K / 1M）。未知显示 `—`。
+- 候选集合在采集过运行时目录后等于「pi 的 `/model` 选择器可见模型」（provider 有可用凭据的那批），这就是唯一包含 `extensions/providers/` 注册 provider 的来源；未采集时退回 `models.json` 与 `models-store.json` 的文件级候选。
+- 大小写不同的同一模型合并成一行：`provider/id` 按小写比对，启用项沿用 `settings.json` 里的原始写法，写回不改大小写。
 - provider 整组开关对齐 pi 的 `toggleProvider`：组内全部已启用则整组停用，否则补齐组内全部模型。只能靠已启用项可见的 provider（扩展注册、文件目录里没有模型）无法整组启用，页面提示手写 `provider/modelId` 或模式。
 - 顺序即 `Ctrl+P` 循环顺序，第一条启用项是新会话的启动首选，页面在该行标注「启动首选」；未限定清单时提示 pi 用默认模型。
 - 候选行为 `enabledModels` 已启用项与磁盘上可见模型（`models.json`、`models-store.json`、默认模型）的并集，每行标注来源；`*`/`?`/`[` 通配条目标为模式。已启用但磁盘目录里没有的（例如 `extensions/providers/` 注册的 provider）保留并标注「文件目录里没有，由扩展或网关提供」，不静默丢弃。
@@ -57,6 +60,19 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 全部可用状态下单条或整组关掉，会把其余候选落成显式清单，与 pi 的 `toggle(null)` 行为一致。
 - 空数组在 pi 侧会被 `/scoped-models` 归一成「全部可用」，因此「全部停用」只在 `settings.json` 层面保留，页面明确写出这一限制，不假装是持久生效的状态。
 - 每次改动都通过 `PUT /api/general/key` 带 revision 写回，只改 `enabledModels` 一个 key。
+
+### 采集运行时模型目录
+
+`contextWindow` / `maxTokens` / 思考与图片能力只存在于 pi 的 ModelRuntime：内置目录来自 pi 的 catalog 缓存，自建 provider 来自 `models.json`，而扩展注册的 provider 不落任何配置文件。因此这几列要靠一次真实采集。
+
+#### 验收
+
+- `GET /api/models/catalog` 只读缓存。缓存按「home + cwd」分键存在状态目录的 `model-catalog/<hash>.json`，`PI_MANAGER_STATE` 的目录部分参与定位。
+- `POST /api/models/catalog/refresh` 执行采集：加载该 home 的扩展（provider 扩展访问网关），用内存会话枚举 `getAvailableSnapshot()`（provider 已有可用凭据的模型），写入缓存后返回完整 catalog。
+- 页面首次打开发现 `catalogFetchedAt` 为 null 时自动采集一次；之后只在用户点「刷新模型目录」时重新采集，并显示「采集于 N 分钟前 / 覆盖 M 个 provider」。
+- 采集用 `SettingsManager.inMemory({})` 与 `SessionManager.inMemory()`：不改写该 home 的 `settings.json`，不触发 `packages` 的 npm 安装，不写 `sessions/`，不 spawn MCP server（工具全关）。
+- SDK 未安装时刷新返回 503，配置管理其余部分与已有缓存照常可用。
+- 采集结果里的模型以 `runtime` 来源标出；已启用但目录里找不到的条目保留并标注「目录里没有，由扩展或网关提供」。
 
 ### 管理 Skills
 
@@ -119,8 +135,9 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - 每次写入前把原文件备份为 `<name>.bak-manager`（避开 pi 自身的 `.bak_*` 系列），写入临时文件与目标同目录后原子 rename，文件模式 0600。
 - 服务监听 `0.0.0.0:8093`（`PI_MANAGER_PORT` 可覆盖），`/healthz` 暴露状态与写策略（`trusted-lan`）。
 - 凭据原文仍不外传：读接口一律遮蔽，只在提交瞬间经请求体传输。
+- 采集运行时目录是本页唯一会执行该 home 扩展代码的操作（provider 扩展访问网关取模型列表），因此只在显式刷新时发生，且用内存设置与内存会话，不改写该 home 的任何配置文件、不安装包、不建会话。
 
 ## 模块结构
 
-- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（按需加载 SDK、任务表、并发与超时上限）；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
+- `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；各域模块（`settings-file`、`skills`、`agents`、`models-auth`、`plugins`）只做文件级读写；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换与合并写回。
 - `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与七个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入）；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

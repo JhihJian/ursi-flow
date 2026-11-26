@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { ConflictError, readSnapshotSync, writeSnapshot } from './rw.ts'
 import { parseJsonc } from './jsonc.ts'
 import { HomeError } from './pi-home.ts'
+import type { RuntimeCatalog, RuntimeModel } from './models-runtime.ts'
 
 /**
  * models.json（自定义提供商与模型）与 auth.json（凭据）。
@@ -342,7 +343,12 @@ export interface StoreProviderView {
 }
 
 /** 候选模型的来源标记。 */
-export type CatalogSource = 'settings.default' | 'settings.enabledModels' | 'models.json' | 'models-store.json'
+export type CatalogSource =
+  | 'settings.default'
+  | 'settings.enabledModels'
+  | 'models.json'
+  | 'models-store.json'
+  | 'runtime'
 
 /**
  * 用于「启用模型」列表的一行：一个 provider/modelId 引用或一条模式。
@@ -356,11 +362,23 @@ export interface CatalogCandidate {
   sources: CatalogSource[]
   /** 是否含通配或可选 :thinking 后缀，语义上不是单个模型。 */
   pattern: boolean
-  /** 目录里能否确认该模型存在（models.json 或 models-store.json 命中）。 */
+  /** 目录里能否确认该模型存在（models.json / models-store.json / 运行时目录命中）。 */
   resolvable: boolean
   enabled: boolean
   /** 在 enabledModels 里的位置（0 起），未启用为 null。 */
   enabledIndex: number | null
+  /** 模型显示名（运行时目录给的 name，与 id 相同时为 null）。 */
+  displayName: string | null
+  /** 上下文窗口（token），未知为 null。 */
+  contextWindow: number | null
+  /** 单次输出上限（token），未知为 null。 */
+  maxTokens: number | null
+  /** 是否支持思考。 */
+  reasoning: boolean | null
+  /** 是否支持图片输入。 */
+  images: boolean | null
+  /** 每百万 token 的美元单价，未知为 null。 */
+  cost: { input: number; output: number } | null
 }
 
 /**
@@ -387,6 +405,10 @@ export interface ModelCatalog {
   refs: string[]
   /** 启用模型列表的候选行：启用项按 enabledModels 顺序在前，其余按 provider/引用排序。 */
   candidates: CatalogCandidate[]
+  /** 运行时目录的采集时间；未采集过为 null（页面据此提示刷新目录）。 */
+  catalogFetchedAt: number | null
+  /** 运行时目录覆盖到的 provider 数；未采集为 0。 */
+  catalogProviders: number
 }
 
 interface StoreProviderRaw {
@@ -442,7 +464,11 @@ function splitRef(ref: string): { provider: string; modelId: string } {
 }
 
 /** 本机模型清单：settings.json 的默认与启用模型 + models.json 自建 provider + 运行态目录缓存。 */
-export function readModelCatalog(home: string, settings: Record<string, unknown>): ModelCatalog {
+export function readModelCatalog(
+  home: string,
+  settings: Record<string, unknown>,
+  runtimeCatalog: RuntimeCatalog | null = null,
+): ModelCatalog {
   const provider = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : null
   const modelId = typeof settings.defaultModel === 'string' ? settings.defaultModel : null
   const rawEnabled = settings.enabledModels
@@ -453,22 +479,45 @@ export function readModelCatalog(home: string, settings: Record<string, unknown>
   const modelsJson = readModels(home).providers
   const rawStore = readStoreProviders(home)
 
+  // 运行时目录按 `provider/id` 索引，大小写不敏感查（网关返回的 id 大小写不统一）。
+  const runtimeById = new Map<string, RuntimeModel>()
+  for (const model of runtimeCatalog?.models ?? []) {
+    runtimeById.set(`${model.provider}/${model.id}`.toLowerCase(), model)
+  }
+
+  // 候选按 ref 归并，但大小写不同的写法算同一条：网关返回的 id 大小写不统一，
+  // settings 里的写法是用户已确认过的，两者合并成一行而不是两行。
   const candidates = new Map<string, CatalogCandidate>()
   const add = (ref: string, source: CatalogSource, resolvable: boolean) => {
-    const existing = candidates.get(ref)
+    const existing = candidates.get(ref) ?? candidates.get(ref.toLowerCase())
     if (existing) {
       if (!existing.sources.includes(source)) existing.sources.push(source)
       existing.resolvable ||= resolvable
+      // 启用项沿用 settings.json 里的写法，写回时不会改大小写。
+      if (source === 'settings.enabledModels' && existing.ref !== ref) {
+        candidates.delete(ref.toLowerCase())
+        const previousKey = existing.ref
+        existing.ref = ref
+        candidates.delete(previousKey)
+        candidates.set(ref.toLowerCase(), existing)
+      }
       return
     }
-    candidates.set(ref, {
+    const runtime = runtimeById.get(ref.toLowerCase()) ?? null
+    candidates.set(ref.toLowerCase(), {
       ref,
       ...splitRef(ref),
       sources: [source],
       pattern: PATTERN_CHARS.test(ref),
-      resolvable,
+      resolvable: resolvable || runtime !== null,
       enabled: false,
       enabledIndex: null,
+      displayName: runtime?.name ?? null,
+      contextWindow: runtime?.contextWindow ?? null,
+      maxTokens: runtime?.maxTokens ?? null,
+      reasoning: runtime?.reasoning ?? null,
+      images: runtime?.images ?? null,
+      cost: runtime?.cost ?? null,
     })
   }
 
@@ -476,11 +525,18 @@ export function readModelCatalog(home: string, settings: Record<string, unknown>
   for (const raw of modelsJson) {
     for (const id of modelsJsonModelIds(raw.entry)) add(`${raw.name}/${id}`, 'models.json', true)
   }
-  for (const item of rawStore) for (const id of item.ids) add(`${item.provider}/${id}`, 'models-store.json', true)
+  // 运行时目录里的可用模型全部入列：这是 pi 的 /model 选择器能看到的集合，也是
+  // 唯一包含扩展注册 provider 的来源。它存在时不再补 models-store 缓存（那是没有
+  // 鉴权的内置目录，页面列出来也选不了），只在没采集过时兜底。
+  if (runtimeCatalog) {
+    for (const model of runtimeCatalog.models) add(`${model.provider}/${model.id}`, 'runtime', true)
+  } else {
+    for (const item of rawStore) for (const id of item.ids) add(`${item.provider}/${id}`, 'models-store.json', true)
+  }
   // 已启用条目最后加入，保证 enabledIndex 取的是 settings 里的顺序。
   enabledModels.forEach((ref, index) => {
     add(ref, 'settings.enabledModels', false)
-    const candidate = candidates.get(ref)!
+    const candidate = candidates.get(ref.toLowerCase())!
     candidate.enabled = true
     candidate.enabledIndex = index
   })
@@ -489,6 +545,13 @@ export function readModelCatalog(home: string, settings: Record<string, unknown>
 
   const byProvider = (a: CatalogCandidate, b: CatalogCandidate) =>
     a.provider.localeCompare(b.provider) || a.ref.localeCompare(b.ref)
+  // 启用项改了 ref 写法后，provider/modelId 字段跟着同步。
+  for (const candidate of candidates.values()) {
+    const split = splitRef(candidate.ref)
+    candidate.provider = split.provider
+    candidate.modelId = split.modelId
+  }
+
   const ordered = [...candidates.values()].sort((a, b) => {
     // 显式清单里按 settings 的顺序排；全部可用时没有顺序，按 provider 排免得跳动。
     if (a.enabled && b.enabled && a.enabledIndex !== null && b.enabledIndex !== null) {
@@ -511,5 +574,7 @@ export function readModelCatalog(home: string, settings: Record<string, unknown>
     })),
     refs: ordered.map((c) => c.ref).sort(),
     candidates: ordered,
+    catalogFetchedAt: runtimeCatalog?.fetchedAt ?? null,
+    catalogProviders: new Set((runtimeCatalog?.models ?? []).map((m) => m.provider)).size,
   }
 }

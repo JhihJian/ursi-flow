@@ -9,6 +9,8 @@ import { readSettings, mutateSettings } from './settings-file.ts'
 import { toggleDisableModelInvocation, readDisableModelInvocation } from './skills.ts'
 import { readMcp, maskSecret } from './mcp-file.ts'
 import { readModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
+import { readCachedCatalog } from './models-runtime.ts'
+import { createHash } from 'node:crypto'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from './agents.ts'
 
@@ -757,4 +759,102 @@ test('catalog：非空清单 scope=explicit，按清单顺序给序号', () => {
       ['a/y', true, 1],
     ],
   )
+})
+
+test('catalog：运行时目录提供 context/maxTokens，并覆盖 models-store 兜底', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ enabledModels: ['sub2api-local/gpt-6.1-terra'] }))
+  writeFileSync(
+    join(dir, 'models-store.json'),
+    JSON.stringify({ openai: { models: [{ id: 'gpt-4' }], checkedAt: 1 } }),
+  )
+  const runtime = {
+    fetchedAt: 1763000000000,
+    cwd: '/tmp',
+    models: [
+      {
+        provider: 'sub2api-local',
+        id: 'gpt-6.1-terra',
+        name: null,
+        contextWindow: 500000,
+        maxTokens: 128000,
+        reasoning: true,
+        images: false,
+        cost: { input: 0, output: 0 },
+      },
+    ],
+  }
+  const catalog = readModelCatalog(dir, readSettings(dir).data, runtime)
+  assert.equal(catalog.catalogFetchedAt, 1763000000000)
+  assert.equal(catalog.catalogProviders, 1)
+  const terra = catalog.candidates.find((c) => c.ref === 'sub2api-local/gpt-6.1-terra')!
+  assert.equal(terra.contextWindow, 500000)
+  assert.equal(terra.maxTokens, 128000)
+  assert.equal(terra.reasoning, true)
+  assert.deepEqual(terra.sources, ['runtime', 'settings.enabledModels'])
+  assert.ok(catalog.candidates.some((c) => c.ref === 'sub2api-local/gpt-6.1-terra'))
+  // 有运行时目录时不再列 models-store 的无鉴权内置模型
+  assert.equal(catalog.candidates.some((c) => c.ref === 'openai/gpt-4'), false)
+  assert.equal(catalog.candidates.length, 1)
+})
+
+test('catalog：没有运行时目录时退回 models-store 候选，context 为未知', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), '{}')
+  writeFileSync(
+    join(dir, 'models-store.json'),
+    JSON.stringify({ openai: { models: [{ id: 'gpt-4' }], checkedAt: 1 } }),
+  )
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  assert.equal(catalog.catalogFetchedAt, null)
+  const gpt = catalog.candidates.find((c) => c.ref === 'openai/gpt-4')!
+  assert.equal(gpt.contextWindow, null)
+  assert.deepEqual(gpt.sources, ['models-store.json'])
+})
+
+test('catalog：运行时目录的模型 id 大小写不同也能匹配元数据', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ enabledModels: ['sub2api-local/GLM-5.3-Flash'] }))
+  const runtime = {
+    fetchedAt: 1,
+    cwd: '/tmp',
+    models: [
+      {
+        provider: 'sub2api-local',
+        id: 'glm-5.3-flash',
+        name: 'GLM 5.3 Flash',
+        contextWindow: 128000,
+        maxTokens: 131072,
+        reasoning: true,
+        images: false,
+        cost: null,
+      },
+    ],
+  }
+  const catalog = readModelCatalog(dir, readSettings(dir).data, runtime)
+  // 启用项按 settings 里的原始写法保留，元数据来自运行时目录的另一种大小写
+  const enabled = catalog.candidates.filter((c) => c.enabled)
+  assert.equal(enabled.length, 1)
+  assert.equal(enabled[0].ref, 'sub2api-local/GLM-5.3-Flash')
+  assert.equal(enabled[0].resolvable, true)
+})
+
+test('runtime：缓存缺失或损坏都返回 null', () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'pi-manager-state-'))
+  const previous = process.env.PI_MANAGER_STATE
+  process.env.PI_MANAGER_STATE = join(stateDir, 'homes.json')
+  try {
+    assert.equal(readCachedCatalog('/tmp/pi-home-x', '/tmp'), null)
+    const file = join(stateDir, 'model-catalog')
+    mkdirSync(file, { recursive: true })
+    const key = createHash('sha256').update('/tmp/pi-home-x\u0000/tmp').digest('hex').slice(0, 16)
+    writeFileSync(join(file, `${key}.json`), 'not json')
+    assert.equal(readCachedCatalog('/tmp/pi-home-x', '/tmp'), null)
+    writeFileSync(join(file, `${key}.json`), JSON.stringify({ fetchedAt: 7, cwd: '/tmp', models: [] }))
+    assert.deepEqual(readCachedCatalog('/tmp/pi-home-x', '/tmp'), { fetchedAt: 7, cwd: '/tmp', models: [] })
+  } finally {
+    if (previous === undefined) delete process.env.PI_MANAGER_STATE
+    else process.env.PI_MANAGER_STATE = previous
+    rmSync(stateDir, { recursive: true, force: true })
+  }
 })

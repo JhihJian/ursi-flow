@@ -123,6 +123,8 @@ export const api = {
     request<MutationResult>('PUT', '/api/mcp/servers', home, { servers, revision }),
   getModels: (home: string) => request<ModelsListing>('GET', '/api/models', home),
   getModelCatalog: (home: string) => request<ModelCatalog>('GET', '/api/models/catalog', home),
+  /** 重新采集运行时模型目录（会加载该 home 的扩展，只在用户点刷新时调用）。 */
+  refreshModelCatalog: (home: string) => request<ModelCatalog>('POST', '/api/models/catalog/refresh', home),
   putModelProviders: (home: string, providers: Record<string, Record<string, unknown> | null>, revision: string) =>
     request<MutationResult>('PUT', '/api/models/providers', home, { providers, revision }),
   getAuth: (home: string) => request<AuthListing>('GET', '/api/auth', home),

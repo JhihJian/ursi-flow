@@ -9,6 +9,7 @@ import { listSkills, readDisableModelInvocation, toggleDisableModelInvocation } 
 import { listAgentProfiles, saveAgentProfile, deleteAgentProfile, readAgentsSettings, writeAgentsSettings, renderProfile } from './agents.ts'
 import { readMcp, mergeMcp } from './mcp-file.ts'
 import { readModels, mergeModels, readAuth, mergeAuth, readModelCatalog } from './models-auth.ts'
+import { readCachedCatalog, refreshCatalog, catalogCwd } from './models-runtime.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
 import { createStaticHandler } from './static.ts'
 
@@ -291,8 +292,21 @@ route('PUT', '/api/mcp/servers', async ({ home, body }) => {
 
 route('GET', '/api/models', async ({ home }) => readModels(home))
 
-/** 本机模型清单：settings 的默认/启用模型 + models.json 自建 provider + models-store 运行目录（只读）。 */
-route('GET', '/api/models/catalog', async ({ home }) => readModelCatalog(home, readSettings(home).data))
+/** 本机模型清单：settings 的默认/启用模型 + models.json + models-store + 运行时目录（含 context/maxOut）。 */
+function buildCatalog(home: string) {
+  return readModelCatalog(home, readSettings(home).data, readCachedCatalog(home, catalogCwd()))
+}
+
+route('GET', '/api/models/catalog', async ({ home }) => buildCatalog(home))
+
+/**
+ * 刷新运行时模型目录。会加载该 home 的扩展（provider 扩展会访问网关），因此
+ * 只在显式请求时做；结果缓存到状态目录，供后续 GET /api/models/catalog 使用。
+ */
+route('POST', '/api/models/catalog/refresh', async ({ home }) => {
+  const catalog = await refreshCatalog(home, catalogCwd())
+  return { ok: true, fetchedAt: catalog.fetchedAt, modelCount: catalog.models.length, ...buildCatalog(home) }
+})
 
 route('PUT', '/api/models/providers', async ({ home, body }) => {
   const payload = await body<{ providers?: Record<string, Record<string, unknown> | null>; revision?: string }>()

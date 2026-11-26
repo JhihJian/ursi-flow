@@ -64,6 +64,7 @@ export type CatalogSource =
   | 'settings.enabledModels'
   | 'models.json'
   | 'models-store.json'
+  | 'runtime'
 
 /** 启用模型列表的一行：一个 provider/modelId 引用或一条模式。 */
 export interface CatalogCandidate {
@@ -75,6 +76,16 @@ export interface CatalogCandidate {
   resolvable: boolean
   enabled: boolean
   enabledIndex: number | null
+  /** 运行时目录给的显示名（与 id 相同时为 null）。 */
+  displayName: string | null
+  /** 上下文窗口（token），未知为 null。 */
+  contextWindow: number | null
+  /** 单次输出上限（token），未知为 null。 */
+  maxTokens: number | null
+  reasoning: boolean | null
+  images: boolean | null
+  /** 每百万 token 的美元单价，未知为 null。 */
+  cost: { input: number; output: number } | null
 }
 
 /** enabledModels 的三种形态：key 不存在 = 全部可用，空数组 = 按字面全部停用，非空 = 显式清单。 */
@@ -89,6 +100,10 @@ export interface ModelCatalog {
   store: Array<{ provider: string; modelCount: number; checkedAt: number | null; ids: string[] }>
   refs: string[]
   candidates: CatalogCandidate[]
+  /** 运行时目录采集时间；null 表示还没采集过（页面提示刷新）。 */
+  catalogFetchedAt: number | null
+  /** 运行时目录覆盖的 provider 数。 */
+  catalogProviders: number
 }
 
 export interface SkillItem {
