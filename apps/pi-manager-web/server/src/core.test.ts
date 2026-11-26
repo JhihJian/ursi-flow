@@ -723,3 +723,38 @@ test('session-task：subagent 的 tools 声明会成为会话工具集', async (
   // 容忍多余空白与尾逗号
   assert.deepEqual(parseSubagentTools(' read , write , '), ['read', 'write'])
 })
+
+test('catalog：enabledModels 缺省时 scope=all，全部候选都算启用', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ defaultProvider: 'p', defaultModel: 'm' }))
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { mine: { models: [{ id: 'a' }, { id: 'b' }] } } }))
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  assert.equal(catalog.scope, 'all')
+  assert.deepEqual(catalog.enabledModels, [])
+  assert.ok(catalog.candidates.length >= 3)
+  assert.ok(catalog.candidates.every((c) => c.enabled))
+  assert.ok(catalog.candidates.every((c) => c.enabledIndex === null))
+})
+
+test('catalog：enabledModels 为空数组时 scope=none，全部候选都不启用', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ enabledModels: [] }))
+  writeFileSync(join(dir, 'models.json'), JSON.stringify({ providers: { mine: { models: [{ id: 'a' }] } } }))
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  assert.equal(catalog.scope, 'none')
+  assert.ok(catalog.candidates.every((c) => !c.enabled))
+})
+
+test('catalog：非空清单 scope=explicit，按清单顺序给序号', () => {
+  const dir = makeHome()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ enabledModels: ['b/z', 'a/y'] }))
+  const catalog = readModelCatalog(dir, readSettings(dir).data)
+  assert.equal(catalog.scope, 'explicit')
+  assert.deepEqual(
+    catalog.candidates.map((c) => [c.ref, c.enabled, c.enabledIndex]),
+    [
+      ['b/z', true, 0],
+      ['a/y', true, 1],
+    ],
+  )
+})

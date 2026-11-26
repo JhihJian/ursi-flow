@@ -77,9 +77,13 @@ export interface CatalogCandidate {
   enabledIndex: number | null
 }
 
+/** enabledModels 的三种形态：key 不存在 = 全部可用，空数组 = 按字面全部停用，非空 = 显式清单。 */
+export type ModelScope = 'all' | 'none' | 'explicit'
+
 /** 本机模型清单：文件级可见的 provider/模型来源（只读汇总）。 */
 export interface ModelCatalog {
   configured: { provider: string | null; modelId: string | null }
+  scope: ModelScope
   enabledModels: string[]
   modelsJsonProviders: string[]
   store: Array<{ provider: string; modelCount: number; checkedAt: number | null; ids: string[] }>

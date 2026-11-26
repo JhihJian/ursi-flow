@@ -52,7 +52,10 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 - provider 整组开关对齐 pi 的 `toggleProvider`：组内全部已启用则整组停用，否则补齐组内全部模型。只能靠已启用项可见的 provider（扩展注册、文件目录里没有模型）无法整组启用，页面提示手写 `provider/modelId` 或模式。
 - 顺序即 `Ctrl+P` 循环顺序，第一条启用项是新会话的启动首选，页面在该行标注「启动首选」；未限定清单时提示 pi 用默认模型。
 - 候选行为 `enabledModels` 已启用项与磁盘上可见模型（`models.json`、`models-store.json`、默认模型）的并集，每行标注来源；`*`/`?`/`[` 通配条目标为模式。已启用但磁盘目录里没有的（例如 `extensions/providers/` 注册的 provider）保留并标注「文件目录里没有，由扩展或网关提供」，不静默丢弃。
-- 「全部启用」写为删除 `enabledModels` key（pi 语义：清单为空等于全部可用）；不提供「全部清空」，也不允许关掉最后一条启用项，避免落回同一语义而误导用户。
+- 工具条按钮跟随状态切换：「全部启用」写为删除 `enabledModels` key（pi 语义：key 不存在等于全部可用），「全部停用」写为空数组，两者互为反选。
+- `enabledModels` 的三种形态在接口里显式区分（`scope`）：`all` = key 不存在，所有候选按启用显示、无序号；`none` = 空数组，所有候选关闭；`explicit` = 非空清单，按清单顺序给序号。页面按形态显示状态与按钮。
+- 全部可用状态下单条或整组关掉，会把其余候选落成显式清单，与 pi 的 `toggle(null)` 行为一致。
+- 空数组在 pi 侧会被 `/scoped-models` 归一成「全部可用」，因此「全部停用」只在 `settings.json` 层面保留，页面明确写出这一限制，不假装是持久生效的状态。
 - 每次改动都通过 `PUT /api/general/key` 带 revision 写回，只改 `enabledModels` 一个 key。
 
 ### 管理 Skills

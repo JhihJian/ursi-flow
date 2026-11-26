@@ -38,9 +38,13 @@ export function ScopedModelsPanel({
   /** null 表示跟随默认（只展开第一个有启用项的 provider），用户操作后固定为用户选择。 */
   const [expandedOverride, setExpandedOverride] = useState<Set<string> | null>(null)
 
-  const enabled = catalog.enabledModels
+  // pi 里 enabledModels 不存在等于「全部可用」，此时所有候选都按启用显示；
+  // 任何一次单条关掉都会落成显式清单（和 TUI 的 toggle(null) 行为一致）。
+  const allScope = catalog.scope === 'all'
+  const allRefs = useMemo(() => catalog.candidates.map((c) => c.ref), [catalog.candidates])
+  const enabled = allScope ? allRefs : catalog.enabledModels
   const enabledSet = new Set(enabled)
-  const firstEnabled = enabled[0] ?? null
+  const firstEnabled = allScope ? null : (enabled[0] ?? null)
 
   const groups = useMemo<ProviderGroup[]>(() => {
     const byProvider = new Map<string, CatalogCandidate[]>()
@@ -52,13 +56,14 @@ export function ScopedModelsPanel({
     }
     const out: ProviderGroup[] = []
     for (const [provider, candidates] of byProvider) {
+      // 全部可用时没有 enabledIndex，按 enabled 标记统计，序号只在显式清单里才有。
       const enabledIndexes = candidates
         .map((c) => c.enabledIndex)
         .filter((index): index is number => index !== null)
       out.push({
         provider,
         candidates,
-        enabledCount: enabledIndexes.length,
+        enabledCount: candidates.filter((c) => c.enabled).length,
         firstIndex: enabledIndexes.length > 0 ? Math.min(...enabledIndexes) : null,
       })
     }
@@ -121,6 +126,7 @@ export function ScopedModelsPanel({
   }
 
   async function move(ref: string, delta: number) {
+    if (allScope) return
     const index = enabled.indexOf(ref)
     const target = index + delta
     if (index < 0 || target < 0 || target >= enabled.length) return
@@ -178,22 +184,38 @@ export function ScopedModelsPanel({
           >
             {allOpen ? '收起全部' : '展开全部'}
           </button>
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => void onSave(null, '全部启用（删除 enabledModels）')}
-            disabled={enabled.length === 0}
-            title="删除 enabledModels，等于 pi 的「全部可用」"
-          >
-            全部启用
-          </button>
+          {allScope ? (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => void onSave([], '全部停用（写入空清单）')}
+              title="写入空数组。pi 打开 /scoped-models 时会把空清单归一成「全部可用」，这一状态只在 settings.json 里保留"
+            >
+              全部停用
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => void onSave(null, '全部启用（删除 enabledModels）')}
+              title="删除 enabledModels，等于 pi 的「全部可用」"
+            >
+              全部启用
+            </button>
+          )}
         </div>
       </div>
 
       <div className="scoped-meta">
         <span className="mono-dim">
-          已启用 {enabled.length} / 候选 {total} · {groups.length} 个 provider
-          {firstEnabled ? ` · 启动首选 ${firstEnabled}` : ' · 未限定，pi 用默认模型'}
+          {allScope
+            ? `全部可用（enabledModels 未设置）：${total} 个模型都可选`
+            : catalog.scope === 'none'
+              ? `全部停用（enabledModels 是空数组）：${total} 个候选都关闭`
+              : `已启用 ${enabled.length} / 候选 ${total}`}
+          {' · '}
+          {groups.length} 个 provider
+          {firstEnabled ? ` · 启动首选 ${firstEnabled}` : ''}
           {' · '}点 provider 名展开该组模型，组内最多显示一屏高，超出可单独滚动
         </span>
       </div>
@@ -202,10 +224,8 @@ export function ScopedModelsPanel({
         const open = filtering || expanded.has(group.provider)
         const allEnabled = group.enabledCount === group.candidates.length
         const partial = group.enabledCount > 0 && !allEnabled
-        const onlyOneLeft = allEnabled && enabled.length === group.enabledCount
         const enabledIds = group.candidates
           .filter((c) => c.enabled)
-          .sort((a, b) => (a.enabledIndex ?? 0) - (b.enabledIndex ?? 0))
           .map((c) => c.modelId)
         const startsSession = group.firstIndex === 0
         const headHint = enabledIds.length
@@ -234,12 +254,7 @@ export function ScopedModelsPanel({
                 className="switch"
                 aria-pressed={allEnabled}
                 aria-label={`${allEnabled ? '停用' : '启用'} ${group.provider} 的全部模型`}
-                disabled={onlyOneLeft}
-                title={
-                  onlyOneLeft
-                    ? '这是唯一启用的 provider；要放开全部请用「全部启用」'
-                    : `${allEnabled ? '停用' : '启用'} ${group.provider} 的全部模型（对齐 pi 的 toggleProvider）`
-                }
+                title={`${allEnabled ? '停用' : '启用'} ${group.provider} 的全部模型（对齐 pi 的 toggleProvider）`}
                 onClick={() => void toggleProvider(group)}
               >
                 <span className="switch-track" aria-hidden />
@@ -266,18 +281,14 @@ export function ScopedModelsPanel({
                           className="switch"
                           aria-pressed={item.enabled}
                           aria-label={`${item.enabled ? '停用' : '启用'} ${item.ref}`}
-                          disabled={item.enabled && enabled.length === 1}
-                          title={
-                            item.enabled && enabled.length === 1
-                              ? '至少保留一条启用项；要放开全部请用「全部启用」'
-                              : undefined
-                          }
                           onClick={() => void toggle(item)}
                         >
                           <span className="switch-track" aria-hidden />
                         </button>
                       </td>
-                      <td className="col-order">{item.enabledIndex === null ? '—' : item.enabledIndex + 1}</td>
+                      <td className="col-order">
+                        {item.enabledIndex === null ? '—' : item.enabledIndex + 1}
+                      </td>
                       <td>
                         <div className="cell-title">{item.modelId}</div>
                         <div className="cell-sub">
@@ -288,7 +299,7 @@ export function ScopedModelsPanel({
                         </div>
                       </td>
                       <td className="col-actions">
-                        {item.enabled ? (
+                        {item.enabled && item.enabledIndex !== null ? (
                           <span className="row-actions">
                             <button
                               type="button"
@@ -340,7 +351,9 @@ export function ScopedModelsPanel({
 
       <p className="mono-dim">
         顺序即 Ctrl+P 循环顺序，第一条是新会话的启动模型。provider 右侧开关是整组启停（对齐 pi 的
-        toggleProvider）。清单为空表示全部可用，所以「全部启用」是删掉 enabledModels，也至少保留一条启用项。
+        toggleProvider）。「全部启用」是删掉 enabledModels（pi 视为全部可用），「全部停用」是写入空数组；
+        pi 自己打开 /scoped-models 时会把空数组归一成全部可用，所以全部停用只在 settings.json 里保留。
+        在「全部可用」状态关掉某一条或某个 provider，会把其余候选落成显式清单（与 pi 的 toggle 一致）。
         由 extensions/providers/ 注册的 provider 不写配置文件，只能手写 provider/modelId 或模式来启用。
       </p>
     </div>

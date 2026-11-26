@@ -363,9 +363,20 @@ export interface CatalogCandidate {
   enabledIndex: number | null
 }
 
+/**
+ * enabledModels 的三种形态：
+ * - all：key 不存在，pi 视为全部可用，所有候选都是启用状态。
+ * - none：key 存在但是空数组（pi 的 clearAll + 保存就是这个形态）。pi 在
+ *   /scoped-models 里把它归一成「全部可用」，本页按字面显示为全部停用。
+ * - explicit：非空数组，按清单顺序决定循环与启动首选。
+ */
+export type ModelScope = 'all' | 'none' | 'explicit'
+
 export interface ModelCatalog {
   /** settings.json 的 defaultProvider / defaultModel。 */
   configured: { provider: string | null; modelId: string | null }
+  /** enabledModels 的形态，决定开关怎么显示、工具条按钮是「全部启用」还是「全部停用」。 */
+  scope: ModelScope
   /** settings.json 的 enabledModels（模型循环清单，也是本机真实配置的模型来源）。 */
   enabledModels: string[]
   /** models.json 里自建 provider 名。 */
@@ -434,9 +445,11 @@ function splitRef(ref: string): { provider: string; modelId: string } {
 export function readModelCatalog(home: string, settings: Record<string, unknown>): ModelCatalog {
   const provider = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : null
   const modelId = typeof settings.defaultModel === 'string' ? settings.defaultModel : null
-  const enabledModels = Array.isArray(settings.enabledModels)
-    ? settings.enabledModels.filter((v): v is string => typeof v === 'string')
+  const rawEnabled = settings.enabledModels
+  const enabledModels = Array.isArray(rawEnabled)
+    ? rawEnabled.filter((v): v is string => typeof v === 'string')
     : []
+  const scope: ModelScope = !Array.isArray(rawEnabled) ? 'all' : enabledModels.length === 0 ? 'none' : 'explicit'
   const modelsJson = readModels(home).providers
   const rawStore = readStoreProviders(home)
 
@@ -471,15 +484,23 @@ export function readModelCatalog(home: string, settings: Record<string, unknown>
     candidate.enabled = true
     candidate.enabledIndex = index
   })
+  // scope=all 表示 pi 里全部可用，没有顺序概念，全部标成启用。
+  if (scope === 'all') for (const candidate of candidates.values()) candidate.enabled = true
 
+  const byProvider = (a: CatalogCandidate, b: CatalogCandidate) =>
+    a.provider.localeCompare(b.provider) || a.ref.localeCompare(b.ref)
   const ordered = [...candidates.values()].sort((a, b) => {
-    if (a.enabled && b.enabled) return (a.enabledIndex ?? 0) - (b.enabledIndex ?? 0)
+    // 显式清单里按 settings 的顺序排；全部可用时没有顺序，按 provider 排免得跳动。
+    if (a.enabled && b.enabled && a.enabledIndex !== null && b.enabledIndex !== null) {
+      return a.enabledIndex - b.enabledIndex
+    }
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
-    return a.provider.localeCompare(b.provider) || a.ref.localeCompare(b.ref)
+    return byProvider(a, b)
   })
 
   return {
     configured: { provider, modelId },
+    scope,
     enabledModels,
     modelsJsonProviders: modelsJson.map((p) => p.name),
     store: rawStore.map((item) => ({
