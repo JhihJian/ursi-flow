@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 const root = new URL("../", import.meta.url);
 const project = mkdtempSync(join(tmpdir(), "ursi-flow-pack-"));
-const npm = (...args) => execFileSync(process.execPath, [process.env.npm_execpath, ...args], {
+const npm = (...args) => execFileSync(process.execPath, [process.env.npm_execpath ?? "npm", ...args], {
 	cwd: project,
 	encoding: "utf8",
 });

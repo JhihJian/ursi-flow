@@ -30,7 +30,7 @@ const result = await engine.start({ flow: { id, text, path }, variables, cwd })
 - 执行器是唯一外部依赖，契约由 `executor/` 拥有：`prompt(agentName, instruct)` 与 `command(invocation)`。引擎只依赖契约，适配器由使用方提供。
 - 同一节点连续三次提交不允许的结果时本次运行失败，保留最后一次拒绝信息。
 - `confirm` 节点不调用执行器，返回 `awaiting_input` 与待决选项；`respond(runId, stepId, result)` 校验后继续。
-- `resume(runId)` 从快照继续；等待中的运行只重新给出待决确认，不重复执行。
+- `resume(runId)` 从快照继续；等待中的运行重新给出待决确认并换新 `stepId`（旧 `stepId` 失效），不调用执行器。
 - `start` 的 Flow 已被执行过时抛冲突，不重复创建。
 
 ### 日志实体 `runtime/logs`

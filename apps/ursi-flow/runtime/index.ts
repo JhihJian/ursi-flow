@@ -1,17 +1,12 @@
-export { FlowEngine, EngineError, ExecutorUnconfirmed } from './engine/index.ts';
+export { FlowEngine, EngineError } from './engine/index.ts';
 export type {
-	CommandInvocation,
-	CommandOutput,
 	CompletedStep,
 	CurrentStep,
 	Engine,
 	FlowFailure,
 	FlowVariables,
 	EngineOptions,
-	ExecutorReply,
-	FlowExecutor,
 	FlowSource,
-	Instruct,
 	PendingConfirm,
 	RunResult,
 	StartRequest,

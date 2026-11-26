@@ -320,11 +320,13 @@ function Surface({ modules, views, profile, storageKey, status, onError }: Surfa
     saveExpandedId(expandedKey, expandedId)
   }, [expandedKey, expandedId])
 
-  // profile 或模块集合变化后，丢掉不再启用的展开项。
+  // profile 或模块集合变化后，丢掉不再启用的展开项，并回退到默认展开的那个。
   useEffect(() => {
-    setExpandedId((previous) =>
-      previous && enabled.some((module) => module.id === previous) ? previous : null,
-    )
+    setExpandedId((previous) => {
+      if (previous && enabled.some((module) => module.id === previous)) return previous
+      const declared = enabled.find((module) => module.defaultExpanded)
+      return declared ? declared.id : (enabled[0]?.id ?? null)
+    })
   }, [enabledKey, enabled])
 
   const onExpandedChange = useCallback((moduleId: string, expanded: boolean) => {
@@ -424,21 +426,28 @@ function Shell({
     () => onError ?? ((error: unknown) => console.error(error)),
     [onError],
   )
-  const allIds = modules.map((module) => module.id)
-  const activeProfiles: WorkspaceProfile[] = profiles?.length
-    ? profiles
-    : [{ id: 'all', title: '全部', modules: allIds }]
+  const moduleKey = modules.map((module) => module.id).join(',')
+  /** 模块清单或宿主传入的 profile 变了才重算，避免每次渲染都建新数组。 */
+  const activeProfiles = useMemo<WorkspaceProfile[]>(() => {
+    if (profiles?.length) return profiles
+    return [{ id: 'all', title: '全部', modules: moduleKey ? moduleKey.split(',') : [] }]
+  }, [profiles, moduleKey])
 
   const [profileId, setProfileId] = useState<string | null>(() => {
     const saved = window.localStorage.getItem(`${storageKey}:profile`)
     return saved && activeProfiles.some((profile) => profile.id === saved) ? saved : null
   })
-  const activeId = profileId ?? activeProfiles[0]?.id ?? 'all'
-  const activeProfile = activeProfiles.find((profile) => profile.id === activeId) ?? activeProfiles[0]!
+  // profile 可被界面编辑/删除，存下来的 id 可能已经失效；失效时退回第一个而不是留空选择器。
+  const activeProfile =
+    activeProfiles.find((profile) => profile.id === profileId) ?? activeProfiles[0]!
 
   useEffect(() => {
+    if (profileId && !activeProfiles.some((profile) => profile.id === profileId)) {
+      setProfileId(null)
+      return
+    }
     if (profileId) window.localStorage.setItem(`${storageKey}:profile`, profileId)
-  }, [storageKey, profileId])
+  }, [storageKey, profileId, activeProfiles])
 
   return (
     <div className="ws-shell">
@@ -448,7 +457,7 @@ function Shell({
           {activeProfiles.length >= 2 ? (
             <select
               className="ws-profile-select"
-              value={activeId}
+              value={activeProfile.id}
               aria-label="页面 profile"
               onChange={(event) => setProfileId(event.target.value)}
             >

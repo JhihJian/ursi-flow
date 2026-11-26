@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
 import type { WorkspaceModule, WorkspaceProfile, WorkspaceView } from '@ursi/workspace-shell'
+import { ProfilesEditor, createProfilesStore, useProfiles } from '@ursi/workspace-shell'
 import { createTodoModule } from '@ursi/todo-web/module'
 import { createFsModule } from '@ursi/fs-web/module'
 import { createSshModule } from '@ursi/ssh-web/module'
@@ -28,8 +28,14 @@ export interface ShellRegistry {
 /** 设置页不占侧边栏，由标题栏按钮选中，占用整个工作区。 */
 export const SETTINGS = { kind: 'app.settings', id: 'settings' } as const
 
+/** profile 配置页：定义有哪些 profile、每个启用哪些模块。 */
+export const PROFILES = { kind: 'app.profiles', id: 'profiles' } as const
+
 /** 注册信息页同上。 */
 export const REGISTRY = { kind: 'app.registry', id: 'registry' } as const
+
+/** 宿主与外壳共用的存储前缀：激活的 profile、各 profile 的展开状态、自定义 profile 都在它下面。 */
+export const STORAGE_KEY = 'ursi.workspace'
 
 /** 模块来源标注：包名或仓库内路径。id 撞上未登记来源时显式报错。 */
 const SOURCES: Record<string, string> = {
@@ -172,9 +178,10 @@ const WIRES: Array<{ from: string; to: string; capability: string }> = [
 
 /**
  * 页面 profile：只声明启用模块与顺序。
+ * 这里的默认值在首次打开时落盘一次，之后由标题栏的 Profiles 页编辑，
  * 侧边栏展开状态、每节高度与工作区列宽按 profile 隔离持久化。
  */
-const PROFILES: WorkspaceProfile[] = [
+const DEFAULT_PROFILES: WorkspaceProfile[] = [
   { id: 'work', title: '工作', modules: ['todo', 'fs-web', 'ssh'] },
   { id: 'terminal', title: '终端', modules: ['ssh', 'fs-web'] },
   { id: 'sandbox', title: '沙箱', modules: ['sandbox', 'ssh'] },
@@ -182,23 +189,29 @@ const PROFILES: WorkspaceProfile[] = [
   { id: 'history', title: '会话', modules: ['pi-sessions', 'fs-web'] },
 ]
 
-/** 组合根装配：模块与页面只建一次，profile 切换由外壳负责。 */
+/** profile 配置存在这里；编辑页与外壳读同一份快照，改配置不会重建编辑组件本身。 */
+const PROFILES_STORE = createProfilesStore({ storageKey: STORAGE_KEY, defaults: DEFAULT_PROFILES })
+
+function ProfilesPage() {
+  return <ProfilesEditor modules={MODULES} store={PROFILES_STORE} />
+}
+
+/** 注册信息从活的 modules 与 profile 快照派生，不另存一份手工清单，避免漂移。 */
+function RegistryPage() {
+  const profiles = useProfiles(PROFILES_STORE)
+  return <RegistryView modules={MODULES} profiles={profiles} wires={WIRES} />
+}
+
+/** 宿主页面在模块级登记，组件引用稳定；改 profile 不会让当前页面被重挂。 */
+const VIEWS: WorkspaceView[] = [
+  { kind: SETTINGS.kind, summary: () => 'Settings', Component: SettingsView },
+  { kind: PROFILES.kind, summary: () => 'Profiles', Component: ProfilesPage },
+  { kind: REGISTRY.kind, summary: () => 'Registry', Component: RegistryPage },
+]
+
+/** 组合根装配：模块与页面只建一次，profile 编辑与切换由外壳负责。 */
 export function useShellRegistry(): ShellRegistry {
-  const views = useMemo<WorkspaceView[]>(
-    () => [
-      { kind: SETTINGS.kind, summary: () => 'Settings', Component: SettingsView },
-      {
-        kind: REGISTRY.kind,
-        summary: () => 'Registry',
-        Component: () => (
-          <RegistryView modules={MODULES} profiles={PROFILES} wires={WIRES} />
-        ),
-      },
-    ],
-    [],
-  )
-
-  if (import.meta.env.DEV) assertRegistry(MODULES, views)
-
-  return { modules: MODULES, views, profiles: PROFILES }
+  const profiles = useProfiles(PROFILES_STORE)
+  if (import.meta.env.DEV) assertRegistry(MODULES, VIEWS)
+  return { modules: MODULES, views: VIEWS, profiles }
 }

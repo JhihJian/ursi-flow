@@ -1,6 +1,6 @@
 export { readFlowPackage, runFlow } from "./run.ts";
 export type { RunFlowOptions } from "./run.ts";
-export { FakeExecutor } from "./executor/index.ts";
+export { ExecutorUnconfirmed, FakeExecutor } from "./executor/index.ts";
 export type {
 	CommandInvocation,
 	CommandOutput,
@@ -11,7 +11,7 @@ export type {
 	FakeExecutorOptions,
 	FakeReply,
 } from "./executor/index.ts";
-export { FlowEngine, EngineError, ExecutorUnconfirmed } from "./runtime/index.ts";
+export { FlowEngine, EngineError } from "./runtime/index.ts";
 export { FileLogStore } from "./runtime/index.ts";
 export type {
 	CompletedStep,

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import type { FlowVariables, FlowValue } from "./core/index.ts";
 import { FakeExecutor } from "./executor/index.ts";
 import type { PendingConfirm, RunResult } from "./runtime/index.ts";
-import { readFlowPackage, runFlow } from "./run.ts";
+import { FlowRunError, readFlowPackage, runFlow } from "./run.ts";
 
 const USAGE = `用法：ursi-flow run <FLOW.md|包目录> [选项]
 
@@ -55,10 +55,11 @@ function parseArguments(argv: string[]): Options | undefined {
 		const [flag, inline] = splitFlag(argument);
 		if (!KNOWN_FLAGS.has(flag)) throw new Error(`未知选项：${flag}`);
 		const value = inline ?? rest[(index += 1)];
-		if (value === undefined) throw new Error(`选项缺少取值：${flag}`);
+		if (value === undefined || (inline === undefined && value.startsWith("--")))
+			throw new Error(`选项缺少取值：${flag}`);
 		if (flag === "--var") assignVariable(variables, value);
 		else if (flag === "--cwd") cwd = resolve(value);
-		else if (flag === "--store") store = resolve(value);
+		else if (flag === "--store") store = resolve(cwd, value);
 		else if (flag === "--run-id") runId = value;
 	}
 	if (target === undefined) throw new Error("缺少 FLOW.md 或包目录");
@@ -150,9 +151,9 @@ function describe(result: RunResult, flowId: string): string {
 				`运行：${result.runId}，步骤：${result.pending.stepId}`,
 			].join("\n");
 		case "failed":
-			return `失败：${result.error.code} ${result.error.message}`;
+			return `失败：${result.error.code} ${result.error.message}\n运行：${result.runId}`;
 		case "unconfirmed":
-			return `待核实：${result.error.code} ${result.error.message}`;
+			return `待核实：${result.error.code} ${result.error.message}\n运行：${result.runId}`;
 		case "interrupted":
 			return `已停止：${result.runId}`;
 	}
@@ -190,7 +191,11 @@ async function main(argv: string[]): Promise<number> {
 		if (result.status === "awaiting_input") return 3;
 		return 1;
 	} catch (error) {
-		process.stderr.write(`错误：${messageOf(error)}\n`);
+		const detail =
+			error instanceof FlowRunError
+				? `错误：${messageOf(error)}\n运行：${error.runId}，步骤：${error.stepId}`
+				: `错误：${messageOf(error)}`;
+		process.stderr.write(`${detail}\n`);
 		return 1;
 	}
 }

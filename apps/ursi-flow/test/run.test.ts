@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { FakeExecutor } from "../executor/index.ts";
-import { readFlowPackage, runFlow } from "../run.ts";
+import { FlowRunError, readFlowPackage, runFlow } from "../run.ts";
 import { FileLogStore } from "../runtime/index.ts";
 import type { LogEvent, StoredRun } from "../runtime/index.ts";
 
@@ -96,6 +96,27 @@ describe("FLOW.md 到结果", () => {
 		});
 		expect(done.status).toBe("completed");
 		expect(prompts).toHaveLength(1);
+	});
+
+	it("确认链路失败时错误带上运行标识与待决步骤", async () => {
+		const flow = await example("review");
+		const failure = await runFlow({
+			flow,
+			executor: new FakeExecutor({
+				replies: { 起草: [{ outcome: "送审", variables: { 摘要: "初稿" } }] },
+			}),
+			store: await tempDir(),
+			variables: { 主题: "发布说明" },
+			confirm: () => {
+				throw new Error("用户取消");
+			},
+		}).catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(FlowRunError);
+		const error = failure as FlowRunError;
+		expect(error.message).toContain("用户取消");
+		expect(error.pending.nodeName).toBe("审核");
+		expect(error.stepId).toBe(error.pending.stepId);
+		expect(error.runId).not.toBe("");
 	});
 
 	it("并行命令按脚本汇总到汇合节点", async () => {

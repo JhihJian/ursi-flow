@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { FlowEngine } from "../runtime/engine/index.ts";
-import type { ExecutorReply, Instruct } from "../runtime/engine/index.ts";
+import type { ExecutorReply, Instruct } from "../executor/index.ts";
 import { FileLogStore } from "../runtime/store/index.ts";
 import type { LogEvent } from "../runtime/logs/index.ts";
 
@@ -207,7 +207,12 @@ describe("Flow engine", () => {
 	it("重启后从快照恢复：等待中的运行直接给出待决确认，终态不重跑", async () => {
 		const dir = await tempDir();
 		const first = engineOf(dir, { prompt: () => ({ outcome: "已准备" }) });
-		await first.engine.start({ flow: { id: "gate2", text: WITH_CONFIRM }, runId: "run-4" });
+		const started = await first.engine.start({
+			flow: { id: "gate2", text: WITH_CONFIRM },
+			runId: "run-4",
+		});
+		if (started.status !== "awaiting_input") throw new Error("预期等待确认");
+		const startedStepId = started.pending.stepId;
 
 		const second = engineOf(dir, {
 			prompt: () => {
@@ -217,6 +222,14 @@ describe("Flow engine", () => {
 		const resumed = await second.engine.resume("run-4");
 		expect(resumed.status).toBe("awaiting_input");
 		expect(second.calls).toHaveLength(0);
+		if (resumed.status !== "awaiting_input") return;
+		expect(resumed.pending.stepId).not.toBe(startedStepId);
+		await expect(
+			second.engine.respond("run-4", startedStepId, "通过"),
+		).rejects.toThrow("不匹配");
+		expect(
+			(await second.engine.respond("run-4", resumed.pending.stepId, "通过")).status,
+		).toBe("completed");
 
 		await expect(first.engine.start({ flow: { id: "gate2", text: WITH_CONFIRM }, runId: "run-4" })).rejects.toThrow(
 			"运行已存在",

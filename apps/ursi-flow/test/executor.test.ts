@@ -51,6 +51,13 @@ describe("FakeExecutor", () => {
 		expect(await executor.prompt("起草", instruct())).toEqual({ outcome: "搁置" });
 	});
 
+	it("上次提交被拒且没有更多脚本时报错，不静默换一条边", async () => {
+		const executor = new FakeExecutor();
+		await expect(
+			executor.prompt("起草", instruct({ rejection: "缺少摘要" })),
+		).rejects.toThrow(/上次提交被拒.*缺少摘要/);
+	});
+
 	it("没有结果边时直接报错，不猜一个结果", async () => {
 		const executor = new FakeExecutor();
 		await expect(

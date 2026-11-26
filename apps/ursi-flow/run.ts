@@ -12,6 +12,23 @@ import type {
 } from "./runtime/index.ts";
 import { FileLogStore } from "./runtime/store/index.ts";
 
+/** 确认链路失败。运行仍停在等待状态，调用方可用 runId/stepId 继续应答。 */
+export class FlowRunError extends Error {
+	readonly runId: string;
+	readonly stepId: string;
+	readonly pending: PendingConfirm;
+	readonly cause: unknown;
+
+	constructor(pending: PendingConfirm, runId: string, cause: unknown) {
+		super(`处理人工确认失败：${cause instanceof Error ? cause.message : String(cause)}`);
+		this.name = "FlowRunError";
+		this.runId = runId;
+		this.stepId = pending.stepId;
+		this.pending = pending;
+		this.cause = cause;
+	}
+}
+
 export interface RunFlowOptions {
 	flow: FlowSource;
 	executor: FlowExecutor;
@@ -45,8 +62,13 @@ export async function runFlow(options: RunFlowOptions): Promise<RunResult> {
 	};
 	let result = await engine.start(request);
 	while (result.status === "awaiting_input" && options.confirm !== undefined) {
-		const answer = await options.confirm(result.pending);
-		result = await engine.respond(result.runId, result.pending.stepId, answer);
+		const { runId, pending } = result;
+		try {
+			const answer = await options.confirm(pending);
+			result = await engine.respond(runId, pending.stepId, answer);
+		} catch (error) {
+			throw new FlowRunError(pending, runId, error);
+		}
 	}
 	return result;
 }

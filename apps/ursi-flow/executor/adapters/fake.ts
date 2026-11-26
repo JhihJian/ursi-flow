@@ -57,6 +57,10 @@ export class FakeExecutor implements FlowExecutor {
 		this.prompts.push({ agentName, instruct });
 		const scripted = this.replies[agentName]?.shift();
 		if (scripted !== undefined) return structuredClone(scripted);
+		if (instruct.rejection !== undefined)
+			throw new Error(
+				`节点 ${agentName} 上次提交被拒（${instruct.rejection}），没有更多预设回执`,
+			);
 		const options = instruct.outcomes;
 		const picked = this.options.defaultOutcome === "last" ? options.at(-1) : options[0];
 		if (picked === undefined)

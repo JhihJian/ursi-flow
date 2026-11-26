@@ -1,5 +1,5 @@
 import { WorkspaceShell, useWorkspace } from '@ursi/workspace-shell'
-import { useShellRegistry, SETTINGS, REGISTRY } from './registry'
+import { useShellRegistry, PROFILES, REGISTRY, SETTINGS, STORAGE_KEY } from './registry'
 
 function HostButton({ kind, label }: { kind: { kind: string; id: string }; label: string }) {
   const { select } = useWorkspace()
@@ -20,12 +20,13 @@ export default function App() {
       title="ursi workspace"
       settings={
         <>
+          <HostButton kind={PROFILES} label="Profiles" />
           <HostButton kind={REGISTRY} label="Registry" />
           <HostButton kind={SETTINGS} label="Settings" />
         </>
       }
       status="todo · 8090"
-      storageKey="ursi.workspace"
+      storageKey={STORAGE_KEY}
     />
   )
 }

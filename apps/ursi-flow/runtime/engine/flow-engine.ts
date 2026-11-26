@@ -11,7 +11,12 @@ import { ExecutorUnconfirmed } from "../../executor/index.ts";
 import type { ExecutorReply, FlowExecutor } from "../../executor/index.ts";
 import type { Engine, EngineOptions, StartRequest } from "./contracts.ts";
 import type { FlowFailure, PendingConfirm, RunResult } from "./outcome.ts";
-import type { LogEventPayload, LogStore, RunSnapshot } from "../logs/index.ts";
+import type {
+	LogEventPayload,
+	LogStore,
+	RunHeader,
+	RunSnapshot,
+} from "../logs/index.ts";
 
 export class EngineError extends Error {
 	readonly code: "conflict" | "not_found" | "invalid";
@@ -49,7 +54,7 @@ export class FlowEngine implements Engine {
 
 	async start(request: StartRequest): Promise<RunResult> {
 		const runId = request.runId ?? this.newId();
-		if (await this.store.load(runId))
+		if (await this.exists(runId))
 			throw new EngineError("conflict", `运行已存在: ${runId}`);
 		let context: FlowContext;
 		try {
@@ -60,7 +65,7 @@ export class FlowEngine implements Engine {
 		} catch (error) {
 			throw new EngineError("invalid", messageOf(error));
 		}
-		await this.store.create({
+		await this.create(runId, {
 			runId,
 			flowId: context.flow.id,
 			...(request.flow.path === undefined ? {} : { flowPath: request.flow.path }),
@@ -103,8 +108,9 @@ export class FlowEngine implements Engine {
 			seq: snapshot.seq,
 			...(stored.header.cwd === undefined ? {} : { cwd: stored.header.cwd }),
 		};
-		await this.record(state, { type: "confirm.answered", stepId, result });
+		// 先推进上下文：提交失败时保持等待状态，且不留下无法与快照对齐的事件。
 		this.submitStep(state, { stepId, outcome: result });
+		await this.record(state, { type: "confirm.answered", stepId, result });
 		await this.record(state, {
 			type: "route.selected",
 			stepId,
@@ -199,6 +205,28 @@ export class FlowEngine implements Engine {
 		return stored?.snapshot.status === "awaiting_input"
 			? stored.snapshot.pending
 			: undefined;
+	}
+
+	/** 运行目录已存在即视为冲突，包括只有运行头、没有快照的半创建运行。 */
+	private async exists(runId: string): Promise<boolean> {
+		try {
+			return (await this.store.load(runId)) !== undefined;
+		} catch {
+			return true;
+		}
+	}
+
+	private async create(
+		runId: string,
+		header: RunHeader,
+	): Promise<void> {
+		try {
+			await this.store.create(header);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EEXIST")
+				throw new EngineError("conflict", `运行已存在: ${runId}`);
+			throw error;
+		}
 	}
 
 	private async require(runId: string) {

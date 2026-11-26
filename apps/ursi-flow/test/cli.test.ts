@@ -82,6 +82,20 @@ describe("ursi-flow 命令行", () => {
 		expect(result.stdout).toContain("通过 / 退回");
 	});
 
+	it("运行失败时打印原因与运行标识", () => {
+		const result = run([
+			"run",
+			"examples/simplify",
+			"--store",
+			join(tempDir(), "store"),
+			"--var",
+			"任务=x",
+		]);
+		expect(result.status).toBe(1);
+		expect(result.stdout).toContain("失败：");
+		expect(result.stdout).toMatch(/运行：[\w-]+/);
+	});
+
 	it("缺少参数时打印用法，未知选项返回 64", () => {
 		const usage = run([]);
 		expect(usage.status).toBe(0);

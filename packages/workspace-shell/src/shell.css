@@ -460,3 +460,169 @@
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* ===== profile 配置页 ===== */
+
+.ws-profiles {
+  height: 100%;
+  padding: 20px 24px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--ws-dim);
+}
+
+.ws-profiles-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ws-profiles-title {
+  margin: 0;
+  font-family: var(--ws-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--ws-ink);
+}
+
+.ws-profiles-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ws-profiles-hint {
+  margin: 0 0 16px;
+  max-width: 640px;
+  line-height: 1.6;
+  color: var(--ws-muted);
+}
+
+.ws-profiles-button {
+  padding: 3px 10px;
+  border: 1px solid var(--ws-line);
+  background: #fff;
+  font-family: var(--ws-mono);
+  font-size: 11px;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+
+.ws-profiles-button:hover:not(:disabled) {
+  border-color: var(--ws-ink);
+}
+
+.ws-profiles-button:disabled {
+  color: var(--ws-line);
+  cursor: not-allowed;
+}
+
+.ws-profile-card {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--ws-line);
+  background: #fafafa;
+}
+
+.ws-profiles-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ws-profile-name {
+  flex: 0 1 240px;
+  padding: 3px 8px;
+  border: 1px solid var(--ws-line);
+  background: #fff;
+  font-family: var(--ws-serif);
+  font-size: 14px;
+  color: var(--ws-ink);
+}
+
+.ws-profile-name:focus {
+  border-color: var(--ws-ink);
+  outline: none;
+}
+
+.ws-profile-id {
+  font-size: 11px;
+  color: var(--ws-muted);
+}
+
+.ws-profiles-card-head .ws-profiles-button {
+  margin-left: auto;
+}
+
+.ws-profile-group-title {
+  margin: 10px 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ws-muted);
+}
+
+.ws-profile-modules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-profile-module {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--ws-line);
+}
+
+.ws-profile-order {
+  width: 18px;
+  flex: none;
+  font-size: 10px;
+  color: var(--ws-muted);
+}
+
+.ws-profile-module-title {
+  flex: 0 1 auto;
+  color: var(--ws-ink);
+}
+
+.ws-profile-module-id {
+  flex: 1 1 auto;
+  font-size: 10px;
+  color: var(--ws-muted);
+}
+
+.ws-profile-icon {
+  width: 22px;
+  height: 20px;
+  flex: none;
+  border: 1px solid var(--ws-line);
+  background: #fff;
+  font-size: 11px;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+
+.ws-profile-icon:hover:not(:disabled) {
+  border-color: var(--ws-ink);
+}
+
+.ws-profile-icon:disabled {
+  color: var(--ws-line);
+  cursor: not-allowed;
+}
+
+.ws-profile-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ws-profiles-empty {
+  margin: 0;
+  color: var(--ws-muted);
+}

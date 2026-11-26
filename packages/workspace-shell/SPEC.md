@@ -91,6 +91,8 @@ parent: ../../SPEC.md
 
 宿主传入 `profiles`，每项只声明 `id`、`title`、启用的模块 id 列表与顺序。提供 ≥2 个 profile 时标题栏出现切换器。
 
+外壳另导出 `useStoredProfiles` 与 `ProfilesEditor`：宿主给一份默认 profile，用户就能在界面上定义有哪些 profile、每个启用哪些模块。
+
 #### 验收
 
 - 切换 profile 后侧边栏集合与顺序立即切换；上一 profile 的展开项不影响下一个。
@@ -99,6 +101,21 @@ parent: ../../SPEC.md
 - 默认展开项优先取模块的 `defaultExpanded`；没有任何模块声明时展开第一个。
 - 切换 profile 会重挂布局表面：iframe 类模块会重载一次，属可接受的低频行为。
 
+### 通过界面配置 profile
+
+`createProfilesStore({ storageKey, defaults })` 建一份外部存储（默认值 + `${storageKey}:profiles`），`useProfiles(store)` 订阅快照，`ProfilesEditor` 以 `views` 里的一项渲染并直接写 store。宿主把 `useProfiles` 的结果当 `profiles` 传给 `WorkspaceShell`，切换器与编辑页因此读同一份数据。
+
+#### 验收
+
+- 编辑页可新建、改名、删除 profile，并用「未启用模块」按钮添加、× 移除、↑ / ↓ 调序；列表顺序就是侧边栏堆叠顺序。
+- 每次改动立即写盘，重新加载后配置还在；页内不存第二份 React 状态，标题栏切换器与编辑页永远一致。
+- 宿主页面与编辑组件的引用在模块级固定，改配置不让当前页面重挂，输入框不丢焦点。
+- 至少保留一个 profile，最后一个的删除按钮禁用；删除当前 profile 后切换器回退到第一个，展开状态按新 profile 重取。
+- 编辑当前 profile 不重挂布局表面：被移除的模块卸载，展开项已失效时回退到 `defaultExpanded` 或第一个启用模块。
+- 存储里是坏数据（非数组、空数组、缺 id、重复 id）时整份退回默认值，不让工作台起不来。
+- 修改 profile 名称不影响 `id`，因此已有 `${storageKey}:<profile>` 下的展开状态与分栏尺寸继续有效。
+- `reset` 清掉存储项并恢复宿主给的默认值；编辑页只在用户确认后才调用它。
+
 ## 边界
 
 模块接入的具体规范见 [MODULE-CONTRACT.md](MODULE-CONTRACT.md)。
@@ -106,3 +123,4 @@ parent: ../../SPEC.md
 - 不提供路由、鉴权、数据获取和领域状态。
 - 不做运行时插件加载，模块在构建期登记。
 - 折叠 UI 的视觉归模块；外壳只提供 `SidebarFrame` 作为可选的外框辅助组件。
+- 不提供 profile 的权限校验或多用户同步：配置只存在当前浏览器的 localStorage 里。
