@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { parsePiJsonl, TrajectoryViewer } from 'pi-agent-trajectory-viewer'
 import { fetchSessionText, sessionTextUrl, type SessionRow } from '@/api'
 import { formatBytes, formatWhen, sessionTitle } from '@/lib/format'
+import { RefreshIcon } from './Icons'
 
 type LoadState =
   | { status: 'idle' }
@@ -114,7 +115,7 @@ export function SessionWorkspace({ root, row }: SessionWorkspaceProps) {
         ) : null}
         <span className="viewer-actions">
           <button type="button" className="rail-toggle" title="重新读取会话" onClick={reload}>
-            ↻
+            <RefreshIcon />
           </button>
           <a
             className="viewer-source"

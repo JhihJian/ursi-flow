@@ -11,7 +11,7 @@
 ## 目录
 
 - `server/`：Node.js 24 服务，零第三方依赖。扫描目录、按 id 定位、把会话转成组件库认的形状、删除会话、保存偏好、托管页面。接口契约见 [`server/HTTP.md`](server/HTTP.md)。
-- `web/`：React 18 + Vite 页面，样式沿用 `apps/todo-web` 的灰阶 token 与两栏骨架。
+- `web/`：React 18 + Vite 页面，样式沿用 `apps/todo-web` 的灰阶 token 与两栏骨架。按钮图标统一用 `src/components/Icons.tsx` 里 13×13 的内联 SVG，不用 `«` `↻` 这类字形，尺寸由 `--icon-size` 一处控制。
 
 ## 依赖组件库
 

@@ -155,11 +155,14 @@ button {
 .sidebar-head {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   flex: none;
 }
 
 .sidebar-title {
+  /* 占满剩余宽度，操作图标因此成组贴住侧栏右边缘 */
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-serif);
   font-size: 14px;
   font-weight: 600;
@@ -168,22 +171,17 @@ button {
   letter-spacing: 0.5px;
 }
 
-.sidebar-head .rail-toggle {
-  margin-left: auto;
-}
-
 .rail-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 var(--space-xs);
+  width: 21px;
+  height: 21px;
+  padding: 0;
   border: 0;
   background: none;
   color: var(--gray-400);
-  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }

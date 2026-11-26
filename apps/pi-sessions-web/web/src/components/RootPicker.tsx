@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchBrowse, type BrowseResult } from '@/api'
+import { CloseIcon } from './Icons'
 
 interface RootPickerProps {
   root: string
@@ -54,7 +55,7 @@ export function RootPicker({ root, defaultRoot, suggestedRoots, onPick, onClose 
         <div className="picker-head">
           <h2 className="picker-title">选择会话目录</h2>
           <button type="button" className="rail-toggle" onClick={onClose} aria-label="关闭">
-            ×
+            <CloseIcon />
           </button>
         </div>
 

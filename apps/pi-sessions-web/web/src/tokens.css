@@ -11,6 +11,9 @@
   --font-serif: Georgia, "Times New Roman", serif;
   --font-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
 
+  /* 按钮图标共用一个尺寸；单独放这里是因为它属于本模块的图标约定，与看板无关 */
+  --icon-size: 13px;
+
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;

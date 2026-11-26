@@ -13,6 +13,7 @@ import {
   splitPinnedGroups,
 } from '@/lib/format'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { CollapseIcon, ExpandIcon, RefreshIcon, SearchIcon } from './Icons'
 import { RootPicker } from './RootPicker'
 
 /** 每个项目组默认显示这么多条会话，「显示更多」一次再放 20 条。 */
@@ -238,7 +239,7 @@ export function SessionSidebar({
           aria-label="展开会话列表"
           onClick={onExpand}
         >
-          »
+          <ExpandIcon />
         </button>
         <div className="collapsed-rail">
           <button
@@ -277,7 +278,7 @@ export function SessionSidebar({
             if (!next && query) onQueryChange('')
           }}
         >
-          ⌕
+          <SearchIcon />
         </button>
         <button
           type="button"
@@ -286,7 +287,7 @@ export function SessionSidebar({
           aria-label="折叠会话列表"
           onClick={onCollapse}
         >
-          «
+          <CollapseIcon />
         </button>
       </div>
 
@@ -303,7 +304,7 @@ export function SessionSidebar({
           onClick={onReload}
           disabled={loading}
         >
-          ↻
+          <RefreshIcon />
         </button>
       </div>
 
