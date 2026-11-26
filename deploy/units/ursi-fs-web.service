@@ -7,6 +7,7 @@ Type=simple
 WorkingDirectory=@ROOT@
 Environment=FS_WEB_HOST=@BACKEND_HOST@
 Environment=FS_WEB_PORT=@FS_PORT@
+Environment=FS_WEB_STATE=@URSI_HOME@/fs-web/workspaces.json
 ExecStart=@NODE@ apps/fs-web/server/src/server.ts
 Restart=always
 RestartSec=2

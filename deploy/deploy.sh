@@ -11,6 +11,7 @@ if [ -f "$ROOT/deploy/deploy.env" ]; then . "$ROOT/deploy/deploy.env"; fi
 
 NODE="${NODE:-$(command -v node || true)}"
 CADDY="${CADDY:-$(command -v caddy || true)}"
+URSI_HOME="${URSI_HOME:-$HOME/.ursi}"
 ENTRY_ADDR="${ENTRY_ADDR:-:8095}"
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 TODO_PORT="${TODO_PORT:-8090}"
@@ -21,8 +22,7 @@ PI_SESSIONS_PORT="${PI_SESSIONS_PORT:-30200}"
 FS_PORT="${FS_PORT:-8199}"
 
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ursi-flow"
-ENTRY_CONFIG="$STATE_DIR/Caddyfile"
+ENTRY_CONFIG="$URSI_HOME/deploy/Caddyfile"
 UNITS=(
   ursi-entry
   ursi-todo-web
@@ -55,6 +55,7 @@ render() {
     -e "s|@NODE@|$NODE|g" \
     -e "s|@CADDY@|$CADDY|g" \
     -e "s|@ENTRY_CONFIG@|$ENTRY_CONFIG|g" \
+    -e "s|@URSI_HOME@|$URSI_HOME|g" \
     -e "s|@ENTRY_ADDR@|$ENTRY_ADDR|g" \
     -e "s|@BACKEND_HOST@|$BACKEND_HOST|g" \
     -e "s|@TODO_PORT@|$TODO_PORT|g" \
@@ -84,7 +85,12 @@ preflight() {
     ! loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q 'Linger=yes'; then
     echo "警告：linger 未开启，注销后服务会停止；可执行 sudo loginctl enable-linger $(id -un)"
   fi
-  echo "node=$NODE caddy=$CADDY root=$ROOT entry=$ENTRY_ADDR"
+  local free_mb
+  free_mb=$(df -Pm "$ROOT" | awk 'NR==2{print $4}')
+  if [ "${free_mb:-0}" -lt 2048 ]; then
+    echo "警告：构建盘可用空间 ${free_mb}MB，低于 2GB，构建可能失败"
+  fi
+  echo "node=$NODE caddy=$CADDY root=$ROOT ursi_home=$URSI_HOME entry=$ENTRY_ADDR"
 }
 
 stop_units() {
@@ -105,7 +111,8 @@ build() {
 
 install_units() {
   log "渲染配置并安装单元"
-  mkdir -p "$UNIT_DIR" "$STATE_DIR"
+  mkdir -p "$UNIT_DIR" "$(dirname "$ENTRY_CONFIG")"
+  mkdir -p "$URSI_HOME"/{todo,ssh,flow,flow-web,fs-web,pi-manager,pi-sessions}
   render "$ROOT/deploy/Caddyfile.tmpl" "$ENTRY_CONFIG"
   "$CADDY" validate --config "$ENTRY_CONFIG" --adapter caddyfile >/dev/null
   for unit in "${UNITS[@]}"; do

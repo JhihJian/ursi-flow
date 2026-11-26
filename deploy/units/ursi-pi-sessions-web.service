@@ -7,6 +7,8 @@ Type=simple
 WorkingDirectory=@ROOT@/apps/pi-sessions-web/server
 Environment=PI_SESSIONS_HOST=@BACKEND_HOST@
 Environment=PI_SESSIONS_PORT=@PI_SESSIONS_PORT@
+Environment=PI_SESSIONS_STATE=@URSI_HOME@/pi-sessions/session-index.json
+Environment=PI_SESSIONS_PREFS=@URSI_HOME@/pi-sessions/prefs.json
 ExecStart=@NODE@ src/main.mjs
 Restart=always
 RestartSec=2
