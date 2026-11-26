@@ -382,6 +382,19 @@
   font-size: 11px;
 }
 
+.flow-executor {
+  padding-top: var(--flow-space-xs);
+}
+
+.flow-select {
+  padding: var(--flow-space-xs) var(--flow-space-sm);
+  border: 1px solid var(--flow-line-strong);
+  background: var(--flow-paper);
+  color: var(--flow-ink);
+  font-family: var(--flow-mono);
+  font-size: 12px;
+}
+
 .flow-start-note {
   font-family: var(--flow-mono);
   font-size: 10.5px;

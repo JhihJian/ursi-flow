@@ -167,11 +167,14 @@ test('启动运行到完成，运行可查询、可列出', async () => {
   assert.deepEqual(view.variables, { 任务: '补测试' })
   assert.ok(view.events.some((event) => event.type === 'run.completed'))
 
+  assert.equal(view.executor, 'fake')
+
   const runs = await service.list()
   assert.equal(runs.length, 1)
   assert.equal(runs[0].runId, runId)
   assert.equal(runs[0].status, 'completed')
   assert.equal(runs[0].flowId, 'two-steps')
+  assert.equal(runs[0].executor, 'fake')
 })
 
 test('缺少必填变量时启动同步失败，不留运行目录', async () => {
@@ -190,6 +193,61 @@ test('缺少必填变量时启动同步失败，不留运行目录', async () =>
     /缺少必填全局变量/,
   )
   assert.deepEqual(await service.list(), [])
+})
+
+test('执行器按 id 选择：未接入的 id 同步拒绝，默认 id 来自清单第一位', async () => {
+  const home = await tempDir('flow-web-home-')
+  const state = await tempDir('flow-web-state-')
+  await writeFlow(home, 'two-steps', AGENT_FLOW)
+  const detail = await readFlow(home, 'two-steps')
+  const service = createRunService({ runsRoot: join(state, 'runs') })
+
+  assert.deepEqual(
+    service.executors().map((adapter) => adapter.id),
+    ['fake'],
+  )
+  assert.equal(service.defaultExecutor(), 'fake')
+  await assert.rejects(
+    () =>
+      service.start({
+        flow: { id: detail.id, text: AGENT_FLOW, path: detail.path },
+        variables: { 任务: 'x' },
+        executor: 'pi',
+      }),
+    /未接入的执行器：pi/,
+  )
+})
+
+test('换一套适配器后旧运行不会接到新执行器上', async () => {
+  const home = await tempDir('flow-web-home-')
+  const state = await tempDir('flow-web-state-')
+  await writeFlow(home, 'gate', CONFIRM_FLOW)
+  const detail = await readFlow(home, 'gate')
+  const runsRoot = join(state, 'runs')
+  const first = createRunService({ runsRoot })
+  const { runId } = await first.start({
+    flow: { id: detail.id, text: CONFIRM_FLOW, path: detail.path },
+  })
+  await waitForStatus(first, runId, 'awaiting_input')
+
+  const second = createRunService({
+    runsRoot,
+    adapters: [
+      {
+        id: 'other',
+        title: '另一个执行器',
+        description: '',
+        create: () => ({
+          id: 'other',
+          prompt: async () => ({ outcome: '通过' }),
+          command: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        }),
+      },
+    ],
+  })
+  const viewed = await second.view(runId)
+  assert.equal(viewed?.executor, 'fake')
+  await assert.rejects(() => second.resume(runId), /未接入的执行器：fake/)
 })
 
 test('确认门禁：非法结果被拒，合法结果继续到完成', async () => {

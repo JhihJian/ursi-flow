@@ -71,6 +71,7 @@ export class FlowEngine implements Engine {
 			...(request.flow.path === undefined ? {} : { flowPath: request.flow.path }),
 			...(request.cwd === undefined ? {} : { cwd: request.cwd }),
 			flowText: request.flow.text,
+			executor: this.executor.id,
 			variables: context.variables,
 			startedAt: this.now(),
 		});
@@ -130,6 +131,11 @@ export class FlowEngine implements Engine {
 	async resume(runId: string): Promise<RunResult> {
 		const stored = await this.require(runId);
 		const { snapshot, header } = stored;
+		if (header.executor !== this.executor.id)
+			throw new EngineError(
+				"conflict",
+				`运行由执行器 ${header.executor} 创建，当前执行器是 ${this.executor.id}`,
+			);
 		if (snapshot.status === "completed")
 			return {
 				status: "completed",

@@ -65,9 +65,18 @@ cd ../server && npm start
 
 ## 执行器
 
-当前接入的是 `FakeExecutor`：Agent 节点取第一条结果边，命令节点返回退出码 0。因此这份工作台现在验证的是「选 Flow、填变量、跑完、作答、看日志」这条闭环，而不是真实 Agent 的质量。换成真实执行器只需要替换服务端 `createRunService` 的 `executor`，界面与 API 不变。
+执行器是可选清单，不是单一实现。清单来自 `apps/ursi-flow` 的 `builtinExecutors`：每项有 `id`、标题、说明和 `create()`。服务端为每个执行器各建一份引擎实例，共用同一个存储；界面在启动区把它们列成下拉。
 
-注意默认执行器取第一条结果边：首条边就是返工边的 Flow（如 `simplify`、`review-fix`）会一直循环，最后由假执行器的调用上限拦下并记为失败。这属于预期行为，预设回执需要真实执行器或测试脚本。
+- 运行头记录执行器 `id`。看历史运行时知道当时用的是谁；恢复（`resume`）要求执行器标识一致，换过清单会提示「未接入的执行器」，不会把旧运行接到新实现上。
+- 未登记的 `id` 在启动时直接拒绝，错误里列出可用清单。
+- 现在清单里只有 `fake`：Agent 节点取第一条结果边，命令节点返回退出码 0。它验证的是「选 Flow、填变量、跑完、作答、看日志」这条闭环。
+- 首条边就是返工边的 Flow（`simplify`、`review-fix`）在假执行器下会一直循环，最后由调用上限拦下并记为失败；这属于预期行为。
+
+新增执行器的步骤：
+
+1. 在 `apps/ursi-flow/executor/adapters/` 新增实现，导出带 `id` 的 `FlowExecutor`。
+2. 在 `apps/ursi-flow/executor/adapters/index.ts` 的 `builtinExecutors` 里登记一行（标题、说明、`create`）。
+3. 重新构建 `apps/ursi-flow`，重启本服务。界面下拉与 API 自动多出一项，无需改前端或服务端路由。
 
 ## 测试
 

@@ -54,6 +54,8 @@ export interface CommandOutput {
  * 会话复用、模型、凭据、子进程与超时都归实现方，不进入契约。
  */
 export interface FlowExecutor {
+	/** 执行器标识。运行头记录它，恢复时要求一致，避免旧运行被别的执行器接着跑。 */
+	readonly id: string;
 	prompt(agentName: string, instruct: Instruct): Promise<ExecutorReply>;
 	command(invocation: CommandInvocation): Promise<CommandOutput>;
 }

@@ -27,6 +27,8 @@ export interface FlowStoreValue {
   flowId: string | null
   detail?: FlowDetail
   draft: VariableDraft
+  executorId: string
+  setExecutor: (id: string) => void
   runs: RunSummary[]
   runId: string | null
   run?: RunView
@@ -69,6 +71,7 @@ export function FlowProvider({
   const [flowId, setFlowId] = useState<string | null>(null)
   const [detail, setDetail] = useState<FlowDetail>()
   const [draft, setDraftState] = useState<VariableDraft>({})
+  const [executorId, setExecutorId] = useState('')
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [runId, setRunId] = useState<string | null>(null)
   const [run, setRun] = useState<RunView>()
@@ -102,6 +105,11 @@ export function FlowProvider({
       ])
       setConfig(nextConfig)
       setFlows(listed.flows)
+      setExecutorId((current) =>
+        nextConfig.executors.some((executor) => executor.id === current)
+          ? current
+          : nextConfig.defaultExecutor,
+      )
       setError(null)
       const current = flowId ?? listed.flows.find((flow) => flow.valid)?.id ?? null
       if (current !== null && current !== flowId) {
@@ -128,6 +136,11 @@ export function FlowProvider({
       try {
         const nextConfig = await client.setFlowHome(path)
         setConfig(nextConfig)
+        setExecutorId((current) =>
+          nextConfig.executors.some((executor) => executor.id === current)
+            ? current
+            : nextConfig.defaultExecutor,
+        )
         const listed = await client.listFlows()
         setFlows(listed.flows)
         const first = listed.flows.find((flow) => flow.valid)?.id ?? null
@@ -175,7 +188,11 @@ export function FlowProvider({
     try {
       if (detail === undefined) throw new Error('还没有选中 Flow')
       const variables = buildVariables(detail, draft)
-      const started = await client.startRun({ flowId, variables })
+      const started = await client.startRun({
+        flowId,
+        variables,
+        ...(executorId === '' ? {} : { executor: executorId }),
+      })
       setRunId(started.runId)
       await refreshRuns()
       setRun(await client.getRun(started.runId))
@@ -185,7 +202,7 @@ export function FlowProvider({
     } finally {
       setBusy(null)
     }
-  }, [client, detail, draft, flowId, refreshRuns])
+  }, [client, detail, draft, executorId, flowId, refreshRuns])
 
   const selectRun = useCallback(
     async (id: string | null) => {
@@ -282,6 +299,8 @@ export function FlowProvider({
       flowId,
       detail,
       draft,
+      executorId,
+      setExecutor: setExecutorId,
       runs,
       runId,
       run,
@@ -307,6 +326,7 @@ export function FlowProvider({
       detail,
       draft,
       error,
+      executorId,
       flowId,
       flows,
       refresh,

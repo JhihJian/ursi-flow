@@ -58,9 +58,17 @@ export type RunStatus =
   | 'unconfirmed'
   | 'interrupted'
 
+export interface ExecutorOption {
+  id: string
+  title: string
+  description: string
+}
+
 export interface RunSummary {
   runId: string
   flowId: string
+  /** 这次运行使用的执行器标识。 */
+  executor: string
   status: RunStatus
   startedAt: string
   updatedAt: string
@@ -116,8 +124,9 @@ export interface FlowConfig {
   flowHome: string
   stateDir: string
   runsRoot: string
-  /** 当前接入的执行器名字；界面据此说明回执来源。 */
-  executor: string
+  /** 可选的执行器清单；新增适配器后这里自动多一项。 */
+  executors: ExecutorOption[]
+  defaultExecutor: string
 }
 
 export class ApiError extends Error {
@@ -136,7 +145,11 @@ export interface FlowClient {
   listFlows(): Promise<{ flowHome: string; flows: FlowSummary[] }>
   getFlow(id: string): Promise<FlowDetail>
   listRuns(): Promise<RunSummary[]>
-  startRun(input: { flowId: string; variables: FlowVariables }): Promise<{ runId: string }>
+  startRun(input: {
+    flowId: string
+    variables: FlowVariables
+    executor?: string
+  }): Promise<{ runId: string }>
   getRun(runId: string): Promise<RunView>
   confirm(runId: string, stepId: string, result: string): Promise<RunView>
   resume(runId: string): Promise<RunView>

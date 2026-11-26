@@ -14,6 +14,8 @@ export interface RunHeader {
 	cwd?: string;
 	/** 启动时的 FLOW.md 原文。 */
 	flowText: string;
+	/** 这次运行使用的执行器标识；恢复时要求与当前执行器一致。 */
+	executor: string;
 	variables: FlowVariables;
 	startedAt: string;
 }

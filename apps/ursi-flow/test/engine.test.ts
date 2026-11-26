@@ -94,6 +94,7 @@ function engineOf(dir: string, harness: Harness) {
 	const commands: Array<{ command: string; args?: string[]; stdin?: unknown }> = [];
 	const engine = new FlowEngine({
 		executor: {
+			id: "test",
 			async prompt(_agentName, instruct) {
 				calls.push(instruct);
 				return harness.prompt(instruct);
@@ -199,6 +200,7 @@ describe("Flow engine", () => {
 		expect(result.error.code).toBe("rejected_results");
 		expect(result.error.message).toContain("不存在的结果");
 		const stored = await new FileLogStore(dir).load("run-3");
+		expect(stored?.header.executor).toBe("test");
 		expect(
 			stored!.events.filter((event) => event.type === "agent.rejected"),
 		).toHaveLength(3);
@@ -234,6 +236,29 @@ describe("Flow engine", () => {
 		await expect(first.engine.start({ flow: { id: "gate2", text: WITH_CONFIRM }, runId: "run-4" })).rejects.toThrow(
 			"运行已存在",
 		);
+	});
+
+	it("恢复时执行器标识不一致直接拒绝，不换执行器接着跑", async () => {
+		const dir = await tempDir();
+		const first = engineOf(dir, { prompt: () => ({ outcome: "已准备" }) });
+		await first.engine.start({
+			flow: { id: "gate3", text: WITH_CONFIRM },
+			runId: "run-5",
+		});
+
+		const other = new FlowEngine({
+			executor: {
+				id: "other",
+				async prompt() {
+					throw new Error("不应调用执行器");
+				},
+				async command() {
+					return { exitCode: 0, stdout: "", stderr: "" };
+				},
+			},
+			store: new FileLogStore(dir),
+		});
+		await expect(other.resume("run-5")).rejects.toThrow(/执行器 fake|执行器 test/);
 	});
 
 	it("日志按行追加，事件序号与快照序号一致", async () => {

@@ -34,7 +34,11 @@ describe('独立入口挂载', () => {
         flowHome: '/home/me/.ursi/flow',
         stateDir: '/home/me/.ursi/flow-web',
         runsRoot: '/home/me/.ursi/flow-web/runs',
-        executor: 'FakeExecutor',
+        executors: [
+          { id: 'fake', title: 'Fake 执行器', description: '按第一条结果边作答' },
+          { id: 'pi', title: 'Pi 执行器', description: '真实 Agent' },
+        ],
+        defaultExecutor: 'fake',
       },
       '/api/flows': {
         flowHome: '/home/me/.ursi/flow',
@@ -89,7 +93,8 @@ describe('独立入口挂载', () => {
     expect(text).toContain('启动变量')
     expect(text).toContain('完成修改')
     expect(text).toContain('还没有运行记录')
-    expect(text).toContain('FakeExecutor')
+    expect(text).toContain('Fake 执行器（fake）')
+    expect(text).toContain('Pi 执行器（pi）')
   })
 })
 
@@ -124,6 +129,7 @@ describe('启动运行与人工确认', () => {
     const runOf = (status: string, extra: Record<string, unknown> = {}) => ({
       runId: 'run-1',
       flowId: 'gate',
+      executor: 'fake',
       status,
       startedAt: '2024-03-04T05:06:07.000Z',
       updatedAt: '2024-03-04T05:06:08.000Z',
@@ -135,7 +141,7 @@ describe('启动运行与人工确认', () => {
       ...extra,
     })
 
-    const state: { calls: string[] } = { calls: [] }
+    const state: { calls: string[]; bodies: string[] } = { calls: [], bodies: [] }
     vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
       const path = new URL(input, 'http://localhost').pathname
       const method = init?.method ?? 'GET'
@@ -150,13 +156,19 @@ describe('启动运行与人工确认', () => {
           flowHome: '/home/me/.ursi/flow',
           stateDir: '/s',
           runsRoot: '/s/runs',
-          executor: 'FakeExecutor',
+          executors: [
+            { id: 'fake', title: 'Fake 执行器', description: '按第一条结果边作答' },
+          ],
+          defaultExecutor: 'fake',
         })
       if (path === '/api/flows')
         return reply({ flowHome: '/home/me/.ursi/flow', flows: [flow] })
       if (path === '/api/flows/gate') return reply({ flow })
       if (path === '/api/runs' && method === 'GET') return reply({ runs: [] })
-      if (path === '/api/runs' && method === 'POST') return reply({ runId: 'run-1' })
+      if (path === '/api/runs' && method === 'POST') {
+        state.bodies.push(String(init?.body ?? ''))
+        return reply({ runId: 'run-1' })
+      }
       if (path === '/api/runs/run-1' && method === 'GET')
         return reply({
           run: runOf('awaiting_input', {
@@ -207,6 +219,7 @@ describe('启动运行与人工确认', () => {
 
     expect(container.textContent).toContain('已完成')
     expect(state.calls).toContain('POST /api/runs/run-1/confirm')
+    expect(JSON.parse(state.bodies[0])).toMatchObject({ executor: 'fake' })
 
     act(() => root.unmount())
     container.remove()

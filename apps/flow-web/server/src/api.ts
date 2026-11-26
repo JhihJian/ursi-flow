@@ -5,7 +5,7 @@ import type { FlowVariables } from 'ursi-flow'
 import { pathsOf, readSettings, writeSettings } from './config.ts'
 import { listFlows, readFlow } from './flows.ts'
 import { readBody, sendError, sendJson } from './http-util.ts'
-import { EXECUTOR_NAME, createRunService } from './runs.ts'
+import { createRunService } from './runs.ts'
 
 /**
  * 同源 API。路由按前缀与路径段精确匹配，不做模糊匹配，
@@ -13,6 +13,12 @@ import { EXECUTOR_NAME, createRunService } from './runs.ts'
  */
 export function createApiHandler(stateDir: string) {
   const runs = createRunService({ runsRoot: pathsOf(stateDir).runsRoot })
+  const executorList = () =>
+    runs.executors().map((adapter) => ({
+      id: adapter.id,
+      title: adapter.title,
+      description: adapter.description,
+    }))
 
   return async function handle(
     req: http.IncomingMessage,
@@ -31,7 +37,8 @@ export function createApiHandler(stateDir: string) {
             flowHome: settings.flowHome,
             stateDir,
             runsRoot: pathsOf(stateDir).runsRoot,
-            executor: EXECUTOR_NAME,
+            executors: executorList(),
+            defaultExecutor: runs.defaultExecutor(),
           })
           return true
         }
@@ -44,7 +51,8 @@ export function createApiHandler(stateDir: string) {
             flowHome: settings.flowHome,
             stateDir,
             runsRoot: pathsOf(stateDir).runsRoot,
-            executor: EXECUTOR_NAME,
+            executors: executorList(),
+            defaultExecutor: runs.defaultExecutor(),
           })
           return true
         }
@@ -90,6 +98,9 @@ export function createApiHandler(stateDir: string) {
           const { runId } = await runs.start({
             flow: { id: flow.id, text: await readFileText(flow.path), path: flow.path },
             variables: (body.variables as FlowVariables | undefined) ?? {},
+            ...(typeof body.executor === 'string' && body.executor !== ''
+              ? { executor: body.executor }
+              : {}),
             ...(typeof body.cwd === 'string' && body.cwd !== ''
               ? { cwd: body.cwd }
               : {}),

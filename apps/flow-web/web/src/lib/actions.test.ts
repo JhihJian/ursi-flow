@@ -12,6 +12,7 @@ import {
 const run = (overrides: Partial<RunView> = {}): RunView => ({
   runId: 'run-1',
   flowId: 'code-change',
+  executor: 'fake',
   status: 'awaiting_input',
   startedAt: '2024-03-04T05:06:07.000Z',
   updatedAt: '2024-03-04T05:06:08.000Z',

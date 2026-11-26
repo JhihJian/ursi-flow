@@ -36,6 +36,7 @@ export interface FakeExecutorOptions {
  * 用于在没有真实执行器时走通 FLOW.md -> 结果，并让测试能断言引擎行为。
  */
 export class FakeExecutor implements FlowExecutor {
+	readonly id = "fake";
 	readonly prompts: Array<{ agentName: string; instruct: Instruct }> = [];
 	readonly commands: CommandInvocation[] = [];
 	private readonly replies: Record<string, FakeReply[]>;

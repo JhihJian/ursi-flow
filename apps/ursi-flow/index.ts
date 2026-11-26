@@ -1,6 +1,12 @@
 export { readFlowPackage, runFlow } from "./run.ts";
 export type { RunFlowOptions } from "./run.ts";
-export { ExecutorUnconfirmed, FakeExecutor } from "./executor/index.ts";
+export {
+	ExecutorUnconfirmed,
+	FakeExecutor,
+	builtinExecutors,
+	findExecutor,
+} from "./executor/index.ts";
+export type { ExecutorAdapter } from "./executor/index.ts";
 export type {
 	CommandInvocation,
 	CommandOutput,

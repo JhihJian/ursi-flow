@@ -19,6 +19,8 @@ export function FlowWorkspace() {
     detail,
     flows,
     draft,
+    executorId,
+    setExecutor,
     setDraft,
     start,
     busy,
@@ -115,6 +117,27 @@ export function FlowWorkspace() {
                   ))}
                 </div>
               )}
+              <div className="flow-executor">
+                <label className="flow-field">
+                  <span className="flow-field-name">执行器</span>
+                  <select
+                    className="flow-input flow-select"
+                    value={executorId}
+                    disabled={busy !== null}
+                    onChange={(event) => setExecutor(event.target.value)}
+                  >
+                    {(config?.executors ?? []).map((executor) => (
+                      <option key={executor.id} value={executor.id}>
+                        {executor.title}（{executor.id}）
+                      </option>
+                    ))}
+                  </select>
+                  <span className="flow-field-hint">
+                    {config?.executors.find((executor) => executor.id === executorId)
+                      ?.description ?? ''}
+                  </span>
+                </label>
+              </div>
               <div className="flow-start">
                 <button
                   type="button"
@@ -128,9 +151,7 @@ export function FlowWorkspace() {
                 <span className="flow-start-reason">
                   {startReason ?? '按当前变量开始一次运行'}
                 </span>
-                <span className="flow-start-note">
-                  执行器 {config?.executor ?? '未知'} · Agent 节点按第一条结果边作答
-                </span>
+
               </div>
             </section>
             {detail.valid ? <Structure detail={detail} /> : null}

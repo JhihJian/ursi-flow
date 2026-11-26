@@ -59,6 +59,8 @@ const executor: FlowExecutor = {
 };
 ```
 
+执行器是可选清单：`builtinExecutors` 列出每个适配器的 `id`、标题、说明与 `create()`，宿主按 id 建实例。契约要求每个执行器带稳定 `id`，引擎会把它写进运行头，恢复时核对一致。
+
 子路径导出：`ursi-flow`（运行入口与常用类型）、`ursi-flow/core`、`ursi-flow/core/runtime`、`ursi-flow/executor`、`ursi-flow/executor/fake`、`ursi-flow/runtime`。
 
 ## 执行器边界

@@ -7,6 +7,8 @@ export {
 	type Instruct,
 } from "./contracts.ts";
 export { FakeExecutor } from "./adapters/fake.ts";
+export { builtinExecutors, findExecutor } from "./adapters/index.ts";
+export type { ExecutorAdapter } from "./adapters/index.ts";
 export type {
 	FakeCommand,
 	FakeExecutorOptions,

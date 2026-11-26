@@ -3,14 +3,13 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   EngineError,
-  FakeExecutor,
   FileLogStore,
   FlowEngine,
+  builtinExecutors,
+  findExecutor,
 } from 'ursi-flow'
-import { ready } from 'ursi-flow/core'
 import type {
-  CompletedStep,
-  FlowExecutor,
+  ExecutorAdapter,
   FlowSource,
   FlowVariables,
   LogEvent,
@@ -18,11 +17,15 @@ import type {
   RunSnapshot,
   RunStatus,
   StoredRun,
+  CompletedStep,
 } from 'ursi-flow'
+import { ready } from 'ursi-flow/core'
 
 export interface RunSummary {
   runId: string
   flowId: string
+  /** 这次运行使用的执行器标识。 */
+  executor: string
   status: RunStatus
   startedAt: string
   updatedAt: string
@@ -46,9 +49,13 @@ export interface StartInput {
   flow: FlowSource
   variables?: FlowVariables
   cwd?: string
+  /** 执行器标识；缺省用服务端的默认执行器。 */
+  executor?: string
 }
 
 export interface RunService {
+  executors(): ExecutorAdapter[]
+  defaultExecutor(): string
   start(input: StartInput): Promise<{ runId: string }>
   list(limit?: number): Promise<RunSummary[]>
   view(runId: string): Promise<RunView | undefined>
@@ -59,29 +66,58 @@ export interface RunService {
 
 const RUN_ID = /^[A-Za-z0-9][\w-]{0,95}$/
 
-/** 当前接入的执行器名字，界面据此说明回执是怎么来的。 */
-export const EXECUTOR_NAME = 'FakeExecutor'
-
 /**
- * 运行服务：引擎负责推进，本服务只做运行登记、查询与人工确认转发。
- * 运行事实全部来自文件存储，进程重启后仍可查询与恢复。
+ * 运行服务：每个执行器一份引擎实例，共用同一个存储。
+ * 运行头记录执行器标识，查询与恢复都按它选回对应的引擎，
+ * 因此换执行器不会把旧运行接到新实现上。
  */
 export function createRunService(options: {
   runsRoot: string
-  executor?: FlowExecutor
+  adapters?: ExecutorAdapter[]
   now?: () => string
 }): RunService {
+  const adapters = options.adapters ?? builtinExecutors
+  const defaultExecutor = adapters[0]?.id ?? ''
   const store = new FileLogStore(options.runsRoot)
-  const engine = new FlowEngine({
-    store,
-    executor: options.executor ?? new FakeExecutor(),
-    ...(options.now === undefined ? {} : { now: options.now }),
-  })
-  const active = new Map<string, { startedAt: string }>()
-  const errors = new Map<string, string>()
   const now = options.now ?? (() => new Date().toISOString())
+  const engines = new Map<string, FlowEngine>()
+  const active = new Map<string, { startedAt: string }>()
+
+  function requireAdapter(id: string): ExecutorAdapter {
+    const adapter = findExecutor(id, adapters)
+    if (adapter === undefined)
+      throw new EngineError(
+        'invalid',
+        `未接入的执行器：${id}，可用：${adapters.map((item) => item.id).join('、')}`,
+      )
+    return adapter
+  }
+
+  function engineOf(id: string): FlowEngine {
+    const adapter = requireAdapter(id)
+    const existing = engines.get(id)
+    if (existing !== undefined) return existing
+    const engine = new FlowEngine({
+      store,
+      executor: adapter.create(),
+      now,
+    })
+    engines.set(id, engine)
+    return engine
+  }
+
+  /** 运行用哪个引擎由运行头决定，不取当前的默认执行器。 */
+  async function engineFor(runId: string): Promise<FlowEngine> {
+    assertRunId(runId)
+    const stored = await store.load(runId).catch(() => undefined)
+    if (stored === undefined)
+      throw new EngineError('not_found', `运行不存在：${runId}`)
+    return engineOf(stored.header.executor)
+  }
 
   async function start(input: StartInput): Promise<{ runId: string }> {
+    const executorId = input.executor ?? defaultExecutor
+    requireAdapter(executorId)
     // 启动变量与定义在开跑前先校验一次：非法输入同步报错，不留下半截运行。
     try {
       ready(input.flow.text, {
@@ -94,6 +130,7 @@ export function createRunService(options: {
     const runId = randomUUID()
     const startedAt = now()
     active.set(runId, { startedAt })
+    const engine = engineOf(executorId)
     void (async () => {
       try {
         await engine.start({
@@ -102,8 +139,6 @@ export function createRunService(options: {
           ...(input.variables === undefined ? {} : { variables: input.variables }),
           ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
         })
-      } catch (error) {
-        errors.set(runId, messageOf(error))
       } finally {
         active.delete(runId)
       }
@@ -126,6 +161,7 @@ export function createRunService(options: {
       summaries.push({
         runId,
         flowId: '',
+        executor: '',
         status: 'running',
         startedAt: state.startedAt,
         updatedAt: state.startedAt,
@@ -138,12 +174,11 @@ export function createRunService(options: {
   }
 
   /** 列表只读运行头与快照，不解析事件流。 */
-  async function readSummary(
-    runId: string,
-  ): Promise<RunSummary | undefined> {
+  async function readSummary(runId: string): Promise<RunSummary | undefined> {
     const dir = join(options.runsRoot, 'runs', runId)
     const header = await readJson<{
       flowId: string
+      executor?: string
       startedAt: string
     }>(join(dir, 'run.json'))
     const snapshot = await readJson<RunSnapshot>(join(dir, 'snapshot.json'))
@@ -152,9 +187,10 @@ export function createRunService(options: {
       if (state === undefined) return undefined
       return {
         runId,
-        flowId: '',
+        flowId: header?.flowId ?? '',
+        executor: header?.executor ?? '',
         status: 'running',
-        startedAt: state.startedAt,
+        startedAt: header?.startedAt ?? state.startedAt,
         updatedAt: state.startedAt,
         stepCount: 0,
       }
@@ -162,6 +198,7 @@ export function createRunService(options: {
     return {
       runId,
       flowId: header.flowId,
+      executor: header.executor ?? '',
       status: snapshot.status,
       startedAt: header.startedAt,
       updatedAt: snapshot.updatedAt,
@@ -179,6 +216,7 @@ export function createRunService(options: {
       return {
         runId,
         flowId: '',
+        executor: '',
         status: 'running',
         startedAt: state.startedAt,
         updatedAt: state.startedAt,
@@ -187,7 +225,6 @@ export function createRunService(options: {
         steps: [],
         events: [],
         active: true,
-        ...(errors.has(runId) ? { failure: { code: 'internal', message: errors.get(runId)! } } : {}),
       }
     }
     return toView(runId, stored, active.has(runId))
@@ -198,13 +235,13 @@ export function createRunService(options: {
     stepId: string,
     result: string,
   ): Promise<RunView> {
-    assertRunId(runId)
+    const engine = await engineFor(runId)
     await engine.respond(runId, stepId, result)
     return requireView(runId)
   }
 
   async function resume(runId: string): Promise<RunView> {
-    assertRunId(runId)
+    const engine = await engineFor(runId)
     await engine.resume(runId)
     return requireView(runId)
   }
@@ -214,7 +251,7 @@ export function createRunService(options: {
    * （等待确认、待核实或进程重启后遗留的运行）。
    */
   async function stop(runId: string, reason?: string): Promise<RunView> {
-    assertRunId(runId)
+    const engine = await engineFor(runId)
     if (active.has(runId))
       throw new EngineError('conflict', '运行正在执行，暂时不能停止')
     await engine.stop(runId, reason)
@@ -228,7 +265,16 @@ export function createRunService(options: {
     return current
   }
 
-  return { start, list, view, confirm, resume, stop }
+  return {
+    executors: () => adapters,
+    defaultExecutor: () => defaultExecutor,
+    start,
+    list,
+    view,
+    confirm,
+    resume,
+    stop,
+  }
 }
 
 /** 结束状态与待决确认之间只差一份快照字段，界面按状态分支渲染。 */
@@ -241,6 +287,7 @@ export function toView(
   return {
     runId,
     flowId: header.flowId,
+    executor: header.executor ?? '',
     status: snapshot.status,
     startedAt: header.startedAt,
     updatedAt: snapshot.updatedAt,

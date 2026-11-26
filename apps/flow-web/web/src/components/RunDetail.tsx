@@ -33,6 +33,7 @@ export function RunDetail({ run, detail }: { run: RunView; detail?: FlowDetail }
       <div className="flow-run-meta">
         <span>开始 {formatTime(run.startedAt)}</span>
         <span>步骤 {run.stepCount}</span>
+        <span>执行器 {run.executor || '未知'}</span>
         {run.cwd === undefined ? null : <span title={run.cwd}>工作目录 {run.cwd}</span>}
       </div>
 
