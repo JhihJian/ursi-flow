@@ -167,8 +167,9 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 - 心跳写入失败只影响心跳，不影响会话；`host` 与 `pid` 让读取方区分同机多进程、同进程多会话与 subagent 子会话。
 - `GET /api/session/live?home=<路径>` 只读心跳目录，返回 `sessions`、`heartbeatDir`、`pluginDetected`、`stale`、`now`、`warnings`。超过 60 秒未续写或同机 pid 已退出的条目不进 `sessions`，只计入 `stale`；`running` 排在 `idle` 前，同一状态按最近心跳倒序。
 - 心跳目录不存在时返回空清单而不是报错；坏文件与读取失败写进 `warnings` 并跳过，不阻塞其余条目。
-- 页面「会话」分区只读展示状态、名称或 session id、模型、cwd 与最近心跳时间；打开时每 5 秒轮询，切到其他分区停止轮询，详情面板给出会话文件、父会话、主机与 pid、开始时间。
-- `extensions/` 下未检测到扩展且没有会话时，页面提示安装路径与 `/reload`；有会话时不再提示。分区不提供启动、切换、取消会话的操作。
+- 运行态是独立的二级侧面板（不在分区导航里）：一级列会话（状态点、名称或 session id、模型、cwd、最近心跳），二级显示选中会话的详情（会话文件、父会话、主机与 pid、开始时间）。面板在内容区左侧、可拖宽（220–560px）、可折叠成 32px 窄条；折叠后仍显示运行中数量，展开/折叠状态存 localStorage，顶栏「会话」按钮也可切换。
+- 面板每 5 秒轮询心跳（折叠时也继续，以维持运行中计数）；切换 pi home 后面板随内容区一起刷新。
+- `extensions/` 下未检测到扩展且没有会话时，页面提示安装路径与 `/reload`；有会话时不再提示。面板不提供启动、切换、取消会话的操作。
 
 ### 安全边界
 
@@ -184,4 +185,4 @@ pi 不维护跨进程的会话注册表，运行态只存在于进程内存里�
 
 - `server/src/`：零依赖 Node http 服务。`pi-home.ts` 校验与解析 home；`homes.ts` 持有 pi home 清单（注册表、落盘、初始化与复制）、自动发现与轻量摘要；`rw.ts` 提供乐观锁、原子写、备份原语；`jsonc.ts` 处理 BOM 与注释；`frontmatter.ts` 按根级块解析与渲染 agent/skill 的 frontmatter；各域模块（`settings-file`、`tool-settings`、`skills`、`agents`、`models-auth`、`plugins`、`mcp-file`、`mcp-mask`）只做文件级读写；`models-check.ts` 镜像 pi 会拒绝的 provider 条目规则；`sdk.ts` 按需加载 pi SDK（缺失时 503，不影响配置管理）；`models-runtime.ts` 用内存会话采集真实模型目录并按 home 缓存；`models-probe.ts` 做连接测试与上游模型发现；`models-auth.ts` 另负责 `modelOverrides` 的读写；`session-task.ts` 用 pi SDK 执行一次性会话任务（任务表、并发与超时上限）；`live-sessions.ts` 读取心跳文件并过滤失联条目；`api.ts` 路由；`core.test.ts` 用 node --test 覆盖解析、遮蔽、外科切换、合并写回、frontmatter 往返与心跳过滤。
 - `extension/`：`pi-session-heartbeat.ts` 是安装到 pi home 的扩展，负责写会话心跳文件；`README.md` 记录安装方式与文件约定。
-- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar 与八个分区组件（表格列表 + 底部详情面板，已挂载分区保持状态），`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`sections/SessionsSection.tsx` 是只读会话运行态，`sections/AgentsSection.tsx` 是结构化 profile 表单，`sections/McpSection.tsx` 与 `sections/ModelsSection.tsx` 的详情分别带 MCP 开关/摘要与模型测试/发现；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。
+- `web/src/`：React 19 + Vite + zustand。`api/client.ts` 薄封装；`store/app-store.ts` 管 home、预设登记与页脚消息；`components/` 下 HomeBar、Sidebar、七个分区组件与独立的 `SessionsPanel`（运行中会话的二级侧面板）；分区组件是表格列表 + 底部详情面板，已挂载分区保持状态，`sections/ScopedModelsPanel.tsx` 是启用模型列表（按 provider 分组、组内开关与排序、组级开关、模式输入），`SessionsPanel.tsx` 是只读会话运行态，`sections/AgentsSection.tsx` 是结构化 profile 表单，`sections/McpSection.tsx` 与 `sections/ModelsSection.tsx` 的详情分别带 MCP 开关/摘要与模型测试/发现；`styles.css` 采用与 `apps/todo-web` 一致的黑白灰出版物式版面：mono 正文配 serif 小标题、直角按钮、方块开关、选中行内阴影与左侧竖线、底部 sheet 上滑动画。

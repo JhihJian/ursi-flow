@@ -11,7 +11,6 @@ export type SectionId =
   | 'agents'
   | 'plugins'
   | 'mcp'
-  | 'sessions'
 
 export const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
   { id: 'general', label: '常规', icon: '⚙' },
@@ -21,7 +20,6 @@ export const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
   { id: 'agents', label: 'Subagent', icon: '☷' },
   { id: 'plugins', label: '插件', icon: '⬢' },
   { id: 'mcp', label: 'MCP', icon: '⇄' },
-  { id: 'sessions', label: '会话', icon: '◉' },
 ]
 
 const SOURCE_LABEL: Record<HomeSummary['sources'][number], string> = {

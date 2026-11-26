@@ -9,7 +9,7 @@ import { SkillsSection } from './components/sections/SkillsSection'
 import { AgentsSection } from './components/sections/AgentsSection'
 import { PluginsSection } from './components/sections/PluginsSection'
 import { McpSection } from './components/sections/McpSection'
-import { SessionsSection } from './components/sections/SessionsSection'
+import { SessionsPanel } from './components/SessionsPanel'
 import { EmptyState, ErrorBanner, Loading } from './components/ui'
 
 /**
@@ -19,6 +19,7 @@ import { EmptyState, ErrorBanner, Loading } from './components/ui'
  */
 
 const STORAGE_KEY = 'pi-manager.section'
+const SESSIONS_OPEN_KEY = 'pi-manager.sessions-open'
 
 function loadInitialSection(): SectionId {
   try {
@@ -30,6 +31,14 @@ function loadInitialSection(): SectionId {
   return 'general'
 }
 
+function loadSessionsOpen(): boolean {
+  try {
+    return localStorage.getItem(SESSIONS_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 export function App() {
   const homePath = useAppStore((s) => s.homePath)
   const homeValid = useAppStore((s) => s.homeValid)
@@ -39,10 +48,19 @@ export function App() {
   const footer = useAppStore((s) => s.footer)
   const [section, setSection] = useState<SectionId>(loadInitialSection)
   const [mounted, setMounted] = useState<Set<SectionId>>(() => new Set([loadInitialSection()]))
+  const [sessionsOpen, setSessionsOpen] = useState(loadSessionsOpen)
 
   useEffect(() => {
     void initHome()
   }, [initHome])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SESSIONS_OPEN_KEY, sessionsOpen ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [sessionsOpen])
 
   useEffect(() => {
     try {
@@ -73,9 +91,10 @@ export function App() {
 
   return (
     <>
-      <HomeBar />
+      <HomeBar sessionsOpen={sessionsOpen} onToggleSessions={() => setSessionsOpen((prev) => !prev)} />
       <div className="app-main">
         <Sidebar active={section} onSelect={setSection} />
+        <SessionsPanel home={homePath} open={sessionsOpen} onToggle={() => setSessionsOpen((prev) => !prev)} />
         <main className="config-detail" key={homePath}>
           {blocked ? (
             <EmptyState title={blocked.title} hint={blocked.hint} />
@@ -84,7 +103,7 @@ export function App() {
               if (!mounted.has(id)) return null
               return (
                 <div key={id} hidden={id !== section} style={id !== section ? { display: 'none' } : undefined}>
-                  <SectionContent id={id} home={homePath} active={id === section} />
+                  <SectionContent id={id} home={homePath} />
                 </div>
               )
             })
@@ -102,7 +121,7 @@ export function App() {
   )
 }
 
-function SectionContent({ id, home, active }: { id: SectionId; home: string; active: boolean }) {
+function SectionContent({ id, home }: { id: SectionId; home: string }) {
   switch (id) {
     case 'general':
       return <GeneralSection home={home} />
@@ -118,8 +137,6 @@ function SectionContent({ id, home, active }: { id: SectionId; home: string; act
       return <PluginsSection home={home} />
     case 'mcp':
       return <McpSection home={home} />
-    case 'sessions':
-      return <SessionsSection home={home} active={active} />
     default:
       return <ErrorBanner message="未知分区" />
   }
