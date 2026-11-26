@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Task } from '@/api/types'
-import { buildTaskGraph } from './task-graph'
+import { buildTaskGraph, relationCreatesCycle } from './task-graph'
 
 function task(id: string, overrides: Partial<Task> = {}): Task {
   return {
@@ -74,5 +74,27 @@ describe('buildTaskGraph', () => {
       height: 0,
       hidden: 0,
     })
+  })
+})
+describe('relationCreatesCycle', () => {
+  const tasks = [
+    task('a'),
+    task('b', { parent_id: 'a' }),
+    task('c', { parent_id: 'b' }),
+    task('x'),
+    task('y', { pre_id: 'x' }),
+    task('z', { pre_id: 'y' }),
+  ]
+
+  it('rejects a parent link that closes the hierarchy', () => {
+    // a.parent = c 会让 a → b → c 成环。
+    expect(relationCreatesCycle(tasks, 'parent', 'c', 'a')).toBe(true)
+    expect(relationCreatesCycle(tasks, 'parent', 'a', 'c')).toBe(false)
+    expect(relationCreatesCycle(tasks, 'parent', 'a', 'a')).toBe(true)
+  })
+
+  it('rejects a prerequisite link that closes the chain', () => {
+    expect(relationCreatesCycle(tasks, 'pre', 'z', 'x')).toBe(true)
+    expect(relationCreatesCycle(tasks, 'pre', 'x', 'z')).toBe(false)
   })
 })

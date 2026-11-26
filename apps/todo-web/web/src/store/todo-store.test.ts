@@ -213,6 +213,52 @@ describe('status filter', () => {
   })
 })
 
+describe('task relations', () => {
+  const parent = { ...task, id: 'p', title: 'Parent' }
+  const child = { ...task, id: 'c', title: 'Child' }
+
+  it('writes a parent relation and refreshes the project', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({
+      selectedProjectId: 'p1',
+      view: 'graph',
+      graphTasks: [parent, child],
+    })
+
+    await useTodoStore.getState().setTaskParent('c', 'p')
+
+    expect(mocked.updateTask).toHaveBeenCalledWith('c', { parent_id: 'p' })
+    expect(mocked.listTasks).toHaveBeenCalledWith({ project: 'p1' })
+  })
+
+  it('writes a prerequisite relation', async () => {
+    mocked.updateTask.mockResolvedValue({ success: true })
+    useTodoStore.setState({ graphTasks: [parent, child] })
+
+    await useTodoStore.getState().setTaskPredecessor('c', 'p')
+
+    expect(mocked.updateTask).toHaveBeenCalledWith('c', { pre_id: 'p' })
+  })
+
+  it('rejects relations that would close a loop', async () => {
+    useTodoStore.setState({
+      graphTasks: [parent, { ...child, parent_id: 'p' }],
+    })
+
+    await expect(useTodoStore.getState().setTaskParent('p', 'c')).rejects.toThrow('loop')
+    await expect(useTodoStore.getState().setTaskPredecessor('p', 'p')).rejects.toThrow()
+    expect(mocked.updateTask).not.toHaveBeenCalled()
+  })
+
+  it('skips writing when the relation is already set', async () => {
+    useTodoStore.setState({ graphTasks: [{ ...child, parent_id: 'p' }] })
+
+    await useTodoStore.getState().setTaskParent('c', 'p')
+
+    expect(mocked.updateTask).not.toHaveBeenCalled()
+  })
+})
+
 describe('task view', () => {
   it('loads the whole project without day filters when switching to the graph', async () => {
     useTodoStore.setState({ selectedProjectId: 'p1', dayFilter: ['2026-11-24'] })

@@ -94,6 +94,8 @@ export function updateTask(
     status: TaskStatus
     tags: string[]
     project_id: string | null
+    parent_id: string | null
+    pre_id: string | null
     log: string | null
     result: string | null
   }>,

@@ -8,6 +8,7 @@ import type {
   TaskDraft,
   TaskStatus,
 } from '@/api/types'
+import { relationCreatesCycle } from '@/lib/task-graph'
 
 export type DetailState =
   | { mode: 'view'; task: Task }
@@ -63,6 +64,9 @@ export interface TodoState {
   saveTask: (draft: TaskDraft) => Promise<void>
   removeTask: (id: string) => Promise<void>
   moveTask: (task: Task, target: MoveTarget, blockedReason?: string) => Promise<void>
+  /** 关系图拖拽建立的关系，写回 `parent_id` 与 `pre_id`。 */
+  setTaskParent: (id: string, parentId: string) => Promise<void>
+  setTaskPredecessor: (id: string, preId: string) => Promise<void>
   startCreateProject: () => void
   startEditProject: (id: string) => void
   cancelProjectForm: () => void
@@ -259,6 +263,32 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
     const detail = get().detail
     if (detail?.mode === 'view' && detail.task.id === task.id) set({ detail: null })
+    await get().refreshAll()
+  },
+
+  /** 把 `parentId` 设为任务的父任务；关系图拖拽与以后其它入口共用这条写路径。 */
+  setTaskParent: async (id, parentId) => {
+    const tasks = get().graphTasks
+    const task = tasks.find((item) => item.id === id)
+    if (!task) throw new Error('Task is not in the current graph')
+    if (task.parent_id === parentId) return
+    if (relationCreatesCycle(tasks, 'parent', parentId, id)) {
+      throw new Error('That would create a loop in the parent chain')
+    }
+    await api.updateTask(id, { parent_id: parentId })
+    await get().refreshAll()
+  },
+
+  /** 把 `preId` 设为任务的前置任务。 */
+  setTaskPredecessor: async (id, preId) => {
+    const tasks = get().graphTasks
+    const task = tasks.find((item) => item.id === id)
+    if (!task) throw new Error('Task is not in the current graph')
+    if (task.pre_id === preId) return
+    if (relationCreatesCycle(tasks, 'pre', preId, id)) {
+      throw new Error('That would create a loop in the prerequisites')
+    }
+    await api.updateTask(id, { pre_id: preId })
     await get().refreshAll()
   },
 

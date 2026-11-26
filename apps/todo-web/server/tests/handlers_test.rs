@@ -108,10 +108,97 @@ fn update(_id: &str) -> UpdateTaskRequest {
         status: None,
         tags: None,
         project_id: None,
+        parent_id: None,
+        pre_id: None,
         blocked_reason: None,
         result: None,
         log: None,
     }
+}
+
+#[test]
+fn task_relations_can_be_set_and_cleared() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "parent", "proj-a", "pending", "medium");
+    insert_task(&conn, "pre", "proj-a", "pending", "medium");
+    insert_task(&conn, "child", "proj-a", "pending", "medium");
+
+    update_task(
+        &conn,
+        "child",
+        &UpdateTaskRequest {
+            parent_id: Some(Some("parent".into())),
+            pre_id: Some(Some("pre".into())),
+            ..update("child")
+        },
+    )
+    .unwrap();
+
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
+    let child = tasks.iter().find(|task| task.id == "child").unwrap();
+    assert_eq!(child.parent_id.as_deref(), Some("parent"));
+    assert_eq!(child.pre_id.as_deref(), Some("pre"));
+
+    update_task(
+        &conn,
+        "child",
+        &UpdateTaskRequest {
+            parent_id: Some(None),
+            pre_id: Some(None),
+            ..update("child")
+        },
+    )
+    .unwrap();
+    let tasks = fetch_tasks(&conn, None, None, None, None).unwrap();
+    let child = tasks.iter().find(|task| task.id == "child").unwrap();
+    assert!(child.parent_id.is_none());
+    assert!(child.pre_id.is_none());
+}
+
+#[test]
+fn task_relations_reject_self_and_missing_targets() {
+    let conn = setup();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "only", "proj-a", "pending", "medium");
+
+    let self_link = update_task(
+        &conn,
+        "only",
+        &UpdateTaskRequest {
+            parent_id: Some(Some("only".into())),
+            ..update("only")
+        },
+    );
+    assert!(matches!(self_link, Err(AppError::BadRequest { .. })));
+
+    let missing = update_task(
+        &conn,
+        "only",
+        &UpdateTaskRequest {
+            pre_id: Some(Some("nope".into())),
+            ..update("only")
+        },
+    );
+    assert!(matches!(missing, Err(AppError::NotFound(_))));
+}
+
+#[test]
+fn task_relations_report_missing_columns() {
+    let conn = setup_legacy();
+    insert_project(&conn, "proj-a", "Alpha");
+    insert_task(&conn, "a", "proj-a", "pending", "medium");
+    insert_task(&conn, "b", "proj-a", "pending", "medium");
+
+    let result = update_task(
+        &conn,
+        "b",
+        &UpdateTaskRequest {
+            pre_id: Some(Some("a".into())),
+            ..update("b")
+        },
+    );
+    assert!(matches!(result, Err(AppError::Internal(_))));
 }
 
 #[test]

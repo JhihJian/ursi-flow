@@ -505,6 +505,14 @@ pub fn update_task(conn: &Connection, id: &str, request: &UpdateTaskRequest) -> 
         task.project_id = project_id.clone();
     }
 
+    // 关系字段直接写回，调用方负责不让图成环；指向不存在的任务直接拒绝。
+    if let Some(parent_id) = &request.parent_id {
+        task.parent_id = relation_target(conn, &columns, "parent_id", id, parent_id.as_deref())?;
+    }
+    if let Some(pre_id) = &request.pre_id {
+        task.pre_id = relation_target(conn, &columns, "pre_id", id, pre_id.as_deref())?;
+    }
+
     // 状态迁移交给 todo-core 的状态机，看板不重复实现规则。
     if let Some(status) = request.status.clone() {
         task.transition(
@@ -672,6 +680,29 @@ fn required_text<'a>(value: &'a str, field: &str) -> ApiResult<&'a str> {
     } else {
         Ok(trimmed)
     }
+}
+
+/// 关系字段的写入：`null` 是清空，指向自身或缺失任务直接拒绝，缺列时报错不静默丢弃。
+fn relation_target(
+    conn: &Connection,
+    columns: &Columns,
+    field: &str,
+    id: &str,
+    target: Option<&str>,
+) -> ApiResult<Option<String>> {
+    let Some(target) = target else { return Ok(None) };
+    if target == id {
+        return Err(AppError::invalid_input(format!(
+            "{field} cannot point at the task itself"
+        )));
+    }
+    if !columns.has(field) {
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "待办库缺少 {field} 列，无法保存任务关系"
+        )));
+    }
+    read_task_by_id(conn, columns, target)?;
+    Ok(Some(target.to_string()))
 }
 
 fn optional_text(value: Option<&str>) -> Option<&str> {

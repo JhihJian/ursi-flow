@@ -178,6 +178,29 @@ function assignDepths(
   }
 }
 
+/**
+ * 新边会不会在关系链上形成环。
+ * parent 新边把 `from` 设为 `to` 的父任务，沿 `from` 的父链往上找 `to`；
+ * pre 新边把 `from` 设为 `to` 的前置，沿 `from` 的前置链往前找 `to`。
+ */
+export function relationCreatesCycle(
+  tasks: Task[],
+  kind: TaskGraphEdgeKind,
+  from: string,
+  to: string,
+): boolean {
+  if (from === to) return true
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const visited = new Set<string>()
+  let current = kind === 'parent' ? byId.get(from)?.parent_id : byId.get(from)?.pre_id
+  while (current && !visited.has(current)) {
+    if (current === to) return true
+    visited.add(current)
+    current = kind === 'parent' ? byId.get(current)?.parent_id : byId.get(current)?.pre_id
+  }
+  return false
+}
+
 function compareNodes(left: TaskGraphNode, right: TaskGraphNode): number {
   const status = STATUS_RANK[left.status] - STATUS_RANK[right.status]
   if (status !== 0) return status

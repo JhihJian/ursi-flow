@@ -199,7 +199,8 @@ export function TaskSection() {
         <div className="tasks-header">
           {view === 'graph' ? (
             <p className="task-graph-hint">
-              实线是父子关系，虚线是前置依赖；完成与已取消的任务只在关联未完成任务时出现。
+              <span>实线父子 · 虚线前置 · 完成项仅在与未完成任务相关时出现</span>
+              <span>拖动节点叠到另一个节点上设父任务，从节点左侧圆点拖到目标设前置</span>
             </p>
           ) : (
             <DayFilter />

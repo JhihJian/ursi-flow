@@ -21,6 +21,10 @@ pub struct UpdateTaskRequest {
     #[serde(default, deserialize_with = "double_option")]
     pub project_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
+    pub parent_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub pre_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
     pub blocked_reason: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub result: Option<Option<String>>,

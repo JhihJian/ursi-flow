@@ -89,13 +89,17 @@
   "status": "pending|in_progress|blocked|done|cancelled",
   "tags": ["..."],
   "project_id": "传 null 解除归属",
+  "parent_id": "传 null 解除父子关系",
+  "pre_id": "传 null 解除前置依赖",
   "blocked_reason": "传 null 清空",
   "result": "传 null 清空",
   "log": "传 null 清空"
 }
 ```
 
-更新时省略字段表示不改，传 `null` 表示清空。标题和项目名去掉首尾空白后不能为空；`priority` 与 `status` 只接受枚举值，非法值在反序列化阶段即返回 400。看板不提供 `content`、`parent_id`、`pre_id`、`due`、`assignee`、`artifacts` 的写入，读取时原样返回，写回时保持不变。
+更新时省略字段表示不改，传 `null` 表示清空。标题和项目名去掉首尾空白后不能为空；`priority` 与 `status` 只接受枚举值，非法值在反序列化阶段即返回 400。看板不提供 `content`、`due`、`assignee`、`artifacts` 的写入，读取时原样返回，写回时保持不变。
+
+`parent_id` 与 `pre_id` 指向已存在的任务，指向自身返回 400 `E_INVALID_INPUT`，目标不存在返回 404；库里缺少对应列时返回 500 而不是静默丢弃。服务端不检查关系链是否成环，成环保护由看板在写入前完成，CLI 或其它写入方需要自行保证。
 
 ### 追加结果
 
