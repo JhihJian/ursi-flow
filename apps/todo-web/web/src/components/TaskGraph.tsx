@@ -362,7 +362,10 @@ export function TaskGraph() {
             >
               <button
                 type="button"
-                className="task-graph-port"
+                className={cx(
+                  'task-graph-port',
+                  task?.pre_id && 'is-connected',
+                )}
                 aria-label={`拖动到另一个任务上，把它设为 ${node.title} 的前置`}
                 title="拖到另一个任务上，把它设为这个任务的前置"
                 onPointerDown={(event) => {
