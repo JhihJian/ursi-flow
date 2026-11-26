@@ -1313,6 +1313,72 @@ textarea {
   flex-wrap: wrap;
 }
 
+.scoped-toolbar .filter-input {
+  flex: 1 1 200px;
+}
+
+.scoped-provider-select {
+  width: auto;
+  flex: none;
+  min-width: 160px;
+}
+
+/* 按 provider 分组：组头像表头一样粘在分区顶部，组内才是模型行 */
+.provider-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.provider-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.provider-caret {
+  width: 10px;
+  color: var(--gray-400);
+}
+
+.provider-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.provider-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.provider-count.partial {
+  color: var(--gray-900);
+}
+
+.provider-head .spacer {
+  flex: 1;
+}
+
+.provider-table {
+  margin-bottom: var(--space-sm);
+}
+
 .col-order {
   width: 36px;
   text-align: right;

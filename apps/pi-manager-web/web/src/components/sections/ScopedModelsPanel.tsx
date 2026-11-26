@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CatalogCandidate, ModelCatalog } from '../../api/types'
 
 /**
  * 启用模型（settings.json 的 enabledModels）——对齐 pi TUI 的 /scoped-models：
- * 逐条开关、可排序、可加模式。清单为空（key 不存在）在 pi 里等价于「全部可用」，
- * 因此「全部启用」是删除该 key，「清空」不提供（会让语义反转）。
+ * 逐条开关、可排序、可加模式，并提供 provider 级开关（pi 的 toggleProvider）。
+ *
+ * 清单为空（key 不存在）在 pi 里等价于「全部可用」，因此「全部启用」是删掉该 key，
+ * 不提供「全部清空」清到空也不许关掉最后一条，否则语义会反转。
  * 顺序有实义：第一条启用项是新会话的启动模型，也是 Ctrl+P 循环的起点。
  */
 
@@ -15,6 +17,14 @@ const SOURCE_LABEL: Record<string, string> = {
   'models-store.json': '运行目录',
 }
 
+interface ProviderGroup {
+  provider: string
+  candidates: CatalogCandidate[]
+  enabledCount: number
+  /** 该 provider 第一条启用项在 enabledModels 里的位置，未启用为 null。 */
+  firstIndex: number | null
+}
+
 export function ScopedModelsPanel({
   catalog,
   onSave,
@@ -23,27 +33,100 @@ export function ScopedModelsPanel({
   onSave: (next: string[] | null, label: string) => Promise<boolean>
 }) {
   const [query, setQuery] = useState('')
+  const [providerFilter, setProviderFilter] = useState('')
   const [draft, setDraft] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const enabled = catalog.enabledModels
   const enabledSet = new Set(enabled)
   const firstEnabled = enabled[0] ?? null
 
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return catalog.candidates
-    return catalog.candidates.filter((item) => item.ref.toLowerCase().includes(needle))
-  }, [catalog.candidates, query])
+  const groups = useMemo<ProviderGroup[]>(() => {
+    const byProvider = new Map<string, CatalogCandidate[]>()
+    for (const candidate of catalog.candidates) {
+      const key = candidate.provider || '（无 provider，裸模型 id）'
+      const list = byProvider.get(key)
+      if (list) list.push(candidate)
+      else byProvider.set(key, [candidate])
+    }
+    const out: ProviderGroup[] = []
+    for (const [provider, candidates] of byProvider) {
+      const enabledIndexes = candidates
+        .map((c) => c.enabledIndex)
+        .filter((index): index is number => index !== null)
+      out.push({
+        provider,
+        candidates,
+        enabledCount: enabledIndexes.length,
+        firstIndex: enabledIndexes.length > 0 ? Math.min(...enabledIndexes) : null,
+      })
+    }
+    // 有启用项的 provider 按首条启用位置排前面，其余按名字排。
+    out.sort((a, b) => {
+      if (a.firstIndex !== null && b.firstIndex !== null) return a.firstIndex - b.firstIndex
+      if (a.firstIndex !== null) return -1
+      if (b.firstIndex !== null) return 1
+      return a.provider.localeCompare(b.provider)
+    })
+    return out
+  }, [catalog.candidates])
+
+  const providerNames = useMemo(() => groups.map((g) => g.provider), [groups])
+  const enabledProviderKey = groups
+    .filter((g) => g.enabledCount > 0)
+    .map((g) => g.provider)
+    .join('\u0000')
+
+  // 数据刷新后自动展开「有启用项」的 provider，用户手动展开的保持展开。
+  useEffect(() => {
+    const withEnabled = enabledProviderKey ? enabledProviderKey.split('\u0000') : []
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const provider of withEnabled) next.add(provider)
+      return next
+    })
+  }, [enabledProviderKey])
+
+  const needle = query.trim().toLowerCase()
+  const filtering = needle.length > 0 || providerFilter.length > 0
+  const visibleGroups = groups
+    .filter((group) => !providerFilter || group.provider === providerFilter)
+    .map((group) => ({
+      ...group,
+      candidates: needle
+        ? group.candidates.filter(
+            (c) => c.ref.toLowerCase().includes(needle) || c.provider.toLowerCase().includes(needle),
+          )
+        : group.candidates,
+    }))
+    .filter((group) => group.candidates.length > 0)
 
   const total = catalog.candidates.length
 
   async function toggle(candidate: CatalogCandidate) {
     if (candidate.enabled) {
-      const next = enabled.filter((ref) => ref !== candidate.ref)
-      await onSave(next, `停用 ${candidate.ref}`)
+      await onSave(
+        enabled.filter((ref) => ref !== candidate.ref),
+        `停用 ${candidate.ref}`,
+      )
       return
     }
     await onSave([...enabled, candidate.ref], `启用 ${candidate.ref}`)
+  }
+
+  async function toggleProvider(group: ProviderGroup) {
+    const refs = group.candidates.map((c) => c.ref)
+    const allEnabled = group.candidates.every((c) => c.enabled)
+    if (allEnabled) {
+      const removing = new Set(refs)
+      await onSave(
+        enabled.filter((ref) => !removing.has(ref)),
+        `停用 ${group.provider} 的全部模型`,
+      )
+      return
+    }
+    const additions = refs.filter((ref) => !enabledSet.has(ref))
+    await onSave([...enabled, ...additions], `启用 ${group.provider} 的全部模型`)
   }
 
   async function move(ref: string, delta: number) {
@@ -66,21 +149,53 @@ export function ScopedModelsPanel({
     if (ok) setDraft('')
   }
 
+  function setGroupOpen(provider: string, open: boolean) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(provider)
+      else next.delete(provider)
+      return next
+    })
+  }
+
   return (
     <div className="scoped-panel">
       <div className="scoped-toolbar">
         <input
           className="filter-input"
           value={query}
-          placeholder="按 provider 或模型名过滤"
+          placeholder="按模型名过滤"
           onChange={(e) => setQuery(e.target.value)}
         />
+        <select
+          className="select scoped-provider-select"
+          value={providerFilter}
+          onChange={(e) => setProviderFilter(e.target.value)}
+        >
+          <option value="">全部 provider</option>
+          {providerNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
         <div className="scoped-toolbar-actions">
           <button
             type="button"
             className="btn small"
+            onClick={() =>
+              setExpanded((prev) =>
+                prev.size >= providerNames.length ? new Set() : new Set(providerNames),
+              )
+            }
+          >
+            {expanded.size >= providerNames.length ? '收起全部' : '展开全部'}
+          </button>
+          <button
+            type="button"
+            className="btn small"
             onClick={() => void onSave(null, '全部启用（删除 enabledModels）')}
-            disabled={catalog.enabledModels.length === 0}
+            disabled={enabled.length === 0}
             title="删除 enabledModels，等于 pi 的「全部可用」"
           >
             全部启用
@@ -90,84 +205,123 @@ export function ScopedModelsPanel({
 
       <div className="scoped-meta">
         <span className="mono-dim">
-          已启用 {enabled.length} / 候选 {total}
+          已启用 {enabled.length} / 候选 {total} · {groups.length} 个 provider
           {firstEnabled ? ` · 启动首选 ${firstEnabled}` : ' · 未限定，pi 用默认模型'}
         </span>
       </div>
 
-      {rows.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">State</th>
-              <th className="col-order">#</th>
-              <th>Model</th>
-              <th className="col-actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((item) => (
-              <tr key={item.ref} className={item.enabled ? 'is-selected' : undefined}>
-                <td className="col-state">
-                  <button
-                    type="button"
-                    className="switch"
-                    aria-pressed={item.enabled}
-                    aria-label={`${item.enabled ? '停用' : '启用'} ${item.ref}`}
-                    disabled={item.enabled && enabled.length === 1}
-                    title={
-                      item.enabled && enabled.length === 1
-                        ? '至少保留一条启用项；要放开全部请用「全部启用」'
-                        : undefined
-                    }
-                    onClick={() => void toggle(item)}
-                  >
-                    <span className="switch-track" aria-hidden />
-                  </button>
-                </td>
-                <td className="col-order">
-                  {item.enabledIndex === null ? '—' : item.enabledIndex + 1}
-                </td>
-                <td>
-                  <div className="cell-title">{item.ref}</div>
-                  <div className="cell-sub">
-                    {item.sources.map((source) => SOURCE_LABEL[source] ?? source).join(' · ')}
-                    {item.pattern ? ' · 模式' : ''}
-                    {item.ref === firstEnabled ? ' · 启动首选' : ''}
-                    {item.enabled && !item.resolvable ? ' · 文件目录里没有，由扩展或网关提供' : ''}
-                  </div>
-                </td>
-                <td className="col-actions">
-                  {item.enabled ? (
-                    <span className="row-actions">
-                      <button
-                        type="button"
-                        className="btn small"
-                        aria-label="上移"
-                        disabled={item.enabledIndex === 0}
-                        onClick={() => void move(item.ref, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small"
-                        aria-label="下移"
-                        disabled={item.enabledIndex === enabled.length - 1}
-                        onClick={() => void move(item.ref, 1)}
-                      >
-                        ↓
-                      </button>
-                    </span>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="mono-dim">没有匹配的模型。</p>
-      )}
+      {visibleGroups.map((group) => {
+        const open = filtering || expanded.has(group.provider)
+        const allEnabled = group.enabledCount === group.candidates.length
+        const partial = group.enabledCount > 0 && !allEnabled
+        const onlyOneLeft = allEnabled && enabled.length === group.enabledCount
+        return (
+          <div className="provider-group" key={group.provider}>
+            <div className="provider-head">
+              <button
+                type="button"
+                className="provider-toggle"
+                aria-expanded={open}
+                onClick={() => setGroupOpen(group.provider, !open)}
+              >
+                <span className="provider-caret">{open ? '▾' : '▸'}</span>
+                <span className="provider-name">{group.provider}</span>
+              </button>
+              <span className={`mono-dim provider-count${partial ? ' partial' : ''}`}>
+                {group.enabledCount}/{group.candidates.length}
+              </span>
+              <span className="spacer" />
+              <button
+                type="button"
+                className="switch"
+                aria-pressed={allEnabled}
+                aria-label={`${allEnabled ? '停用' : '启用'} ${group.provider} 的全部模型`}
+                disabled={onlyOneLeft}
+                title={
+                  onlyOneLeft
+                    ? '这是唯一启用的 provider；要放开全部请用「全部启用」'
+                    : `${allEnabled ? '停用' : '启用'} ${group.provider} 的全部模型（对齐 pi 的 toggleProvider）`
+                }
+                onClick={() => void toggleProvider(group)}
+              >
+                <span className="switch-track" aria-hidden />
+              </button>
+            </div>
+
+            {open ? (
+              <table className="item-table provider-table">
+                <thead>
+                  <tr>
+                    <th className="col-state">State</th>
+                    <th className="col-order">#</th>
+                    <th>Model</th>
+                    <th className="col-actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.candidates.map((item) => (
+                    <tr key={item.ref} className={item.enabled ? 'is-selected' : undefined}>
+                      <td className="col-state">
+                        <button
+                          type="button"
+                          className="switch"
+                          aria-pressed={item.enabled}
+                          aria-label={`${item.enabled ? '停用' : '启用'} ${item.ref}`}
+                          disabled={item.enabled && enabled.length === 1}
+                          title={
+                            item.enabled && enabled.length === 1
+                              ? '至少保留一条启用项；要放开全部请用「全部启用」'
+                              : undefined
+                          }
+                          onClick={() => void toggle(item)}
+                        >
+                          <span className="switch-track" aria-hidden />
+                        </button>
+                      </td>
+                      <td className="col-order">{item.enabledIndex === null ? '—' : item.enabledIndex + 1}</td>
+                      <td>
+                        <div className="cell-title">{item.modelId}</div>
+                        <div className="cell-sub">
+                          {item.sources.map((source) => SOURCE_LABEL[source] ?? source).join(' · ')}
+                          {item.pattern ? ' · 模式' : ''}
+                          {item.ref === firstEnabled ? ' · 启动首选' : ''}
+                          {item.enabled && !item.resolvable ? ' · 文件目录里没有，由扩展或网关提供' : ''}
+                        </div>
+                      </td>
+                      <td className="col-actions">
+                        {item.enabled ? (
+                          <span className="row-actions">
+                            <button
+                              type="button"
+                              className="btn small"
+                              aria-label="上移"
+                              disabled={item.enabledIndex === 0}
+                              onClick={() => void move(item.ref, -1)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="btn small"
+                              aria-label="下移"
+                              disabled={item.enabledIndex === enabled.length - 1}
+                              onClick={() => void move(item.ref, 1)}
+                            >
+                              ↓
+                            </button>
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
+        )
+      })}
+
+      {visibleGroups.length === 0 ? <p className="mono-dim">没有匹配的模型。</p> : null}
 
       <div className="field-row">
         <input
@@ -185,9 +339,9 @@ export function ScopedModelsPanel({
       </div>
 
       <p className="mono-dim">
-        顺序即 Ctrl+P 循环顺序，第一条是新会话的启动模型。清单为空表示全部可用，所以「全部启用」是删掉
-        enabledModels；至少保留一条启用项。由 extensions/providers/ 注册的 provider 不写配置文件，
-        只能手写 provider/modelId 或模式来启用。
+        顺序即 Ctrl+P 循环顺序，第一条是新会话的启动模型。provider 右侧的开关是整组启停（对齐 pi 的
+        toggleProvider）。清单为空表示全部可用，所以「全部启用」是删掉 enabledModels，也至少保留一条启用项。
+        由 extensions/providers/ 注册的 provider 不写配置文件，只能手写 provider/modelId 或模式来启用。
       </p>
     </div>
   )
