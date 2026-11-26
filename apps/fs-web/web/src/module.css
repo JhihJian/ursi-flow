@@ -810,6 +810,9 @@ button.wsx-git-sync-status {
 .wsx-wslist-items {
   flex: 1;
   min-height: 0;
+  /* 嵌入外壳时没有全局复位，浏览器默认的 ul 缩进会顶出一条空白列，这里显式清零。 */
+  margin: 0;
+  padding: 0;
   overflow-y: auto;
   list-style: none;
 }

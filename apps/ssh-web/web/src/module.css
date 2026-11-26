@@ -121,17 +121,9 @@
   contain: inline-size;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  list-style: none;
-}
-
-.ssh-item-list {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  /* nowrap 文本的 min-content 不再向外撑（省略号只管用过的宽度），列表宽度完全由布局决定。 */
-  contain: inline-size;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+  /* 嵌入外壳时没有全局复位，浏览器默认的 ul 缩进会顶出一条空白列，这里显式清零。 */
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
