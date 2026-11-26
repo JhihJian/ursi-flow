@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronsRight, Folder, Plus } from 'lucide-react'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
 import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
@@ -156,10 +157,13 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
         openMenu(event.clientX, event.clientY, menuItems)
       }}
     >
-      <span className="wsx-wslist-name">{workspace.label}</span>
-      <span className="wsx-wslist-rowtail">
-        {flash ? <span className="wsx-wslist-flash">{flash}</span> : null}
-        {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
+      <span className="wsx-wslist-rowhead">
+        <Folder className="wsx-wslist-icon" size={12} aria-hidden="true" />
+        <span className="wsx-wslist-name">{workspace.label}</span>
+        <span className="wsx-wslist-rowtail">
+          {flash ? <span className="wsx-wslist-flash">{flash}</span> : null}
+          {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
+        </span>
       </span>
       <span
         className={'wsx-wslist-path' + (active ? ' wsx-wslist-path--copyable' : '')}
@@ -194,7 +198,7 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
     return (
       <div className="wsx-wslist-collapsed">
         <button type="button" className="wsx-rail-toggle" title="展开目录列表" aria-label="展开目录列表" onClick={onExpand}>
-          »
+          <ChevronsRight size={12} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -227,7 +231,7 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
           aria-label="添加目录"
           onClick={() => setAdding(true)}
         >
-          +
+          <Plus size={12} aria-hidden="true" />
         </button>
       </div>
       {adding ? (

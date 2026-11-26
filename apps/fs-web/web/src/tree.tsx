@@ -1,5 +1,16 @@
 import { useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  ChevronRight,
+  File as FileIcon,
+  FileCode,
+  FileImage,
+  FileJson,
+  FileText,
+  Folder,
+  FolderOpen,
+  Loader2,
+} from 'lucide-react'
 import { keyName, keySegments } from './api.ts'
 import { flattenOpen, useTreeStore } from './tree-store.ts'
 import { badgeMapOf, useGitStore } from './git-store.ts'
@@ -25,10 +36,38 @@ function rowRelPathOf(workspaceId: string, key: string): string {
 function GitBadge({ badge }: { badge: { code: string; count?: number } | null }) {
   if (!badge) return null
   return (
-    <span className="wsx-git-badge" title={`git: ${badge.code}`}>
+    <span className="wsx-git-badge" title={`git: ${badge.code}`} aria-hidden="true">
       {badge.count !== undefined ? badge.count : badge.code}
     </span>
   )
+}
+
+/** 行首图标尺寸与缩进：目录每深一层 16px，行内边距 8px（对齐外壳侧栏）。 */
+const ICON_SIZE = 12
+const ROW_INDENT = 16
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'])
+const TEXT_EXTS = new Set(['md', 'markdown', 'txt', 'log', 'csv'])
+const CODE_EXTS = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'css', 'scss', 'less', 'html', 'py', 'rs', 'go',
+  'java', 'c', 'h', 'cpp', 'sh', 'bash', 'zsh', 'sql', 'rb', 'php', 'lua', 'kt', 'swift',
+])
+const DATA_EXTS = new Set(['json', 'yaml', 'yml', 'toml', 'ini', 'conf', 'lock'])
+
+/** 文件行首图标：按扩展名分四类，其余用通用文件图标（orca 文件树的同款做法）。 */
+function FileKindIcon({ name }: { name: string }) {
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : ''
+  const Icon = IMAGE_EXTS.has(ext)
+    ? FileImage
+    : TEXT_EXTS.has(ext)
+      ? FileText
+      : CODE_EXTS.has(ext)
+        ? FileCode
+        : DATA_EXTS.has(ext)
+          ? FileJson
+          : FileIcon
+  return <Icon className="wsx-tree-icon" size={ICON_SIZE} aria-hidden="true" />
 }
 
 /** 窄栏文件树：目录 + 文件行统一虚拟化。目录点击折叠/展开，文件点击打开；右键菜单操作。 */
@@ -56,7 +95,7 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 26,
+    estimateSize: () => 24,
     overscan: 12,
   })
 
@@ -106,6 +145,7 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const row = rows[virtualRow.index]!
             const selected = selectedDirKey === row.key || editingKey === row.key
+            const badge = badges?.get(rowRelPathOf(workspaceId!, row.key)) ?? null
             return (
               <div
                 key={row.key}
@@ -115,10 +155,10 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
                 style={{
                   position: 'absolute',
                   top: 0,
-                  left: 0,
-                  width: '100%',
+                  left: 4,
+                  right: 4,
                   transform: `translateY(${virtualRow.start}px)`,
-                  paddingLeft: 4 + row.depth * 14,
+                  paddingLeft: row.depth * ROW_INDENT,
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault()
@@ -138,15 +178,35 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
                       else onOpenFile(row.key)
                     }}
                     onDoubleClick={() => setEditingKey(row.key)}
-                    title={keyName(row.key)}
+                    aria-expanded={row.kind === 'dir' ? row.isOpen : undefined}
+                    title={badge ? `${keyName(row.key)} · git ${badge.code}` : keyName(row.key)}
                   >
-                    <span className="wsx-tree-caret">{row.kind === 'dir' ? (row.isOpen ? '▾' : '▸') : ''}</span>
+                    <span className="wsx-tree-caret">
+                      {row.kind === 'dir' ? (
+                        <ChevronRight
+                          className={row.isOpen ? 'wsx-tree-chevron wsx-tree-chevron--open' : 'wsx-tree-chevron'}
+                          size={ICON_SIZE}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </span>
+                    {row.kind === 'dir' ? (
+                      row.isOpen ? (
+                        <FolderOpen className="wsx-tree-icon" size={ICON_SIZE} aria-hidden="true" />
+                      ) : (
+                        <Folder className="wsx-tree-icon" size={ICON_SIZE} aria-hidden="true" />
+                      )
+                    ) : (
+                      <FileKindIcon name={keyName(row.key)} />
+                    )}
                     <span className={'wsx-tree-name' + (row.kind === 'dir' ? '' : ' wsx-tree-name--file')}>
                       {keyName(row.key)}
                     </span>
-                    {badges ? <GitBadge badge={badges.get(rowRelPathOf(workspaceId!, row.key)) ?? null} /> : null}
+                    {badges ? <GitBadge badge={badge} /> : null}
                     {row.kind === 'dir' && dirs[row.key]?.status === 'loading' ? (
-                      <span className="wsx-tree-loading">…</span>
+                      <span className="wsx-tree-loading" role="status" aria-label="正在加载">
+                        <Loader2 className="wsx-spin" size={ICON_SIZE} aria-hidden="true" />
+                      </span>
                     ) : null}
                   </button>
                 )}

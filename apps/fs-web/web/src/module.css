@@ -12,7 +12,9 @@
   color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
-.wsx-panel button {
+/* 按钮基线复位用 :where() 降到零类特异性（与外壳 shell.css 同一约定），
+   否则 .wsx-panel button 会盖掉下面模块自己按钮类的颜色与字号。 */
+:where(.wsx-panel) button {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
@@ -20,47 +22,7 @@
 
 /* ---- 侧栏（workspace 选择 + git 摘要 + 文件树） ---- */
 
-.wsx-sidebar {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  padding: var(--wsx-space-md, 16px);
-  user-select: none;
-}
-
-.wsx-sidebar-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: var(--wsx-space-md, 16px);
-}
-
-.wsx-sidebar-title {
-  font-family: var(--wsx-serif, var(--ws-serif, Georgia, "Times New Roman", serif));
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.wsx-sidebar-head select {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--wsx-serif, Georgia, serif);
-  font-size: 13px;
-  color: var(--wsx-ink, #1a1a1a);
-  cursor: pointer;
-}
-
-.wsx-sidebar-head select:focus {
-  outline: none;
-}
-
+/* 折叠 rail 的展开按钮（目录列表折叠成书脊时用） */
 .wsx-rail-toggle {
   display: inline-flex;
   align-items: center;
@@ -70,15 +32,16 @@
   height: 19px;
   padding: 0 4px;
   border: 0;
+  border-radius: 3px;
   background: none;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+  color: var(--wsx-muted, var(--ws-muted, #999999));
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
 
 .wsx-rail-toggle:hover {
-  color: var(--wsx-ink, #1a1a1a);
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
   background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
@@ -357,19 +320,23 @@ button.wsx-git-sync-status {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- 文件树：对齐 todo-web project-item 行风格 ---- */
+/* ---- 文件树：orca 文件资源管理器同款紧凑单行 ----
+   行高 24px、每层 16px 缩进、12px 图标、圆角 hover；选中态用底色而不是左侧色条。 */
 
 .wsx-tree {
   flex: 1;
   min-height: 0;
+  /* 侧栏统一 12px：字号挂在容器上，行内按钮继承，不再逐层重复声明。 */
+  font-size: 12px;
 }
 
 .wsx-tree-row {
   display: flex;
-  align-items: stretch;
-  gap: 0;
-  width: 100%;
-  border-left: 2px solid transparent;
+  align-items: center;
+  height: 24px;
+  border-radius: 4px;
+  /* 缩进加在行上，深层目录会超出可视宽度：裁掉，别让图标压到右边框。 */
+  overflow: hidden;
   cursor: pointer;
 }
 
@@ -377,9 +344,13 @@ button.wsx-git-sync-status {
   background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
+/* 选中态比 hover 更实：底色加深一档，名称统一转 ink，与「鼠标恰好停在这行」区分开。 */
 .wsx-tree-row--selected {
-  border-left-color: var(--wsx-ink, #000000);
-  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+  background: color-mix(in srgb, var(--wsx-ink, var(--ws-ink, #1a1a1a)) 8%, transparent);
+}
+
+.wsx-tree-row--selected .wsx-tree-name {
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
 .wsx-tree-row-main {
@@ -388,7 +359,7 @@ button.wsx-git-sync-status {
   gap: 4px;
   flex: 1;
   min-width: 0;
-  height: 26px;
+  height: 100%;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -398,35 +369,76 @@ button.wsx-git-sync-status {
 }
 
 .wsx-tree-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 12px;
   flex: none;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+}
+
+.wsx-tree-chevron {
+  color: var(--wsx-muted, var(--ws-muted, #999999));
+  transition: transform 120ms ease;
+}
+
+.wsx-tree-chevron--open {
+  transform: rotate(90deg);
+}
+
+.wsx-tree-icon {
+  flex: none;
+  color: var(--wsx-muted, var(--ws-muted, #999999));
 }
 
 .wsx-tree-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--wsx-ink, #1a1a1a);
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
   font-weight: 500;
 }
 
 .wsx-tree-name--file {
   font-weight: 400;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+  color: var(--wsx-dim, #666666);
 }
 
 .wsx-tree-loading {
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+  flex: none;
+  color: var(--wsx-muted, var(--ws-muted, #999999));
+}
+
+.wsx-spin {
+  animation: wsx-spin 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wsx-spin {
+    animation-duration: 3s;
+  }
+
+  .wsx-tree-chevron {
+    transition: none;
+  }
+}
+
+@keyframes wsx-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .wsx-tree-rename {
   flex: 1;
   min-width: 0;
   height: 22px;
-  margin: 2px 0;
+  margin: 1px 0;
   font: inherit;
+  font-size: 12px;
   border: 1px solid var(--wsx-dim, #999999);
+  border-radius: 3px;
   padding: 0 4px;
   background: #fff;
 }
@@ -436,18 +448,21 @@ button.wsx-git-sync-status {
   border-color: var(--wsx-ink, #000000);
 }
 
-/* ---- 状态徽标：文件显示状态字母，目录显示聚合数 ---- */
+/* ---- 状态徽标：文件显示状态字母，目录显示聚合数 ----
+   行尾右对齐的无框字母，10px 半粗；不再用描边小方框。 */
 
 .wsx-git-badge {
   flex: none;
-  min-width: 16px;
-  padding: 0 3px;
-  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+  margin-left: auto;
+  padding: 0 2px;
+  color: var(--wsx-dim, var(--ws-dim, #666666));
   font-size: 10px;
-  line-height: 14px;
-  text-align: center;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
 }
+
 
 /* ---- 底部操作条：对齐 todo-web btn 风格 ---- */
 
@@ -463,8 +478,9 @@ button.wsx-git-sync-status {
 .wsx-diractions button {
   padding: 2px 8px;
   border: 1px solid var(--wsx-ink, #1a1a1a);
+  border-radius: 3px;
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -488,8 +504,9 @@ button.wsx-git-sync-status {
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   border: 1px solid var(--wsx-dim, #999999);
+  border-radius: 3px;
   padding: 2px 6px;
   background: #fff;
 }
@@ -808,23 +825,26 @@ button.wsx-git-sync-status {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
+  color: var(--wsx-muted, var(--ws-muted, #999999));
 }
 
 .wsx-wslist-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
   padding: 0;
-  border: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
+  border: 0;
+  border-radius: 3px;
   background: none;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+  color: var(--wsx-muted, var(--ws-muted, #999999));
   cursor: pointer;
 }
 
 .wsx-wslist-add:hover {
-  border-color: var(--wsx-ink, #1a1a1a);
+  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
 .wsx-wslist-adding {
@@ -836,9 +856,11 @@ button.wsx-git-sync-status {
   width: 100%;
   min-width: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   border: 1px solid var(--wsx-dim, #999999);
+  border-radius: 3px;
   padding: 2px 4px;
+  background: #fff;
 }
 
 .wsx-wslist-items {
@@ -846,19 +868,20 @@ button.wsx-git-sync-status {
   min-height: 0;
   /* 嵌入外壳时没有全局复位，浏览器默认的 ul 缩进会顶出一条空白列，这里显式清零。 */
   margin: 0;
-  padding: 0;
+  /* 左右留 3px：条目用圆角底色表达 hover/选中，贴边时圆角会被裁掉。 */
+  padding: 0 3px;
   overflow-y: auto;
   list-style: none;
 }
 
 .wsx-wslist-item {
-  /* 两行条目：第一行名称 + 右侧状态，第二行路径（点击复制）。 */
+  /* 两行条目：第一行图标 + 名称 + 右侧状态，第二行路径（点击复制）。 */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0 4px;
-  padding: 3px 6px;
-  border-left: 2px solid transparent;
+  padding: 3px 5px;
+  border-radius: 4px;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
@@ -869,9 +892,23 @@ button.wsx-git-sync-status {
   background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
+/* 当前目录用更实的底色区分于 hover。 */
 .wsx-wslist-item--active {
-  border-left-color: var(--wsx-ink, #000000);
-  background: var(--wsx-line, var(--ws-line, #e5e5e5));
+  background: color-mix(in srgb, var(--wsx-ink, var(--ws-ink, #1a1a1a)) 8%, transparent);
+}
+
+/* 名称行整行：图标 + 名称 + 行尾状态，路径另起一行。 */
+.wsx-wslist-rowhead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.wsx-wslist-icon {
+  flex: none;
+  color: var(--wsx-muted, var(--ws-muted, #999999));
 }
 
 .wsx-wslist-item--broken .wsx-wslist-name {
@@ -885,7 +922,8 @@ button.wsx-git-sync-status {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
 /* 名称行右侧：复制提示与未就绪感叹号。 */
@@ -897,7 +935,7 @@ button.wsx-git-sync-status {
 }
 
 .wsx-wslist-flash {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--wsx-dim, var(--ws-dim, #666666));
 }
 
@@ -908,7 +946,9 @@ button.wsx-git-sync-status {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  /* 路径与名称同级字号，只靠颜色区分层级，避免出现三种字号。 */
+  padding-left: 16px;
+  font-size: 12px;
   color: var(--wsx-muted, var(--ws-muted, #999999));
   cursor: default;
 }
@@ -936,27 +976,6 @@ button.wsx-git-sync-status {
   height: 100%;
   padding: var(--wsx-space-sm, 8px) 0;
   overflow: hidden;
-}
-
-.wsx-rail-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  min-width: 19px;
-  height: 19px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--wsx-muted, var(--ws-muted, #999999));
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.wsx-rail-toggle:hover {
-  color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
-  background: var(--wsx-line, var(--ws-line, #e5e5e5));
 }
 
 .wsx-wslist-spine {
