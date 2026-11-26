@@ -433,6 +433,9 @@
   background: var(--ssh-terminal-bg);
 }
 
+/* 所有标签常驻挂载，靠绝对定位叠在同一块区域上：定位必须只在这里声明。
+   下面的 .ssh-terminal-surface 不再写 position，否则会盖掉 absolute，
+   面板退回内容高度（xterm 默认 24 行），剩下的下半屏就成了死区。 */
 .ssh-terminal-pane {
   position: absolute;
   inset: 0;
@@ -455,7 +458,6 @@
 }
 
 .ssh-terminal-surface {
-  position: relative;
   display: flex;
   flex-direction: column;
   padding: var(--ssh-space-sm) var(--ssh-space-md);
