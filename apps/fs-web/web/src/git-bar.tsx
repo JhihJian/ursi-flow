@@ -210,7 +210,7 @@ export function GitBar({ onOpenFile }: { onOpenFile?: (key: string) => void }) {
           onClick={(event) => openChanges(event.currentTarget)}
           title={`${changes.length} 个文件有改动，共新增 ${additions} 行、删除 ${deletions} 行（相对上次提交），点击查看变更文件`}
         >
-          {changes.length} 文件改动 +{additions}/-{deletions}
+          {changes.length} +{additions}/-{deletions}
         </button>
         <span className="wsx-git-sync">
           <button
