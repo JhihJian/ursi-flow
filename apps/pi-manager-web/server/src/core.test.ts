@@ -524,18 +524,18 @@ test('homes：init 初始化默认配置，clone 复制配置但不带凭据', a
 // session-task：一次性会话任务的参数校验与任务表
 // ---------------------------------------------------------------------------
 
-test('session-task：agent profile 解析（文件名与 name 都不区分大小写）', async () => {
-  const { resolveAgentProfile } = await import('./session-task.ts')
+test('session-task：subagent 定义解析（文件名与 name 都不区分大小写）', async () => {
+  const { resolveSubagent } = await import('./session-task.ts')
   const dir = makeHome()
   mkdirSync(join(dir, 'agents'), { recursive: true })
   writeFileSync(join(dir, 'agents', 'Reviewer.md'), '---\nname: reviewer\ndescription: 评审\n---\n你是评审员。\n')
   writeFileSync(join(dir, 'agents', 'other.md'), '---\nname: Other-Name\ndescription: 另一个\n---\n正文\n')
 
-  assert.equal(resolveAgentProfile(dir, 'reviewer').name, 'reviewer')
-  assert.equal(resolveAgentProfile(dir, 'REVIEWER').name, 'reviewer')
-  assert.equal(resolveAgentProfile(dir, 'other').name, 'Other-Name')
-  assert.equal(resolveAgentProfile(dir, 'other-name').name, 'Other-Name')
-  assert.throws(() => resolveAgentProfile(dir, 'nope'), /没有 agent profile/)
+  assert.equal(resolveSubagent(dir, 'reviewer').name, 'reviewer')
+  assert.equal(resolveSubagent(dir, 'REVIEWER').name, 'reviewer')
+  assert.equal(resolveSubagent(dir, 'other').name, 'Other-Name')
+  assert.equal(resolveSubagent(dir, 'other-name').name, 'Other-Name')
+  assert.throws(() => resolveSubagent(dir, 'nope'), /没有这个 subagent/)
 })
 
 test('session-task：参数校验在加载 SDK 之前完成', async () => {
@@ -544,14 +544,14 @@ test('session-task：参数校验在加载 SDK 之前完成', async () => {
   mkdirSync(join(dir, 'agents'), { recursive: true })
   writeFileSync(join(dir, 'agents', 'a.md'), '---\nname: a\n---\nx\n')
 
-  const base = { home: dir, agent: '测试 agent', profile: null, instruct: 'hi' }
+  const base = { home: dir, agent: '测试 agent', subagent: null, instruct: 'hi' }
   await assert.rejects(startSessionTask({ ...base, instruct: '   ' }), /instruct 不能为空/)
   await assert.rejects(
     startSessionTask({ ...base, thinkingLevel: 'ultrathought' }),
     /thinkingLevel 只能是/,
   )
   await assert.rejects(startSessionTask({ ...base, model: 'no-slash' }), /provider\/modelId/)
-  await assert.rejects(startSessionTask({ ...base, profile: 'missing' }), /没有 agent profile/)
+  await assert.rejects(startSessionTask({ ...base, subagent: 'missing' }), /没有这个 subagent/)
   await assert.rejects(
     startSessionTask({ ...base, cwd: '/definitely/not/a/real/dir' }),
     /cwd 不存在/,
@@ -601,4 +601,17 @@ test('homes：name 唯一，findByName 精确优先再忽略大小写', async ()
     rmSync(a, { recursive: true, force: true })
     rmSync(b, { recursive: true, force: true })
   }
+})
+
+test('session-task：subagent 的 tools 声明会成为会话工具集', async () => {
+  const { parseSubagentTools } = await import('./session-task.ts')
+  assert.deepEqual(parseSubagentTools('read, grep, find, ls, bash'), [
+    'read', 'grep', 'find', 'ls', 'bash',
+  ])
+  // 空值 / none 表示不授予工具
+  assert.deepEqual(parseSubagentTools(null), [])
+  assert.deepEqual(parseSubagentTools(''), [])
+  assert.deepEqual(parseSubagentTools('none'), [])
+  // 容忍多余空白与尾逗号
+  assert.deepEqual(parseSubagentTools(' read , write , '), ['read', 'write'])
 })
