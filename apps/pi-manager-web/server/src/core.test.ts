@@ -544,14 +544,14 @@ test('session-task：参数校验在加载 SDK 之前完成', async () => {
   mkdirSync(join(dir, 'agents'), { recursive: true })
   writeFileSync(join(dir, 'agents', 'a.md'), '---\nname: a\n---\nx\n')
 
-  const base = { home: dir, agent: null, instruct: 'hi' }
+  const base = { home: dir, agent: '测试 agent', profile: null, instruct: 'hi' }
   await assert.rejects(startSessionTask({ ...base, instruct: '   ' }), /instruct 不能为空/)
   await assert.rejects(
     startSessionTask({ ...base, thinkingLevel: 'ultrathought' }),
     /thinkingLevel 只能是/,
   )
   await assert.rejects(startSessionTask({ ...base, model: 'no-slash' }), /provider\/modelId/)
-  await assert.rejects(startSessionTask({ ...base, agent: 'missing' }), /没有 agent profile/)
+  await assert.rejects(startSessionTask({ ...base, profile: 'missing' }), /没有 agent profile/)
   await assert.rejects(
     startSessionTask({ ...base, cwd: '/definitely/not/a/real/dir' }),
     /cwd 不存在/,
@@ -570,4 +570,35 @@ test('session-task：任务表按 home 过滤并倒序', async () => {
 test('session-task：取消不存在的任务报 404 语义', async () => {
   const { cancelSessionTask } = await import('./session-task.ts')
   await assert.rejects(cancelSessionTask('nope'), /没有这个会话任务/)
+})
+
+test('homes：name 唯一，findByName 精确优先再忽略大小写', async () => {
+  const { HomeRegistry } = await import('./homes.ts')
+  const stateFile = join(mkdtempSync(join(tmpdir(), 'pi-registry-')), 'homes.json')
+  const a = mkdtempSync(join(tmpdir(), 'pi-name-a-'))
+  const b = mkdtempSync(join(tmpdir(), 'pi-name-b-'))
+  writeFileSync(join(a, 'settings.json'), '{}')
+  writeFileSync(join(b, 'settings.json'), '{}')
+  try {
+    const registry = new HomeRegistry(stateFile)
+    const first = await registry.add({ mode: 'adopt', path: a, name: 'Writer' })
+    // 同名（含大小写差异）拒绝
+    await assert.rejects(registry.add({ mode: 'adopt', path: b, name: 'writer' }), /名称已被占用/)
+    const second = await registry.add({ mode: 'adopt', path: b, name: 'Reviewer' })
+
+    assert.equal(registry.findByName('Writer')?.id, first.id)
+    assert.equal(registry.findByName('reviewer')?.id, second.id, '忽略大小写匹配')
+    assert.equal(registry.findByName('缺失'), null)
+
+    // 改名也要查重
+    await assert.rejects(registry.update(second.id, { name: 'WRITER' }), /名称已被占用/)
+    const renamed = await registry.update(second.id, { name: 'Reviewer-2' })
+    assert.equal(renamed.name, 'Reviewer-2')
+    // 自己改成同名不算冲突
+    const same = await registry.update(second.id, { name: 'Reviewer-2' })
+    assert.equal(same.name, 'Reviewer-2')
+  } finally {
+    rmSync(a, { recursive: true, force: true })
+    rmSync(b, { recursive: true, force: true })
+  }
 })

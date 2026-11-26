@@ -1,7 +1,7 @@
 import type http from 'node:http'
 import { sendError, sendJson, readBody } from './http-util.ts'
 import { resolveRequestedHome, defaultHomeIfValid, HomeError, looksLikePiHome } from './pi-home.ts'
-import { HomeRegistry } from './homes.ts'
+import { HomeRegistry, type HomeEntry } from './homes.ts'
 import { startSessionTask, getTask, listTasks, cancelSessionTask, taskCapacity } from './session-task.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
 import { ConflictError } from './rw.ts'
@@ -290,24 +290,55 @@ route('PUT', '/api/auth/entries', async ({ home, body }) => {
 })
 
 // ---------------------------------------------------------------------------
-// session：用 pi SDK 在指定 home 下执行一次会话任务
+// session：按 agent 身份（pi home 的 name）执行一次会话任务
+//
+// agent 身份就是一份 pi home：它带自己的模型、凭据、skills 与 agents，
+// 因此不同 home 里的同名 profile 属于不同 agent。调用方用 name 指定。
 // ---------------------------------------------------------------------------
 
+/** 把 agent 参数解析成清单条目：name 优先，也接受 id 与绝对路径便于脚本使用。 */
+function resolveAgent(raw: unknown): HomeEntry {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new HomeError('agent 必填（pi home 的名称）', 400, 'invalid_request')
+  }
+  const key = raw.trim()
+  const byName = homes.findByName(key)
+  if (byName) return byName
+  const byId = homes.get(key)
+  if (byId) return byId
+  if (key.startsWith('/')) {
+    for (const entry of homes.list()) {
+      if (entry.path === key && entry.listed) return { id: entry.id, name: entry.name, path: entry.path, description: entry.description }
+    }
+  }
+  const known = homes.list().filter((h) => h.listed).map((h) => h.name)
+  throw new HomeError(
+    `没有这个 agent：${key}${known.length ? `（可用：${known.join('、')}）` : '（清单为空，先在侧边栏新增 pi home）'}`,
+    404,
+    'agent_not_found',
+  )
+}
+
 /** 发起一次会话：立即返回 session id，后台执行，结果用 GET 查询。 */
-route('POST', '/api/session/prompt', async ({ home, body }) => {
+route('POST', '/api/session/prompt', async ({ body }) => {
   const payload = await body<{
     agent?: unknown
     instruct?: unknown
+    profile?: unknown
     cwd?: unknown
     model?: unknown
     thinkingLevel?: unknown
   }>()
+  const agent = resolveAgent(payload.agent)
   if (typeof payload.instruct !== 'string' || !payload.instruct.trim()) {
     throw new HomeError('instruct 必填', 400, 'invalid_request')
   }
+  // home 已由 agent 决定；仍走一次 realpath 校验，保证目录没被删掉或换掉。
+  const home = await resolveRequestedHome(agent.path)
   const task = await startSessionTask({
+    agent: agent.name,
     home,
-    agent: typeof payload.agent === 'string' && payload.agent.trim() ? payload.agent.trim() : null,
+    profile: typeof payload.profile === 'string' && payload.profile.trim() ? payload.profile.trim() : null,
     instruct: payload.instruct,
     cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
     model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
@@ -321,6 +352,7 @@ route('POST', '/api/session/prompt', async ({ home, body }) => {
     sessionFile: task.sessionFile,
     state: task.state,
     agent: task.agent,
+    profile: task.profile,
     startedAt: task.startedAt,
   }
 })
@@ -333,10 +365,13 @@ route('GET', '/api/session/task', async ({ url }) => {
   return { task, capacity: taskCapacity() }
 })
 
-route('GET', '/api/session/tasks', async ({ home }) => ({
-  tasks: listTasks(home),
-  capacity: taskCapacity(),
-}))
+/** 任务列表：可按 agent（home 名）过滤；不传则列出全部。 */
+route('GET', '/api/session/tasks', async ({ url }) => {
+  const raw = url.searchParams.get('agent')
+  if (!raw || !raw.trim()) return { tasks: listTasks(), capacity: taskCapacity() }
+  const agent = resolveAgent(raw)
+  return { tasks: listTasks(agent.path), capacity: taskCapacity() }
+})
 
 route('POST', '/api/session/cancel', async ({ body }) => {
   const payload = await body<{ sessionId?: unknown }>()
@@ -395,7 +430,9 @@ export function createApiHandler(): (req: http.IncomingMessage, res: http.Server
       }
       // home 探测与列表路由自己解析参数，不参与统一校验。
       const selfResolved =
-        pathname.startsWith('/api/home/') || pathname === '/api/homes'
+        pathname.startsWith('/api/home/') ||
+        pathname === '/api/homes' ||
+        pathname.startsWith('/api/session/')
       const home = selfResolved
         ? (url.searchParams.get('home') ?? '')
         : await resolveRequestedHome(url.searchParams.get('home'))

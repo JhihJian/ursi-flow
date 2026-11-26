@@ -7,10 +7,13 @@ import { HomeError } from './pi-home.ts'
 /**
  * 一次性会话任务：用 pi SDK 在指定 pi home 下起一个 AgentSession，跑完一轮就结束。
  *
+ * 这里的 agent 身份就是 pi home 本身：一份 home 有自己的一套模型、凭据、skills 与
+ * agents，因此"不同 home 里的同名 profile"也是不同 agent。调用方用 home 的 name 指定
+ * agent，服务端再映射到该 home 的路径，agentDir 即指向它。
+ *
  * 与管理台其余部分的分工：其他模块只读写配置文件，不启动会话；这里明确是"执行"
- * 能力，因此单独成模块、单独限流、并且只接受回环来源。会话本身仍然完全属于 pi：
- * agentDir 指向目标 home，模型、凭据、skills、agents、MCP 设置都从那里读，session
- * 也写回该 home 的 sessions 目录，和 pi CLI / pi-web 的会话并列。
+ * 能力，因此单独成模块、单独限流、并且只接受回环来源。session 写回该 home 的
+ * sessions 目录，和 pi CLI / pi-web 的会话并列。
  *
  * SDK 按需加载：没装 @earendil-works/pi-coding-agent 时管理台仍能正常管理配置，
  * 只有执行接口返回 503。
@@ -20,8 +23,11 @@ export type TaskState = 'running' | 'done' | 'error' | 'cancelled'
 
 export interface SessionTask {
   sessionId: string
+  /** agent 身份 = 这份 pi home 在清单里的 name。 */
+  agent: string
   home: string
-  agent: string | null
+  /** 可选的 agents/<name>.md 子角色，用于追加系统提示。 */
+  profile: string | null
   instruct: string
   cwd: string
   state: TaskState
@@ -38,8 +44,12 @@ export interface SessionTask {
 }
 
 export interface StartOptions {
+  /** agent 身份（pi home 的 name）；只用于任务记录与回显。 */
+  agent: string
+  /** 已解析的 pi home 路径：所有配置与 session 都落在这里。 */
   home: string
-  agent: string | null
+  /** 可选的 agents/<name>.md 子角色。 */
+  profile: string | null
   instruct: string
   cwd?: string
   model?: string
@@ -176,7 +186,7 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
     )
   }
 
-  const profile = options.agent ? resolveAgentProfile(options.home, options.agent) : null
+  const profile = options.profile ? resolveAgentProfile(options.home, options.profile) : null
   const cwd = resolveCwd(options.cwd)
   const sdk = await loadSdk()
 
@@ -224,8 +234,9 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
   const sessionId = session.sessionManager.getSessionId()
   const task: SessionTask = {
     sessionId,
+    agent: options.agent,
     home: options.home,
-    agent: profile ? profile.file.replace(/\.md$/i, '') : null,
+    profile: profile ? profile.file.replace(/\.md$/i, '') : null,
     instruct,
     cwd,
     state: 'running',

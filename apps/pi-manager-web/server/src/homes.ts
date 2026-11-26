@@ -308,6 +308,29 @@ export class HomeRegistry {
     return this.entries.get(id) ?? null
   }
 
+  /** 名称是 agent 的对外标识，必须唯一（不区分大小写，避免 A/a 混淆）。 */
+  private assertNameAvailable(name: string, selfId: string | null): void {
+    const wanted = name.toLowerCase()
+    for (const entry of this.entries.values()) {
+      if (entry.id !== selfId && entry.name.toLowerCase() === wanted) {
+        throw new HomeError(`名称已被占用：${entry.name}（${entry.path}）`, 409, 'name_taken')
+      }
+    }
+  }
+
+  /**
+   * 按名称找清单条目：这是「agent 名 = pi home 名」的入口。
+   * 精确匹配优先，其次忽略大小写；不做模糊匹配，避免调错配置。
+   */
+  findByName(name: string): HomeEntry | null {
+    const wanted = name.trim()
+    if (!wanted) return null
+    const exact = [...this.entries.values()].find((entry) => entry.name === wanted)
+    if (exact) return exact
+    const lowered = wanted.toLowerCase()
+    return [...this.entries.values()].find((entry) => entry.name.toLowerCase() === lowered) ?? null
+  }
+
   /**
    * 新增 pi home。
    * - adopt：目录必须已是 pi home
@@ -371,9 +394,11 @@ export class HomeRegistry {
         throw new HomeError(`目录已在清单中：${entry.name}`, 409, 'exists')
       }
     }
+    const resolvedName = name?.trim() || basename(realPath) || realPath
+    this.assertNameAvailable(resolvedName, null)
     const entry: HomeEntry = {
       id,
-      name: name?.trim() || basename(realPath) || realPath,
+      name: resolvedName,
       path: realPath,
     }
     this.entries.set(id, entry)
@@ -395,6 +420,7 @@ export class HomeRegistry {
       const name = patch.name!.trim()
       if (!name) throw new HomeError('name 不能为空', 400, 'invalid_request')
       if (name.length > 120) throw new HomeError('name 超过 120 字符', 400, 'invalid_request')
+      this.assertNameAvailable(name, id)
       next.name = name
     }
     if (hasDescription) {

@@ -77,10 +77,13 @@ pi coding agent 的配置分散在 pi home（默认 `~/.pi/agent`）下的多个
 
 #### 验收
 
-- `POST /api/session/prompt?home=<home>` 请求体 `{ agent, instruct, cwd?, model?, thinkingLevel? }`，返回 `{ sessionId, sessionFile, state, agent, startedAt }`。`agent` 对应该 home 的 `agents/<name>.md`（按文件名或 frontmatter 的 `name` 匹配，不区分大小写），其正文追加在 pi 默认系统提示之后；省略则用默认系统提示。
-- 会话用该 home 的模型、凭据、skills、agents 设置；`cwd` 决定工具与项目级资源发现，省略时用服务进程当前目录。会话按 pi 的默认分组规则写入 `<home>/sessions/--<cwd>--/`，pi CLI 与 pi-web 能看到并接着聊。
-- 会话创建在接口返回前完成，因此 agent 不存在（404）、模型不存在（404）、`instruct` 为空（400）、`thinkingLevel` 非法（400）、`cwd` 不存在（404）都直接报给调用方；`prompt` 本身在后台执行。
-- `GET /api/session/task?home=<home>&sessionId=<id>` 返回该任务状态（`running` / `done` / `error` / `cancelled`）、最后一条助手文本、错误说明与累计输出长度；`GET /api/session/tasks?home=<home>` 列出该 home 的任务；`POST /api/session/cancel` 中止运行中的任务。
+- **agent 身份就是一份 pi home**：一份 home 有自己的模型、凭据、skills 与 agents，因此不同 home 里的同名 profile 属于不同 agent。清单里的 `name` 是 agent 名且必须唯一（不区分大小写查重），改名时同样校验。
+- `POST /api/session/prompt` 请求体 `{ agent, instruct, profile?, cwd?, model?, thinkingLevel? }`，返回 `{ sessionId, sessionFile, state, agent, profile, startedAt }`。`agent` 填 pi home 的 `name`（也接受清单 `id` 与绝对路径，便于脚本）；接口不需要 `home` 参数。
+- 可选的 `profile` 指向该 home 的 `agents/<name>.md`（按文件名或 frontmatter 的 `name` 匹配，不区分大小写），其正文追加在 pi 默认系统提示之后；省略则用默认系统提示。
+- 会话用该 agent（home）的模型、凭据、skills、agents 设置；`cwd` 决定工具与项目级资源发现，省略时用服务进程当前目录。会话按 pi 的默认分组规则写入 `<home>/sessions/--<cwd>--/`，pi CLI 与 pi-web 能看到并接着聊。
+- 会话创建在接口返回前完成，因此 agent 不存在（404）、profile 不存在（404）、模型不存在（404）、`instruct` 为空（400）、`thinkingLevel` 非法（400）、`cwd` 不存在（404）都直接报给调用方；`prompt` 本身在后台执行。
+- 执行会在该 home 下留下 pi 自己的运行产物：`sessions/` 里的会话文件，以及 SDK 首次运行初始化的空 `auth.json`、`models-store.json`（与 pi CLI 行为一致）。管理台不额外写入配置。
+- `GET /api/session/task?sessionId=<id>` 返回该任务状态（`running` / `done` / `error` / `cancelled`）、agent 与 profile、最后一条助手文本、错误说明与累计输出长度；`GET /api/session/tasks` 列出全部任务，`?agent=<name>` 按 agent 过滤；`POST /api/session/cancel` 中止运行中的任务。
 - 同时运行的会话数受上限约束（默认 4，`PI_MANAGER_MAX_TASKS` 可调），超出返回 429；单次任务有超时（默认 600000 ms，`PI_MANAGER_TASK_TIMEOUT_MS` 可调），超时即中止并标记失败。
 - pi SDK 按需加载：未安装 `@earendil-works/pi-coding-agent` 时配置管理功能照常可用，执行接口返回 503。执行接口属于写操作，只接受回环来源。
 

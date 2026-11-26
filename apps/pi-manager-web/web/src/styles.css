@@ -346,6 +346,14 @@ textarea {
   color: var(--danger);
 }
 
+.preset-error {
+  display: block;
+  padding: 2px var(--space-xs);
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .preset-item-editing {
   padding: var(--space-xs) 0;
   cursor: default;
