@@ -362,3 +362,21 @@ PiStore {
 | 配置并发 | 文件级 `If-Match` | 同 v1 |
 
 v1 的目标是让三视图读同一套实体、同一份权威、同一个身份；v2 才优化传输量。两者分开验收，否则会把「同步细节的 bug」误判成「模型错了」。
+
+## 实现状态（v1）
+
+已落地：
+
+- 一个进程 `apps/pi-web/server`：`config/`、`chat/`、`sessions/` 三个域，共用 `sessions/registry.ts` 这一份会话实体表；状态目录统一为 `$PI_WEB_STATE`（`homes.json`、`sessions/index.json`、`sessions/prefs.json`、`model-catalog/`）。
+- 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
+- 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
+- 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。
+- 一个工作区模块 `pi`：三视图切换、视图首次激活才挂载、home 一份真源（`PiProvider`），配置与对话的 home 选择互为同步，会话根由 home 派生且可显式改成外部目录。
+- 部署：一个 `ursi-pi-web` 单元、一条 `/api/pi` 反代、一次性状态迁移。
+
+下一轮（v2）：
+
+- 轨迹按条目增量（`entryId` + `traversal revision`），替代现在的整段重发。
+- `trajectories` 的 LRU 上限与两个窗口的分桶缓存（当前只按视图各自缓存）。
+- chat 与 sessions 的轨迹配色映射、`ContextMenu` 与解析代码合并成一份共享层（当前仍是每个视图一份）。
+- 会话级 `capabilities` 的前端解禁提示、`stale` 应用按钮的可见入口。
