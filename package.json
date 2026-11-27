@@ -10,8 +10,6 @@
     "apps/ursi-sandbox/web",
     "apps/todo-web/web",
     "apps/dae-web/web",
-    "apps/chat-web/web",
-    "apps/chat-web/server",
     "apps/shell-web",
     "apps/ssh-web/web",
     "packages/workspace-shell",

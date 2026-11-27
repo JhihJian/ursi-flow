@@ -44,7 +44,7 @@ Workbench 删除后，`ursi-executor-platform` 不再有代码消费者，因此
 
 归档后删除状态目录：`~/.local/state/ursi-executor-platform-lan`、`ursi-work-projects-preview-20261123`、`ursi-work-projects-planweave-20261124` 和 `~/.config/ursi-workbench`。`18202`、`4175`、`4281`、`4284`、`4285`、`5187` 均已释放。`8080` 与 `8081` 属于无关的 docker-proxy，不动。
 
-`ursi-mcpd`、`ursi-mcp-https`、`ursi-flow-console` 和其他与本次无关的服务保持运行。
+`ursi-mcpd`、`ursi-mcp-https` 和其他与本次无关的服务保持运行。`ursi-flow-console` 当时保留，后在 2026-11-27 随 `flow-runtime/web` 死单元一并下线。
 
 ## 验证
 
