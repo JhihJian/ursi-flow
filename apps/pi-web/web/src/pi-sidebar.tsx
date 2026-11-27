@@ -7,6 +7,9 @@ import { usePi, type PiView } from './pi-context'
  *
  * home 选择留在各视图原有的入口里（它们都写回 PiProvider），所以三个视图
  * 看到的是同一份 home，不会出现「对话换了 home、会话还停在旧根」。
+ *
+ * 折叠时内层侧栏只隐藏不卸载：展开的组、显示更多、搜索框开关都是视图私有状态，
+ * 卸载就全丢，用户点一下折叠再展开会回到初始样子。
  */
 
 const VIEWS: Array<{ id: PiView; label: string }> = [
@@ -33,20 +36,26 @@ export function PiSidebar({
   const label = VIEWS.find((item) => item.id === view)?.label ?? 'Pi'
 
   // 折叠态：外壳把这一节压到 32px，此时只留一条可点击的窄条，不渲染三段切换。
+  // 内层侧栏用 hidden 藏起来而不是不渲染，展开后状态原样还在。
   if (props.collapsed) {
     return (
-      <button
-        type="button"
-        className="pi-switch-rail"
-        onClick={props.expand}
-        aria-label={`Pi · ${label}${home ? ` · ${home.name}` : ''} · 展开`}
-      >
-        <span className="pi-switch-rail-arrow" aria-hidden="true">
-          ↓
-        </span>
-        <span className="pi-switch-rail-label">Pi · {label}</span>
-        <span className="pi-switch-rail-home">{home?.name ?? '未选 home'}</span>
-      </button>
+      <>
+        <button
+          type="button"
+          className="pi-switch-rail"
+          onClick={props.expand}
+          aria-label={`Pi · ${label}${home ? ` · ${home.name}` : ''} · 展开`}
+        >
+          <span className="pi-switch-rail-arrow" aria-hidden="true">
+            ↓
+          </span>
+          <span className="pi-switch-rail-label">Pi · {label}</span>
+          <span className="pi-switch-rail-home">{home?.name ?? '未选 home'}</span>
+        </button>
+        <div className="pi-switch-keep" hidden>
+          <Sidebar {...props} />
+        </div>
+      </>
     )
   }
 

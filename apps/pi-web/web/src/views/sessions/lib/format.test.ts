@@ -116,6 +116,16 @@ describe('groupSessions', () => {
     expect(groups[0].name).toBe('beta')
     expect(groupSessions([older, other], '不存在')).toEqual([])
   })
+
+  test('存活会话豁免日期筛选，搜索仍然生效', () => {
+    const yesterday = row({ id: 'old', projectKey: '/p1', projectName: 'p1', modified: 1 })
+    const today = row({ id: 'new', projectKey: '/p1', projectName: 'p1', modified: Date.now() })
+    const days = new Set([dayKey(Date.now())])
+    expect(groupSessions([yesterday, today], '', days).map((g) => g.sessions.map((s) => s.id))).toEqual([['new']])
+    const alive = new Set([yesterday.path])
+    expect(groupSessions([yesterday, today], '', days, alive).map((g) => g.sessions.map((s) => s.id))).toEqual([['new', 'old']])
+    expect(groupSessions([yesterday, today], '不存在', days, alive)).toEqual([])
+  })
 })
 
 describe('formatWhen', () => {
@@ -127,14 +137,15 @@ describe('formatWhen', () => {
 })
 
 describe('defaultFoldedGroups', () => {
-  test('第一组与含选中会话的组展开，其余收起', () => {
-    const groups = groupSessions([
-      row({ id: 'a', projectKey: '/p1', projectName: 'p1', modified: 300 }),
-      row({ id: 'b', projectKey: '/p2', projectName: 'p2', modified: 200 }),
-      row({ id: 'c', projectKey: '/p3', projectName: 'p3', modified: 100 }),
-    ])
-    expect([...defaultFoldedGroups(groups, null)]).toEqual(['/p2', '/p3'])
-    expect([...defaultFoldedGroups(groups, 'c')]).toEqual(['/p2'])
+  const groups = groupSessions([
+    row({ id: 'a', projectKey: '/p1', projectName: 'p1', modified: 300 }),
+    row({ id: 'b', projectKey: '/p2', projectName: 'p2', modified: 200 }),
+    row({ id: 'c', projectKey: '/p3', projectName: 'p3', modified: 100 }),
+  ])
+
+  test('只有含选中会话的组展开，其余收起', () => {
+    expect([...defaultFoldedGroups(groups, null)]).toEqual(['/p1', '/p2', '/p3'])
+    expect([...defaultFoldedGroups(groups, 'c')]).toEqual(['/p1', '/p2'])
     expect([...defaultFoldedGroups(groups, 'a')]).toEqual(['/p2', '/p3'])
   })
 })

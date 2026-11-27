@@ -17,6 +17,7 @@ import {
 } from './api'
 import { useSessions } from './hooks/useSessions'
 import { indexLiveByFile, type LiveSessionFeed, type LiveSessionInfo, type LiveSessionSource } from './live'
+import { todayKey, dayKey } from './lib/format'
 
 /**
  * 模块共享状态：根目录、搜索词、当前选中会话、关注的项目与服务配置。
@@ -69,6 +70,12 @@ export interface SessionsController {
   /** 选目录面板是否打开：面板渲染在工作区区域，那里有足够宽度放路径与目录树。 */
   picking: boolean
   setPicking: (picking: boolean) => void
+  /**
+   * 按日筛选选中的日历日（`YYYY-MM-DD`），空集表示不筛。默认只看今天。
+   * 放在共享状态里：跨模块跳转要往里加日期，换根目录要重置，侧栏折叠不能丢。
+   */
+  selectedDays: ReadonlySet<string>
+  setSelectedDays: (days: ReadonlySet<string> | ((current: ReadonlySet<string>) => ReadonlySet<string>)) => void
   pinnedProjects: string[]
   togglePin: (projectKey: string, pinned: boolean) => void
   deleteSession: (row: SessionRow) => void
@@ -88,9 +95,8 @@ export interface SessionsController {
   liveEnabled: boolean
   /** 打开某条会话（可按会话文件或 id 定位），会切根目录并放开日期筛选。 */
   openSession: (input: { root?: string; id?: string; sessionFile?: string }) => void
-  /** 命令跳转后要额外放开的日期；侧边栏消费一次后自行并入筛选。 */
-  focusDay: number | null
-  clearFocusDay: () => void
+  /** 存活会话（心跳在跳，含运行中与空闲）所在的会话文件路径。 */
+  alivePaths: ReadonlySet<string>
   /** 选中会话能否交给对话继续（宿主是否注入了 resumeSessionInChat）。 */
   canResumeInChat: boolean
   resumeInChat: () => Promise<void>
@@ -142,6 +148,7 @@ export function SessionsProvider({
   const [picking, setPicking] = useState(false)
   const [pinnedProjects, setPinnedProjects] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [selectedDays, setSelectedDaysState] = useState<ReadonlySet<string>>(() => new Set([todayKey()]))
   const [live, setLive] = useState<LiveSessionInfo[]>([])
   const [liveError, setLiveError] = useState<string | null>(null)
   /** 心跳插件是否检测到：未检测到时运行态功能整体关闭（不显示绿点）。 */
@@ -150,7 +157,6 @@ export function SessionsProvider({
     id?: string
     sessionFile?: string
   } | null>(null)
-  const [focusDay, setFocusDay] = useState<number | null>(null)
 
   const notify = useCallback(
     (next: Notice) => {
@@ -208,9 +214,25 @@ export function SessionsProvider({
     }
   }, [liveSource])
 
-  const liveByPath = useMemo(() => indexLiveByFile({ sessions: live, stale: 0, warnings: [], heartbeatDetected: liveEnabled, now: Date.now() }), [live, liveEnabled])
+  const liveByPath = useMemo(
+    () => indexLiveByFile({ sessions: live, stale: 0, warnings: [], heartbeatDetected: liveEnabled, now: Date.now() }),
+    [live, liveEnabled],
+  )
+  // 存活的会话豁免日期筛选：空闲挂着的会话不写盘，活动时间停在开它那天，
+  // 按「今天」筛会让昨晚开着今天还活着的会话从列表里消失。
+  const setSelectedDays = useCallback(
+    (update: ReadonlySet<string> | ((current: ReadonlySet<string>) => ReadonlySet<string>)) => {
+      setSelectedDaysState((current) =>
+        typeof update === 'function' ? update(current) : update,
+      )
+    },
+    [],
+  )
 
-  // 命令跳转：等列表到达后按会话文件优先、id 兜底选中，并记下要放开的日期。
+  const alivePaths = useMemo(() => new Set(liveByPath.keys()), [liveByPath])
+
+  // 命令跳转：等列表到达后按会话文件优先、id 兜底选中，并把它的日期并入筛选，
+  // 否则选中了却在列表里看不见。
   useEffect(() => {
     if (!pendingSelection || !listing) return
     const wanted = pendingSelection.sessionFile
@@ -225,7 +247,7 @@ export function SessionsProvider({
       return
     }
     setSelected(row)
-    setFocusDay(row.modified)
+    setSelectedDays((current) => new Set([...current, dayKey(row.modified)]))
     setPendingSelection(null)
   }, [listing, loading, pendingSelection, notify])
 
@@ -237,6 +259,8 @@ export function SessionsProvider({
       setSelected(null)
       setQuery('')
       setPicking(false)
+      // 换根目录回到只看今天：别的目录里选的日期对这里没有意义。
+      setSelectedDays(new Set([todayKey()]))
       setRootState(next)
     },
     [storageKey, notifyRootChange],
@@ -324,6 +348,8 @@ export function SessionsProvider({
     select: setSelected,
     picking,
     setPicking,
+    selectedDays,
+    setSelectedDays,
     pinnedProjects,
     togglePin,
     deleteSession,
@@ -339,8 +365,7 @@ export function SessionsProvider({
     liveError,
     liveEnabled,
     openSession,
-    focusDay,
-    clearFocusDay: () => setFocusDay(null),
+    alivePaths,
     canResumeInChat: Boolean(resumeSessionInChat),
     resumeInChat,
   }

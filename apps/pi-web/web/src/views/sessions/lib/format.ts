@@ -55,16 +55,18 @@ export function formatWhen(ms: number): string {
 }
 
 /**
- * 默认折叠哪些组：第一个组和包含选中会话的组展开，其余收起。
- * 会话可能有上千条，一次全展开会让侧栏长到无法扫读。
+ * 默认折叠哪些组：只有包含选中会话的组展开，其余收起。
+ * 会话可能有上千条，一次全展开会让侧栏长到无法扫读；而「展开第一组」在数据上
+ * 并不成立：全部项目按活动倒序，第一组可能是个几百条的一次性目录。
+ * 用户点过的组由调用方按用户选择覆盖。
  */
 export function defaultFoldedGroups(
   groups: readonly SessionGroup[],
   selectedId: string | null,
 ): Set<string> {
   const folded = new Set<string>()
-  groups.forEach((group, index) => {
-    const open = index === 0 || (selectedId !== null && group.sessions.some((row) => row.id === selectedId))
+  groups.forEach((group) => {
+    const open = selectedId !== null && group.sessions.some((row) => row.id === selectedId)
     if (!open) folded.add(group.key)
   })
   return folded
@@ -155,15 +157,19 @@ export function matchesDays(row: SessionRow, days: ReadonlySet<string>): boolean
 /**
  * 按项目分组：组按组内最新活动倒序，组内会话同样倒序，命不中搜索的会话和
  * 因此空掉的组都不出现。
+ *
+ * `alivePaths` 里的会话豁免日期筛选：空闲挂着的会话不写盘，活动时间停在开它那天，
+ * 但它今天还活着，按日期筛掉会让人以为它已经没了。搜索仍然照常生效。
  */
 export function groupSessions(
   rows: readonly SessionRow[],
   query = '',
   days: ReadonlySet<string> = new Set(),
+  alivePaths: ReadonlySet<string> = new Set(),
 ): SessionGroup[] {
   const groups = new Map<string, SessionGroup>()
   for (const row of rows) {
-    if (!matchesDays(row, days)) continue
+    if (!alivePaths.has(row.path) && !matchesDays(row, days)) continue
     if (!matchesQuery(row, query)) continue
     const group = groups.get(row.projectKey)
     if (group) {

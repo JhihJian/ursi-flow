@@ -94,6 +94,11 @@
   color: #1a1a1a;
 }
 
+/* 折叠时内层侧栏的藏身处：不占高度，不接收事件，只为保住它的状态。 */
+.pi-switch-keep {
+  display: none;
+}
+
 .pi-switch-rail-home {
   margin-left: auto;
   overflow: hidden;

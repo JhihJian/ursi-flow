@@ -30,6 +30,8 @@ export interface Listing {
   sessions: SessionRow[]
   pendingDetails: number
   truncated: boolean
+  /** 集合版本号，下次轮询带上它做未变更快路径。 */
+  revision: number
 }
 
 export interface SessionDetail extends SessionRow {
@@ -127,7 +129,8 @@ export class RequestError extends Error {
 export interface SessionsApi {
   baseUrl: string
   fetchConfig: () => Promise<ServerConfig>
-  fetchSessions: (root: string) => Promise<Listing>
+  /** `since` 等于服务端当前版本时返回 null，表示列表没变、沿用上一份。 */
+  fetchSessions: (root: string, since?: number) => Promise<Listing | null>
   fetchDetail: (root: string, id: string) => Promise<SessionDetail>
   fetchBrowse: (path: string) => Promise<BrowseResult>
   sessionTextUrl: (root: string, id: string) => string
@@ -144,8 +147,10 @@ export interface SessionsApi {
 export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
   const base = apiBaseUrl.replace(/\/+$/, '')
   /** 相对路径 + root 参数；拼前缀的动作只在 readJson / send / fetch 里做一次。 */
-  const withRoot = (path: string, root: string) =>
-    `${path}${path.includes('?') ? '&' : '?'}root=${encodeURIComponent(root)}`
+  const withRoot = (path: string, root: string, extra: Record<string, string> = {}) =>
+    `${path}${path.includes('?') ? '&' : '?'}root=${encodeURIComponent(root)}${Object.entries(extra)
+      .map(([key, value]) => `&${key}=${encodeURIComponent(value)}`)
+      .join('')}`
 
   async function readJson<T>(path: string): Promise<T> {
     const response = await fetch(`${base}${path}`, { headers: { Accept: 'application/json' } })
@@ -165,15 +170,21 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
   return {
     baseUrl: base,
     fetchConfig: () => readJson<ServerConfig>('/api/sessions/config'),
-    fetchSessions: async (root) => {
-      const payload = await readJson<{ sessions: SessionEntity[]; pendingDetails: number; truncated: boolean }>(
-        withRoot('/api/sessions', root),
-      )
+    fetchSessions: async (root, since) => {
+      const payload = await readJson<{
+        revision?: number
+        notModified?: boolean
+        sessions?: SessionEntity[]
+        pendingDetails?: number
+        truncated?: boolean
+      }>(withRoot('/api/sessions', root, since === undefined ? {} : { since: String(since) }))
+      if (payload.notModified) return null
       return {
         root,
-        sessions: payload.sessions.map(toRow),
+        sessions: (payload.sessions ?? []).map(toRow),
         pendingDetails: payload.pendingDetails ?? 0,
         truncated: payload.truncated ?? false,
+        revision: payload.revision ?? 0,
       }
     },
     fetchDetail: async (root, id) => {

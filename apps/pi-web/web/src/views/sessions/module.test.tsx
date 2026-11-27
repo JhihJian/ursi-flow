@@ -40,6 +40,7 @@ const LISTING: Listing = {
   sessions: [row()],
   pendingDetails: 0,
   truncated: false,
+  revision: 1,
 }
 
 /** 侧栏拿到的行由服务端实体投影而来；测试里把固定行包成实体。 */
@@ -203,9 +204,15 @@ describe('侧边栏', () => {
         </Provider>
       </WorkspaceProvider>,
     )
+    // 组默认折叠（只有选中会话所在的组展开），先点组头展开。
+    const head = container.querySelector('.session-group-head') as HTMLButtonElement
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => head.click())
     const items = [...container.querySelectorAll('.session-item')]
     expect(items.length).toBeGreaterThan(0)
     expect(items[0].textContent).toContain('第一条用户消息')
+    // 用户展开过的组按用户选择，不再回到默认折叠
+    expect(head.getAttribute('aria-expanded')).toBe('true')
 
     await act(async () => {
       ;(items[0] as HTMLButtonElement).click()
@@ -293,4 +300,54 @@ describe('选中同步', () => {
     )
     expect(container.querySelector('[data-testid="selection"]')?.textContent).toBe('todo.task:task-1')
   })
+})
+
+describe('侧边栏状态归属', () => {
+  const DAYS_AGO = 3
+  const OLD_ID = '01a20000-0000-7000-8000-00000000000b'
+
+  /** 挂载会话侧栏，返回模块命令与常用控件。 */
+  async function mountSidebar() {
+    const mod = createPiSessionsModule({ apiBaseUrl: '', initialRoot: '/sessions' })
+    const Provider = mod.Provider!
+    const Sidebar = mod.Sidebar
+    await render(
+      <Provider>
+        <Sidebar collapsed={false} collapse={() => {}} expand={() => {}} />
+      </Provider>,
+    )
+    return {
+      mod,
+      button: (label: string) =>
+        [...container.querySelectorAll('button')].find((item) => item.textContent === label) as HTMLButtonElement,
+      groups: () => [...container.querySelectorAll('.session-group-head')],
+      activeBars: () => container.querySelectorAll('.time-bar.active').length,
+    }
+  }
+
+  test('跨模块打开筛选之外的会话时，它的日期并入筛选', async () => {
+    const old = row({ id: OLD_ID, path: '/sessions/proj-a/old.jsonl', modified: Date.now() - DAYS_AGO * 86_400_000 })
+    server.listing = () => ({ ...LISTING, sessions: [row(), old], revision: 2 })
+    const view = await mountSidebar()
+    // 默认只看今天：只有今天那一根条是选中的，组里也只有今天那条。
+    expect(view.activeBars()).toBe(1)
+
+    await act(async () => {
+      await view.mod.commands.openSession({ id: OLD_ID })
+    })
+    // 三天前那一天被并进来，选中会话所在的组自动展开。
+    expect(view.activeBars()).toBe(2)
+    const group = view.groups()[0]
+    expect(group.getAttribute('aria-expanded')).toBe('true')
+    expect(container.querySelectorAll('.session-item')).toHaveLength(2)
+  })
+
+  test('「全部」清空日期筛选后条形全部不选中，「今天」回到默认', async () => {
+    const view = await mountSidebar()
+    await act(async () => view.button('全部').click())
+    expect(view.activeBars()).toBe(0)
+    await act(async () => view.button('今天').click())
+    expect(view.activeBars()).toBe(1)
+  })
+
 })
