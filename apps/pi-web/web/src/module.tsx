@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { WorkspaceModule } from '@ursi/workspace-shell'
 import { PiProvider, usePi } from './pi-context'
 import { PiSidebar } from './pi-sidebar'
@@ -136,16 +136,19 @@ function ChatBridge() {
 }
 
 /**
- * 会话视图的根目录：home 决定默认根，用户也可以显式换成任意目录（外部目录）。
- * 只做单向同步：根目录不回写 home。
+ * home 决定会话列表的默认根：home 一变就把根设成它的 sessions/。
+ * 只在 home 变化的那一刻动，之后根是用户的事：用户切成任意外部目录不会被拉回来。
  */
 function SessionsBridge() {
-  const { sessionsRoot } = usePi()
-  const { root, setRoot } = useSessionsController()
+  const { homePath, sessionsRoot } = usePi()
+  const { setRoot } = useSessionsController()
+  const lastHome = useRef(homePath)
 
   useEffect(() => {
-    if (sessionsRoot && root !== sessionsRoot) setRoot(sessionsRoot)
-  }, [sessionsRoot, root, setRoot])
+    if (!sessionsRoot || lastHome.current === homePath) return
+    lastHome.current = homePath
+    setRoot(sessionsRoot)
+  }, [homePath, sessionsRoot, setRoot])
 
   return null
 }

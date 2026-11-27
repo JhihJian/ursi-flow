@@ -40,10 +40,6 @@ export interface SessionsControllerOptions {
   storageKey?: string
   /** 初始根目录：传了就优先于本地记忆，用于外部指定某个会话集合。 */
   initialRoot?: string
-  /** 宿主指定的根目录（合并后由当前 pi home 派生），变化后跟随。 */
-  root?: string
-  /** 用户切根目录时通知宿主，保证同一份真源。 */
-  onRootChange?: (root: string) => void
   /** 从 URL 的 ?root= 读取初始根目录；独立入口打开，嵌入工作区时关闭。 */
   readRootFromUrl?: boolean
   /** 关注/删除失败等需要用户看见的提示。缺省写进模块内的提示位。 */
@@ -251,10 +247,8 @@ export function SessionsProvider({
     setPendingSelection(null)
   }, [listing, loading, pendingSelection, notify])
 
-  const notifyRootChange = options.onRootChange
   const setRoot = useCallback(
     (next: string) => {
-      notifyRootChange?.(next)
       rememberRoot(storageKey, next)
       setSelected(null)
       setQuery('')
@@ -263,15 +257,10 @@ export function SessionsProvider({
       setSelectedDays(new Set([todayKey()]))
       setRootState(next)
     },
-    [storageKey, notifyRootChange],
+    [storageKey],
   )
 
-  // 宿主给的根是唯一真源：home 一变就跟随（外部目录仍可手动改成任意路径）。
-  const externalRoot = options.root
-  useEffect(() => {
-    if (!externalRoot || externalRoot === root) return
-    setRootState(externalRoot)
-  }, [externalRoot, root])
+  // 宿主不再注入根：home 变化时由组合根调一次 setRoot，之后根是用户的事。
 
   /** 跨模块命令用：切根目录 + 等列表到达后选中目标会话。 */
   const openSession = useCallback(

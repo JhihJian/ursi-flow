@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { WorkspaceProvider } from '@ursi/workspace-shell'
 import { createPiModule } from './module'
+import { useSessionsController } from './views/sessions/sessions-context'
 
 /**
  * 合并模块的装配测试：一个模块、三个视图、一份 home。
@@ -161,5 +162,42 @@ describe('Pi Web 模块', () => {
     await settle()
     expect(localStorage.getItem('ursi.pi:view')).toBe('sessions')
     expect(localStorage.getItem('ursi.pi:home')).toBe(HOME.path)
+  })
+})
+
+describe('会话根目录跟随 home', () => {
+  /** 在 Provider 内读会话根并写进 DOM，不改产品代码。 */
+  function RootProbe() {
+    const { root, setRoot } = useSessionsController()
+    return (
+      <>
+        <span data-testid="root">{root ?? 'none'}</span>
+        <button type="button" data-testid="pick" onClick={() => setRoot('/elsewhere')}>
+          选外部目录
+        </button>
+      </>
+    )
+  }
+
+  test('用户选了外部目录后，home 没变就不会被拉回 sessionsRoot', async () => {
+    const Provider = MODULE.Provider!
+    await act(async () => {
+      root.render(
+        <WorkspaceProvider>
+          <Provider>
+            <RootProbe />
+          </Provider>
+        </WorkspaceProvider>,
+      )
+    })
+    await settle()
+    expect(container.querySelector('[data-testid="root"]')?.textContent).toBe(HOME.sessionsRoot)
+
+    const pick = container.querySelector('[data-testid="pick"]') as HTMLButtonElement
+    await act(async () => pick.click())
+    // 多走几轮 effect：以前 SessionsBridge 的依赖里有 root，这里会被拉回去。
+    await settle()
+    await settle()
+    expect(container.querySelector('[data-testid="root"]')?.textContent).toBe('/elsewhere')
   })
 })
