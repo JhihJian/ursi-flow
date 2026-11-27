@@ -115,6 +115,32 @@ describe('buildTaskGraph', () => {
     expect(shown.has('orphan-child')).toBe(false)
   })
 
+  it('keeps the whole subtree of a finished parent linked to an open task', () => {
+    const tasks = [
+      task('open'),
+      task('done-parent', { status: 'done', pre_id: 'open' }),
+      task('done-child', { status: 'done', parent_id: 'done-parent' }),
+      task('pending-grandchild', { parent_id: 'done-child' }),
+      task('pending-branch', { parent_id: 'done-parent' }),
+      task('detached', { status: 'done' }),
+      task('detached-child', { status: 'cancelled', parent_id: 'detached' }),
+    ]
+    const layout = buildTaskGraph(tasks)
+
+    // 已完成的父任务作为前置出现在图里，它的子任务树跟着一起显示。
+    expect(layout.nodes.map((node) => node.id).sort()).toEqual([
+      'done-child',
+      'done-parent',
+      'open',
+      'pending-branch',
+      'pending-grandchild',
+    ])
+    expect(layout.edges.map((edge) => `${edge.from}->${edge.to}`)).toEqual(['open->done-parent'])
+    const shown = new Set(layout.nodes.map((node) => node.id))
+    expect(shown.has('detached')).toBe(false)
+    expect(shown.has('detached-child')).toBe(false)
+  })
+
   it('ignores references to tasks that are not part of the graph', () => {
     const layout = buildTaskGraph([task('a', { pre_id: 'missing', parent_id: 'other-project' })])
     expect(layout.nodes.map((node) => node.id)).toEqual(['a'])

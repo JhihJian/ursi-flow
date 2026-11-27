@@ -1270,12 +1270,12 @@
   color: var(--gray-400);
 }
 
-/* 记录与结果两个独立的 Markdown 编辑区，各占一半高度。 */
+/* 记录与结果两个独立的 Markdown 编辑区，左右并排，各占一半宽度。 */
 .detail-fields {
   display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: var(--space-sm);
+  flex-direction: row;
+  gap: var(--space-lg);
   min-height: 0;
   padding-top: var(--space-xs);
 }
@@ -1283,13 +1283,21 @@
 .detail-field {
   display: flex;
   flex: 1;
+  flex-basis: 0;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
+.detail-field + .detail-field {
+  border-left: 1px solid var(--gray-200);
+  padding-left: var(--space-lg);
+}
+
 .detail-field-label {
   flex: none;
+  margin-bottom: var(--space-xs);
   color: var(--gray-400);
   font-size: 11px;
   letter-spacing: 0.08em;

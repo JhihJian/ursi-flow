@@ -89,7 +89,8 @@ export function isOpenTask(task: Task): boolean {
 /**
  * 默认只画未结束的任务。已完成或已取消的任务只在直接挂到未结束任务上时保留：
  * 否则完成一个前置任务后，后续任务的来龙去脉就从图里消失了。
- * 只认直接相邻的一层，避免顺着已结束任务把整条历史链拖进图里。
+ * 被保留的已结束任务连同它可见范围内的整棵子树一起画出，
+ * 不把孤立的历史分支拖进图里。
  */
 export function buildTaskGraph(
   tasks: Task[],
@@ -107,6 +108,22 @@ export function buildTaskGraph(
   for (const task of open) {
     if (task.parent_id) keep.add(task.parent_id)
     if (task.pre_id) keep.add(task.pre_id)
+  }
+
+  // 已结束的分组里也许还挂着未结束的子任务，这些子任务要跟着父分组一起保留；
+  // 子树逐层级联，直到没有新增为止。
+  const taskById = new Map(tasks.map((task) => [task.id, task]))
+  for (;;) {
+    let added = false
+    for (const [childId, task] of taskById) {
+      if (keep.has(childId)) continue
+      const parent = task.parent_id
+      if (parent && keep.has(parent) && !openIds.has(parent)) {
+        keep.add(childId)
+        added = true
+      }
+    }
+    if (!added) break
   }
 
   const shown = tasks.filter((task) => keep.has(task.id))
