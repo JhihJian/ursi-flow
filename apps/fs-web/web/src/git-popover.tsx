@@ -176,8 +176,9 @@ export function GitPopover({
     setPosition({ left, top, height })
   }, [state, container])
 
+  // 只有弹层真正渲染出来才挂监听：容器尚未挂载时弹层不可见，Esc 不该触发 onClose。
   useEffect(() => {
-    if (!state) return
+    if (!state || !position) return
     const onPointerDown = (event: PointerEvent): void => {
       if (ref.current?.contains(event.target as Node)) return
       if (state.anchor.contains(event.target as Node)) return // 点锚点本身交给 chip 的 toggle
@@ -201,7 +202,7 @@ export function GitPopover({
       window.removeEventListener('resize', close)
       window.removeEventListener('scroll', onScroll, true)
     }
-  }, [state])
+  }, [state, position])
 
   if (!state || !container || !position) return null
 
