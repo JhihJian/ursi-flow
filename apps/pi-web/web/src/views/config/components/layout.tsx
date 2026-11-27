@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useAppStore } from '../store/app-store'
 
 /**
  * 分区布局骨架：左列表 + 右详情 + 底部状态行，对齐开源 pi-web 设置页的
@@ -111,11 +112,23 @@ export function SectionDetailHead({
   )
 }
 
-/** 底部状态行：左侧提示文字，右侧动作或说明。 */
+/**
+ * 底部状态行：左侧提示文字 + 当前写操作状态，右侧动作或说明。
+ *
+ * 写操作状态（runWrite 写入 store 的 busy/ok/error）在这里统一渲染：
+ * 独立入口的全局 footer 随旧 App.tsx 移除后，这里是唯一显示位置。
+ */
 export function SectionFooterNote({ note, aside }: { note?: ReactNode; aside?: ReactNode }) {
+  const footer = useAppStore((s) => s.footer)
   return (
     <>
-      {note ? <span className="footer-msg">{note}</span> : null}
+      {footer.message ? (
+        <span className={`footer-msg ${footer.kind === 'ok' ? 'ok' : footer.kind === 'error' ? 'error' : ''}`}>
+          {footer.message}
+        </span>
+      ) : note ? (
+        <span className="footer-msg">{note}</span>
+      ) : null}
       <span className="spacer" />
       {aside}
     </>
