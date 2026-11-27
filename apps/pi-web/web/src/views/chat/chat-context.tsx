@@ -23,7 +23,7 @@ import {
  * home、当前会话与新对话的目录由组合根注入（PiProvider 与 PiNav），本模块只跟随。
  *
  * 没有单独的「新建空对话」动作：发出第一条消息时才建会话，建完立刻接上事件流，
- * 因此不会留下没有消息的会话文件。
+ * 因此不会留下没有消息的会话文件。页面只有一个输入框，发消息只走 submit 一处。
  */
 
 export interface Notice {
@@ -65,11 +65,11 @@ export interface ChatControllerOptions {
   managerApiBaseUrl?: string
   /** 当前 pi home，由组合根注入。 */
   home: string
-  /** 会话页指向的会话文件；不在会话页时为 null。由 PiNav 注入。 */
-  sessionFile: string | null
+  /** 会话页指向的会话 id；空会话页时为 null。由 PiNav 注入。 */
+  sessionId: string | null
   /** 新对话的工作目录，由 PiNav 注入；为 null 时发送禁用。 */
   cwd: string | null
-  /** 新对话建好后通知宿主切到会话页。 */
+  /** 新对话建好后通知宿主：页面原地填上它的 id。 */
   onChatCreated: (chat: ChatInfo) => void
   /** 需要用户看见的提示（宿主可接管）。 */
   onNotice?: (notice: Notice) => void
@@ -89,7 +89,7 @@ export interface ChatController {
 
   /** 本进程装配过的对话。 */
   chats: ChatInfo[]
-  /** 会话页指向的那条；还没装配或不在会话页时为 null。 */
+  /** 会话页指向的那条；空会话页或还没装配时为 null。 */
   active: ChatInfo | null
 
   transcript: string
@@ -120,13 +120,14 @@ export interface ChatController {
   sending: boolean
 
   submit: (text: string, mode?: 'steer' | 'followUp') => Promise<SubmitResult>
-  /** 在会话页发消息前先装配运行时；home 由服务端按文件反查。 */
-  resume: (sessionFile: string) => Promise<ChatInfo | null>
+  /** 在会话页发消息前先装配运行时；home 由服务端按实体归属取，只传 sessionId。 */
+  resume: (sessionId: string) => Promise<ChatInfo | null>
   abort: () => Promise<string>
   switchModel: (provider: string, modelId: string, thinkingLevel?: string) => Promise<void>
   setThinkingLevel: (level: string) => Promise<void>
   answer: (requestId: string, value: unknown) => Promise<void>
-  close: () => Promise<void>
+  /** 释放某条会话的运行时，保留文件；页面不变，会话退回只读。 */
+  evict: (sessionId: string) => Promise<void>
 }
 
 const EMPTY_DRAFT: ChatDraft = { model: '', thinkingLevel: '' }
@@ -181,14 +182,14 @@ export function ChatProvider({
     [options.onNotice],
   )
 
-  // 当前会话 = 会话页指向的文件对应的运行时；不在会话页时为 null。
-  // 刚建的对话 sessionFile 还是 null，PiNav 先用它的 sessionId 记页，按 id 兜底匹配。
+  // 当前会话 = 会话页指向的实体对应的运行时；空会话页时为 null。
+  // 路由键是 sessionId，createChat 的响应就带它，建完立刻就能对上。
   const active = useMemo(
     () =>
-      options.sessionFile === null
+      options.sessionId === null
         ? null
-        : (chats.find((chat) => chat.sessionFile === options.sessionFile) ?? null),
-    [chats, options.sessionFile],
+        : (chats.find((chat) => chat.sessionId === options.sessionId) ?? null),
+    [chats, options.sessionId],
   )
   const activeId = active?.sessionId ?? null
   const activeModel = useMemo(
@@ -204,8 +205,8 @@ export function ChatProvider({
 
   // 轮询是异步的：刚建好的对话可能在某个早已发出的列表请求里还没有，
   // 因此合并时保留会话页那一条，不让它被旧响应冲掉。
-  const activeFileRef = useRef<string | null>(null)
-  activeFileRef.current = options.sessionFile
+  const activeIdRef = useRef<string | null>(null)
+  activeIdRef.current = options.sessionId
 
   // ---- home 与可选项 -------------------------------------------------------
 
@@ -258,7 +259,7 @@ export function ChatProvider({
         const known = new Set(listing.chats.map((chat) => chat.sessionId))
         // 会话页那一条可能还没出现在列表里，保留它。
         const keep = current.filter(
-          (chat) => !known.has(chat.sessionId) && chat.sessionFile === activeFileRef.current,
+          (chat) => !known.has(chat.sessionId) && chat.sessionId === activeIdRef.current,
         )
         return [...listing.chats, ...keep]
       })
@@ -282,10 +283,10 @@ export function ChatProvider({
   }, [])
 
   // 离开或切换会话页：流式片段属于上一条，整份清掉。
-  const lastFile = useRef(options.sessionFile)
+  const lastSession = useRef(options.sessionId)
   useEffect(() => {
-    if (lastFile.current === options.sessionFile) return
-    lastFile.current = options.sessionFile
+    if (lastSession.current === options.sessionId) return
+    lastSession.current = options.sessionId
     setTranscript('')
     setPartial('')
     setThinking('')
@@ -297,7 +298,7 @@ export function ChatProvider({
     setRetry(null)
     setCompacting(false)
     setConnectionLost(false)
-  }, [options.sessionFile])
+  }, [options.sessionId])
 
   // ---- 事件流 -------------------------------------------------------------
 
@@ -492,6 +493,22 @@ export function ChatProvider({
 
   // ---- 建立对话与收发 -----------------------------------------------------
 
+  const resume = useCallback(
+    async (sessionId: string): Promise<ChatInfo | null> => {
+      try {
+        const chat = await api.createChat({ sessionId })
+        setChats((current) => [chat, ...current.filter((item) => item.sessionId !== chat.sessionId)])
+        setError(null)
+        if (chat.fallbackMessage) notify({ kind: 'info', message: chat.fallbackMessage })
+        return chat
+      } catch (failure) {
+        notify({ kind: 'error', message: errorText(failure) })
+        return null
+      }
+    },
+    [api, notify],
+  )
+
   const submit = useCallback(
     async (text: string, mode?: 'steer' | 'followUp'): Promise<SubmitResult> => {
       const content = text.trim()
@@ -499,29 +516,35 @@ export function ChatProvider({
       setError(null)
       setSending(true)
       try {
-        let target = active
+        let target: ChatInfo | null = active
         if (!target) {
-          if (!home) return { ok: false, message: '先选择一份 pi home' }
-          const cwd = options.cwd?.trim()
-          if (!cwd) return { ok: false, message: '先在左侧点选一个目录' }
-          const model = pickModel(chatOptions, draft.model)
-          const thinkingLevel = pickThinking(chatOptions, model, draft.thinkingLevel)
-          target = await api.createChat({
-            home,
-            cwd,
-            ...(model ? { model } : {}),
-            ...(thinkingLevel ? { thinkingLevel } : {}),
-          })
-          setChats((current) => [
-            target as ChatInfo,
-            ...current.filter((chat) => chat.sessionId !== target?.sessionId),
-          ])
-          setTranscript('')
-          if (target.fallbackMessage) notify({ kind: 'info', message: target.fallbackMessage })
-          // 先让事件流接上，再发首条消息：session_start 的确认框需要订阅者。
-          // 页面此时已经切到这条会话（按 sessionId），activeId 有了才会开事件流。
-          options.onChatCreated(target)
-          await waitForStream(streamReadyRef, target.sessionId)
+          if (options.sessionId) {
+            // 会话页指向一条还没装配的会话：续聊就是同一条实体上 load，不新建。
+            target = await resume(options.sessionId)
+            if (!target) return { ok: false, message: '装配运行时失败' }
+          } else {
+            if (!home) return { ok: false, message: '先选择一份 pi home' }
+            const cwd = options.cwd?.trim()
+            if (!cwd) return { ok: false, message: '先在左侧点选一个目录' }
+            const model = pickModel(chatOptions, draft.model)
+            const thinkingLevel = pickThinking(chatOptions, model, draft.thinkingLevel)
+            target = await api.createChat({
+              home,
+              cwd,
+              ...(model ? { model } : {}),
+              ...(thinkingLevel ? { thinkingLevel } : {}),
+            })
+            setChats((current) => [
+              target as ChatInfo,
+              ...current.filter((chat) => chat.sessionId !== target?.sessionId),
+            ])
+            setTranscript('')
+            if (target.fallbackMessage) notify({ kind: 'info', message: target.fallbackMessage })
+            // 页面原地填上 id，事件流随之接上；首条消息等它握上手再发，
+            // session_start 的确认框需要订阅者。
+            options.onChatCreated(target)
+            await waitForStream(streamReadyRef, target.sessionId)
+          }
         }
         const streamingNow = target.isStreaming || target.state === 'running'
         await api.promptChat(
@@ -538,7 +561,7 @@ export function ChatProvider({
         setSending(false)
       }
     },
-    [active, api, chatOptions, draft, home, notify, options],
+    [active, api, chatOptions, draft, home, notify, options, resume],
   )
 
   const abort = useCallback(async (): Promise<string> => {
@@ -592,39 +615,30 @@ export function ChatProvider({
     [activeId, api],
   )
 
-  const resume = useCallback(
-    async (sessionFile: string): Promise<ChatInfo | null> => {
+  /** 释放运行时，文件不动。会话页正指着它时才清流式片段；释放别的会话不动页面。 */
+  const evict = useCallback(
+    async (sessionId: string) => {
       try {
-        const chat = await api.createChat({ sessionFile })
-        setChats((current) => [chat, ...current.filter((item) => item.sessionId !== chat.sessionId)])
-        setError(null)
-        if (chat.fallbackMessage) notify({ kind: 'info', message: chat.fallbackMessage })
-        return chat
+        await api.closeChat(sessionId)
       } catch (failure) {
-        notify({ kind: 'error', message: errorText(failure) })
-        return null
+        notify({ kind: 'error', message: `释放运行时失败：${errorText(failure)}` })
+        return
       }
+      setChats((current) => current.filter((item) => item.sessionId !== sessionId))
+      if (sessionId !== activeId) {
+        void refreshChats()
+        return
+      }
+      setStreaming(false)
+      setPartial('')
+      setThinking('')
+      setRunningTools([])
+      setPending(0)
+      setUiRequests([])
+      void refreshChats()
     },
-    [api, notify],
+    [activeId, api, notify, refreshChats],
   )
-
-  const close = useCallback(async () => {
-    if (!activeId) return
-    const id = activeId
-    try {
-      await api.closeChat(id)
-    } catch {
-      /* 关闭失败也把本地状态清掉 */
-    }
-    setChats((current) => current.filter((item) => item.sessionId !== id))
-    setStreaming(false)
-    setPartial('')
-    setThinking('')
-    setRunningTools([])
-    setPending(0)
-    setUiRequests([])
-    void refreshChats()
-  }, [activeId, api, refreshChats])
 
   // ---- 新对话的模型与思考级别 ---------------------------------------------
 
@@ -671,7 +685,7 @@ export function ChatProvider({
     switchModel,
     setThinkingLevel,
     answer,
-    close,
+    evict,
   }
 
   return <ChatContext.Provider value={controller}>{children}</ChatContext.Provider>

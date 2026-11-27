@@ -443,10 +443,11 @@ export interface ChatOptions {
   catalogFetchedAt: number | null
 }
 
+/** 建会话：传 home 与 cwd 是新建，只传 sessionId 是在已有实体上装配运行时（续聊）。 */
 export interface ChatCreateInput {
   home?: string
   cwd?: string
   model?: string
   thinkingLevel?: string
-  sessionFile?: string
+  sessionId?: string
 }

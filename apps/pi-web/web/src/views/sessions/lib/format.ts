@@ -64,11 +64,11 @@ export function formatWhen(ms: number): string {
  */
 export function defaultFoldedGroups(
   groups: readonly SessionGroup[],
-  activeFile: string | null,
+  activeId: string | null,
 ): Set<string> {
   const folded = new Set<string>()
   groups.forEach((group) => {
-    const open = activeFile !== null && group.sessions.some((row) => row.path === activeFile)
+    const open = activeId !== null && group.sessions.some((row) => row.id === activeId)
     if (!open) folded.add(group.key)
   })
   return folded

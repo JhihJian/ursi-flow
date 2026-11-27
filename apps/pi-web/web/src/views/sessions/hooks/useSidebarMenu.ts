@@ -5,9 +5,12 @@ import { sessionTitle } from '../lib/format'
 import type { MenuItem, MenuState } from '../components/ContextMenu'
 
 interface MenuActions {
-  open: (row: SessionRow) => void
   deleteSession: (row: SessionRow) => void
   togglePin: (projectKey: string, pinned: boolean) => void
+  /** 释放本进程装配的运行时，文件不动。 */
+  evictSession: (sessionId: string) => void
+  /** 本进程装配过的会话 id：只有这些行才能释放运行时。 */
+  localSessionIds: ReadonlySet<string>
 }
 
 /**
@@ -15,7 +18,7 @@ interface MenuActions {
  *
  * 确认层要落在刚才菜单的位置上，但那时菜单 state 已经清空，所以坐标另存一份。
  */
-export function useSidebarMenu({ open, deleteSession, togglePin }: MenuActions) {
+export function useSidebarMenu({ deleteSession, togglePin, evictSession, localSessionIds }: MenuActions) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuAt = useRef({ x: 0, y: 0 })
 
@@ -58,21 +61,27 @@ export function useSidebarMenu({ open, deleteSession, togglePin }: MenuActions) 
     [deleteSession],
   )
 
-  /** 会话行右键：打开、复制标识与路径、删除。 */
+  /** 会话行右键：复制标识与路径、释放运行时（仅本进程装配过的）、删除。打开就是单击行，不重复给。 */
   const sessionMenu = useCallback(
     (event: ReactMouseEvent, row: SessionRow) => {
+      const assembled = localSessionIds.has(row.id)
       openMenu(
         event,
         [
-          { label: '打开', onSelect: () => open(row) },
           { label: '复制会话 ID', onSelect: () => void navigator.clipboard?.writeText(row.id) },
           { label: '复制文件路径', onSelect: () => void navigator.clipboard?.writeText(row.path) },
+          {
+            label: '释放运行时',
+            onSelect: () => evictSession(row.id),
+            disabled: !assembled,
+            reason: '这条会话没有本进程的运行时',
+          },
           { label: '删除会话…', danger: true, onSelect: () => confirmDelete(row) },
         ],
         sessionTitle(row),
       )
     },
-    [openMenu, open, confirmDelete],
+    [openMenu, confirmDelete, evictSession, localSessionIds],
   )
 
   const close = useCallback(() => setMenu(null), [])

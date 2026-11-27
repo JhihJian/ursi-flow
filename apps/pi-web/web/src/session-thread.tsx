@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { parsePiJsonl, TrajectoryViewer } from 'pi-agent-trajectory-viewer'
 import { useChatController } from './views/chat/chat-context'
+import { usePi } from './pi-context'
 import { usePiNav } from './pi-nav'
 import { errorText, useSessionsController } from './views/sessions/sessions-context'
 import { formatBytes, formatWhen, sessionTitle } from './views/sessions/lib/format'
@@ -14,8 +15,11 @@ type ReadOnly =
   | { status: 'error'; message: string }
 
 /**
- * 会话页：一条会话的轨迹与输入框。只读轨迹与续聊是同一页面的两种模式：
- * 没装配运行时时从磁盘读文件，装配后改用事件流里的权威 transcript，两者是同一份数据。
+ * 会话页：应用里唯一的工作区页面（配置页除外）。`sessionId` 为空是空会话页，
+ * 发首条消息才建会话，建完原地填上 id，不换页、不重挂输入框。
+ *
+ * 只读轨迹与续聊是同一页面的两种模式：没装配运行时时从磁盘读文件，
+ * 装配后改用事件流里的权威 transcript，两者是同一份数据。
  */
 
 type Parsed = { ok: true; value: ReturnType<typeof parsePiJsonl> } | { ok: false; message: string }
@@ -50,17 +54,19 @@ function userText(content: unknown): string | null {
   return text || null
 }
 
-export function SessionThread({ sessionFile }: { sessionFile: string }) {
-  const { setCwd } = usePiNav()
+export function SessionThread({ sessionId }: { sessionId: string | null }) {
+  const { cwd: navCwd, setCwd } = usePiNav()
+  const { home } = usePi()
   const { root, listing, api } = useSessionsController()
   const chat = useChatController()
-  const live = chat.active?.sessionFile === sessionFile
+  // 页面指向的会话已经装配：事件流里的 transcript 就是权威。
+  const live = sessionId !== null && chat.active?.sessionId === sessionId
 
   const row = useMemo(
-    () => listing?.sessions.find((item) => item.path === sessionFile) ?? null,
-    [listing, sessionFile],
+    () => (sessionId === null ? null : (listing?.sessions.find((item) => item.id === sessionId) ?? null)),
+    [listing, sessionId],
   )
-  // 会话的 cwd 就是新对话的默认目录：从这条会话点「新对话」时不用再选。
+  // 会话的 cwd 就是空会话页的默认目录：从这条会话点「+ 新对话」时不用再选。
   useEffect(() => {
     if (row) setCwd(row.cwd)
   }, [row, setCwd])
@@ -73,7 +79,7 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
   // 只依赖会话路径：列表轮询会换 row 对象引用，跟着重拉没有意义。
   const rowId = row?.id
 
-  // 只读加载：没装配运行时、列表里有这条会话时才读文件；装配后不再触发。
+  // 只读加载：没装配运行时、列表里有这条会话时才读文件；装配后不再触发。空会话页没有文件。
   const loadReadOnly = useCallback(() => {
     if (live || !rowId || !root) {
       setReadOnly({ status: 'idle' })
@@ -148,8 +154,6 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
     uiRequests,
     answer,
     abort,
-    close,
-    resume,
     streaming,
   } = chat
 
@@ -163,13 +167,11 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
 
   const composerRef = useRef<ComposerHandle | null>(null)
 
-  async function end() {
-    await close()
-  }
-
   // 标题：列表行有首条消息可退；刚建的对话还没落盘，从流式 transcript 里取首条用户消息。
-  const title = row ? sessionTitle(row) : chat.active?.name ?? firstUserText(parsed) ?? chat.active?.sessionId.slice(0, 12) ?? ''
-  const cwd = row?.cwd ?? chat.active?.cwd ?? ''
+  const title = row
+    ? sessionTitle(row)
+    : chat.active?.name ?? firstUserText(parsed) ?? (sessionId ? chat.active?.sessionId.slice(0, 12) ?? '会话' : '新对话')
+  const cwd = row?.cwd ?? chat.active?.cwd ?? (sessionId ? '' : (navCwd ?? ''))
   const stats = parsed?.ok ? parsed.value.stats : null
 
   return (
@@ -177,7 +179,11 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
       <header className="pichat-bar">
         <span className="pichat-bar-title">{title}</span>
         <span className="pichat-bar-meta" title={cwd}>
-          {cwd}
+          {sessionId === null && !cwd
+            ? home
+              ? `${home.name} · 点左侧一个目录`
+              : '未选 pi home'
+            : cwd}
         </span>
         {live && chat.active ? (
           <span className={`pichat-bar-meta pichat-state is-${chat.active.state}`}>
@@ -190,14 +196,11 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
               停止
             </button>
           ) : null}
-          {!live ? (
+          {sessionId !== null && !live ? (
             <button type="button" className="rail-toggle" title="重新读取会话" onClick={reload}>
               <RefreshIcon />
             </button>
           ) : null}
-          <button type="button" className="pichat-button is-sm" onClick={() => void end()}>
-            结束
-          </button>
         </span>
       </header>
 
@@ -251,13 +254,22 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
           </div>
         ) : (
           <div className="pichat-center">
-            <p>{live ? '发一条消息开始这段对话。' : '在下面发消息就在这条会话里继续。'}</p>
-            {row ? (
-              <p className="pichat-hint">
-                {formatBytes(row.size)} · {formatWhen(row.modified)}
-                {stats ? ` · ${stats.turns} 轮 · ${stats.messages} 条消息 · ${stats.tools} 次工具调用` : ''}
-              </p>
-            ) : null}
+            {sessionId === null ? (
+              <>
+                <p>{cwd ? `工作目录 ${cwd}` : '在左侧点一个目录，或者点一条会话。'}</p>
+                <p className="pichat-hint">模型与思考级别在下面选，发出第一条消息才建会话。</p>
+              </>
+            ) : (
+              <>
+                <p>{live ? '发一条消息开始这段对话。' : '在下面发消息就在这条会话里继续。'}</p>
+                {row ? (
+                  <p className="pichat-hint">
+                    {formatBytes(row.size)} · {formatWhen(row.modified)}
+                    {stats ? ` · ${stats.turns} 轮 · ${stats.messages} 条消息 · ${stats.tools} 次工具调用` : ''}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         )}
 
@@ -296,16 +308,8 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
 
       {live && uiRequests[0] ? <UiRequestPanel uiRequests={uiRequests} answer={answer} /> : null}
 
-      <Composer
-        ref={composerRef}
-        key={sessionFile}
-        mode={live ? 'session' : 'draft'}
-        beforeSubmit={async () => {
-          if (live) return { ok: true }
-          const resumed = await resume(sessionFile)
-          return resumed ? { ok: true } : { ok: false, message: '装配运行时失败' }
-        }}
-      />
+      {/* 不按会话建键：从空会话页到建完对话，输入框是同一个，用户正在打的字不丢。 */}
+      <Composer ref={composerRef} sessionId={sessionId} />
     </div>
   )
 }

@@ -9,7 +9,6 @@ import { createPrefs } from './prefs.ts'
 import { deleteSessionFile } from './delete.ts'
 import { localPathOf } from '../shared/locate.ts'
 import {
-  findByPath,
   getEntity,
   listEntities,
   removeEntity,
@@ -192,4 +191,4 @@ export async function createSessionService(): Promise<SessionService> {
   }
 }
 
-export { findByPath, getEntity }
+export { getEntity }

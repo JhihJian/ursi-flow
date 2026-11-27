@@ -1,6 +1,8 @@
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
+import { useMemo } from 'react'
 import { usePi } from './pi-context'
 import { usePiNav } from './pi-nav'
+import { useChatController } from './views/chat/chat-context'
 import type { SessionRow } from './views/sessions/api'
 import { HomeList } from './views/config/components/Nav'
 import { SessionsPanel } from './views/sessions/components/SessionsPanel'
@@ -14,11 +16,16 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
   const { home, loading, error } = usePi()
   const { page, cwd, setCwd, toDraft, toSession, toConfig } = usePiNav()
 
-  const activeFile = page.kind === 'session' ? page.sessionFile : null
+  // 会话页指向的会话 id：侧栏高亮按它比对，路由键只用 sessionId。
+  const activeId = page.kind === 'session' ? page.id : null
+  // 会话页的入口只有这一个：点行。右键菜单不再重复给「打开」。
   const open = (row: SessionRow) => {
     setCwd(row.cwd)
-    toSession(row.path)
+    toSession(row.id)
   }
+  // 释放运行时是 chat 的动作、会话行的菜单项：组合根把两端接上，子模块不互相 import。
+  const { chats, evict } = useChatController()
+  const assembledIds = useMemo(() => new Set(chats.map((chat) => chat.sessionId)), [chats])
 
   const items = home ? [{ label: 'home', value: home.name }] : []
 
@@ -39,7 +46,14 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
           </div>
         </div>
         <div className="pi-sidebar-sessions">
-          <SessionsPanel activeFile={activeFile} cwd={cwd} onPickDir={setCwd} onOpen={open} />
+          <SessionsPanel
+            activeId={activeId}
+            cwd={cwd}
+            onPickDir={setCwd}
+            onOpen={open}
+            onEvict={(id) => void evict(id)}
+            assembledIds={assembledIds}
+          />
         </div>
         <div className="pi-sidebar-foot">
           <button type="button" className="pichat-button is-sm" onClick={toDraft}>

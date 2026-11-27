@@ -7,9 +7,9 @@ import { uriOf } from '../shared/locate.ts'
 import { homes, requireHome } from '../config/registry.ts'
 import { MAX_TEXT_BYTES, SESSIONS_ROOT } from '../config.ts'
 import {
+  capabilitiesOf,
   collectionCursor,
   originOfRoot,
-  findByPath,
   getEntity,
   homeOrigin,
   listEntities,
@@ -146,19 +146,24 @@ route('PUT', '/api/sessions/prefs', 'none', async ({ body }) => {
   return { pinnedProjects: result.pinnedProjects }
 })
 
-async function resolveHomeForCreate(homeRaw: string | null, sessionFile: string | null): Promise<string> {
+/**
+ * 建会话的 home：新建必须传；续聊可以不传，按实体归属取。
+ * 路由键只有 sessionId，会话文件只是实体的属性，不接受按路径反查。
+ */
+async function resolveHomeForCreate(homeRaw: string | null, sessionId: string | null): Promise<string> {
   if (homeRaw) {
     const summary = homes.list().find((entry) => entry.id === homeRaw || entry.path === homeRaw)
     return resolveRequestedHome(summary ? summary.path : homeRaw)
   }
-  if (!sessionFile) throw new HomeError('home 必填', 400, 'invalid_home')
-  const entity = findByPath(sessionFile)
-  if (entity?.origin.kind === 'home') return resolveRequestedHome(entity.origin.homePath)
-  for (const entry of homes.list()) {
-    if (!entry.valid) continue
-    if (sessionFile.startsWith(`${join(entry.path, 'sessions')}/`)) return resolveRequestedHome(entry.path)
-  }
-  throw new HomeError(`会话文件不属于任何已登记的 pi home：${sessionFile}`, 404, 'home_not_found')
+  if (!sessionId) throw new HomeError('home 必填', 400, 'invalid_home')
+  const entity = getEntity(sessionId)
+  if (!entity) throw new HomeError(`没有这个会话：${sessionId}`, 404, 'session_absent')
+  if (entity.origin.kind === 'home') return resolveRequestedHome(entity.origin.homePath)
+  throw new HomeError(
+    `会话不属于任何已登记的 pi home：${sessionId}`,
+    404,
+    'home_not_found',
+  )
 }
 
 /** 建会话或起任务：实体在返回前就已经存在，客户端拿到的是同一个 id。 */
@@ -173,18 +178,18 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
     subagent?: unknown
     instruct?: unknown
     timeoutMs?: unknown
-    sessionFile?: unknown
+    /** 续聊：在已有实体上装配运行时，home 按实体归属取。 */
+    sessionId?: unknown
   }>()
-  const sessionFileRaw =
-    typeof payload.sessionFile === 'string' && payload.sessionFile.trim() ? payload.sessionFile.trim() : null
+  const resumeId =
+    typeof payload.sessionId === 'string' && payload.sessionId.trim() ? payload.sessionId.trim() : null
   const homeRaw =
     typeof payload.home === 'string' && payload.home.trim()
       ? payload.home.trim()
       : typeof payload.homeId === 'string' && payload.homeId.trim()
         ? payload.homeId.trim()
         : null
-  // 续聊可以不传 home：按会话文件找它所属的 home（实体优先，其次按 sessions 根前缀）。
-  const home = await resolveHomeForCreate(homeRaw, sessionFileRaw)
+  const home = await resolveHomeForCreate(homeRaw, resumeId)
   const kind = payload.kind === 'task' ? 'task' : 'chat'
 
   if (kind === 'task') {
@@ -208,6 +213,21 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
     return { session: entity ? project(entity) : null, task }
   }
 
+  if (resumeId && (typeof payload.cwd === 'string' && payload.cwd.trim())) {
+    throw new HomeError('续聊不接受 cwd：会话文件里已经记录了工作目录', 400, 'invalid_request')
+  }
+  // 续聊的会话文件就是实体的 filePath；能否续聊由实体的 capabilities 给出，不在这里重算。
+  const resumeEntity = resumeId ? requireEntity(resumeId) : null
+  if (resumeEntity) {
+    const { canContinue, reason } = capabilitiesOf(resumeEntity)
+    if (!canContinue) {
+      throw new HomeError(`这条会话不能续聊：${reason ?? '当前状态不允许'}`, 409, 'session_not_continuable')
+    }
+    if (!resumeEntity.filePath) {
+      throw new HomeError(`会话还没有落盘，不能续聊：${resumeId}`, 409, 'session_not_persisted')
+    }
+  }
+
   const { createChat } = await import('../chat/chat.ts')
   const chat = await createChat({
     home,
@@ -218,7 +238,8 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
         ? payload.thinkingLevel.trim()
         : undefined,
     subagent: typeof payload.subagent === 'string' && payload.subagent.trim() ? payload.subagent.trim() : null,
-    sessionFile: sessionFileRaw,
+    // 文件头的 id 就是实体 id，SessionManager.open 之后拿到的是同一个身份。
+    sessionFile: resumeEntity?.filePath ?? null,
   })
   const entity = getEntity(chat.sessionId)
   return { session: entity ? project(entity) : null, chat }

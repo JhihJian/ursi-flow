@@ -23,14 +23,18 @@ const NO_ROWS: SessionRow[] = []
 const ONE_DAY = 1
 
 export interface SessionsPanelProps {
-  /** 会话页正指向的会话文件，对应的行高亮。 */
-  activeFile: string | null
+  /** 会话页正指向的会话 id，对应的行高亮。 */
+  activeId: string | null
   /** 当前目录（新对话会落在它下面），对应的组头高亮。 */
   cwd: string | null
   /** 点组头：该目录成为当前目录。 */
   onPickDir: (cwd: string) => void
   /** 点会话行：目录成为当前目录并打开这条会话。 */
   onOpen: (row: SessionRow) => void
+  /** 右键「释放运行时」：由宿主注入，本模块不碰运行时。 */
+  onEvict: (sessionId: string) => void
+  /** 本进程装配过的会话 id：只有这些行才能释放运行时。 */
+  assembledIds: ReadonlySet<string>
 }
 
 /**
@@ -38,9 +42,9 @@ export interface SessionsPanelProps {
  * 外框与折叠由宿主负责，这里只管内容。
  *
  * 根目录、日期筛选、关注、运行态来自 controller，视图私有的状态在各自的 hook 里。
- * 当前页面不在这里，由宿主通过 props 传入。
+ * 当前页面与运行时动作不在这里，由宿主通过 props 传入。
  */
-export function SessionsPanel({ activeFile, cwd, onPickDir, onOpen }: SessionsPanelProps) {
+export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assembledIds }: SessionsPanelProps) {
   const {
     root,
     configError,
@@ -84,9 +88,9 @@ export function SessionsPanel({ activeFile, cwd, onPickDir, onOpen }: SessionsPa
   )
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
 
-  const fold = useGroupFold(groups, activeFile, root, { searching: query.trim().length > 0 })
+  const fold = useGroupFold(groups, activeId, root, { searching: query.trim().length > 0 })
   const pickGroup = (group: SessionGroup) => onPickDir(group.key)
-  const menu = useSidebarMenu({ open: onOpen, deleteSession, togglePin })
+  const menu = useSidebarMenu({ deleteSession, togglePin, evictSession: onEvict, localSessionIds: assembledIds })
 
   const liveForRow = (row: SessionRow) => (liveEnabled ? primaryLive(liveByPath.get(row.path)) : null)
 
@@ -121,7 +125,7 @@ export function SessionsPanel({ activeFile, cwd, onPickDir, onOpen }: SessionsPa
 
   const listProps = {
     pinnedKeys: pinnedKeySet,
-    activeFile,
+    activeId,
     activeGroupKey: cwd,
     liveForRow,
     fold,

@@ -297,7 +297,7 @@ graph LR
 - 乐观锁只在配置写入保留：`If-Match: <revision>`，冲突 409 并回传当前文件实体。会话实体的写者只有本进程状态机，不需要实体级乐观锁。
 - 语义化错误码：`session_busy`（`running` 删改）、`session_loading`（删除、evict 或换模型撞上进行中的装配）、`reset_required`（游标失效）、`session_absent`（文件已被外部删除）。
 
-## 4 前端：一处侧栏，三种页面
+## 4 前端：一处侧栏，两种页面
 
 ### 4.1 一份 store
 
@@ -324,15 +324,16 @@ PiStore {
 - `ui` 与实体分离：切页面、改搜索词不动实体，实体更新也不重置页面状态。
 - 派生一律走 selector：`selectSessions({ origin, state, kind, q, date })`、`selectTrajectory(id, window)`、`selectCapabilities(id)`。
 
-### 4.2 三种页面只是投影
+### 4.2 两种页面只是投影
 
 | 页面 | 读 | 动作 | 页面私有状态 |
 | --- | --- | --- | --- |
-| 新对话 | `profiles` 的候选模型与 subagent；当前目录来自侧栏点选 | create / turn | 输入草稿、模型草稿 |
-| 会话页 | `sessions` 中 `state ∈ {loading, ready, running, failed}`；只读时 `trajectory.page`，续聊后 `trajectory.full.tail` | turn / abort / interaction / model / evict | 输入草稿、模型草稿 |
+| 会话页 | `sessionId` 为空时读 `profiles` 的候选模型与 subagent，当前目录来自侧栏点选；非空时读 `sessions` 中 `state ∈ {loading, ready, running, failed}`，只读时 `trajectory.page`，续聊后 `trajectory.full.tail` | create / load / turn / abort / interaction / model | 输入草稿、模型草稿 |
 | 配置页 | 当前 `home`；`profiles`；配置域子资源表单 | 保存 config / 新增或复制 home / 刷新目录 | 分区选择、表单草稿 |
 
-同一实体的入口只有一个：侧栏点会话行进会话页，只读看轨迹，在输入框发消息就是对同一 `sessionId` 调 `turn`（必要时先 load），不新建实体、不复制文件。
+会话页只有一个，路由键只有 `sessionId`：空会话页与某条会话是同一个组件，`id` 为空就是「还没选会话」。建立、发起、继续三种动作都在这一个页面的同一个输入框里完成，发消息只走一处 `submit`：没有 `id` 就 `create` 后原地填 id（不换页、不重挂输入框），有 `id` 没运行时就先 `load` 再 `turn`，有运行时直接 `turn`。
+
+同一实体的入口只有一个：侧栏点会话行进会话页，只读看轨迹，在输入框发消息就是对同一 `sessionId` 调 `turn`（必要时先 load），不新建实体、不复制文件。右键菜单不重复给「打开」；运行时释放是资源管理，入口在会话行右键「释放运行时」，不在页面 header 上。
 
 - 「配置生效」= 保存后 `profileRevision` 变化，集合读取带回 `stale`，会话页直接显示提示条。
 
@@ -345,7 +346,7 @@ PiStore {
 
 ### 4.4 反模式清单
 
-- 不用 `sessionFile` 作为跨接口的键，它只是实体属性（前端页面用它做路由键，因为它在 SSE `state` 帧之前就有了）。
+- 不用 `sessionFile` 作为跨接口的键，也不做前端路由键，它只是实体属性，首条消息落盘前还是空的。路由、续聊、删除一律按 `sessionId`。
 - 不引入「活跃会话排除集合」「运行态覆盖表」这类旁路结构，状态就在实体上。
 - 不在前端拼路径、重算 `enabledModels`、自行判断能否续聊，这些由实体字段与 `capabilities` 给出。
 - 不在订阅事件里覆盖整份列表，只按 `revision` 与 `reset` 合并。
@@ -360,7 +361,7 @@ PiStore {
 | 集合同步 | `notModified` 快路径 + 完整列表 | `upserted/removed` 增量合并 |
 | 配置并发 | 文件级 `If-Match` | 同 v1 |
 
-v1 的目标是让三种页面读同一套实体、同一份权威、同一个身份；v2 才优化传输量。两者分开验收，否则会把「同步细节的 bug」误判成「模型错了」。
+v1 的目标是让两种页面读同一套实体、同一份权威、同一个身份；v2 才优化传输量。两者分开验收，否则会把「同步细节的 bug」误判成「模型错了」。
 
 ## 实现状态（v1）
 
@@ -370,7 +371,7 @@ v1 的目标是让三种页面读同一套实体、同一份权威、同一个�
 - 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
 - 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
 - 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。
-- 一个工作区模块 `pi`：一个侧栏（home 管理区、目录与会话列表、底部按钮排）与三种页面（新对话、会话、配置），home 一份真源（`pi-store`），会话根由 home 派生且可显式改成外部目录。结构见 `SINGLE-SIDEBAR.md`。
+- 一个工作区模块 `pi`：一个侧栏（home 管理区、目录与会话列表、底部按钮排）与两种页面（会话、配置），home 一份真源（`pi-store`），会话根由 home 派生且可显式改成外部目录。会话页只有一个、路由键只用 `sessionId`，空会话页发首条消息才建会话且原地填 id，续聊只传 `sessionId`。结构见 `SINGLE-SIDEBAR.md`。
 - 折叠态：外壳把这一节压到 32px 时只渲染一条可点开的窄条（模块名 + home）。
 - 验证：后端 `node --test` 加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（含模块装配、页面切换、折叠、home 记忆与根目录跟随）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
 - 部署：一个 `ursi-pi-web` 单元、一条 `/api/pi` 反代、一次性状态迁移。

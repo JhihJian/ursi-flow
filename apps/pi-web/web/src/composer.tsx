@@ -20,17 +20,15 @@ function thinkingLabel(level: string, model: ChatModelOption | null): string {
 }
 
 export interface ComposerProps {
-  /** 新对话还是续聊：决定发送前的动作与文案。 */
-  mode: 'draft' | 'session'
-  /** 发送前要做的事（续聊先装配运行时）。返回 ok 为 false 时中止。 */
-  beforeSubmit?: () => Promise<{ ok: boolean; message?: string }>
+  /** 会话页指向的会话 id：空会话页时为 null，此时目录来自侧栏点选。 */
+  sessionId: string | null
 }
 
 /**
  * 输入区：正文、模型、思考级别。目录不在这里：它来自侧栏点选，显示在标题栏。
- * 新对话页与会话页共用，差别只在 mode 与 beforeSubmit。
+ * 全应用只有这一个输入框：空会话页发首条是建立，已打开的会话发消息是续聊，都走 submit。
  */
-export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ mode, beforeSubmit }, ref) {
+export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ sessionId }, ref) {
   const {
     active,
     options,
@@ -69,13 +67,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function send(sendMode?: 'steer' | 'followUp') {
     const content = text.trim()
     if (!content || sending) return
-    if (beforeSubmit) {
-      const ready = await beforeSubmit()
-      if (!ready.ok) {
-        putBack(content)
-        return
-      }
-    }
     setText('')
     const result = await submit(content, sendMode)
     if (!result.ok) putBack(content)
@@ -123,7 +114,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const modelValue = model ? refOf(model) : ''
   const modelChoices = options?.models ?? []
-  const canSend = !sending && text.trim().length > 0 && (mode === 'session' || cwd !== null)
+  // 空会话页要有目录才能建会话；已打开的会话目录在会话头里。
+  const canSend = !sending && text.trim().length > 0 && (sessionId !== null || cwd !== null)
 
   return (
     <>
@@ -136,7 +128,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           placeholder={
             busy
               ? '运行中：Enter 排队，Shift+Enter 换行，Esc 停止'
-              : mode === 'session'
+              : sessionId !== null
                 ? '输入消息，Enter 发送，Shift+Enter 换行'
                 : cwd
                   ? '发出第一条消息即建立对话，Enter 发送'
@@ -213,7 +205,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled={!canSend}
                 onClick={() => void send()}
               >
-                {mode === 'session' ? '发送' : '建立对话并发送'}
+                {sessionId === null ? '建立对话并发送' : '发送'}
               </button>
             )}
           </div>

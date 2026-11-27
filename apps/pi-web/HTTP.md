@@ -23,7 +23,7 @@
 | `POST /api/config/plugins/builtin/install` | required | 一键安装内置扩展到 home 的 extensions/（已安装则覆盖；`id` 必填） |
 | `POST /api/config/plugins/builtin/uninstall` | required | 卸载内置扩展（清掃 .ts/.js/index 四种形态；幂等） |
 | `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径；响应带 `heartbeatDetected` |
-| `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`） |
+| `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`）。新建传 `home` 与 `cwd`；续聊只传 `sessionId`，home 按实体归属取、会话文件取实体的 `filePath`，不接受 `sessionFile` |
 | `GET /api/sessions/config` | none | 会话视图初始值 |
 | `GET /api/sessions/browse?path=` | none | 目录列举 |
 | `GET/PUT /api/sessions/prefs` | none | 项目特别关注 |
@@ -66,6 +66,8 @@
 | 会话正在装配 | 409 `session_loading` |
 | 集合游标过期 | 200 `notModified: false` + 新 `epoch` |
 | 会话文件已被外部删除 | 404 `session_absent` |
+| 续聊的实体不能续聊（无头老文件、外部 CLI 会话等） | 409 `session_not_continuable` |
+| 续聊的会话还没落盘 | 409 `session_not_persisted` |
 | 轨迹超过体积上限 | 413 `session_too_large` |
 | 该会话没有本地运行时 | 409 `session_not_local` |
 

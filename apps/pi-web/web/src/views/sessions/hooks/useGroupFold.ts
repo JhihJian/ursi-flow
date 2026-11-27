@@ -13,8 +13,8 @@ export const SHOW_MORE_STEP = 20
  */
 export function useGroupFold(
   groups: readonly SessionGroup[],
-  /** 会话页正指向的会话文件，它所在的组默认展开。 */
-  activeFile: string | null,
+  /** 会话页正指向的会话 id，它所在的组默认展开。 */
+  activeId: string | null,
   scope: string | null,
   { searching = false }: { searching?: boolean } = {},
 ) {
@@ -30,8 +30,8 @@ export function useGroupFold(
   }
   // 搜索时命中的组全部展开：搜到 30 条散在 20 个组里，组全折叠就得逐个点开。
   const foldedByDefault = useMemo(
-    () => (searching ? new Set<string>() : defaultFoldedGroups(groups, activeFile)),
-    [groups, activeFile, searching],
+    () => (searching ? new Set<string>() : defaultFoldedGroups(groups, activeId)),
+    [groups, activeId, searching],
   )
 
   const toggleGroup = useCallback((key: string) => {

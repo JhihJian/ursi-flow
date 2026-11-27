@@ -144,10 +144,11 @@ describe('defaultFoldedGroups', () => {
     row({ id: 'c', path: '/r/c.jsonl', projectKey: '/p3', projectName: 'p3', modified: 100 }),
   ])
 
-  test('只有会话页指向的会话所在的组展开，其余收起', () => {
+  test('只有会话页指向的会话所在的组展开，其余收起；键是会话 id', () => {
     expect([...defaultFoldedGroups(groups, null)]).toEqual(['/p1', '/p2', '/p3'])
-    expect([...defaultFoldedGroups(groups, '/r/c.jsonl')]).toEqual(['/p1', '/p2'])
-    expect([...defaultFoldedGroups(groups, '/r/a.jsonl')]).toEqual(['/p2', '/p3'])
+    expect([...defaultFoldedGroups(groups, 'c')]).toEqual(['/p1', '/p2'])
+    expect([...defaultFoldedGroups(groups, 'a')]).toEqual(['/p2', '/p3'])
+    expect([...defaultFoldedGroups(groups, '/r/a.jsonl')]).toEqual(['/p1', '/p2', '/p3'])
   })
 })
 

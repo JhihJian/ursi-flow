@@ -14,7 +14,7 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，服务端启动系统 OpenSSH 子进程（`ssh -tt`）建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite，可按 [工作区接入设计](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) 作为一栏接入 shell-web。 |
 | [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API 并注入 Bearer token（dae 只监听 loopback、拒绝外部 Origin、启用 api.secret），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并按配置源编排校验与写入。 |
 | [Flow 工作台](apps/flow-web/SPEC.md) | 浏览器里的 Flow 工作台。Node 服务用 `apps/ursi-flow` 推进流程、把运行写入自己的状态目录，并托管 React 页面；页面可独立打开，也作为 `flow` 模块接入工作区外壳。 |
-| [Pi Web](apps/pi-web/SPEC.md) | 浏览器里的 pi 工作台：配置、对话、会话浏览共用一个进程与一套领域模型。一份 pi home 决定整套能力（模型、凭据、skills、agents、MCP、工具策略），会话只有一个身份 `sessionId`，磁盘历史、内存加载、流式对话、一次性任务与子进程心跳都是同一个实体会话的不同投影。零依赖 Node 服务同时提供文件级配置读写、常驻对话运行时（SSE 与扩展 UI 桥接）、任意根目录的会话扫描与轨迹，并以 `pi` 模块接入工作区外壳，一个侧栏（home、会话列表）配三种页面（新对话、会话、配置）。 |
+| [Pi Web](apps/pi-web/SPEC.md) | 浏览器里的 pi 工作台：配置、对话、会话浏览共用一个进程与一套领域模型。一份 pi home 决定整套能力（模型、凭据、skills、agents、MCP、工具策略），会话只有一个身份 `sessionId`，磁盘历史、内存加载、流式对话、一次性任务与子进程心跳都是同一个实体会话的不同投影。零依赖 Node 服务同时提供文件级配置读写、常驻对话运行时（SSE 与扩展 UI 桥接）、任意根目录的会话扫描与轨迹，并以 `pi` 模块接入工作区外壳，一个侧栏（home、会话列表）配两种页面（会话、配置），建立、发起、继续会话只有会话页一个入口，路由键只用 sessionId。 |
 | [ursi-flow](apps/ursi-flow/SPEC.md) | 交付包：装配一次运行并提供 `ursi-flow` 命令行，把 `FLOW.md` 推到最终结果。包内含 `core`、`executor`、`runtime` 三个模块。 |
 | [Flow Core](apps/ursi-flow/core/SPEC.md) | 无状态推进 SDK，从 `FLOW.md` 或当前 JSON 快照和回执生成待办。解析、变量和路由规则供引擎复用。 |
 | [Flow Executor](apps/ursi-flow/executor/SPEC.md) | 引擎与外部世界之间唯一的契约：`prompt(agentName, instruct)` 与 `command(invocation)`。适配层按契约接入具体执行方式，首个适配器是 `FakeExecutor`。 |

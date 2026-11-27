@@ -16,6 +16,14 @@ export function PiStatus() {
   if (!homePath) return <span>Pi · 未选择 pi home</span>
 
   if (page.kind === 'session') {
+    if (page.id === null) {
+      const total = listing ? String(listing.sessions.length) : '—'
+      return (
+        <span>
+          {name} · 新对话 · 会话 {total}
+        </span>
+      )
+    }
     if (!active) return <span>{name} · 会话</span>
     const state = active.state === 'running' ? '运行中' : active.state === 'error' ? '出错' : '空闲'
     return (
@@ -30,6 +38,5 @@ export function PiStatus() {
     return <span>{name} · 配置</span>
   }
 
-  const total = listing ? String(listing.sessions.length) : '—'
-  return <span>{name} · 新对话 · 会话 {total}</span>
+  return <span>{name}</span>
 }

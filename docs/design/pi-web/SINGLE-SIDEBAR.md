@@ -5,7 +5,8 @@
 Pi 模块从「三段切换 + 各自侧栏」改为「一个侧栏、一个会话页、一个配置页」。
 
 - 侧栏从上到下三段：pi home 管理区、目录与会话列表、底部按钮排（新对话、配置）。
-- 工作区只有三种页面：会话页（只读轨迹与续聊是同一页面的两种模式）、新对话页、配置页。
+- 工作区只有两种页面：会话页、配置页。「新对话」不是一种页面，是会话页还没指向任何会话时的状态。
+- 建立、发起、继续会话的入口有且只有一个：会话页的那个输入框。路由键只用 `sessionId`。
 - 「开始新对话」没有表单。cwd 取侧栏里点选的目录，composer 栏上可以改。
 
 ## 为什么要改
@@ -18,9 +19,8 @@ home 选择有三处入口（配置侧栏、对话侧栏下拉、`PiProvider`）
 
 ```
 PiProvider        home 与 homes 的唯一真源（home store 提到组合根）
-  └ PiNav         当前页面与当前目录（新建，替代 PiView / bridges / 三个 Bridge 组件）
-      ├ DraftPage      新对话：只有 composer
-      ├ SessionThread  一条会话：只读轨迹 或 续聊
+  └ PiNav         当前页面（session + sessionId，或 config）与当前目录
+      ├ SessionThread  会话页：sessionId 为空是空会话页，非空是只读轨迹或续聊；全应用唯一的输入框
       └ ConfigPage     配置：原配置工作区整体搬过来
 ```
 
@@ -56,41 +56,44 @@ PiProvider        home 与 homes 的唯一真源（home store 提到组合根）
 `PiNav` 持有：
 
 ```ts
-type PiPage =
-  | { kind: 'draft' }
-  | { kind: 'session'; sessionFile: string }
-  | { kind: 'config' }
+type PiPage = { kind: 'session'; id: string | null } | { kind: 'config' }
 cwd: string | null
 ```
 
-页面不持久化，刷新回到 `draft`。`cwd` 在换 home 时清空。
+`id` 为空是空会话页。页面不持久化，刷新回到空会话页。`cwd` 在换 home 时清空。
+
+路由键只有 `sessionId`，不用 `sessionFile`：会话文件要等首条消息落盘才有，用它做键会让「建完对话切页」这一步等在 SSE 后面，代码与落地记录背离过一次。
 
 | 动作 | 结果 |
 |---|---|
-| 点会话行 | `session(sessionFile)`，只读渲染轨迹 |
-| 在会话页 composer 发消息 | 先 `resume(sessionFile)` 再 `submit`，页面不变，轨迹切到流式 |
+| 点会话行 | `session(row.id)`，只读渲染轨迹；这是进入已有会话的唯一入口 |
+| 空会话页 composer 发消息 | `createChat({ home, cwd })`，页面原地填上返回的 `sessionId`，不换页、不重挂输入框，接上事件流后 `turn` |
+| 会话页 composer 发消息（没运行时） | 先 `load(sessionId)` 再 `turn`，页面不变，轨迹切到流式 |
+| 会话页 composer 发消息（有运行时） | 直接 `turn` |
 | 点组头 | `cwd = group.key`，页面不变 |
-| 点「新对话」 | `draft` |
+| 点「新对话」 | `session(null)`，只清页面，运行时不动 |
 | 点「配置」 | `config`，返回时回到进入前的页面 |
-| 结束对话 | `draft` |
+| 会话行右键「释放运行时」 | `evict(row.id)`，页面不变，退回只读；只对本进程装配过的会话可用 |
 
 **会话页** `SessionThread`：
 
 ```
-SessionThread(sessionFile)
-├─ row = listing 里按 path 找
-├─ live = chat.active?.sessionFile === sessionFile
-├─ 只读轨迹 = useReadOnlyTrajectory(root, row.id)（live 后不再触发）
+SessionThread(sessionId: string | null)
+├─ row = listing 里按 id 找（sessionId 为空时为 null）
+├─ live = sessionId !== null && chat.active?.sessionId === sessionId
+├─ 只读轨迹 = useReadOnlyTrajectory(root, row.id)（live 或没 id 时不触发）
 ├─ entries = live && transcript ? parsePiJsonl(transcript) : 只读轨迹
 ├─ revision = 本地计数器，entries 变一次加一
-├─ header：标题、cwd、状态、停止、结束
+├─ header：标题、cwd、状态、停止（只在流式时）
 ├─ banners：只在 live
 ├─ thread：TrajectoryViewer + live 时的 thinking / partial / tools / pending
 ├─ ui-request：只在 live
-└─ composer：textarea、目录、模型、思考、发送
+└─ composer：textarea、模型、思考、发送（唯一的输入框）
 ```
 
-只读切续聊时丢掉只读 entries，改用 SSE 首帧的整份 transcript。两者是同一份数据（服务端 `chat.transcript`），不需要再拉一次。`resume` 返回到 SSE 首帧到达之间，`transcript` 为空，这期间继续渲染只读 entries。
+只读切续聊时丢掉只读 entries，改用 SSE 首帧的整份 transcript。两者是同一份数据（服务端 `chat.transcript`），不需要再拉一次。`load` 返回到 SSE 首帧到达之间，`transcript` 为空，这期间继续渲染只读 entries。
+
+输入框不按会话建 `key`：从空会话页到建完对话是同一个组件实例，用户正在打的下一段不丢。换会话时的流式片段由 `ChatProvider` 按 `sessionId` 变化清掉，不靠重挂。
 
 **配置页**：原 `ManagerWorkspace` 整体搬过来，它自己的左列表就是六个分区。首次进入才挂载，挂载后保留。
 
@@ -197,3 +200,14 @@ SessionThread(sessionFile)
 | 第 2 步单独提交（UI 不变） | 与第 3 步合并 | 第 2 步做完 UI 还是三个旧侧栏，但 `view`/`setView` 已删，中间态编译不过 |
 
 额外修了一处设计稿没写的：`commonDirPrefix` 保留前导斜杠，与 `projectKey` 同形态，`startsWith` 才能命中。
+
+## 第二轮：会话入口唯一化
+
+上一轮落地后「建立、发起、继续」仍给人入口不唯一的印象：空会话页和只读会话页各有一个输入框，右键菜单多一个「打开」，header 多一个「结束」。根因是路由键用了 `sessionFile`，它在首条消息落盘前为空，于是 `onChatCreated` 切不了页，只能让两种页面各自承载一次建会话。本轮改法：
+
+- 路由键改为 `sessionId`，`PiPage` 收成 `{ kind: 'session'; id: string | null } | { kind: 'config' }`，`DraftPage` 删掉，空会话页就是 `SessionThread` 的 `id` 为空态。建完对话原地填 id，输入框不重挂。
+- 发消息只走 `submit` 一处，它按页面指向的 `id` 与 `active` 决定 `create`、先 `load` 再 `turn`、或直接 `turn`。`Composer` 去掉 `mode` 与 `beforeSubmit`。
+- 续聊契约改按 `sessionId`：`POST /api/sessions` 的 `sessionFile` 入参删掉，服务端按实体 `filePath` 打开文件、按实体归属取 home，`findByPath` 删除；能否续聊由 `capabilities.canContinue` 给出。
+- 右键菜单删「打开」（与点行等价），加「释放运行时」（仅本进程装配过的会话可用）；header 删「结束」，它做的是释放运行时，不是用户意图，且只读态下按了没反应。
+
+与上一轮落地记录的偏离：当时写「`active` 按 `sessionFile` 或 `sessionId` 匹配」，实际代码只按 `sessionFile`，本轮按设计稿的本意收回到 `sessionId`。

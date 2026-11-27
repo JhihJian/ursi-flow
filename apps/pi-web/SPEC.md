@@ -20,7 +20,7 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 交付形态：
 
 - `server/`：一个零依赖 Node 24 进程，托管 `/api/*` 与独立页面；pi SDK 按需加载。
-- `web/`：一个工作区模块 `pi`，一个侧栏（home 管理区、目录与会话列表、底部按钮排）与三种页面（新对话、会话、配置）。设计见 `docs/design/pi-web/SINGLE-SIDEBAR.md`。
+- `web/`：一个工作区模块 `pi`，一个侧栏（home 管理区、目录与会话列表、底部按钮排）与两种页面（会话、配置）。设计见 `docs/design/pi-web/SINGLE-SIDEBAR.md`。
 - 数据与状态：`$URSI_HOME/pi-web`（home 清单、扫描索引、特别关注、模型目录缓存）；会话文件仍写在各自 pi home 的 `sessions/`。
 
 边界：不做多用户与鉴权（部署在可信局域网，入口防护由前置层承担）；不做终端、文件浏览、附件与图片输入；不改写别人的会话内容（唯一写操作是删除会话文件与记录特别关注）。
@@ -49,7 +49,7 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - 外部目录按 LRU 维护（默认 4 个）并带空闲 TTL（默认 30 分钟），过期即移出扫描目标，其下 `discovered` 实体被移除，文件不动。
 - 状态机：`discovered → loading → ready ⇄ running`，旁支 `failed`，`evicted` 回流 `discovered`，`deleted` 终态。`loading` 与 `running` 的删改分别返回 409 `session_loading` / `session_busy`。
 - 同一 `sessionId` 的装配单飞：并发「继续」拿到同一个运行时，不出现并行追加同一份 JSONL。
-- 上游 `sessionFile` 不再是跨接口的键：删除只按实体定位，客户端不传路径。
+- 上游 `sessionFile` 不是跨接口的键：删除与续聊都只按实体 `sessionId` 定位，客户端不传路径。续聊时服务端按实体的 `filePath` 打开文件，home 按实体归属取；能否续聊由 `capabilities.canContinue` 给出，不能续聊返回 409 `session_not_continuable`。
 
 ### 轨迹
 
@@ -66,9 +66,11 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 
 - 侧栏只有一个，从上到下：pi home 管理区（列表，点一行切换，右键重命名/移除，「+」展开新增面板）、目录行（点开目录面板切任意目录）与按项目分组的会话列表、底部按钮排（新对话、配置）。折叠成 32px 窄条时只显示 home 名。
 - home 只有一份真源（`pi-store`）：侧栏切换后，会话列表的根换成该 home 的 `sessions/`，当前目录清空，页面离开会话页。用户把根改成任意外部目录不会被 home 拉回。
-- 工作区三种页面：新对话页（只有输入框）、会话页（一条会话的轨迹与输入框）、配置页（六个分区，首次进入才挂载，挂载后保留；退出回到进入前的页面）。页面不持久化，刷新回到新对话页。
-- 新对话没有表单：目录来自侧栏点选的组头（`cwd = projectKey`）或会话行（`cwd = row.cwd`），都没选时发送禁用。模型与思考级别在输入框栏上选。
-- 会话页：点会话行进入，只读渲染轨迹（`GET /api/sessions/:id/trajectory`）；在输入框发消息先装配运行时再发送，页面不变，轨迹切到事件流里的权威 transcript。停止、结束、排队、扩展 UI 回执与原对话视图一致；会话内换模型只影响本会话。
+- 工作区两种页面：会话页、配置页（六个分区，首次进入才挂载，挂载后保留；退出回到进入前的页面）。页面不持久化，刷新回到空会话页。
+- 会话页只有一个，路由键只用 `sessionId`：`id` 为空是空会话页（原「新对话页」），非空是某条会话。建立、发起、继续三种动作都在这一个页面的同一个输入框里完成：空会话页发首条消息才建会话（`createChat`），建完页面原地填上 id，不换页、不重挂输入框；点会话行进入已有会话，发消息先装配运行时（只传 `sessionId`）再发送，轨迹切到事件流里的权威 transcript。
+- 空会话页没有表单：目录来自侧栏点选的组头（`cwd = projectKey`）或会话行（`cwd = row.cwd`），都没选时发送禁用。模型与思考级别在输入框栏上选。
+- 会话页入口只有一个：侧栏点会话行。右键菜单给复制标识、释放运行时（仅本进程装配过的会话可用）、删除，不再重复给「打开」。
+- 会话页：点会话行进入，只读渲染轨迹（`GET /api/sessions/:id/trajectory`）；停止、排队、扩展 UI 回执与原对话视图一致；会话内换模型只影响本会话。运行时的释放是资源管理，不是用户意图，入口在侧栏会话行右键「释放运行时」，空闲 30 分钟与服务进程退出也会自动释放。
 - 会话列表：按项目分组（一层目录，`projectKey` 就是会话头里的 `cwd` 原文），组头显示相对所有项目公共前缀的路径，点组头把该目录设为当前目录；按日筛选、搜索、特别关注、删除、查看轨迹。默认只看今天，最近 7 天的条形可多选，「全部」清空筛选；存活会话（心跳在跳，含空闲）豁免日期筛选。换根目录回到只看今天。项目组默认折叠，只有会话页指向的会话所在的组展开，有搜索词时命中的组全部展开，每组先显示 8 条。运行中的会话在行首用绿点标出。侧栏挂载即扫描并轮询运行态（5 秒）。
 - 配置页：模型配置（默认模型、思考级别、启用模型、自建 provider 与发现模型）、常规设置（工具/codemode 等非模型项）、skills、subagent、插件、MCP；不提供凭据编辑，凭据由 pi CLI 登录维护，模型测试/发现只读 auth.json。写配置文件带乐观锁与 `.bak-manager` 备份，回显的 apiKey 一律遮蔽。列表型分区统一「左列表 + 右详情 + 底部状态行」骨架（`components/layout.tsx`），分区内容始终在视口内滚动；高度链约定见 `module.css` 头注释。插件分区额外提供内置扩展的一键安装/卸载：复制进 home 的 extensions/，已安装则覆盖，会话列表的运行态功能随之开启。
 - 模型配置分区：pi 的模型相关配置收在一个菜单里——默认模型与思考级别（settings 受管 key）、启用模型（enabledModels，含模型目录刷新）、自建 provider（models.json，发现/测试/编辑）。
@@ -97,6 +99,6 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - `web/src/pi-store.ts`：pi home 清单与增删改的唯一真源。
 - `web/src/pi-context.tsx`：当前 home 及其派生的 `sessionsRoot`；`pi-nav.tsx`：当前页面与当前目录。
 - `web/src/module.tsx`：组合根，Provider 嵌套与 home 变化的跟随；`pi-sidebar.tsx`、`pi-workspace.tsx`、`pi-status.tsx`：侧栏、按页面渲染、状态栏。
-- `web/src/composer.tsx`、`draft-page.tsx`、`session-thread.tsx`、`config-page.tsx`：三种页面与共用的输入框。
+- `web/src/composer.tsx`、`session-thread.tsx`、`config-page.tsx`：两种页面与唯一的输入框。
 - `web/src/views/{config,sessions,chat}/`：三个子模块的控制器、API 与组件（只做渲染镜像，不互相 import，跨模块走组合根）。
 - `web/src/module.css`：引入三份子模块样式与组合根布局 `pi-module.css`，供工作台引入；`standalone.css` 只服务独立入口。

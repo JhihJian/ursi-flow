@@ -12,7 +12,7 @@ import { ChatProvider } from './views/chat/chat-context'
 import type { LiveSessionFeed } from './views/sessions/live'
 
 /**
- * Pi Web：一个模块、一个侧栏、三种页面（新对话、会话、配置）。
+ * Pi Web：一个模块、一个侧栏、两种页面（会话、配置）。
  *
  * home 在 PiProvider，页面与目录在 PiNav；chat 与 sessions 的控制器读它们，不各存一份。
  * 实体、状态机与接口契约见 docs/design/pi-web/OVERVIEW.md。
@@ -99,12 +99,10 @@ function ChatLayer({ children, apiBaseUrl }: { children: ReactNode; apiBaseUrl: 
       options={{
         managerApiBaseUrl: apiBaseUrl,
         home: homePath,
-        sessionFile: page.kind === 'session' ? page.sessionFile : null,
+        sessionId: page.kind === 'session' ? page.id : null,
         cwd,
-        // createChat 的响应就带 sessionFile，页面直接按它记，侧栏高亮与只读轨迹都按它查。
-        onChatCreated: (chat) => {
-          if (chat.sessionFile) toSession(chat.sessionFile)
-        },
+        // createChat 的响应就带 sessionId，页面原地填上它，不换页。
+        onChatCreated: (chat) => toSession(chat.sessionId),
       }}
     >
       {children}
@@ -113,7 +111,7 @@ function ChatLayer({ children, apiBaseUrl }: { children: ReactNode; apiBaseUrl: 
 }
 
 /**
- * 会话列表的 Provider。删除会话后页面正指着它就回新对话页，
+ * 会话列表的 Provider。删除会话后页面正指着它就回空会话页，
  * 所以这层要读 PiNav：放在 PiNavProvider 之内。
  */
 function SessionsLayer({
@@ -132,8 +130,8 @@ function SessionsLayer({
         apiBaseUrl,
         storageKey: `${storageKey}.sessions`,
         liveSessions: { fetch: createLiveFeed(apiBaseUrl) },
-        onDeleted: (sessionFile) => {
-          if (page.kind === 'session' && page.sessionFile === sessionFile) toDraft()
+        onDeleted: (sessionId) => {
+          if (page.kind === 'session' && page.id === sessionId) toDraft()
         },
       }}
     >

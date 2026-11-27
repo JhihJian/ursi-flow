@@ -45,7 +45,7 @@ export interface SessionsControllerOptions {
   /** 关注/删除失败等需要用户看见的提示。缺省写进模块内的提示位。 */
   onNotice?: (notice: Notice) => void
   /** 某条会话被删除后通知宿主：页面正指着它时要退回别处。 */
-  onDeleted?: (sessionFile: string) => void
+  onDeleted?: (sessionId: string) => void
   /**
    * 会话运行态来源，由宿主注入（会话模块不采集心跳）。
    * 不注入时模块按纯磁盘列表工作，行为与之前完全一致。
@@ -260,7 +260,7 @@ export function SessionsProvider({
       void api
         .deleteSession(root, row.id)
         .then(() => {
-          options.onDeleted?.(row.path)
+          options.onDeleted?.(row.id)
           reload()
         })
         .catch((failure: unknown) =>

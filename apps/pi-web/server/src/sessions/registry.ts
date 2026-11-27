@@ -398,11 +398,6 @@ export function getEntity(sessionId: string): PiSession | null {
   return entities.get(sessionId) ?? null
 }
 
-export function findByPath(filePath: string): PiSession | null {
-  for (const entity of entities.values()) if (entity.filePath === filePath) return entity
-  return null
-}
-
 export function removeEntity(sessionId: string): void {
   if (entities.delete(sessionId)) bump()
 }

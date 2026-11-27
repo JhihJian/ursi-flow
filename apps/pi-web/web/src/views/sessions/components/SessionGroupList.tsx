@@ -8,8 +8,8 @@ interface SessionGroupListProps {
   groups: readonly SessionGroup[]
   /** 特别关注的项目键，组名旁据此显示标记点。 */
   pinnedKeys: ReadonlySet<string>
-  /** 会话页指向的会话文件。 */
-  activeFile: string | null
+  /** 会话页指向的会话 id。 */
+  activeId: string | null
   /** 当前目录（新对话会落在它下面）：对应的组头高亮。 */
   activeGroupKey: string | null
   /** 这条会话的存活状态；心跳插件未开启时传 () => null。 */
@@ -29,7 +29,7 @@ interface SessionGroupListProps {
 export function SessionGroupList({
   groups,
   pinnedKeys,
-  activeFile,
+  activeId,
   activeGroupKey,
   liveForRow,
   fold,
@@ -83,7 +83,7 @@ export function SessionGroupList({
                   <SessionRowItem
                     key={row.id}
                     row={row}
-                    active={row.path === activeFile}
+                    active={row.id === activeId}
                     live={liveForRow(row)}
                     onSelect={() => onSelect(row)}
                     onMenu={onSessionMenu}
