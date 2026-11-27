@@ -7,10 +7,10 @@ import { createPiModule } from './module'
 import { useSessionsController } from './views/sessions/sessions-context'
 
 /**
- * 合并模块的装配测试：一个模块、三个视图、一份 home。
+ * 模块装配测试：一个侧栏、三种页面、一份 home。
  *
- * 只验证装配与切换（不测各视图内部的业务），因为它覆盖的是最容易在合并时
- * 出错的地方：Provider 嵌套顺序、home 真源、视图激活后才挂载。
+ * 只验证装配（不测各页面内部的业务），因为它覆盖的是最容易出错的地方：
+ * Provider 嵌套顺序、home 真源、侧栏合一、新对话的目录来自侧栏点选。
  */
 
 const HOME = {
@@ -48,6 +48,7 @@ beforeEach(() => {
     const path = parsed.pathname.replace(/^\/api\/pi/, '')
     if (path === '/api/homes') return respond({ homes: [HOME] })
     if (path === '/api/homes/check') return respond({ home: HOME.path, valid: true })
+    if (path === '/api/homes/defaults') return respond({ default: HOME.path, discovered: [HOME] })
     if (path === '/api/homes/runtime-profile') {
       return respond({
         homeId: HOME.id,
@@ -73,6 +74,18 @@ beforeEach(() => {
       return respond({ epoch: 'e', revision: 1, sessions: [], pendingDetails: 0, truncated: false })
     }
     if (path === '/api/sessions/prefs') return respond({ pinnedProjects: [] })
+    if (path === '/api/config/general') {
+      return respond({
+        revision: 'r1',
+        managed: { defaultTools: [], codemode: null, showCacheMissNotices: null },
+        unmanagedKeys: [],
+        builtinTools: [],
+        builtinToolNames: [],
+        resolvedTools: [],
+        isWindows: false,
+        powerShellEnabled: null,
+      })
+    }
     return respond({})
   }) as typeof fetch
 })
@@ -121,47 +134,57 @@ async function settle(): Promise<void> {
 }
 
 describe('Pi Web 模块', () => {
-  test('一个模块暴露三个视图的切换，默认进对话', async () => {
+  test('一个侧栏：home 清单、目录行、会话列表、底部新对话与配置', async () => {
     await act(async () => root.render(<Harness />))
     await settle()
-
-    const tabs = [...container.querySelectorAll('.pi-switch-tab')]
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['对话', '会话', '配置'])
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true')
-    expect(tabs[1].getAttribute('aria-selected')).toBe('false')
+    await settle()
+    const text = container.textContent ?? ''
+    expect(text).toContain('Pi home')
+    expect(container.querySelector('.root-button')?.textContent).toContain('pi-home/sessions')
+    expect(container.querySelector('.session-list')).not.toBeNull()
+    const foot = container.querySelector('.pi-sidebar-foot')
+    expect(foot?.textContent).toContain('新对话')
+    expect(foot?.textContent).toContain('配置')
+    // 三段切换不再存在。
+    expect(container.querySelector('[role="tablist"]')).toBeNull()
   })
 
-  test('切到会话视图才挂载它，切回不重建对话', async () => {
+  test('工作区默认是新对话页，点配置进配置页，返回回到新对话', async () => {
     await act(async () => root.render(<Harness />))
     await settle()
-    expect(container.querySelector('[data-view="sessions"]')).toBeNull()
-
-    const sessionsTab = [...container.querySelectorAll('.pi-switch-tab')][1] as HTMLElement
-    await act(async () => sessionsTab.click())
     await settle()
+    expect(container.querySelector('.pichat-bar-title')?.textContent).toBe('新对话')
 
-    expect(container.querySelector('[data-view="sessions"]')).not.toBeNull()
-    expect(sessionsTab.getAttribute('aria-selected')).toBe('true')
-    expect(container.querySelector('[data-view="chat"]')).not.toBeNull()
+    const configButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('配置'))
+    expect(configButton).toBeDefined()
+    await act(async () => configButton!.click())
+    await settle()
+    await settle()
+    expect(container.querySelector('.pi-config-page')).not.toBeNull()
+    expect(container.querySelector('.pi-config-page')?.closest('[hidden]')).toBeNull()
+
+    const back = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('返回'))
+    await act(async () => back!.click())
+    await settle()
+    expect(container.querySelector('.pi-workspace-page:not([hidden]) .pichat-bar-title')?.textContent).toBe('新对话')
   })
 
-  test('折叠态只留一条可点击窄条，不渲染三段切换', async () => {
+  test('折叠态只留一条可点击窄条，带 home 名', async () => {
     await act(async () => root.render(<Harness collapsed />))
     await settle()
-    expect(container.querySelectorAll('.pi-switch-tab')).toHaveLength(0)
-    const rail = container.querySelector('.pi-switch-rail')
+    await settle()
+    const rail = container.querySelector('.ws-section-rail') as HTMLElement
     expect(rail).not.toBeNull()
-    expect(rail!.getAttribute('aria-label')).toContain('展开')
+    expect(rail.textContent).toContain('Pi')
+    expect(rail.getAttribute('aria-label')).toContain('默认')
+    expect(container.querySelector('.pi-sidebar')).toBeNull()
   })
 
-  test('home 与视图记忆写在同一个前缀下', async () => {
+  test('home 记忆写在同一个前缀下', async () => {
     await act(async () => root.render(<Harness />))
     await settle()
-    const sessionsTab = [...container.querySelectorAll('.pi-switch-tab')][1] as HTMLElement
-    await act(async () => sessionsTab.click())
     await settle()
-    expect(localStorage.getItem('ursi.pi:view')).toBe('sessions')
-    expect(localStorage.getItem('ursi.pi:home')).toBe(HOME.path)
+    expect(localStorage.getItem('pi-manager.home')).toBe(HOME.path)
   })
 })
 

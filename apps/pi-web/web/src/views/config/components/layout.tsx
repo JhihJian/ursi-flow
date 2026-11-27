@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useAppStore } from '../store/app-store'
+import { useAppStore } from '../../../pi-store'
 
 /**
  * 分区布局骨架：左列表 + 右详情 + 底部状态行，对齐开源 pi-web 设置页的

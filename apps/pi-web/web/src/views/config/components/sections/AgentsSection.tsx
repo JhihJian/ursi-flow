@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { AgentProfile, AgentProfileFields, AgentsListing, AgentsSettingsView } from '../../api/types'
-import { describeError, useAppStore } from '../../store/app-store'
+import { describeError, useAppStore } from '../../../../pi-store'
 import { SectionDetailHead, SectionFooterNote, SectionListAction, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading, Switch, confirmDialog } from '../ui'
 

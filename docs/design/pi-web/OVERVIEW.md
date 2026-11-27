@@ -8,11 +8,11 @@ references:
 
 # Pi Web 架构：领域建模先行
 
-`pi-web` 不是把三个进程塞进一个端口，而是让对话、会话、配置三个视图操作同一套领域模型。本文只写模型、状态机与契约；目录结构、环境变量、部署与迁移在模型定稿之后另文。
+`pi-web` 不是把三个进程塞进一个端口，而是让对话、会话、配置操作同一套领域模型。本文只写模型、状态机与契约；目录结构、环境变量、部署与迁移在模型定稿之后另文。前端结构见 `SINGLE-SIDEBAR.md`。
 
 结论先行：
 
-- 三个实体加一个值对象：`PiHome`（聚合根）、`PiSession`（统一会话）、`SessionTrajectory`（会话的从属子资源）、`RuntimeProfile`（派生快照，值对象）。凡是跨两个视图读写的对象都进这套模型。
+- 三个实体加一个值对象：`PiHome`（聚合根）、`PiSession`（统一会话）、`SessionTrajectory`（会话的从属子资源）、`RuntimeProfile`（派生快照，值对象）。凡是跨两个页面读写的对象都进这套模型。
 - 会话身份只有 `sessionId` 一个：磁盘历史、内存加载、SSE 运行的对话、一次性任务、子会话，都是同一个 `PiSession` 的不同状态投影。`/api/live`、`/api/tasks`、`/api/chat/*` 全部收编。
 - 一致性靠「字段唯一写者 + 每会话串行状态机 + 带 epoch 的版本号」，不靠对账、轮询猜测或跨模块补丁。
 - 本文明确区分 v1 与 v2：v1 只做「统一实体 + 单一权威 + 整体重发」，条目级增量同步、集合增量合并留到 v2 验收。混在一起会得到一个更难调试、却没证明更省事的系统。
@@ -143,16 +143,16 @@ RuntimeProfile {
 
 | 数据 | 唯一写者 | 读者 | 可重建 |
 | --- | --- | --- | --- |
-| Home 注册表字段 | config 域 | 三视图 | 否 |
-| Home 派生字段（`sessionsRoot`/`capabilities`/`profileRevision`） | 派生服务 | 三视图 | 是 |
-| `PiSession.origin`/`kind`/`identitySource` | 创建事务写一次，不可变 | 三视图 | 否 |
-| `PiSession.persistence` | 首条消息落盘时由运行时写一次 | 三视图 | 是（看文件是否存在） |
-| `PiSession.disk` | 扫描器 | 三视图 | 是 |
-| `PiSession.state`/`error`/`queue`/`interactions`/`execution` | SessionService 状态机 | 三视图 | 否（重启回落 `discovered`） |
-| `PiSession.runtimes[i]` | 本进程由运行时注册表写；其它进程由心跳读取器写自己那一项 | 三视图 | 是 |
-| `SessionTrajectory.entries` | 按 `source` 单一归属：`file` 归扫描器，`runtime` 归运行时 | 三视图 | 是 |
-| `SessionTrajectory.tail` | 运行时 | 三视图 | 否 |
-| RuntimeProfile | 派生服务（按 home + revision 缓存） | 三视图 | 是 |
+| Home 注册表字段 | config 域 | 侧栏、会话页、配置页 | 否 |
+| Home 派生字段（`sessionsRoot`/`capabilities`/`profileRevision`） | 派生服务 | 侧栏、会话页、配置页 | 是 |
+| `PiSession.origin`/`kind`/`identitySource` | 创建事务写一次，不可变 | 侧栏、会话页、配置页 | 否 |
+| `PiSession.persistence` | 首条消息落盘时由运行时写一次 | 侧栏、会话页、配置页 | 是（看文件是否存在） |
+| `PiSession.disk` | 扫描器 | 侧栏、会话页、配置页 | 是 |
+| `PiSession.state`/`error`/`queue`/`interactions`/`execution` | SessionService 状态机 | 侧栏、会话页、配置页 | 否（重启回落 `discovered`） |
+| `PiSession.runtimes[i]` | 本进程由运行时注册表写；其它进程由心跳读取器写自己那一项 | 侧栏、会话页、配置页 | 是 |
+| `SessionTrajectory.entries` | 按 `source` 单一归属：`file` 归扫描器，`runtime` 归运行时 | 侧栏、会话页、配置页 | 是 |
+| `SessionTrajectory.tail` | 运行时 | 侧栏、会话页、配置页 | 否 |
+| RuntimeProfile | 派生服务（按 home + revision 缓存） | 侧栏、会话页、配置页 | 是 |
 | 偏好（特别关注） | sessions 域 | sessions | 否 |
 
 规则：每个字段只有一个写者；读者从不写；集合与单条是同一份对象；索引缓存只是 `disk` 的持久化副本，可随时丢弃重扫。
@@ -296,7 +296,7 @@ graph LR
 - 乐观锁只在配置写入保留：`If-Match: <revision>`，冲突 409 并回传当前文件实体。会话实体的写者只有本进程状态机，不需要实体级乐观锁。
 - 语义化错误码：`session_busy`（`running` 删改）、`session_loading`（删除、evict 或换模型撞上进行中的装配）、`reset_required`（游标失效）、`session_absent`（文件已被外部删除）。
 
-## 4 前端三视图投影
+## 4 前端：一处侧栏，三种页面
 
 ### 4.1 一份 store
 
@@ -317,36 +317,34 @@ PiStore {
 
 规则：
 
-- 三个视图只从这份 store 派生，组件内不各自 fetch 实体；同一个 `sessionId` 在三视图里必然是同一个对象。
-- 轨迹按窗口分桶：对话视图用 `full`（全量前缀 + `tail`），会话视图用 `page`（分页 + `nextCursor`）。两个窗口的边界不同，混存会互相覆盖。
+- 三处（侧栏列表、会话页、配置页）只从这份 store 派生，组件内不各自 fetch 实体；同一个 `sessionId` 在各处必然是同一个对象。
+- 轨迹按窗口分桶：会话页续聊用 `full`（全量前缀 + `tail`），会话页只读用 `page`（分页 + `nextCursor`）。两个窗口的边界不同，混存会互相覆盖。
 - `trajectories` 设 LRU 上限（默认 6，区间 5～8）：模块 `keepMounted: true`，不释放就会随点开的会话数只增不减。超出时淘汰最久未访问的会话（先略 `page`、后略 `full`，正在 `running` 或有打开的 SSE 的会话不淘汰）；被淘汰后重新进入按 `since` 或 `cursor` 重拉，行为与首次进入一致。
-- `ui` 与实体分离：切视图、改搜索词不动实体，实体更新也不重置视图状态。
+- `ui` 与实体分离：切页面、改搜索词不动实体，实体更新也不重置页面状态。
 - 派生一律走 selector：`selectSessions({ origin, state, kind, q, date })`、`selectTrajectory(id, window)`、`selectCapabilities(id)`。
 
-### 4.2 三视图只是投影
+### 4.2 三种页面只是投影
 
-| 视图 | 读 | 动作 | 视图私有状态 |
+| 页面 | 读 | 动作 | 页面私有状态 |
 | --- | --- | --- | --- |
-| 对话 | `sessions` 中 `state ∈ {loading, ready, running, failed}`；`trajectory.full.tail`；`profiles` 的候选模型与 subagent | create / turn / abort / interaction / model / evict | 输入草稿、模型草稿 |
-| 会话 | `sessions` 全量（按 `origin`、项目、日期、搜索过滤）；`trajectory.page`；`prefs` | open / page / delete / pin / continue | 搜索词、日期筛选、展开的项目 |
-| 配置 | 当前 `home`；`profiles`；配置域子资源表单 | 保存 config / 新增或复制 home / 刷新目录 | 分区选择、表单草稿 |
+| 新对话 | `profiles` 的候选模型与 subagent；当前目录来自侧栏点选 | create / turn | 输入草稿、模型草稿 |
+| 会话页 | `sessions` 中 `state ∈ {loading, ready, running, failed}`；只读时 `trajectory.page`，续聊后 `trajectory.full.tail` | turn / abort / interaction / model / evict | 输入草稿、模型草稿 |
+| 配置页 | 当前 `home`；`profiles`；配置域子资源表单 | 保存 config / 新增或复制 home / 刷新目录 | 分区选择、表单草稿 |
 
-同一实体在三视图里的入口：
+同一实体的入口只有一个：侧栏点会话行进会话页，只读看轨迹，在输入框发消息就是对同一 `sessionId` 调 `turn`（必要时先 load），不新建实体、不复制文件。
 
-- 「在对话里继续」= 对同一 `sessionId` 调 `turn`（必要时先 load），不新建实体、不复制文件。
-- 「看完整轨迹」= 切到会话视图，用同一 `sessionId` 的 `page` 窗口读同一份权威轨迹。
-- 「配置生效」= 保存后 `profileRevision` 变化，集合读取带回 `stale`，对话视图直接显示提示条。
+- 「配置生效」= 保存后 `profileRevision` 变化，集合读取带回 `stale`，会话页直接显示提示条。
 
 ### 4.3 同步策略
 
-1. **集合**：页面可见时 5 秒一次 `since` 请求，`notModified` 则零成本，变更则整份合并；epoch 变化触发 `resetRequired` 并整份重取。三个视图共享这一次请求。
-2. **单会话**：只有存在本地运行时的会话开 SSE，且只在对应视图挂载时订阅。关浏览器不改变实体状态，空闲回收归服务端状态机。
-3. **轨迹**：进入会话按窗口拉一次，随后 SSE 的 `trajectory`/`delta` 帧按 `revision` 合并；离开视图保留缓存，回来按 `since` 续；`reset` 帧整份替换。
+1. **集合**：侧栏挂载即 5 秒一次 `since` 请求，`notModified` 则零成本，变更则整份合并；epoch 变化触发 `resetRequired` 并整份重取。侧栏列表与会话页共享这一次请求。
+2. **单会话**：只有存在本地运行时的会话开 SSE，且只在会话页指向它时订阅。关浏览器不改变实体状态，空闲回收归服务端状态机。
+3. **轨迹**：进入会话页按窗口拉一次，随后 SSE 的 `trajectory`/`delta` 帧按 `revision` 合并；离开页面保留缓存，回来按 `since` 续；`reset` 帧整份替换。
 4. **配置**：保存返回的 `profileRevision` 与 `capabilities` 直接写回 `homes`/`profiles`，不额外拉取。
 
 ### 4.4 反模式清单
 
-- 不用 `sessionFile` 作为跨视图或跨接口的键，它只是实体属性。
+- 不用 `sessionFile` 作为跨接口的键，它只是实体属性（前端页面用它做路由键，因为它在 SSE `state` 帧之前就有了）。
 - 不引入「活跃会话排除集合」「运行态覆盖表」这类旁路结构，状态就在实体上。
 - 不在前端拼路径、重算 `enabledModels`、自行判断能否续聊，这些由实体字段与 `capabilities` 给出。
 - 不在订阅事件里覆盖整份列表，只按 `revision` 与 `reset` 合并。
@@ -361,7 +359,7 @@ PiStore {
 | 集合同步 | `notModified` 快路径 + 完整列表 | `upserted/removed` 增量合并 |
 | 配置并发 | 文件级 `If-Match` | 同 v1 |
 
-v1 的目标是让三视图读同一套实体、同一份权威、同一个身份；v2 才优化传输量。两者分开验收，否则会把「同步细节的 bug」误判成「模型错了」。
+v1 的目标是让三种页面读同一套实体、同一份权威、同一个身份；v2 才优化传输量。两者分开验收，否则会把「同步细节的 bug」误判成「模型错了」。
 
 ## 实现状态（v1）
 
@@ -371,14 +369,14 @@ v1 的目标是让三视图读同一套实体、同一份权威、同一个身�
 - 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
 - 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
 - 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。
-- 一个工作区模块 `pi`：三视图切换、视图首次激活才挂载、home 一份真源（`PiProvider`），配置与对话的 home 选择互为同步，会话根由 home 派生且可显式改成外部目录；「看完整轨迹」与「在对话里继续」是模块内视图切换，不再经过外壳 actions。
-- 折叠态：外壳把这一节压到 32px 时只渲染一条可点开的窄条（视图 + home），三段切换随之隐藏。
-- 验证：后端 `node --test`（90 项，含移植的扫描与偏好用例）加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（37 项，含合并模块的装配、视图切换、折叠与 home 记忆）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
+- 一个工作区模块 `pi`：一个侧栏（home 管理区、目录与会话列表、底部按钮排）与三种页面（新对话、会话、配置），home 一份真源（`pi-store`），会话根由 home 派生且可显式改成外部目录。结构见 `SINGLE-SIDEBAR.md`。
+- 折叠态：外壳把这一节压到 32px 时只渲染一条可点开的窄条（模块名 + home）。
+- 验证：后端 `node --test` 加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（含模块装配、页面切换、折叠、home 记忆与根目录跟随）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
 - 部署：一个 `ursi-pi-web` 单元、一条 `/api/pi` 反代、一次性状态迁移。
 
 下一轮（v2）：
 
 - 轨迹按条目增量（`entryId` + `traversal revision`），替代现在的整段重发。
-- `trajectories` 的 LRU 上限与两个窗口的分桶缓存（当前只按视图各自缓存）。
-- chat 与 sessions 的轨迹配色映射、`ContextMenu` 与解析代码合并成一份共享层（当前仍是每个视图一份）。
+- `trajectories` 的 LRU 上限与两个窗口的分桶缓存（当前只按页面各自缓存）。
+- chat 与 sessions 的轨迹配色映射、`ContextMenu` 与解析代码合并成一份共享层（当前仍是每个子模块一份）。
 - 会话级 `capabilities` 的前端解禁提示、`stale` 应用按钮的可见入口。

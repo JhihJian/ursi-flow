@@ -1,44 +1,56 @@
-import type { ComponentType, ReactNode } from 'react'
-import type { WorkspaceModule } from '@ursi/workspace-shell'
-import { useActivation, usePi, type PiView } from './pi-context'
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react'
+import { usePiNav } from './pi-nav'
+import { DraftPage } from './draft-page'
 
 /**
- * 工作区：按活动视图渲染。视图挂载后就保留（切回来不丢滚动与草稿），
- * 但只有第一次激活时才挂载，避免打开工作台就扫描目录、连事件流。
+ * 轨迹组件库单文件约 1MB，只在工作区需要时加载。
  */
+const SessionThreadLazy = lazy(() =>
+  import('./session-thread').then((module) => ({ default: module.SessionThread })),
+)
+const ConfigPageLazy = lazy(() =>
+  import('./config-page').then((module) => ({ default: module.ConfigPage })),
+)
 
-type ViewModule = WorkspaceModule
-
-const ORDER: PiView[] = ['chat', 'sessions', 'config']
-
-export function PiWorkspace({
-  config,
-  sessions,
-  chat,
-}: {
-  config: ViewModule
-  sessions: ViewModule
-  chat: ViewModule
-}): ReactNode {
-  const { view } = usePi()
-  const modules: Record<PiView, ViewModule> = { chat, sessions, config }
-
+function WorkspaceFallback({ text }: { text: string }) {
   return (
-    <div className="pi-switch-workspace">
-      {ORDER.map((id) => (
-        <ViewSurface key={id} id={id} module={modules[id]} active={view === id} />
-      ))}
+    <div className="pichat pichat-workspace">
+      <div className="pichat-center">
+        <p className="pichat-hint">{text}</p>
+      </div>
     </div>
   )
 }
 
-function ViewSurface({ id, module, active }: { id: PiView; module: ViewModule; active: boolean }) {
-  const seen = useActivation(active)
-  if (!seen) return null
-  const Workspace = module.Workspace as ComponentType
+/**
+ * 工作区：三种页面（新对话、会话、配置）按 PiNav 渲染。
+ * 配置页首次进入才挂载，挂载后保留；会话页按 sessionFile 建键，换会话就是换页面。
+ */
+export function PiWorkspace(): ReactNode {
+  const { page } = usePiNav()
+  const [configSeen, setConfigSeen] = useState(false)
+  useEffect(() => {
+    if (page.kind === 'config') setConfigSeen(true)
+  }, [page])
+
   return (
-    <div className={`pi-switch-surface${active ? '' : ' is-hidden'}`} data-view={id} aria-hidden={!active}>
-      <Workspace />
+    <div className="pi-workspace">
+      <div className="pi-workspace-page" hidden={page.kind === 'config'}>
+        {page.kind === 'session' ? (
+          <Suspense fallback={<WorkspaceFallback text="加载会话…" />}>
+            <SessionThreadLazy key={page.sessionFile} sessionFile={page.sessionFile} />
+          </Suspense>
+        ) : (
+          <DraftPage />
+        )}
+      </div>
+      {configSeen ? (
+        <div className="pi-workspace-page" hidden={page.kind !== 'config'}>
+          <Suspense fallback={<WorkspaceFallback text="加载配置…" />}>
+            <ConfigPageLazy />
+          </Suspense>
+        </div>
+      ) : null}
     </div>
   )
 }

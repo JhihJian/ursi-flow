@@ -6,7 +6,7 @@ import type {
   PackageEntryView,
   PluginsListing,
 } from '../../api/types'
-import { describeError, useAppStore } from '../../store/app-store'
+import { describeError, useAppStore } from '../../../../pi-store'
 import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Loading, confirmDialog } from '../ui'
 

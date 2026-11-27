@@ -1,5 +1,6 @@
-/* 合并后的模块样式：三段视图各自作用域化，切换条单独一份。由 shell-web 直接引入。 */
+/* 模块样式：配置、会话、对话三份作用域化样式。由 shell-web 直接引入。 */
 @import './views/config/module.css';
 @import './views/sessions/module.css';
 @import './views/chat/module.css';
-@import './switch.css';
+@import './pi-module.css';
+

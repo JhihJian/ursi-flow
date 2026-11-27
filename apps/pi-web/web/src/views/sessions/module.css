@@ -467,20 +467,22 @@
 .pisess .session-group + .session-group {
   margin-top: var(--space-xs);
 }
+/* 组头是一行两个按钮：箭头折叠，目录名点选为当前目录（新对话落在它下面）。 */
 .pisess .session-group-head {
   display: flex;
   align-items: baseline;
   gap: var(--space-xs);
   width: 100%;
   padding: var(--space-sm) var(--space-xs) var(--space-xs);
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
 }
 .pisess .session-group-caret {
   flex: none;
   width: 9px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
   color: var(--gray-400);
   font-size: 9px;
 }
@@ -490,6 +492,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
   font-family: var(--font-serif);
   font-size: 12px;
   font-weight: 600;
@@ -509,6 +516,13 @@
 }
 .pisess .session-group-head:hover .session-group-name {
   color: var(--gray-900);
+}
+/* 当前目录的组头：左侧竖线，与选中会话行的表达一致。 */
+.pisess .session-group-head.is-cwd .session-group-name {
+  color: var(--gray-900);
+}
+.pisess .session-group-head.is-cwd {
+  box-shadow: inset 2px 0 0 var(--gray-900);
 }
 .pisess .session-item {
   display: block;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { GeneralListing } from '../../api/types'
-import { describeError, useAppStore } from '../../store/app-store'
+import { describeError, useAppStore } from '../../../../pi-store'
 import { SectionDetailHead } from '../layout'
 import { ErrorBanner, Field, Loading, Switch } from '../ui'
 

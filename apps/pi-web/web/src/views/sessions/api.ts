@@ -210,6 +210,11 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
     fetchSessionText: async (root, id) => {
       const response = await fetch(sessionTextUrl(root, id))
       if (!response.ok) throw new RequestError(await errorMessage(response), response.status)
+      // 有运行时的会话返回 JSON 包裹（带 revision 等元信息），正文在 text 字段。
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        const payload = (await response.json()) as { text?: unknown }
+        return typeof payload.text === 'string' ? payload.text : ''
+      }
       return response.text()
     },
   }

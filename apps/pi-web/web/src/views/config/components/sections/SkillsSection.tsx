@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { SkillContent, SkillItem, SkillsListing } from '../../api/types'
-import { describeError, useAppStore } from '../../store/app-store'
+import { describeError, useAppStore } from '../../../../pi-store'
 import { SectionDetailHead, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Loading } from '../ui'
 

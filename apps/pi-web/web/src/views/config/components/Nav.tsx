@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { DirBrowser } from '@ursi/directory-picker'
-import { useAppStore } from '../store/app-store'
+import { useAppStore } from '../../../pi-store'
 import { api } from '../api/client'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
@@ -304,14 +304,8 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
   )
 }
 
-/** 左侧导航：pi home 清单（可新增、改名、移除）+ 配置分区。 */
-export function Sidebar({
-  active,
-  onSelect,
-}: {
-  active: SectionId
-  onSelect: (id: SectionId) => void
-}) {
+/** pi home 清单：点一行切换，右键重命名/移除，「+」展开新增面板。 */
+export function HomeList() {
   const homes = useAppStore((s) => s.homes)
   const homesLoading = useAppStore((s) => s.homesLoading)
   const homePath = useAppStore((s) => s.homePath)
@@ -322,7 +316,7 @@ export function Sidebar({
   const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
 
   return (
-    <nav className="config-sidebar" aria-label="pi home 与配置分区">
+    <nav className="config-sidebar config-sidebar-homes" aria-label="pi home">
       <div className="config-sidebar-head">
         <span
           className="config-sidebar-heading"
@@ -365,10 +359,21 @@ export function Sidebar({
           <li className="preset-empty">{homesLoading ? '扫描中…' : '没有发现 pi home'}</li>
         ) : null}
       </ul>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+    </nav>
+  )
+}
 
-      <div className="config-sidebar-head config-sidebar-head-sections">
-        <span className="config-sidebar-heading">分区</span>
-      </div>
+/** 配置的六个分区。 */
+export function SectionList({
+  active,
+  onSelect,
+}: {
+  active: SectionId
+  onSelect: (id: SectionId) => void
+}) {
+  return (
+    <nav className="config-sidebar config-sidebar-sections" aria-label="配置分区">
       {SECTIONS.map((section) => (
         <button
           key={section.id}
@@ -383,7 +388,6 @@ export function Sidebar({
           <span className="sidebar-item-label">{section.label}</span>
         </button>
       ))}
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </nav>
   )
 }

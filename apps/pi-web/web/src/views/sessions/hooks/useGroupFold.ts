@@ -6,17 +6,19 @@ export const GROUP_VISIBLE = 8
 export const SHOW_MORE_STEP = 20
 
 /**
- * 项目组的折叠与「显示更多」。
+ * 项目组的折叠与「显示更多」。有搜索词时命中的组默认全部展开。
  *
  * 两组状态都按项目键记，换根目录时整份清空：同一个项目可能出现在两个根下，
  * 在一处折叠过不该带到另一处。清空在渲染期比对 scope 完成，首帧就是新目录的默认样子。
  */
 export function useGroupFold(
   groups: readonly SessionGroup[],
-  selectedId: string | null,
+  /** 会话页正指向的会话文件，它所在的组默认展开。 */
+  activeFile: string | null,
   scope: string | null,
+  { searching = false }: { searching?: boolean } = {},
 ) {
-  // 用户点过的组记在这里；没记的组按默认规则（只有选中会话所在的组展开）。
+  // 用户点过的组记在这里；没记的组按默认规则（只有会话页指向的会话所在的组展开）。
   const [folded, setFolded] = useState<Record<string, boolean>>({})
   const [more, setMore] = useState<Record<string, number>>({})
   const lastScope = useRef(scope)
@@ -26,7 +28,11 @@ export function useGroupFold(
     setFolded({})
     setMore({})
   }
-  const foldedByDefault = useMemo(() => defaultFoldedGroups(groups, selectedId), [groups, selectedId])
+  // 搜索时命中的组全部展开：搜到 30 条散在 20 个组里，组全折叠就得逐个点开。
+  const foldedByDefault = useMemo(
+    () => (searching ? new Set<string>() : defaultFoldedGroups(groups, activeFile)),
+    [groups, activeFile, searching],
+  )
 
   const toggleGroup = useCallback((key: string) => {
     setFolded((current) => {

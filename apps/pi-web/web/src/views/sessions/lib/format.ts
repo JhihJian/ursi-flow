@@ -3,6 +3,8 @@ import type { SessionRow } from '../api'
 export interface SessionGroup {
   key: string
   name: string
+  /** 组头显示用：相对所有项目公共前缀的路径。 */
+  label: string
   sessions: SessionRow[]
   /** 组内最新活动时间，组按它倒序 */
   newest: number
@@ -62,11 +64,11 @@ export function formatWhen(ms: number): string {
  */
 export function defaultFoldedGroups(
   groups: readonly SessionGroup[],
-  selectedId: string | null,
+  activeFile: string | null,
 ): Set<string> {
   const folded = new Set<string>()
   groups.forEach((group) => {
-    const open = selectedId !== null && group.sessions.some((row) => row.id === selectedId)
+    const open = activeFile !== null && group.sessions.some((row) => row.path === activeFile)
     if (!open) folded.add(group.key)
   })
   return folded
@@ -179,6 +181,7 @@ export function groupSessions(
       groups.set(row.projectKey, {
         key: row.projectKey,
         name: row.projectName,
+        label: row.projectName,
         sessions: [row],
         newest: row.modified,
       })
@@ -187,7 +190,35 @@ export function groupSessions(
   const list = [...groups.values()]
   for (const group of list) group.sessions.sort((a, b) => b.modified - a.modified)
   list.sort((a, b) => b.newest - a.newest || a.name.localeCompare(b.name))
+  // 组头显示相对最长公共目录前缀的路径：692 个项目里 --data-dev-* 一族占大头，
+  // 只看 basename 分不清，全路径又太长。
+  const prefix = commonDirPrefix(list.map((group) => group.key))
+  for (const group of list) group.label = relativeLabel(group.key, prefix)
   return list
+}
+
+/** 一组路径的最长公共目录前缀。按段比而不按字符：/data/dev/x 与 /data/dev-2/y 的公共是 data。 */
+export function commonDirPrefix(paths: readonly string[]): string {
+  if (paths.length === 0) return ''
+  let common = pathSegments(paths[0])
+  for (const path of paths.slice(1)) {
+    const parts = pathSegments(path)
+    let i = 0
+    while (i < common.length && i < parts.length && common[i] === parts[i]) i++
+    common = common.slice(0, i)
+  }
+  // 保留开头的斜杠，与 key 同一形态，方便直接做 startsWith。
+  return paths[0].startsWith('/') ? `/${common.join('/')}` : common.join('/')
+}
+
+function pathSegments(path: string): string[] {
+  return path.split(/[\\/]/).filter(Boolean)
+}
+
+function relativeLabel(key: string, prefix: string): string {
+  // 没有公共前缀就给全路径：去掉开头的斜杠会让人以为是相对路径。
+  if (!prefix || prefix === '/' || !key.startsWith(prefix)) return key
+  return key.slice(prefix.length).replace(/^[\\/]+/, '') || key
 }
 
 /**

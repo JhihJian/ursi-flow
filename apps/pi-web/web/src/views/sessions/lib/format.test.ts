@@ -8,6 +8,7 @@ import {
   formatAge,
   formatBytes,
   formatWhen,
+  commonDirPrefix,
   groupSessions,
   matchesDays,
   matchesQuery,
@@ -138,15 +139,15 @@ describe('formatWhen', () => {
 
 describe('defaultFoldedGroups', () => {
   const groups = groupSessions([
-    row({ id: 'a', projectKey: '/p1', projectName: 'p1', modified: 300 }),
-    row({ id: 'b', projectKey: '/p2', projectName: 'p2', modified: 200 }),
-    row({ id: 'c', projectKey: '/p3', projectName: 'p3', modified: 100 }),
+    row({ id: 'a', path: '/r/a.jsonl', projectKey: '/p1', projectName: 'p1', modified: 300 }),
+    row({ id: 'b', path: '/r/b.jsonl', projectKey: '/p2', projectName: 'p2', modified: 200 }),
+    row({ id: 'c', path: '/r/c.jsonl', projectKey: '/p3', projectName: 'p3', modified: 100 }),
   ])
 
-  test('只有含选中会话的组展开，其余收起', () => {
+  test('只有会话页指向的会话所在的组展开，其余收起', () => {
     expect([...defaultFoldedGroups(groups, null)]).toEqual(['/p1', '/p2', '/p3'])
-    expect([...defaultFoldedGroups(groups, 'c')]).toEqual(['/p1', '/p2'])
-    expect([...defaultFoldedGroups(groups, 'a')]).toEqual(['/p2', '/p3'])
+    expect([...defaultFoldedGroups(groups, '/r/c.jsonl')]).toEqual(['/p1', '/p2'])
+    expect([...defaultFoldedGroups(groups, '/r/a.jsonl')]).toEqual(['/p2', '/p3'])
   })
 })
 
@@ -247,5 +248,35 @@ describe('matchesDays', () => {
     expect(matchesDays(item, new Set(['2026-01-05']))).toBe(true)
     expect(matchesDays(item, new Set(['2026-01-06']))).toBe(false)
     expect(matchesDays(item, new Set(['2026-01-04', '2026-01-05']))).toBe(true)
+  })
+})
+
+describe('commonDirPrefix', () => {
+  test('所有路径共有的目录段', () => {
+    expect(commonDirPrefix(['/data/dev/a', '/data/dev/b'])).toBe('/data/dev')
+  })
+  test('只按目录段比，不按字符', () => {
+    expect(commonDirPrefix(['/data/dev/a', '/data/dev-2/b'])).toBe('/data')
+  })
+  test('没有公共段时为空', () => {
+    expect(commonDirPrefix(['/a/x', '/b/y'])).toBe('/')
+  })
+})
+
+describe('groupSessions 的组头标签', () => {
+  test('label 是相对公共前缀的路径', () => {
+    const rows = [
+      row({ id: '1', cwd: '/data/dev/a', projectKey: '/data/dev/a', modified: 3 }),
+      row({ id: '2', cwd: '/data/dev/b/sub', projectKey: '/data/dev/b/sub', modified: 2 }),
+    ]
+    const groups = groupSessions(rows)
+    expect(groups.map((g) => g.label)).toEqual(['a', 'b/sub'])
+  })
+  test('没有公共前缀时保留原名', () => {
+    const rows = [
+      row({ id: '1', cwd: '/a/x', projectKey: '/a/x', modified: 2 }),
+      row({ id: '2', cwd: '/b/y', projectKey: '/b/y', modified: 1 }),
+    ]
+    expect(groupSessions(rows).map((g) => g.label)).toEqual(['/a/x', '/b/y'])
   })
 })

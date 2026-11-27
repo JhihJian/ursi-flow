@@ -1,0 +1,83 @@
+/*
+ * 组合根的布局：侧栏三段、工作区三页、配置页两栏。
+ * 各子模块的样式仍在各自作用域下（.pi-manager-root / .pisess / .pichat），这里只管拼装。
+ */
+
+.pi-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* home 清单：按内容高，条目多时（上限四成）自己滚。 */
+.pi-sidebar-homes {
+  flex: none;
+  max-height: 40%;
+  min-height: 0;
+  overflow: hidden auto;
+  border-bottom: 1px solid var(--gray-200, #e5e5e5);
+}
+
+.pi-sidebar-homes .config-sidebar {
+  min-height: 0;
+  padding-bottom: var(--space-sm);
+}
+
+/* 会话面板：吃掉剩余高度，列表在里面滚。 */
+.pi-sidebar-sessions {
+  flex: 1;
+  min-height: 0;
+}
+
+.pi-sidebar-foot {
+  flex: none;
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--gray-200, #e5e5e5);
+}
+
+.pi-sidebar-foot .pichat-button {
+  flex: 1;
+}
+
+/* 工作区：同一时刻只显示一页，另一页 hidden 保状态（配置返回时回到原页面）。 */
+.pi-workspace {
+  height: 100%;
+  min-height: 0;
+}
+
+.pi-workspace-page {
+  height: 100%;
+  min-height: 0;
+}
+
+.pi-workspace-page[hidden] {
+  display: none;
+}
+
+/* 配置页：左侧分区导航，右侧分区内容。 */
+.pi-config-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.pi-config-nav {
+  flex: none;
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--gray-200, #e5e5e5);
+}
+
+.pi-config-nav .config-sidebar {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-sm);
+}
+
+.pi-config-back {
+  margin: var(--space-sm);
+}

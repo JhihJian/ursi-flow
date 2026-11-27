@@ -1,42 +1,35 @@
 import { usePi } from './pi-context'
+import { usePiNav } from './pi-nav'
 import { useChatController } from './views/chat/chat-context'
 import { useSessionsController } from './views/sessions/sessions-context'
 
-/**
- * 状态栏：一个模块只能声明一种 selection kind，三种实体并存时摘要无法静态映射，
- * 所以这里用组件按活动视图给出摘要。
- */
+/** 状态栏：home 与当前页面的摘要。运行中数量在侧栏脚注已有，这里不重复。 */
 export function PiStatus() {
-  const { view, home, homePath, loading } = usePi()
-  const { active, chats } = useChatController()
-  const { listing, selected } = useSessionsController()
+  const { home, homePath, loading } = usePi()
+  const { page } = usePiNav()
+  const { active } = useChatController()
+  const { listing } = useSessionsController()
 
   const name = home?.name ?? (homePath ? homePath.split('/').slice(-2).join('/') : '未选 home')
 
   if (loading) return <span>Pi · 加载中</span>
   if (!homePath) return <span>Pi · 未选择 pi home</span>
 
-  if (view === 'chat') {
-    const running = chats.filter((chat) => chat.state === 'running').length
-    const state = active?.state === 'running' ? '运行中' : active ? '空闲' : '未开始'
+  if (page.kind === 'session') {
+    if (!active) return <span>{name} · 会话</span>
+    const state = active.state === 'running' ? '运行中' : active.state === 'error' ? '出错' : '空闲'
     return (
       <span>
-        {name} · 对话 {state}
-        {running > 0 ? ` · ${running} 场在跑` : ''}
-        {active?.model ? ` · ${active.model}` : ''}
+        {name} · {state}
+        {active.model ? ` · ${active.model}` : ''}
       </span>
     )
   }
 
-  if (view === 'sessions') {
-    const total = listing ? String(listing.sessions.length) : '—'
-    return (
-      <span>
-        {name} · 会话 {total}
-        {selected ? ` · ${selected.projectName}` : ''}
-      </span>
-    )
+  if (page.kind === 'config') {
+    return <span>{name} · 配置</span>
   }
 
-  return <span>{name} · 配置</span>
+  const total = listing ? String(listing.sessions.length) : '—'
+  return <span>{name} · 新对话 · 会话 {total}</span>
 }

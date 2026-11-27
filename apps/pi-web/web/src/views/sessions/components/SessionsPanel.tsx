@@ -1,11 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
 import type { Listing, SessionRow } from '../api'
 import { primaryLive } from '../live'
 import {
   dailyBuckets,
   groupSessions,
-  sessionTitle,
   shortRoot,
   splitPinnedGroups,
   todayKey,
@@ -14,6 +12,7 @@ import {
 import { useGroupFold } from '../hooks/useGroupFold'
 import { useSidebarMenu } from '../hooks/useSidebarMenu'
 import { useSessionsController } from '../sessions-context'
+import { RootPicker } from './RootPicker'
 import { ContextMenu } from './ContextMenu'
 import { RefreshIcon, SearchIcon } from './Icons'
 import { SessionGroupList } from './SessionGroupList'
@@ -23,15 +22,25 @@ const NO_ROWS: SessionRow[] = []
 /** 只选一天时把它写进脚注，比「筛选 1 天」更有用。 */
 const ONE_DAY = 1
 
+export interface SessionsPanelProps {
+  /** 会话页正指向的会话文件，对应的行高亮。 */
+  activeFile: string | null
+  /** 当前目录（新对话会落在它下面），对应的组头高亮。 */
+  cwd: string | null
+  /** 点组头：该目录成为当前目录。 */
+  onPickDir: (cwd: string) => void
+  /** 点会话行：目录成为当前目录并打开这条会话。 */
+  onOpen: (row: SessionRow) => void
+}
+
 /**
- * 外壳里的会话侧边栏：外框交给平台的 SidebarFrame（上下折叠），里面是
- * 根目录、按日筛选条形、搜索与按项目分组的会话列表。
+ * 侧栏的会话面板：目录行、按日筛选条形、搜索与按项目分组的会话列表。
+ * 外框与折叠由宿主负责，这里只管内容。
  *
- * 这里只做编排：跨区域共享的状态（根目录、日期筛选、选中、关注、运行态）
- * 来自 controller，视图私有的状态在各自的 hook 里。结构与 todo-web 的项目栏
- * 一致：衬线小标题、等宽次信息、选中靠左侧竖线。
+ * 根目录、日期筛选、关注、运行态来自 controller，视图私有的状态在各自的 hook 里。
+ * 当前页面不在这里，由宿主通过 props 传入。
  */
-export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarProps) {
+export function SessionsPanel({ activeFile, cwd, onPickDir, onOpen }: SessionsPanelProps) {
   const {
     root,
     configError,
@@ -40,8 +49,6 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     error,
     query,
     setQuery,
-    selected,
-    select,
     selectedDays,
     setSelectedDays,
     pinnedProjects,
@@ -50,7 +57,10 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     reload,
     notice,
     clearNotice,
+    picking,
     setPicking,
+    setRoot,
+    config,
     liveByPath,
     alivePaths,
     liveError,
@@ -74,8 +84,9 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
   )
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
 
-  const fold = useGroupFold(groups, selected?.id ?? null, root)
-  const menu = useSidebarMenu({ select, deleteSession, togglePin })
+  const fold = useGroupFold(groups, activeFile, root, { searching: query.trim().length > 0 })
+  const pickGroup = (group: SessionGroup) => onPickDir(group.key)
+  const menu = useSidebarMenu({ open: onOpen, deleteSession, togglePin })
 
   const liveForRow = (row: SessionRow) => (liveEnabled ? primaryLive(liveByPath.get(row.path)) : null)
 
@@ -106,49 +117,22 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     if (!next && query) setQuery('')
   }
 
-  const railItems = selected
-    ? [
-        { label: '会话', value: sessionTitle(selected) },
-        { label: '项目', value: selected.projectName },
-      ]
-    : [
-        { label: '会话', value: listing ? String(listing.sessions.length) : '—' },
-        { label: '项目', value: String(groups.length) },
-      ]
-
   const emptyText = emptyMessage({ error, loading, query, selectedDays, listing, groups })
 
   const listProps = {
     pinnedKeys: pinnedKeySet,
-    selectedId: selected?.id ?? null,
+    activeFile,
+    activeGroupKey: cwd,
     liveForRow,
     fold,
-    onSelect: select,
+    onSelect: onOpen,
+    onPickGroup: pickGroup,
     onGroupMenu: menu.projectMenu,
     onSessionMenu: menu.sessionMenu,
   }
 
   return (
     <div className="pisess pisess-sidebar-host" ref={containerRef}>
-      <SidebarFrame
-        title="Sessions"
-        collapsed={collapsed}
-        collapse={collapse}
-        expand={expand}
-        items={railItems}
-        actions={
-          <button
-            type="button"
-            className={searchOpen ? 'rail-toggle active' : 'rail-toggle'}
-            title={searchOpen ? '收起搜索' : '搜索会话'}
-            aria-label={searchOpen ? '收起搜索' : '搜索会话'}
-            aria-expanded={searchOpen}
-            onClick={toggleSearch}
-          >
-            <SearchIcon />
-          </button>
-        }
-      >
         <div className="pisess-body">
           {configError ? (
             <p className="sidebar-note error">无法读取服务配置：{configError}</p>
@@ -179,6 +163,16 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
               disabled={loading || !root}
             >
               <RefreshIcon />
+            </button>
+            <button
+              type="button"
+              className={searchOpen ? 'rail-toggle active' : 'rail-toggle'}
+              title={searchOpen ? '收起搜索' : '搜索会话'}
+              aria-label={searchOpen ? '收起搜索' : '搜索会话'}
+              aria-expanded={searchOpen}
+              onClick={toggleSearch}
+            >
+              <SearchIcon />
             </button>
           </div>
 
@@ -245,7 +239,17 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
             {daySummary ? ` · ${daySummary}` : ''}
           </p>
         </div>
-      </SidebarFrame>
+      {picking ? (
+        <div className="picker-backdrop">
+          <RootPicker
+            root={root ?? ''}
+            defaultRoot={config?.defaultRoot ?? ''}
+            suggestedRoots={config?.suggestedRoots ?? []}
+            onPick={setRoot}
+            onClose={() => setPicking(false)}
+          />
+        </div>
+      ) : null}
       <ContextMenu state={menu.menu} onClose={menu.close} container={containerRef.current} />
     </div>
   )

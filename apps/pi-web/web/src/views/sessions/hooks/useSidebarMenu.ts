@@ -5,7 +5,7 @@ import { sessionTitle } from '../lib/format'
 import type { MenuItem, MenuState } from '../components/ContextMenu'
 
 interface MenuActions {
-  select: (row: SessionRow) => void
+  open: (row: SessionRow) => void
   deleteSession: (row: SessionRow) => void
   togglePin: (projectKey: string, pinned: boolean) => void
 }
@@ -15,7 +15,7 @@ interface MenuActions {
  *
  * 确认层要落在刚才菜单的位置上，但那时菜单 state 已经清空，所以坐标另存一份。
  */
-export function useSidebarMenu({ select, deleteSession, togglePin }: MenuActions) {
+export function useSidebarMenu({ open, deleteSession, togglePin }: MenuActions) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuAt = useRef({ x: 0, y: 0 })
 
@@ -64,7 +64,7 @@ export function useSidebarMenu({ select, deleteSession, togglePin }: MenuActions
       openMenu(
         event,
         [
-          { label: '打开', onSelect: () => select(row) },
+          { label: '打开', onSelect: () => open(row) },
           { label: '复制会话 ID', onSelect: () => void navigator.clipboard?.writeText(row.id) },
           { label: '复制文件路径', onSelect: () => void navigator.clipboard?.writeText(row.path) },
           { label: '删除会话…', danger: true, onSelect: () => confirmDelete(row) },
@@ -72,7 +72,7 @@ export function useSidebarMenu({ select, deleteSession, togglePin }: MenuActions
         sessionTitle(row),
       )
     },
-    [openMenu, select, confirmDelete],
+    [openMenu, open, confirmDelete],
   )
 
   const close = useCallback(() => setMenu(null), [])

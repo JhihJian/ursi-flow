@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { ApiError, api } from '../api/client'
-import type { HomeCreateInput, HomeSummary } from '../api/types'
+import { ApiError, api } from './views/config/api/client'
+import type { HomeCreateInput, HomeSummary } from './views/config/api/types'
 
 /**
  * 全局唯一 store：home 选择 + 主题 + 页脚消息。

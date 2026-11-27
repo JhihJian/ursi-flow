@@ -17,10 +17,10 @@ import {
 } from './api'
 import { useSessions } from './hooks/useSessions'
 import { indexLiveByFile, type LiveSessionFeed, type LiveSessionInfo, type LiveSessionSource } from './live'
-import { todayKey, dayKey } from './lib/format'
+import { todayKey } from './lib/format'
 
 /**
- * 模块共享状态：根目录、搜索词、当前选中会话、关注的项目与服务配置。
+ * 模块共享状态：根目录、搜索词、关注的项目与服务配置。当前页面在 PiNav，不在这里。
  *
  * 侧边栏与工作区在 DOM 上是两块（外壳用 portal 保留上下文），因此这里只放纯状态，
  * 不渲染任何 DOM；样式作用域由 Sidebar / Workspace 各自的根类负责。
@@ -44,13 +44,13 @@ export interface SessionsControllerOptions {
   readRootFromUrl?: boolean
   /** 关注/删除失败等需要用户看见的提示。缺省写进模块内的提示位。 */
   onNotice?: (notice: Notice) => void
+  /** 某条会话被删除后通知宿主：页面正指着它时要退回别处。 */
+  onDeleted?: (sessionFile: string) => void
   /**
    * 会话运行态来源，由宿主注入（会话模块不采集心跳）。
    * 不注入时模块按纯磁盘列表工作，行为与之前完全一致。
    */
   liveSessions?: LiveSessionSource
-  /** 在对话视图继续这条会话；不注入时不显示该入口。 */
-  resumeSessionInChat?: (input: { sessionFile: string }) => Promise<unknown>
 }
 
 export interface SessionsController {
@@ -61,8 +61,6 @@ export interface SessionsController {
   configError: string | null
   query: string
   setQuery: (query: string) => void
-  selected: SessionRow | null
-  select: (row: SessionRow | null) => void
   /** 选目录面板是否打开：面板渲染在工作区区域，那里有足够宽度放路径与目录树。 */
   picking: boolean
   setPicking: (picking: boolean) => void
@@ -89,13 +87,8 @@ export interface SessionsController {
   liveError: string | null
   /** 心跳插件已检测到：运行态功能（绿点、运行中列表）总开关。 */
   liveEnabled: boolean
-  /** 打开某条会话（可按会话文件或 id 定位），会切根目录并放开日期筛选。 */
-  openSession: (input: { root?: string; id?: string; sessionFile?: string }) => void
   /** 存活会话（心跳在跳，含运行中与空闲）所在的会话文件路径。 */
   alivePaths: ReadonlySet<string>
-  /** 选中会话能否交给对话继续（宿主是否注入了 resumeSessionInChat）。 */
-  canResumeInChat: boolean
-  resumeInChat: () => Promise<void>
 }
 
 /** 记住的根目录只在本模块的键下，宿主注入 storageKey 后互不干扰。 */
@@ -140,7 +133,6 @@ export function SessionsProvider({
     () => options.initialRoot ?? rememberedRoot(storageKey, readRootFromUrl),
   )
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<SessionRow | null>(null)
   const [picking, setPicking] = useState(false)
   const [pinnedProjects, setPinnedProjects] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -149,10 +141,6 @@ export function SessionsProvider({
   const [liveError, setLiveError] = useState<string | null>(null)
   /** 心跳插件是否检测到：未检测到时运行态功能整体关闭（不显示绿点）。 */
   const [liveEnabled, setLiveEnabled] = useState(false)
-  const [pendingSelection, setPendingSelection] = useState<{
-    id?: string
-    sessionFile?: string
-  } | null>(null)
 
   const notify = useCallback(
     (next: Notice) => {
@@ -227,30 +215,9 @@ export function SessionsProvider({
 
   const alivePaths = useMemo(() => new Set(liveByPath.keys()), [liveByPath])
 
-  // 命令跳转：等列表到达后按会话文件优先、id 兜底选中，并把它的日期并入筛选，
-  // 否则选中了却在列表里看不见。
-  useEffect(() => {
-    if (!pendingSelection || !listing) return
-    const wanted = pendingSelection.sessionFile
-    const row = wanted
-      ? listing.sessions.find((item) => item.path === wanted)
-      : listing.sessions.find((item) => item.id === pendingSelection.id)
-    if (!row) {
-      if (!loading && listing.pendingDetails === 0) {
-        notify({ kind: 'error', message: `这个根目录里找不到该会话：${wanted ?? pendingSelection.id}` })
-        setPendingSelection(null)
-      }
-      return
-    }
-    setSelected(row)
-    setSelectedDays((current) => new Set([...current, dayKey(row.modified)]))
-    setPendingSelection(null)
-  }, [listing, loading, pendingSelection, notify])
-
   const setRoot = useCallback(
     (next: string) => {
       rememberRoot(storageKey, next)
-      setSelected(null)
       setQuery('')
       setPicking(false)
       // 换根目录回到只看今天：别的目录里选的日期对这里没有意义。
@@ -261,18 +228,6 @@ export function SessionsProvider({
   )
 
   // 宿主不再注入根：home 变化时由组合根调一次 setRoot，之后根是用户的事。
-
-  /** 跨模块命令用：切根目录 + 等列表到达后选中目标会话。 */
-  const openSession = useCallback(
-    (input: { root?: string; id?: string; sessionFile?: string }) => {
-      const target = input.root?.trim()
-      if (target && target !== root) setRoot(target)
-      setSelected(null)
-      setPendingSelection({ id: input.id, sessionFile: input.sessionFile })
-      setPicking(false)
-    },
-    [root, setRoot],
-  )
 
   /**
    * 关注/取消关注：先在本地生效，再落盘。失败时回滚并说明原因，
@@ -299,31 +254,21 @@ export function SessionsProvider({
   )
 
   /** 删除会话文件：成功后从列表移除，失败时说明原因且不动列表。 */
-  const selectedRef = useRef(selected)
-  selectedRef.current = selected
   const deleteSession = useCallback(
     (row: SessionRow) => {
       if (!root) return
       void api
         .deleteSession(root, row.id)
         .then(() => {
-          if (selectedRef.current?.id === row.id) setSelected(null)
+          options.onDeleted?.(row.path)
           reload()
         })
         .catch((failure: unknown) =>
           notify({ kind: 'error', message: `删除失败：${errorText(failure)}` }),
         )
     },
-    [api, root, reload, notify],
+    [api, root, reload, notify, options.onDeleted],
   )
-
-  const resumeSessionInChat = options.resumeSessionInChat
-  const resumeInChat = useCallback(async () => {
-    const row = selectedRef.current
-    if (!row) throw new Error('先在左侧选一条会话')
-    if (!resumeSessionInChat) throw new Error('对话视图未挂载')
-    await resumeSessionInChat({ sessionFile: row.path })
-  }, [resumeSessionInChat])
 
   const value: SessionsController = {
     api,
@@ -333,8 +278,6 @@ export function SessionsProvider({
     configError,
     query,
     setQuery,
-    selected,
-    select: setSelected,
     picking,
     setPicking,
     selectedDays,
@@ -353,10 +296,7 @@ export function SessionsProvider({
     liveByPath,
     liveError,
     liveEnabled,
-    openSession,
     alivePaths,
-    canResumeInChat: Boolean(resumeSessionInChat),
-    resumeInChat,
   }
 
   return <SessionsContext.Provider value={value}>{children}</SessionsContext.Provider>

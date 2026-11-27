@@ -8,26 +8,33 @@ interface SessionGroupListProps {
   groups: readonly SessionGroup[]
   /** 特别关注的项目键，组名旁据此显示标记点。 */
   pinnedKeys: ReadonlySet<string>
-  selectedId: string | null
+  /** 会话页指向的会话文件。 */
+  activeFile: string | null
+  /** 当前目录（新对话会落在它下面）：对应的组头高亮。 */
+  activeGroupKey: string | null
   /** 这条会话的存活状态；心跳插件未开启时传 () => null。 */
   liveForRow: (row: SessionRow) => LiveSessionInfo | null
   fold: ReturnType<typeof useGroupFold>
   onSelect: (row: SessionRow) => void
+  /** 点组头：目录成为当前目录，不折叠；折叠由左侧的箭头负责。 */
+  onPickGroup: (group: SessionGroup) => void
   onGroupMenu: (event: ReactMouseEvent, group: SessionGroup) => void
   onSessionMenu: (event: ReactMouseEvent, row: SessionRow) => void
 }
 
 /**
- * 一段项目分组：组头可折叠、带右键菜单，组内是会话行与「显示更多 / 收起」。
- * 纯受控组件，不持有状态；折叠与显示更多由 fold 给出。
+ * 一段项目分组：组头是目录（点它成为当前目录，箭头折叠），带右键菜单，
+ * 组内是会话行与「显示更多 / 收起」。纯受控组件，不持有状态。
  */
 export function SessionGroupList({
   groups,
   pinnedKeys,
-  selectedId,
+  activeFile,
+  activeGroupKey,
   liveForRow,
   fold,
   onSelect,
+  onPickGroup,
   onGroupMenu,
   onSessionMenu,
 }: SessionGroupListProps) {
@@ -39,24 +46,36 @@ export function SessionGroupList({
         const hidden = group.sessions.length - shown
         return (
           <section className="session-group" key={group.key}>
-            <button
-              type="button"
-              className="session-group-head"
-              title={group.key}
-              aria-expanded={!isFolded}
+            <div
+              className={`session-group-head${activeGroupKey === group.key ? ' is-cwd' : ''}`}
               data-pinned={pinnedKeys.has(group.key)}
-              onClick={() => fold.toggleGroup(group.key)}
               onContextMenu={(event) => onGroupMenu(event, group)}
             >
-              <span className="session-group-caret">{isFolded ? '▸' : '▾'}</span>
-              <span className="session-group-name">{group.name}</span>
+              <button
+                type="button"
+                className="session-group-caret"
+                title={isFolded ? '展开' : '折叠'}
+                aria-expanded={!isFolded}
+                onClick={() => fold.toggleGroup(group.key)}
+              >
+                {isFolded ? '▸' : '▾'}
+              </button>
+              <button
+                type="button"
+                className="session-group-name"
+                title={`${group.key}\n点它作为新对话的目录`}
+                aria-pressed={activeGroupKey === group.key}
+                onClick={() => onPickGroup(group)}
+              >
+                {group.label}
+              </button>
               {pinnedKeys.has(group.key) ? (
                 <span className="session-group-pin" aria-label="特别关注">
                   ●
                 </span>
               ) : null}
               <span className="session-group-count">{group.sessions.length}</span>
-            </button>
+            </div>
 
             {isFolded
               ? null
@@ -64,7 +83,7 @@ export function SessionGroupList({
                   <SessionRowItem
                     key={row.id}
                     row={row}
-                    active={row.id === selectedId}
+                    active={row.path === activeFile}
                     live={liveForRow(row)}
                     onSelect={() => onSelect(row)}
                     onMenu={onSessionMenu}

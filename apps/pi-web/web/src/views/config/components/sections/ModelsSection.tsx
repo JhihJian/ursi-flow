@@ -8,7 +8,7 @@ import type {
   ProbeResult,
   ProviderView,
 } from '../../api/types'
-import { describeError, useAppStore } from '../../store/app-store'
+import { describeError, useAppStore } from '../../../../pi-store'
 import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading, confirmDialog } from '../ui'
 import {
