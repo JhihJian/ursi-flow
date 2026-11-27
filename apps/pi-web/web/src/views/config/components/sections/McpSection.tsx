@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import type { McpListing, McpServerView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
-import { EmptyState, ErrorBanner, Field, Loading, Switch } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading, Switch, confirmDialog } from '../ui'
 
 /**
  * MCP（mcp.json）：server 列表 + JSON 详情编辑，合并写回语义同 models。
@@ -326,7 +326,9 @@ function ServerEditor({
                 type="button"
                 className="btn btn-danger"
                 onClick={() => {
-                  if (window.confirm(`删除 server ${server.name}？`)) void onDelete()
+                  void confirmDialog({ title: `删除 server ${server.name}？`, confirmLabel: '删除', danger: true }).then((ok) => {
+                    if (ok) void onDelete()
+                  })
                 }}
               >
                 删除

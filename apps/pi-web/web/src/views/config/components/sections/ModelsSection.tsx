@@ -10,7 +10,7 @@ import type {
 } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
-import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading, confirmDialog } from '../ui'
 import {
   appendModelToEntry,
   diffDiscovered,
@@ -609,7 +609,9 @@ function ProviderEditor({
               type="button"
               className="btn btn-danger"
               onClick={() => {
-                if (window.confirm(`删除 provider ${provider.name}？`)) void onDelete()
+                void confirmDialog({ title: `删除 provider ${provider.name}？`, confirmLabel: '删除', danger: true }).then((ok) => {
+                  if (ok) void onDelete()
+                })
               }}
             >
               删除
@@ -667,7 +669,13 @@ function ModelRows({ models, onRemove }: { models: DraftModel[]; onRemove?: (ind
                   className="btn small btn-danger"
                   title={`从草稿移除 ${modelIdOf(model) || '该模型'}`}
                   onClick={() => {
-                    if (window.confirm(`从草稿移除模型 ${modelIdOf(model) || '（缺 id）'}？`)) onRemove(index)
+                    void confirmDialog({
+                      title: `从草稿移除模型 ${modelIdOf(model) || '（缺 id）'}？`,
+                      confirmLabel: '移除',
+                      danger: true,
+                    }).then((ok) => {
+                      if (ok) onRemove(index)
+                    })
                   }}
                 >
                   删除

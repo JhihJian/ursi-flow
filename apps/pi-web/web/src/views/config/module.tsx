@@ -17,7 +17,7 @@ import { SkillsSection } from './components/sections/SkillsSection'
 import { AgentsSection } from './components/sections/AgentsSection'
 import { PluginsSection } from './components/sections/PluginsSection'
 import { McpSection } from './components/sections/McpSection'
-import { EmptyState, ErrorBanner } from './components/ui'
+import { EmptyState, ErrorBanner, ConfirmDialogHost } from './components/ui'
 
 /**
  * 管理台作为工作台模块的入口。
@@ -194,6 +194,8 @@ function ManagerWorkspace() {
 
   return (
     <main className="pi-manager-root config-detail manager-module-workspace" key={homePath}>
+      {/* 应用内确认框宿主：window.confirm 的替代品，全局单例。 */}
+      <ConfirmDialogHost />
       {blocked ? (
         <div className="config-section-host">
           <EmptyState title={blocked.title} hint={blocked.hint} />

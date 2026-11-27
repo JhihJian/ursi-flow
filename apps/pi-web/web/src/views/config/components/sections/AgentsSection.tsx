@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import type { AgentProfile, AgentProfileFields, AgentsListing, AgentsSettingsView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { SectionDetailHead, SectionFooterNote, SectionListAction, SectionListHead, SectionListItem, SectionSplit } from '../layout'
-import { EmptyState, ErrorBanner, Field, Loading, Switch } from '../ui'
+import { EmptyState, ErrorBanner, Field, Loading, Switch, confirmDialog } from '../ui'
 
 /**
  * Subagent：agents/ 目录的 profile 列表 + 内置 agent 开关（agents/settings.json）。
@@ -514,7 +514,9 @@ function ProfileEditor({
                 type="button"
                 className="btn btn-danger"
                 onClick={() => {
-                  if (window.confirm(`删除 profile ${file}？`)) void onDelete()
+                  void confirmDialog({ title: `删除 profile ${file}？`, confirmLabel: '删除', danger: true }).then((ok) => {
+                    if (ok) void onDelete()
+                  })
                 }}
               >
                 删除

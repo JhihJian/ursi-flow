@@ -8,7 +8,7 @@ import type {
 } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
-import { EmptyState, ErrorBanner, Loading } from '../ui'
+import { EmptyState, ErrorBanner, Loading, confirmDialog } from '../ui'
 
 /**
  * 插件（settings.json 的 packages 条目 + npm/ 安装目录核对 + 内置扩展一键安装）。
@@ -163,9 +163,14 @@ export function PluginsSection({ home }: { home: string }) {
                 type="button"
                 className="btn btn-danger"
                 onClick={() => {
-                  if (window.confirm(`从 settings.json 移除 ${selectedEntry.source}？npm/ 目录不会删除。`)) {
-                    void mutate(selectedEntry, 'remove')
-                  }
+                  void confirmDialog({
+                    title: `从 settings.json 移除 ${selectedEntry.source}？`,
+                    body: '只移除清单条目，npm/ 目录里的文件不会删除。',
+                    confirmLabel: '移除',
+                    danger: true,
+                  }).then((ok) => {
+                    if (ok) void mutate(selectedEntry, 'remove')
+                  })
                 }}
               >
                 移除条目
@@ -226,7 +231,14 @@ function BuiltinDetail({
             type="button"
             className="btn btn-danger"
             onClick={() => {
-              if (window.confirm(`卸载 ${entry.fileName}？会话视图的运行态功能会随之关闭。`)) onUninstall()
+              void confirmDialog({
+                title: `卸载 ${entry.fileName}？`,
+                body: '会话视图的运行态功能会随之关闭。',
+                confirmLabel: '卸载',
+                danger: true,
+              }).then((ok) => {
+                if (ok) onUninstall()
+              })
             }}
           >
             卸载
