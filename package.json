@@ -22,18 +22,19 @@
     "packages/location"
   ],
   "scripts": {
-    "test": "npm run test:location && npm run test -w @ursi/sidebar && node --test apps/fs-web/server/test/*.test.ts",
-    "test:sidebar": "npm run test -w @ursi/sidebar",
-    "test:directory-picker": "npm run test -w @ursi/directory-picker",
-    "test:todo-web": "npm run test -w @ursi/todo-web",
-    "dev:shell-web": "npm run dev -w @ursi/shell-web",
-    "build:shell-web": "npm run build -w @ursi/shell-web",
-    "test:ursi-flow": "cd apps/ursi-flow && npm test",
-    "build:ursi-flow": "cd apps/ursi-flow && npm run build",
-    "test:flow-web": "npm run test -w @ursi/flow-web && npm run test -w @ursi/flow-web-server",
     "build:flow-web": "npm run build -w @ursi/flow-web",
-    "test:pi-web": "npm run test -w @ursi/pi-web-server && npm run test -w @ursi/pi-web",
     "build:pi-web": "npm run build -w @ursi/pi-web",
-    "test:location": "npm run test -w @ursi/location"
+    "build:shell-web": "npm run build -w @ursi/shell-web",
+    "build:ursi-flow": "cd apps/ursi-flow && npm run build",
+    "dev:shell-web": "npm run dev -w @ursi/shell-web",
+    "test": "npm run test:location && npm run test -w @ursi/sidebar && node --test apps/fs-web/server/test/*.test.ts",
+    "test:directory-picker": "npm run test -w @ursi/directory-picker",
+    "test:flow-web": "npm run test -w @ursi/flow-web && npm run test -w @ursi/flow-web-server",
+    "test:location": "npm run test -w @ursi/location",
+    "test:pi-web": "npm run test -w @ursi/pi-web-server && npm run test -w @ursi/pi-web",
+    "test:sidebar": "npm run test -w @ursi/sidebar",
+    "test:todo-web": "npm run test -w @ursi/todo-web",
+    "test:ursi-flow": "cd apps/ursi-flow && npm test",
+    "typecheck": "npm run typecheck -w @ursi/workspace-shell && npm run typecheck -w @ursi/location && npm run typecheck -w @ursi/directory-picker && npm run typecheck -w @ursi/sidebar && npm run typecheck -w @ursi/shell-web && npm run typecheck -w @ursi/dae-web && npm run typecheck -w @ursi/flow-web && npm run typecheck -w @ursi/fs-web && npm run typecheck -w @ursi/pi-web && npm run typecheck -w @ursi/ssh-web && npm run typecheck -w @ursi/todo-web && npm run typecheck -w @ursi-sandbox/web"
   }
 }

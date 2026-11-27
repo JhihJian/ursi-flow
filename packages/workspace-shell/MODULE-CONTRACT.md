@@ -151,6 +151,7 @@ run: async (selection, shell) => {
 - `SPEC.md`：功能意图、关键功能与可验收的行为（结构见仓库其他模块）。
 - 与外壳契约的接入代码（模块对象 + 侧边栏 + 工作区 + context），以及不依赖外壳也能跑的独立入口或独立部署说明。
 - 单元测试覆盖选中映射、侧边栏折叠态文案、操作可用性判断；有 API 交互的补 e2e。
+- `package.json` 里有 `typecheck` 脚本（`tsc --noEmit`），包在根 `workspaces` 里。根目录 `npm run typecheck` 会把所有前端包串起来跑一遍，提交前必须全绿：组合根 `shell-web` 的 `tsc` 会连带编译各模块的 `module.tsx`，是唯一能发现模块接入层类型错误的手段。手写的第三方模块声明（`vendor.d.ts`）放包的 `src/` 根，并在 `shell-web/tsconfig.json` 的 `include` 里登记，否则组合根看不见。
 - 文档里写明：依赖哪些服务、需要哪些环境变量、数据归属在哪。
 
 ## 13. 反面清单（都踩过）
