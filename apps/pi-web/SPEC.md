@@ -66,7 +66,7 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - home 只有一份真源：任一视图里切 home，其余视图跟随；会话视图的根默认取该 home 的 `sessions/`，用户显式改成任意目录即进入外部目录浏览（不改 home）。
 - 对话视图：建会话/续聊、流式输出、工具调用可见、可打断、排队数与扩展 UI 回执；会话内换模型只影响本会话。
 - 会话视图：按项目分组、日期条、搜索、特别关注、删除、查看轨迹；进入时能续聊同一实体（不新建会话）。
-- 配置视图：模型配置（默认模型、思考级别、启用模型、自建 provider 与发现模型）、常规设置（工具/codemode 等非模型项）、skills、subagent、插件、MCP、凭据；写配置文件带乐观锁与 `.bak-manager` 备份，凭据读接口一律遮蔽。列表型分区统一「左列表 + 右详情 + 底部状态行」骨架（`components/layout.tsx`），分区内容始终在视口内滚动，滚动条保持隐藏风格；高度链约定见 `module.css` 头注释（main → config-section-host → 滚动层，中间层不得断开）。
+- 配置视图：模型配置（默认模型、思考级别、启用模型、自建 provider 与发现模型）、常规设置（工具/codemode 等非模型项）、skills、subagent、插件、MCP；不提供凭据编辑，凭据由 pi CLI 登录维护，模型测试/发现只读 auth.json。写配置文件带乐观锁与 `.bak-manager` 备份，回显的 apiKey 一律遮蔽。列表型分区统一「左列表 + 右详情 + 底部状态行」骨架（`components/layout.tsx`），分区内容始终在视口内滚动，滚动条保持隐藏风格；高度链约定见 `module.css` 头注释（main → config-section-host → 滚动层，中间层不得断开）。
 - 模型配置分区：pi 的模型相关配置收在一个菜单里——默认模型与思考级别（settings 受管 key）、启用模型（enabledModels，含模型目录刷新）、自建 provider（models.json，发现/测试/编辑）。
 - 自定义模型的发现模型：从上游 `/models` 拉取后展示可浏览列表（按 id/名称过滤、上游内去重），草稿已有同 id 模型的行打「已存在」标记，其余行逐个「添加」或「添加全部缺失」；草稿 JSON 字符串是唯一真源，保存仍走 models.json 合并写回。
 - 视图之间的跳转是模块内切换：「看完整轨迹」切到会话视图并选中同一份会话文件，「在对话里继续」切到对话视图并在同一实体上续聊；都走同一份实体，不复制文件。
@@ -87,7 +87,7 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - `server/src/config.ts`、`state.ts`：唯一读环境变量与状态目录布局的地方。
 - `server/src/http/`：路由表（段匹配 + 每条路由声明 home 策略）、响应原语、静态托管。
 - `server/src/shared/`：pi home 校验、SDK 按需加载、原子写与乐观锁、JSONC、frontmatter。
-- `server/src/config/`：home 注册表、settings / skills / agents / mcp / models / auth / plugins 的文件级读写与路由。
+- `server/src/config/`：home 注册表、settings / skills / agents / mcp / models / plugins 的文件级读写与路由。
 - `server/src/chat/`：常驻对话运行时、会话装配与释放、一次性任务、跨进程心跳读取。
 - `server/src/sessions/`：扫描、轨迹转换、偏好、删除、会话实体注册表（`registry.ts`）与路由。
 - `web/src/pi-context.tsx`：home 与视图的唯一真源。

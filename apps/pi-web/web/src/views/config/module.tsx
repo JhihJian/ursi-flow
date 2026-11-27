@@ -12,7 +12,6 @@ import { api, configureApiBase } from './api/client'
 import { useAppStore } from './store/app-store'
 import { SECTIONS, Sidebar, type SectionId } from './components/Sidebar'
 import { GeneralSection } from './components/sections/GeneralSection'
-import { ProvidersSection } from './components/sections/ProvidersSection'
 import { ModelsSection } from './components/sections/ModelsSection'
 import { SkillsSection } from './components/sections/SkillsSection'
 import { AgentsSection } from './components/sections/AgentsSection'
@@ -159,8 +158,6 @@ function SectionContent({ id, home }: { id: SectionId; home: string }) {
   switch (id) {
     case 'general':
       return <GeneralSection home={home} />
-    case 'providers':
-      return <ProvidersSection home={home} />
     case 'models':
       return <ModelsSection home={home} />
     case 'skills':

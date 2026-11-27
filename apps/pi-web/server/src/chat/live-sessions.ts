@@ -55,7 +55,8 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function detectPlugin(home: string): boolean {
+/** extensions/ 下是否装了心跳扩展（内置插件安装页与 pluginDetected 共用）。 */
+export function detectPlugin(home: string): boolean {
   const base = join(home, 'extensions', 'pi-session-heartbeat')
   return [
     `${base}.ts`,

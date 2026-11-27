@@ -65,7 +65,7 @@ async function originFromQuery(url: URL): Promise<SessionOrigin | null> {
 
 route('GET', '/api/sessions', 'none', async ({ url }) => {
   const svc = requireService()
-  syncLiveSessions(homePaths())
+  const live = syncLiveSessions(homePaths())
   const origin = await originFromQuery(url)
   let pendingDetails = 0
   let truncated = false
@@ -87,13 +87,15 @@ route('GET', '/api/sessions', 'none', async ({ url }) => {
   const cursor = collectionCursor()
   const since = Number(url.searchParams.get('since') ?? '')
   if (Number.isFinite(since) && since === cursor.revision) {
-    return { ...cursor, notModified: true, pendingDetails, truncated }
+    return { ...cursor, notModified: true, pendingDetails, truncated, heartbeatDetected: live.pluginDetected }
   }
   return {
     ...cursor,
     sessions: entities,
     pendingDetails,
     truncated,
+    /** 心跳插件是否装在任一 home：会话视图的运行态功能以此为开关。 */
+    heartbeatDetected: live.pluginDetected,
     ...(origin?.kind === 'home' ? { homeId: origin.homeId } : {}),
     ...(origin?.kind === 'external' ? { root: origin.rootPath } : {}),
   }

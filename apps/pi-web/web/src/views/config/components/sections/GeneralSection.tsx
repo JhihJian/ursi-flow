@@ -181,7 +181,7 @@ export function GeneralSection({ home }: { home: string }) {
           </div>
           <p className="mono-dim">
             本页只覆盖 settings.json 的非模型项；默认模型、思考级别、启用模型与自建 provider
-            在「模型配置」分区，凭据在「凭据」分区，内置 subagent 开关在「Subagent」分区。
+            在「模型配置」分区，内置 subagent 开关在「Subagent」分区。
           </p>
         </div>
       </div>

@@ -6,7 +6,7 @@ split 词汇表 CSS，为配置视图定下的布局契约。只取骨架职责�
 
 ## 结构
 
-每个列表型分区（模型配置、凭据、Skills、Subagent、插件、MCP）用
+每个列表型分区（模型配置、Skills、Subagent、插件、MCP）用
 `components/layout.tsx` 的四个结构组件组装：
 
 ```

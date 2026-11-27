@@ -17,7 +17,7 @@
 | `GET/POST/PATCH/DELETE /api/homes` | none | home 清单与增删改 |
 | `GET /api/homes/:id` | none | home 实体（`sessionsRoot`、`capabilities`、`profileRevision`） |
 | `GET /api/homes/:id/runtime-profile` | none | 运行时配置快照（模型候选、subagent、默认 cwd、目录采集时间） |
-| `/api/config/*` | required | settings / skills / agents / mcp / models / auth / plugins |
+| `/api/config/*` | required | settings / skills / agents / mcp / models / plugins |
 | `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径 |
 | `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`） |
 | `GET /api/sessions/config` | none | 会话视图初始值 |

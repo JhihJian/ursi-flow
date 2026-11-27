@@ -268,28 +268,6 @@ export interface DiscoveryResult {
   endpoint: string
 }
 
-export type AuthEntryType = 'oauth' | 'api_key' | 'unknown'
-
-export interface AuthEntryView {
-  provider: string
-  type: AuthEntryType
-  /** 遮蔽后的条目 JSON：key / access / refresh 显示为掩码。 */
-  entry: Record<string, unknown>
-  /** 被遮蔽的字段名（key / access / refresh）。 */
-  maskedFields: string[]
-  /** oauth 过期时间（epoch ms）。 */
-  expires: number | null
-  /** api_key 的 key 是 `!command` 形式。 */
-  keyCommand: string | null
-}
-
-export interface AuthListing {
-  path: string
-  exists: boolean
-  revision: string
-  entries: AuthEntryView[]
-}
-
 export interface PackageEntryView {
   index: number
   source: string
@@ -303,6 +281,31 @@ export interface PackageEntryView {
 export interface PluginsListing {
   packages: PackageEntryView[]
   revision: string
+}
+
+/** 随本服务自带的内置扩展（心跳等），一键安装进 home 的 extensions/。 */
+export interface BuiltinExtensionEntry {
+  id: string
+  fileName: string
+  description: string
+  /** 部署目录里源文件缺失时为 false，安装入口会禁用并说明。 */
+  sourceAvailable: boolean
+  installed: boolean
+  installedPath: string | null
+}
+
+export interface BuiltinExtensionsListing {
+  extensions: BuiltinExtensionEntry[]
+  /** 心跳插件是否已检测到：会话视图的运行态功能以此为开关。 */
+  heartbeatDetected: boolean
+}
+
+export interface BuiltinInstallResult {
+  ok: true
+  fileName: string
+  /** true = 替换了旧文件，false = 全新安装。 */
+  replaced: boolean
+  installedPath: string
 }
 
 /** 心跳文件里的一个活会话。 */

@@ -28,8 +28,6 @@ import { readMcp, mergeMcp, patchMcpServer, type McpExposure } from './mcp-file.
 import {
   readModels,
   mergeModels,
-  readAuth,
-  mergeAuth,
   readModelCatalog,
   mergeModelOverride,
   realProviderEntry,
@@ -37,6 +35,7 @@ import {
 import { readCachedCatalog, refreshCatalog, catalogCwd } from './models-runtime.ts'
 import { testProviderModel, discoverProviderModels } from './models-probe.ts'
 import { listPackages, applyPackagesMutation } from './plugins.ts'
+import { listBuiltinExtensions, installBuiltinExtension, uninstallBuiltinExtension } from './builtin-plugins.ts'
 import { route } from '../http/router.ts'
 import { ConflictError } from '../shared/rw.ts'
 import { profileRevisionOf } from './registry.ts'
@@ -470,30 +469,6 @@ route('POST', '/api/config/models/discover', 'required', async ({ home, body }) 
   )
 })
 
-route('GET', '/api/config/auth', 'required', async ({ home }) => readAuth(home))
-
-// 合并写回：只改提交里出现的 provider，null 删除条目，掩码占位符按原文还原。
-route('PUT', '/api/config/auth/entries', 'required', async ({ home, body }) => {
-  const payload = await body<{ revision?: string; entries?: Record<string, unknown> }>()
-  if (!payload.entries || typeof payload.entries !== 'object' || Array.isArray(payload.entries)) {
-    throw new HomeError('entries 必须是对象', 400, 'invalid_request')
-  }
-  const entries: Record<string, Record<string, unknown> | null> = {}
-  for (const [provider, value] of Object.entries(payload.entries)) {
-    if (value === null) {
-      entries[provider] = null
-      continue
-    }
-    if (typeof value !== 'object' || Array.isArray(value)) {
-      throw new HomeError(`provider ${provider} 的条目必须是对象或 null`, 400, 'invalid_request')
-    }
-    entries[provider] = value as Record<string, unknown>
-  }
-  const revision = await mergeAuth(home, payload.revision ?? '', entries)
-  return { ok: true, revision }
-})
-
-
 // ---------------------------------------------------------------------------
 // plugins（settings.json 的 packages 条目）
 // ---------------------------------------------------------------------------
@@ -522,6 +497,35 @@ route('POST', '/api/config/plugins/entry', 'required', async ({ home, body }) =>
     return true
   })
   return { ok: true, ...result }
+})
+
+// ---------------------------------------------------------------------------
+// 内置扩展（随本服务自带的 extension/ 文件，一键安装进 home）
+// ---------------------------------------------------------------------------
+
+route('GET', '/api/config/plugins/builtin', 'required', async ({ home }) => {
+  const extensions = listBuiltinExtensions(home)
+  return {
+    extensions,
+    /** 心跳插件是否已检测到：会话视图的运行态功能以此为开关。 */
+    heartbeatDetected: extensions.some((entry) => entry.installed),
+  }
+})
+
+route('POST', '/api/config/plugins/builtin/install', 'required', async ({ home, body }) => {
+  const payload = await body<{ id?: string }>()
+  if (typeof payload.id !== 'string' || !payload.id) {
+    throw new HomeError('id 必填', 400, 'invalid_request')
+  }
+  return installBuiltinExtension(home, payload.id)
+})
+
+route('POST', '/api/config/plugins/builtin/uninstall', 'required', async ({ home, body }) => {
+  const payload = await body<{ id?: string }>()
+  if (typeof payload.id !== 'string' || !payload.id) {
+    throw new HomeError('id 必填', 400, 'invalid_request')
+  }
+  return uninstallBuiltinExtension(home, payload.id)
 })
 
 

@@ -5,7 +5,6 @@ import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
 export type SectionId =
   | 'general'
-  | 'providers'
   | 'models'
   | 'skills'
   | 'agents'
@@ -14,7 +13,6 @@ export type SectionId =
 
 export const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
   { id: 'general', label: '常规', icon: '⚙' },
-  { id: 'providers', label: '凭据', icon: '🔑' },
   { id: 'models', label: '模型配置', icon: '🧠' },
   { id: 'skills', label: 'Skills', icon: '✦' },
   { id: 'agents', label: 'Subagent', icon: '☷' },

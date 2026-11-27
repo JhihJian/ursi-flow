@@ -5,7 +5,6 @@ import type {
   AgentProfile,
   AgentProfileFields,
   AgentsListing,
-  AuthListing,
   GeneralListing,
   HomeCheck,
   HomeDefaults,
@@ -335,13 +334,6 @@ export function createApiClient(base: string | (() => string) = '') {
     revision: string,
   ) =>
     request<MutationResult>(base, 'PUT', '/api/config/models/override', home, { provider, modelId, override, revision }),
-  getAuth: (home: string) => request<AuthListing>(base, 'GET', '/api/config/auth', home),
-  /** 合并写回 auth.json 条目：只改提交里出现的 provider，null 删除条目。 */
-  putAuthEntries: (
-    home: string,
-    entries: Record<string, Record<string, unknown> | null>,
-    revision: string,
-  ) => request<MutationResult>(base, 'PUT', '/api/config/auth/entries', home, { entries, revision }),
   getPlugins: (home: string) => request<PluginsListing>(base, 'GET', '/api/config/plugins', home),
   mutatePluginEntry: (home: string, action: 'enable' | 'disable' | 'remove', index: number, revision: string) =>
     request<MutationResult>(base, 'POST', '/api/config/plugins/entry', home, { action, index, revision }),
