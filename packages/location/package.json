@@ -1,0 +1,23 @@
+{
+  "name": "@ursi/location",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "位置契约：工作目录的身份是 URI（file:// 与 ssh://），这里只放解析、构造、派生与规范化纯函数。",
+  "exports": {
+    ".": "./src/index.ts",
+    "./vectors.json": "./vectors.json"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "~5.7.3"
+  }
+}

@@ -19,10 +19,11 @@
     "apps/flow-web/server",
     "apps/pi-web/server",
     "apps/pi-web/web",
-    "packages/directory-picker"
+    "packages/directory-picker",
+    "packages/location"
   ],
   "scripts": {
-    "test": "node --test apps/fs-web/server/test/*.test.ts",
+    "test": "npm run test:location && node --test apps/fs-web/server/test/*.test.ts",
     "test:directory-picker": "npm run test -w @ursi/directory-picker",
     "test:todo-web": "npm run test -w @ursi/todo-web",
     "dev:shell-web": "npm run dev -w @ursi/shell-web",
@@ -32,6 +33,7 @@
     "test:flow-web": "npm run test -w @ursi/flow-web && npm run test -w @ursi/flow-web-server",
     "build:flow-web": "npm run build -w @ursi/flow-web",
     "test:pi-web": "npm run test -w @ursi/pi-web-server && npm run test -w @ursi/pi-web",
-    "build:pi-web": "npm run build -w @ursi/pi-web"
+    "build:pi-web": "npm run build -w @ursi/pi-web",
+    "test:location": "npm run test -w @ursi/location"
   }
 }

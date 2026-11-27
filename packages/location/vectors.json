@@ -1,0 +1,82 @@
+{
+  "$comment": "位置契约测试向量。TS 实现跑全部字段；Rust 侧（ssh-web）至少跑 scheme/device/path 三字段。改这个文件必须两边同时通过。",
+  "parse": [
+    { "input": "file:///data/dev/x", "uri": "file:///data/dev/x", "scheme": "file", "device": null, "path": "/data/dev/x" },
+    { "input": "file://localhost/data/x", "uri": "file:///data/x", "scheme": "file", "device": null, "path": "/data/x" },
+    { "input": "/data/dev/x", "uri": "file:///data/dev/x", "scheme": "file", "device": null, "path": "/data/dev/x" },
+    { "input": "/", "uri": "file:///", "scheme": "file", "device": null, "path": "/" },
+    { "input": "file:///", "uri": "file:///", "scheme": "file", "device": null, "path": "/" },
+    { "input": "/data/dev/x/", "uri": "file:///data/dev/x", "scheme": "file", "device": null, "path": "/data/dev/x" },
+    { "input": "/data//dev///x", "uri": "file:///data/dev/x", "scheme": "file", "device": null, "path": "/data/dev/x" },
+    { "input": "ssh://nm105/srv/proj", "uri": "ssh://nm105/srv/proj", "scheme": "ssh", "device": "nm105", "path": "/srv/proj" },
+    { "input": "ssh://NM105/srv", "uri": "ssh://NM105/srv", "scheme": "ssh", "device": "NM105", "path": "/srv" },
+    { "input": "ssh://nm105", "uri": "ssh://nm105/", "scheme": "ssh", "device": "nm105", "path": "/" },
+    { "input": "ssh://nm105/", "uri": "ssh://nm105/", "scheme": "ssh", "device": "nm105", "path": "/" },
+    { "input": "ssh://xiaomi-laptop/home/u", "uri": "ssh://xiaomi-laptop/home/u", "scheme": "ssh", "device": "xiaomi-laptop", "path": "/home/u" },
+    { "input": "ssh://dev_1.a/home", "uri": "ssh://dev_1.a/home", "scheme": "ssh", "device": "dev_1.a", "path": "/home" },
+    { "input": "ssh://10.144.144.4/home", "uri": "ssh://10.144.144.4/home", "scheme": "ssh", "device": "10.144.144.4", "path": "/home" },
+    { "input": "ssh://nm105/srv/a%20b", "uri": "ssh://nm105/srv/a%20b", "scheme": "ssh", "device": "nm105", "path": "/srv/a b" },
+    { "input": "ssh://nm105/srv/%E4%B8%AD%E6%96%87", "uri": "ssh://nm105/srv/%E4%B8%AD%E6%96%87", "scheme": "ssh", "device": "nm105", "path": "/srv/中文" },
+    { "input": "ssh://nm105/srv/a%23b/c%3Fd/e%25f", "uri": "ssh://nm105/srv/a%23b/c%3Fd/e%25f", "scheme": "ssh", "device": "nm105", "path": "/srv/a#b/c?d/e%f" },
+    { "input": "ssh://nm105/srv/a%252Fb", "uri": "ssh://nm105/srv/a%252Fb", "scheme": "ssh", "device": "nm105", "path": "/srv/a%2Fb" },
+    { "input": "ssh://nm105/srv/proj/", "uri": "ssh://nm105/srv/proj", "scheme": "ssh", "device": "nm105", "path": "/srv/proj" },
+    { "input": "  file:///data/x  ", "uri": "file:///data/x", "scheme": "file", "device": null, "path": "/data/x" }
+  ],
+  "parseWithHome": [
+    { "input": "~", "home": "/home/u", "uri": "file:///home/u", "scheme": "file", "device": null, "path": "/home/u" },
+    { "input": "~/dev", "home": "/home/u", "uri": "file:///home/u/dev", "scheme": "file", "device": null, "path": "/home/u/dev" }
+  ],
+  "reject": [
+    { "input": "", "code": "invalid_uri" },
+    { "input": "smb://nas/share", "code": "unsupported_scheme" },
+    { "input": "file://nm105/srv", "code": "invalid_uri" },
+    { "input": "ssh:///srv", "code": "bad_device" },
+    { "input": "ssh://user@10.0.0.5/srv", "code": "bad_device" },
+    { "input": "ssh://nm105:22/srv", "code": "bad_device" },
+    { "input": "ssh://-bad/srv", "code": "bad_device" },
+    { "input": "relative/path", "code": "relative_path" },
+    { "input": "~", "code": "relative_path" },
+    { "input": "~/dev", "code": "relative_path" }
+  ],
+  "build": [
+    { "scheme": "file", "path": "/data/dev/x", "uri": "file:///data/dev/x" },
+    { "scheme": "file", "path": "/", "uri": "file:///" },
+    { "scheme": "ssh", "device": "nm105", "path": "/", "uri": "ssh://nm105/" },
+    { "scheme": "ssh", "device": "nm105", "path": "/srv/a b", "uri": "ssh://nm105/srv/a%20b" },
+    { "scheme": "ssh", "device": "nm105", "path": "/srv/中文", "uri": "ssh://nm105/srv/%E4%B8%AD%E6%96%87" },
+    { "scheme": "ssh", "device": "nm105", "path": "/srv/a#b/c?d/e%f", "uri": "ssh://nm105/srv/a%23b/c%3Fd/e%25f" },
+    { "scheme": "ssh", "device": "nm105", "path": "/srv/a%2Fb", "uri": "ssh://nm105/srv/a%252Fb" },
+    { "scheme": "ssh", "device": "nm105", "path": "/srv/a'b", "uri": "ssh://nm105/srv/a'b" }
+  ],
+  "parent": [
+    { "uri": "file:///", "parent": null },
+    { "uri": "file:///data", "parent": "file:///" },
+    { "uri": "file:///data/dev/x", "parent": "file:///data/dev" },
+    { "uri": "ssh://nm105/", "parent": null },
+    { "uri": "ssh://nm105/srv/proj", "parent": "ssh://nm105/srv" }
+  ],
+  "child": [
+    { "uri": "file:///", "name": "data", "child": "file:///data" },
+    { "uri": "file:///data", "name": "a b", "child": "file:///data/a%20b" },
+    { "uri": "ssh://nm105/srv", "name": "proj", "child": "ssh://nm105/srv/proj" }
+  ],
+  "basename": [
+    { "uri": "file:///", "basename": "/" },
+    { "uri": "file:///data/dev/x", "basename": "x" },
+    { "uri": "ssh://nm105/srv/a%20b", "basename": "a b" }
+  ],
+  "within": [
+    { "root": "file:///data", "child": "file:///data", "within": true },
+    { "root": "file:///data", "child": "file:///data/dev/x", "within": true },
+    { "root": "file:///data", "child": "file:///datax", "within": false },
+    { "root": "file:///data", "child": "file:///etc", "within": false },
+    { "root": "ssh://nm105/srv", "child": "ssh://nm105/srv/proj", "within": true },
+    { "root": "ssh://nm105/srv", "child": "file:///srv/proj", "within": false },
+    { "root": "ssh://nm105/srv", "child": "ssh://nm21/srv/proj", "within": false }
+  ],
+  "keys": [
+    { "uri": "file:///data/dev/ursi-flow" },
+    { "uri": "ssh://nm105/srv/proj" },
+    { "uri": "ssh://NM105/srv/proj" }
+  ]
+}
