@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { parsePiJsonl, TrajectoryViewer } from 'pi-agent-trajectory-viewer'
 import { useChatController } from './views/chat/chat-context'
 import { usePiNav } from './pi-nav'
@@ -68,19 +68,23 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
   const [readOnly, setReadOnly] = useState<ReadOnly>({ status: 'idle' })
   const [revision, setRevision] = useState(0)
   const lastEntries = useRef<string>('')
+  // 加载序号：只有最新一次加载可以写结果，effect 重跑与手动重读的竞态都靠它收敛。
+  const loadSeq = useRef(0)
+  // 只依赖会话路径：列表轮询会换 row 对象引用，跟着重拉没有意义。
+  const rowId = row?.id
 
   // 只读加载：没装配运行时、列表里有这条会话时才读文件；装配后不再触发。
-  useEffect(() => {
-    if (live || !row || !root) {
+  const loadReadOnly = useCallback(() => {
+    if (live || !rowId || !root) {
       setReadOnly({ status: 'idle' })
       return
     }
-    let alive = true
+    const seq = ++loadSeq.current
     setReadOnly({ status: 'loading' })
     void api
-      .fetchSessionText(root, row.id)
+      .fetchSessionText(root, rowId)
       .then((text) => {
-        if (!alive) return
+        if (seq !== loadSeq.current) return
         try {
           setReadOnly({ status: 'ready', turns: parsePiJsonl(text) })
         } catch (failure) {
@@ -88,12 +92,16 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
         }
       })
       .catch((failure: unknown) => {
-        if (alive) setReadOnly({ status: 'error', message: errorText(failure) })
+        if (seq === loadSeq.current) setReadOnly({ status: 'error', message: errorText(failure) })
       })
-    return () => {
-      alive = false
-    }
-  }, [live, row, root, api, revision])
+  }, [live, rowId, root, api])
+
+  // 数据来源变化时装载。手动「重新读取」直接再调一次，不经过渲染循环：
+  // 曾经把 revision 放进这里的依赖，而 revision 又由加载结果递增，
+  // loading 态把 fingerprint 打回 null 会再次递增，形成每秒十几次的重拉循环。
+  useEffect(() => {
+    loadReadOnly()
+  }, [loadReadOnly])
 
   // 轨迹来源：装配后优先用事件流里的 transcript，首帧到达前继续显示只读内容。
   const parsed = useMemo(() => {
@@ -110,9 +118,11 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
   }, [live, chat.transcript, readOnly])
 
   // 本地修订号：轨迹内容变一次加一，只读与流式同一套值域。
-  const fingerprint = live && chat.transcript ? chat.transcript : JSON.stringify(parsed?.ok ? parsed.value.stats : null)
+  // 只在已就绪的内容上比较：loading/error 不参与，否则加载本身会推动修订号，
+  // 修订号又驱动加载，转回上面的重拉循环。
+  const fingerprint = live && chat.transcript ? chat.transcript : parsed?.ok ? JSON.stringify(parsed.value.stats) : ''
   useEffect(() => {
-    if (lastEntries.current === fingerprint) return
+    if (!fingerprint || lastEntries.current === fingerprint) return
     lastEntries.current = fingerprint
     setRevision((current) => current + 1)
   }, [fingerprint])
@@ -124,7 +134,7 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
     if (!body) return
     const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 240
     if (nearBottom) body.scrollTop = body.scrollHeight
-  }, [chat.transcript, chat.partial, chat.thinking, chat.runningTools.length])
+  }, [revision, chat.transcript, chat.partial, chat.thinking, chat.runningTools.length])
 
   const {
     error,
@@ -143,7 +153,7 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
     streaming,
   } = chat
 
-  const reload = () => setRevision((current) => current + 1)
+  const reload = useCallback(() => loadReadOnly(), [loadReadOnly])
 
   async function stop() {
     const recalled = await abort()
