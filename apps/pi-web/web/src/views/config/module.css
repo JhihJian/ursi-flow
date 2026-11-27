@@ -2030,30 +2030,3 @@ color: var(--gray-900);
   min-height: 0;
   overflow-y: auto;
 }
-
-.pi-manager-root .manager-home-line {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  padding: 2px 0 6px;
-  border-bottom: 1px solid var(--gray-200);
-  font-size: 11px;
-  color: var(--gray-600);
-  overflow: hidden;
-}
-
-.pi-manager-root .manager-home-line strong {
-  flex: none;
-  color: var(--gray-900);
-  font-weight: 600;
-}
-
-.pi-manager-root .manager-home-line span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pi-manager-root .manager-home-line.invalid span {
-  color: var(--danger);
-}

@@ -121,8 +121,6 @@ function ManagerSidebar({ collapsed, collapse, expand }: ModuleSidebarProps) {
   const { section, setSection } = useManagerNav()
   const homes = useAppStore((s) => s.homes)
   const homePath = useAppStore((s) => s.homePath)
-  const homeValid = useAppStore((s) => s.homeValid)
-  const homeChecking = useAppStore((s) => s.homeChecking)
   const refreshHomes = useAppStore((s) => s.refreshHomes)
   const current = homes.find((home) => home.path === homePath)
 
@@ -143,11 +141,6 @@ function ManagerSidebar({ collapsed, collapse, expand }: ModuleSidebarProps) {
       }
     >
       <div className="pi-manager-root manager-module-sidebar">
-        <p className={`manager-home-line${homeValid === false ? ' invalid' : ''}`} title={homePath}>
-          {homeChecking ? '校验中…' : null}
-          {current ? <strong>{current.name}</strong> : null}
-          <span>{homePath || '未设置 pi home'}</span>
-        </p>
         <Sidebar active={section} onSelect={setSection} />
       </div>
     </SidebarFrame>
