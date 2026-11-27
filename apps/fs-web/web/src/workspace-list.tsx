@@ -1,6 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronsRight, Folder, Plus } from 'lucide-react'
+import { parse } from '@ursi/location'
 import { DirBrowser } from '@ursi/directory-picker'
+import type { DeviceOption, ListDirFn } from '@ursi/directory-picker'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
 import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
@@ -183,8 +185,31 @@ function AddDirectoryForm({ onDone }: { onDone: () => void }) {
   const api = useTreeStore((state) => state.api)
   const [expanded, setExpanded] = useState(false)
 
-  const listDir = useCallback(
-    (path: string) => api.browse(path).then((dto) => ({ path: dto.path, parent: dto.parent, entries: dto.entries })),
+  // 设备清单由宿主注入（ssh-web）；独立运行或宿主未接时为空，选目录器只有本机。
+  const listDevices = useTreeStore((state) => state.host.devices)
+  const [devices, setDevices] = useState<DeviceOption[]>([])
+  useEffect(() => {
+    if (!listDevices) return
+    let cancelled = false
+    listDevices()
+      .then((list) => {
+        if (!cancelled) setDevices(list.map((item) => ({ device: item.device, label: item.label })))
+      })
+      .catch(() => {
+        if (!cancelled) setDevices([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [listDevices])
+
+  const listDir = useCallback<ListDirFn>(
+    (target) =>
+      api.browse(target).then((dto) => ({
+        location: parse(dto.location),
+        parent: dto.parent ? parse(dto.parent) : null,
+        entries: dto.entries,
+      })),
     [api],
   )
 
@@ -192,7 +217,7 @@ function AddDirectoryForm({ onDone }: { onDone: () => void }) {
     <div className="wsx-wslist-adding">
       <InlineInput
         initial=""
-        placeholder="输入绝对路径，如 /data/dev"
+        placeholder="输入路径或位置，如 /data/dev、ssh://nm105/srv"
         onDone={(value) => {
           onDone()
           const root = value.trim()
@@ -203,13 +228,14 @@ function AddDirectoryForm({ onDone }: { onDone: () => void }) {
         <DirBrowser
           listDir={listDir}
           initialPath="~"
+          devices={devices}
           onSelect={(root) => {
             onDone()
             void addWorkspace(root)
           }}
           onCancel={onDone}
           selectLabel="添加此目录"
-          placeholder="路径回车跳转，文字过滤"
+          placeholder="路径或 ssh://设备/路径 回车跳转，文字过滤"
         />
       ) : (
         <button

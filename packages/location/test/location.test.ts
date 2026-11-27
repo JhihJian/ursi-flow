@@ -9,12 +9,12 @@ import {
   crumbs,
   equals,
   isWithin,
-  keyOf,
   parentOf,
   parse,
   pathSegmentsOf,
   sameDevice,
 } from '../src/index.ts'
+import { keyOf } from '../src/keys.ts'
 
 interface Vectors {
   parse: { input: string; uri: string; scheme: string; device: string | null; path: string }[]

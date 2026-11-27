@@ -2,12 +2,12 @@ import { createReadStream, readFileSync, renameSync, writeFileSync, mkdirSync } 
 import { stat } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { createGzip } from 'node:zlib'
-import { dirname, isAbsolute, join } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { createScanner } from './scan.ts'
 import { createTransformer } from './canonicalize.ts'
 import { createPrefs } from './prefs.ts'
 import { deleteSessionFile } from './delete.ts'
+import { localPathOf } from '../shared/locate.ts'
 import {
   findByPath,
   getEntity,
@@ -97,10 +97,7 @@ export async function createSessionService(): Promise<SessionService> {
   await prefs.load()
 
   async function resolveRoot(input: unknown): Promise<string> {
-    const raw = typeof input === 'string' ? input.trim() : ''
-    if (!raw) throw new HomeError('缺少 root 参数', 400, 'invalid_root')
-    const expanded = raw === '~' || raw.startsWith('~/') ? join(homedir(), raw.slice(1)) : raw
-    if (!isAbsolute(expanded)) throw new HomeError(`root 必须是绝对路径：${raw}`, 400, 'invalid_root')
+    const expanded = localPathOf(typeof input === 'string' ? input : '', 'invalid_root')
     const info = await stat(expanded).catch(() => null)
     if (!info) throw new HomeError(`目录不存在：${expanded}`, 400, 'invalid_root')
     if (!info.isDirectory()) throw new HomeError(`不是目录：${expanded}`, 400, 'invalid_root')

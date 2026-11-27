@@ -926,6 +926,7 @@ dependencies = [
  "axum",
  "bytes",
  "chrono",
+ "percent-encoding",
  "portable-pty",
  "rusqlite",
  "serde",

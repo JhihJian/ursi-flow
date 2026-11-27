@@ -2,31 +2,31 @@ import http from 'node:http'
 import { promises as fs, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
+import { parse, type Location, type Scheme } from '@ursi/location'
+import { keyOf } from '@ursi/location/keys'
 import {
   createLocalProvider,
   loadWorkspaceConfig,
   parseWorkspaceSeed,
   ProviderError,
+  type WorkspaceProvider,
 } from './local-provider.ts'
-import type { ApiError, DirListingDto, GitStatusDto, WorkspaceConfig, WorkspaceInfo } from './types.ts'
+import { createSshProvider } from './ssh-provider.ts'
+import type { ApiError, DirListingDto, WorkspaceConfig, WorkspaceInfo } from './types.ts'
 
-/** `~` 与 `~/xx` 展开为当前用户主目录，与 pi-web 的 resolveRoot 同语义。 */
-function expandHome(raw: string): string {
-  return raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw
-}
-
-/** 内存中的 workspace 记录：配置 + 探活结果 + realpath（用于重复检测）。 */
+/** 内存中的 workspace 记录：配置 + 探活结果 + 规范位置（用于重复检测）。 */
 interface WorkspaceRecord extends WorkspaceConfig {
   ready?: boolean
   error?: string
-  /** root 的 realpath；root 不可达时为 null。 */
-  realRoot: string | null
+  /** root 规范化后的位置（本机经过 realpath）；root 不可达时为 null。 */
+  realRoot: Location | null
 }
 
 export interface ServerOptions {
   /** 运行时状态文件路径；不传则不持久化（测试默认）。 */
   stateFile?: string
+  /** ssh-web 的 API 基址（如 `http://127.0.0.1:8091/api`）；不传则 ssh 目录不可用。 */
+  sshWebApi?: string
 }
 
 /** 状态文件默认位置：XDG_STATE_HOME 优先，回退 ~/.local/state。 */
@@ -35,10 +35,16 @@ function defaultStateFile(): string {
   return path.join(base, 'fs-web', 'workspaces.json')
 }
 
-/** 启动时对每个 root 做 realpath 探活；不阻塞启动，未就绪的 workspace 保留错误信息。 */
-async function probeWorkspace(config: WorkspaceConfig): Promise<WorkspaceRecord> {
+/**
+ * 对 root 做一次探活并取规范位置（本机 realpath，远程 realpath 经 ssh）；不阻塞启动，
+ * 未就绪的 workspace 保留错误信息。
+ */
+async function probeWorkspace(
+  config: WorkspaceConfig,
+  providers: Record<Scheme, WorkspaceProvider>,
+): Promise<WorkspaceRecord> {
   try {
-    const realRoot = await fs.realpath(config.root)
+    const realRoot = await providers[config.provider].realize(config.root)
     return { ...config, realRoot }
   } catch (error) {
     return {
@@ -61,22 +67,32 @@ function cleanConfig(record: WorkspaceRecord): WorkspaceConfig {
   }
 }
 
-/** 跨重启稳定的 id：root realpath 的 sha256 前 16 个 hex 字符（64 位）。 */
-function workspaceIdOf(realRoot: string): string {
-  return createHash('sha256').update(realRoot).digest('hex').slice(0, 16)
+/** 跨重启稳定的 id：root 规范位置 URI 的 sha256 前 16 个 hex 字符（64 位）。 */
+function workspaceIdOf(realRoot: Location): Promise<string> {
+  return keyOf(realRoot)
 }
 
-function labelFromRoot(realRoot: string): string {
-  return path.basename(realRoot) || realRoot
+function labelFromRoot(realRoot: Location): string {
+  // 设备根目录没有名字，用设备名当标签。
+  return realRoot.path === '/' ? (realRoot.device ?? '本机') : realRoot.path.slice(realRoot.path.lastIndexOf('/') + 1)
 }
 
 export async function createServer(
-  seedConfigs: WorkspaceConfig[],
+  seedConfigs: readonly WorkspaceConfig[],
   options: ServerOptions = {},
 ): Promise<http.Server> {
-  const provider = createLocalProvider()
+  let seeds = seedConfigs.map((config) => parseWorkspaceSeed(config, 'createServer(seedConfigs)'))
   const stateFile = options.stateFile
   const workspaces = new Map<string, WorkspaceRecord>()
+  // 按 scheme 选 provider；ssh 需要注入 ssh-web 地址，否则 ssh 目录一律不可用。
+  const providers: Record<Scheme, WorkspaceProvider> = {
+    file: createLocalProvider(),
+    ssh: options.sshWebApi ? createSshProvider({ api: options.sshWebApi }) : unavailableProvider('ssh', '未配置 SSH_WEB_API'),
+  }
+
+  function providerOf(workspace: WorkspaceRecord): WorkspaceProvider {
+    return providers[workspace.provider]
+  }
 
   // 状态文件写盘串行化：连续 add/rename/remove 的读改写按调用顺序落盘。
   let persistChain: Promise<void> = Promise.resolve()
@@ -119,14 +135,14 @@ export async function createServer(
       return config
     })
     for (const config of configs) {
-      workspaces.set(config.id, await probeWorkspace(config))
+      workspaces.set(config.id, await probeWorkspace(config, providers))
     }
     return true
   }
 
   async function loadSeedConfigs(): Promise<void> {
-    for (const config of seedConfigs) {
-      workspaces.set(config.id, await probeWorkspace(config))
+    for (const config of seeds) {
+      workspaces.set(config.id, await probeWorkspace(config, providers))
     }
     if (stateFile) {
       // 首次落盘：把种子清单固化为状态文件，此后状态文件是唯一事实源。
@@ -151,7 +167,7 @@ export async function createServer(
       id: workspace.id,
       label: workspace.label ?? workspace.id,
       description: workspace.description,
-      provider: 'local',
+      provider: workspace.provider,
       root: workspace.root,
       ready: workspace.ready !== false,
       error: workspace.error,
@@ -163,79 +179,52 @@ export async function createServer(
   }
 
   /**
-   * 任意目录浏览：给「添加目录」等未登记路径的选目录场景用，不经 provider、
-   * 不受 workspace root 约束（与 workspaces-add 同级的探路能力，只读列目录）。
-   * `~` 在服务端展开，与 pi-web 的 resolveRoot 同语义；返回规范绝对路径供组件锚定。
+   * 任意目录浏览：给「添加目录」等未登记路径的选目录场景用，不经 workspace 清单、
+   * 不受 root 约束（只读列目录）。目标是位置 URI 或本机简写，由对应 provider 解析与校验。
+   * 本机 `~` 在这里展开；远程位置需要 ssh provider 可用。
    */
   async function browseDir(query: URLSearchParams): Promise<DirListingDto> {
     const raw = (query.get('path') ?? '').trim()
     if (!raw) throw new ProviderError('bad_request', 400, 'path 缺失')
-    const target = expandHome(raw)
-    if (!path.isAbsolute(target)) {
-      throw new ProviderError('bad_request', 400, `path 必须是绝对路径：${raw}`)
+    let target: Location
+    try {
+      target = parse(raw, { home: os.homedir() })
+    } catch (error) {
+      throw new ProviderError('bad_request', 400, error instanceof Error ? error.message : String(error))
     }
-    const real = await fs.realpath(target).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new ProviderError('not_found', 404, `目录不存在：${target}`)
-      }
-      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
-    })
-    const stats = await fs.stat(real).catch((error) => {
-      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
-    })
-    if (!stats.isDirectory()) {
-      throw new ProviderError('bad_request', 400, `不是目录：${real}`)
-    }
-    const names = await fs.readdir(real).catch((error) => {
-      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
-    })
-    const dirs: string[] = []
-    for (const name of names) {
-      const child = path.join(real, name)
-      if (await fs.stat(child).then((s) => s.isDirectory()).catch(() => false)) dirs.push(name)
-    }
-    dirs.sort((a, b) => a.localeCompare(b))
-    const parent = path.dirname(real)
+    const listing = await providers[target.scheme].browse(raw)
     return {
-      path: real,
-      parent: parent === real ? null : parent,
-      entries: dirs.map((name) => ({ name })),
+      location: listing.location.uri,
+      parent: listing.parent?.uri ?? null,
+      entries: listing.entries,
     }
   }
 
-  /** 运行时添加目录：absolute path → realpath → 必须是目录 → 哈希 id → 落盘 → 入清单。 */
+  /** 运行时添加目录：位置 URI → provider 规范化（本机 realpath / 远程 realpath）→ 必须是目录 → 位置键 id → 落盘 → 入清单。 */
   async function addWorkspace(body: Record<string, unknown>): Promise<WorkspaceInfo> {
     const root = body.root
-    if (typeof root !== 'string' || root.length === 0 || !path.isAbsolute(root)) {
-      throw new ProviderError('bad_request', 400, `root 必须是绝对路径：${JSON.stringify(root)}`)
+    if (typeof root !== 'string' || root.length === 0) {
+      throw new ProviderError('bad_request', 400, `root 必须是位置 URI：${JSON.stringify(root)}`)
     }
-    let realRoot: string
+    let scheme: Scheme
     try {
-      realRoot = await fs.realpath(root)
+      scheme = parse(root, { home: os.homedir() }).scheme
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new ProviderError('not_found', 404, `目录不存在：${root}`)
-      }
-      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
+      throw new ProviderError('bad_request', 400, error instanceof Error ? error.message : String(error))
     }
-    const stats = await fs.stat(realRoot).catch((error) => {
-      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
-    })
-    if (!stats.isDirectory()) {
-      throw new ProviderError('bad_request', 400, `不是目录：${realRoot}`)
-    }
-    const id = workspaceIdOf(realRoot)
+    const realRoot = await providers[scheme].realize(root)
+    const id = await workspaceIdOf(realRoot)
     for (const workspace of workspaces.values()) {
-      if (workspace.realRoot === realRoot) {
-        throw new ProviderError('exists', 409, `目录已在清单中：${workspace.label}（${realRoot}）`)
+      if (workspace.realRoot?.uri === realRoot.uri) {
+        throw new ProviderError('exists', 409, `目录已在清单中：${workspace.label}（${realRoot.uri}）`)
       }
       if (workspace.id === id) {
         throw new ProviderError('exists', 409, `workspace id 冲突：${id}`)
       }
     }
     const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : labelFromRoot(realRoot)
-    const config: WorkspaceConfig = { id, label, provider: 'local', root: realRoot }
-    const record = await probeWorkspace(config)
+    const config: WorkspaceConfig = { id, label, provider: realRoot.scheme, root: realRoot.uri }
+    const record = await probeWorkspace(config, providers)
     await persistNow([...workspaces.values()].map(cleanConfig).concat(config))
     workspaces.set(id, record)
     return infoOf(record)
@@ -403,18 +392,18 @@ export async function createServer(
 
     switch (route) {
       case 'list': {
-        send(res, 200, { entries: await provider.list(workspace, segments) })
+        send(res, 200, { entries: await providerOf(workspace).list(workspace, segments) })
         return
       }
       case 'read': {
-        send(res, 200, await provider.read(workspace, segments))
+        send(res, 200, await providerOf(workspace).read(workspace, segments))
         return
       }
       case 'write': {
         if (typeof body.content !== 'string') {
           throw new ProviderError('bad_request', 400, 'content 缺失')
         }
-        const result = await provider.write(workspace, segments, body.content, {
+        const result = await providerOf(workspace).write(workspace, segments, body.content, {
           expectMtime: typeof body.expectMtime === 'number' ? body.expectMtime : undefined,
           overwrite: body.overwrite === true,
         })
@@ -422,50 +411,50 @@ export async function createServer(
         return
       }
       case 'stat': {
-        send(res, 200, await provider.stat(workspace, segments))
+        send(res, 200, await providerOf(workspace).stat(workspace, segments))
         return
       }
       case 'git-status': {
-        if (typeof provider.gitStatus !== 'function') {
-          throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 状态')
+        if (typeof providerOf(workspace).gitStatus !== 'function') {
+          throw new ProviderError('git_unavailable', 501, '该目录不支持 git 状态')
         }
-        send(res, 200, await provider.gitStatus(workspace))
+        send(res, 200, await providerOf(workspace).gitStatus(workspace))
         return
       }
       case 'git-branches': {
-        if (typeof provider.gitBranches !== 'function') {
+        if (typeof providerOf(workspace).gitBranches !== 'function') {
           throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 分支')
         }
-        send(res, 200, await provider.gitBranches(workspace))
+        send(res, 200, await providerOf(workspace).gitBranches(workspace))
         return
       }
       case 'git-push': {
-        if (typeof provider.gitPush !== 'function') {
+        if (typeof providerOf(workspace).gitPush !== 'function') {
           throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 同步')
         }
-        send(res, 200, await provider.gitPush(workspace))
+        send(res, 200, await providerOf(workspace).gitPush(workspace))
         return
       }
       case 'git-pull': {
-        if (typeof provider.gitPull !== 'function') {
+        if (typeof providerOf(workspace).gitPull !== 'function') {
           throw new ProviderError('git_unavailable', 501, '当前 provider 不支持 git 同步')
         }
-        send(res, 200, await provider.gitPull(workspace))
+        send(res, 200, await providerOf(workspace).gitPull(workspace))
         return
       }
       case 'mkdir': {
-        send(res, 200, await provider.mkdir(workspace, segments))
+        send(res, 200, await providerOf(workspace).mkdir(workspace, segments))
         return
       }
       case 'rename': {
         if (typeof body.newName !== 'string') {
           throw new ProviderError('bad_request', 400, 'newName 缺失')
         }
-        send(res, 200, await provider.rename(workspace, segments, body.newName))
+        send(res, 200, await providerOf(workspace).rename(workspace, segments, body.newName))
         return
       }
       case 'delete': {
-        await provider.delete(workspace, segments)
+        await providerOf(workspace).delete(workspace, segments)
         send(res, 200, { ok: true })
         return
       }
@@ -498,11 +487,14 @@ interface StartOptions {
 export async function start(options: StartOptions = {}): Promise<http.Server> {
   const configs = loadWorkspaceConfig(process.env)
   const stateFile = process.env.FS_WEB_STATE || defaultStateFile()
-  const host = options.host ?? process.env.FS_WEB_HOST ?? '127.0.0.1'
+  const sshWebApi = process.env.SSH_WEB_API
+  const host = options.host ?? process.env.FS_WEB_HOST ?? '0.0.0.0'
   const port = options.port ?? Number(process.env.FS_WEB_PORT ?? 8199)
-  const server = await createServer(configs, { stateFile })
+  const server = await createServer(configs, { stateFile, sshWebApi })
   await new Promise<void>((resolve) => server.listen(port, host, resolve))
-  console.log(`fs-web listening on http://${host}:${port}（状态文件：${stateFile}）`)
+  console.log(
+    `fs-web listening on http://${host}:${port}（状态文件：${stateFile}；ssh：${sshWebApi ? sshWebApi : '未配置 SSH_WEB_API，远程目录不可用'}）`,
+  )
   return server
 }
 
@@ -515,4 +507,22 @@ if (isMain) {
     return index >= 0 ? args[index + 1] : undefined
   }
   void start({ host: flag('--host'), port: flag('--port') ? Number(flag('--port')) : undefined })
+}
+
+/** 占位 provider：能力未配置时每个操作都给出明确原因，而不是悄悄退化。 */
+function unavailableProvider(scheme: Scheme, reason: string): WorkspaceProvider {
+  const fail = (): never => {
+    throw new ProviderError(`${scheme}_unavailable` as ApiError['code'], 503, `${scheme} 目录不可用：${reason}`)
+  }
+  return {
+    list: fail,
+    read: fail,
+    write: fail,
+    stat: fail,
+    mkdir: fail,
+    rename: fail,
+    delete: fail,
+    realize: fail,
+    browse: fail,
+  }
 }

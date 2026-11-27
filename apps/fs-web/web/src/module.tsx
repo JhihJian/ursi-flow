@@ -1,15 +1,18 @@
 import type { ReactNode } from 'react'
+import { parse } from '@ursi/location'
 import { useWorkspace } from '@ursi/workspace-shell'
 import type { ModuleSidebarProps, WorkspaceModule } from '@ursi/workspace-shell'
 import { WorkspaceApi, keyName, keySegments } from './api.ts'
 import { useEditorStore } from './editor-store.ts'
 import { reloadParentOf } from './explorer.tsx'
 import { useGitStore } from './git-store.ts'
-import { useTreeStore } from './tree-store.ts'
+import { useTreeStore, type FsHostBindings } from './tree-store.ts'
 import { FsScope, FsSidebar, FsWorkspace, SIDEBAR_MIN_SIZE } from './parts.tsx'
 
 export interface FsWebModuleOptions {
   apiBaseUrl?: string
+  /** 宿主注入的跨模块能力：设备清单与「在此打开终端」。不传则 fs-web 只有本机目录。 */
+  host?: FsHostBindings
 }
 
 /**
@@ -17,9 +20,9 @@ export interface FsWebModuleOptions {
  * 调用方只认识目录路径这类普通值，不需要知道 fs 的 workspaceId、树结构或 API 形状。
  */
 export interface FsCommands {
-  /** 按绝对路径查找已登记的目录；只读，不产生登记。 */
+  /** 按位置查找已登记的目录；入参是位置 URI 或本机路径简写，只读，不产生登记。 */
   findRoot: (root: string) => Promise<{ id: string; label: string; root: string } | null>
-  /** 按绝对路径打开目录：已登记则激活，未登记则登记后激活。会修改 fs 的目录清单。 */
+  /** 按位置打开目录：已登记则激活，未登记则登记后激活。会修改 fs 的目录清单。 */
   openRoot: (root: string) => Promise<{ id: string; label: string; root: string }>
 }
 
@@ -47,7 +50,8 @@ export function createFsModule(
 ): WorkspaceModule & { commands: FsCommands } {
   const api = new WorkspaceApi(options.apiBaseUrl ?? '/api/fs-web')
 
-  const normalize = (root: string) => root.replace(/\/+$/, '') || '/'
+  // 调用方可能给裸路径、URI 或 ~ 简写；统一成规范 URI 再比对，与服务端的判重口径一致。
+  const normalize = (root: string) => parse(root).uri
 
   /**
    * 命令直接走工厂闭包里的 api 与 store，不依赖 Provider 是否已挂载：
@@ -77,8 +81,12 @@ export function createFsModule(
     },
   }
 
+  // host 在工厂里固定引用，FsScope 的 effect 以引用比较，重组根每次渲染传新对象也不会反复注入。
+  const host: FsHostBindings = options.host ?? {}
   const Provider = ({ children }: { children: ReactNode }) => (
-    <FsScope api={api}>{children}</FsScope>
+    <FsScope api={api} host={host}>
+      {children}
+    </FsScope>
   )
 
   const Sidebar = ({ collapsed, collapse, expand }: ModuleSidebarProps) => {

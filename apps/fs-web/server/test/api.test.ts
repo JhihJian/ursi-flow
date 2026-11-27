@@ -16,7 +16,7 @@ interface TestContext {
 /** 起临时目录 + 真实 HTTP 服务，用 fetch 走完整链路。 */
 async function withServer(fn: (ctx: TestContext) => Promise<void>): Promise<void> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-test-'))
-  const server = await createServer([{ id: 't', label: 'test', provider: 'local', root }])
+  const server = await createServer([{ id: 't', label: 'test', provider: 'file', root }])
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (typeof address !== 'object' || !address) throw new Error('no address')
@@ -54,6 +54,11 @@ function wrap(fn: (ctx: TestContext) => Promise<void>): () => Promise<void> {
   }
 }
 
+/** 本机裸路径 → 位置 URI，与服务端的规范化一致。 */
+function fileUri(p: string): string {
+  return `file://${p.replace(/\/+$/, '')}`
+}
+
 function expectError(json: unknown, code: string): ApiError {
   assert.equal((json as ApiError).code, code, `期望错误 ${code}，实际 ${JSON.stringify(json)}`)
   return json as ApiError
@@ -63,7 +68,7 @@ test('workspaces 列表返回就绪状态', wrap(async (ctx) => {
   const res = await fetch(`${ctx.baseUrl}/workspaces`)
   const list = (await res.json()) as Array<{ id: string; ready: boolean }>
   assert.equal(res.status, 200)
-  assert.deepEqual(list, [{ id: 't', label: 'test', provider: 'local', root: ctx.root, ready: true }])
+  assert.deepEqual(list, [{ id: 't', label: 'test', provider: 'file', root: fileUri(ctx.root), ready: true }])
 }))
 
 test('list 返回目录优先、按名排序的条目', wrap(async () => {
@@ -338,7 +343,7 @@ test('git-status 子目录 workspace 的行数只统计 workspace 内', wrap(asy
   await fs.writeFile(path.join(ctx.root, 'sub', 'a.txt'), 'a2\nb\n') // 内 +1
   await fs.writeFile(path.join(ctx.root, 'outside.txt'), 'o2\nx\ny\n') // 外 +2
 
-  const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'local', root: path.join(ctx.root, 'sub') }])
+  const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'file', root: path.join(ctx.root, 'sub') }])
   await new Promise<void>((resolve) => sub.listen(0, '127.0.0.1', resolve))
   try {
     const res = await fetch(`http://127.0.0.1:${(sub.address() as import('node:net').AddressInfo).port}/api/fs-web/git-status`, {
@@ -366,7 +371,7 @@ test('git-status workspace 为仓库子目录时过滤并映射路径', wrap(asy
   await fs.writeFile(path.join(ctx.root, 'outside.txt'), 'o2\n') // root 外变更
 
   // 另起一个 root 指向子目录的服务实例，验证过滤与映射。
-  const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'local', root: path.join(ctx.root, 'sub') }])
+  const sub = await createServer([{ id: 'sub', label: 'sub', provider: 'file', root: path.join(ctx.root, 'sub') }])
   await new Promise<void>((resolve) => sub.listen(0, '127.0.0.1', resolve))
   try {
     const res = await fetch(`http://127.0.0.1:${(sub.address() as import('node:net').AddressInfo).port}/api/fs-web/git-status`, {
@@ -579,14 +584,14 @@ test('git-status 检出 upstream 时返回上游分支', wrap(async (ctx) => {
 /** 带状态文件的临时目录服务；返回 baseUrl、临时根目录与 stateFile 路径。 */
 async function withStateServer(
   fn: (ctx: { baseUrl: string; root: string; stateFile: string; server: import('node:http').Server }) => Promise<void>,
-  seed?: Array<{ id: string; label: string; provider: 'local'; root: string }>,
+  seed?: Array<{ id: string; label: string; provider: 'file'; root: string }>,
   fixedStateFile?: string,
 ): Promise<void> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-state-'))
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-root-'))
   const stateFile = fixedStateFile ?? path.join(dir, 'nested', 'workspaces.json')
   const server = await createServer(
-    seed ?? [{ id: 'seed', label: 'seed', provider: 'local', root }],
+    seed ?? [{ id: 'seed', label: 'seed', provider: 'file', root }],
     { stateFile },
   )
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -627,7 +632,8 @@ test('workspaces-add 成功：返回 ready 条目且 label 默认取目录名', 
     const info = json as WorkspaceJson
     assert.equal(info.ready, true)
     assert.equal(info.label, path.basename(extra))
-    assert.equal(info.root, extra)
+    assert.equal(info.root, fileUri(extra))
+    assert.equal(info.provider, 'file')
     // 列表含新条目，且能直接列目录。
     const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
     assert.ok(list.some((workspace) => workspace.id === info.id))
@@ -707,7 +713,7 @@ test('workspaces-rename description 落盘验证', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-desc-'))
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-descroot-'))
   const stateFile = path.join(dir, 'nested', 'workspaces.json')
-  const server = await createServer([{ id: 't', label: 'test', provider: 'local', root }], {
+  const server = await createServer([{ id: 't', label: 'test', provider: 'file', root }], {
     stateFile,
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -785,7 +791,7 @@ test('状态文件：播种落盘、跨实例持久化、已存在时忽略种�
         const list = (await (await fetch(`${ctx.baseUrl}/workspaces`)).json()) as WorkspaceJson[]
         assert.ok(!list.some((workspace) => workspace.id === 'other'))
         assert.ok(list.some((workspace) => workspace.id === 'seed'))
-      }, [{ id: 'other', label: 'other', provider: 'local', root: thirdRoot }], stateFile)
+      }, [{ id: 'other', label: 'other', provider: 'file', root: thirdRoot }], stateFile)
     } finally {
       await fs.rm(thirdRoot, { recursive: true, force: true })
     }
@@ -802,11 +808,11 @@ test('状态文件损坏或条目非法时启动直接失败', wrap(async () => 
   try {
     await fs.writeFile(stateFile, '{not json', 'utf8')
     await assert.rejects(
-      () => createServer([{ id: 'seed', label: 'seed', provider: 'local', root }], { stateFile }),
+      () => createServer([{ id: 'seed', label: 'seed', provider: 'file', root }], { stateFile }),
     )
-    await fs.writeFile(stateFile, JSON.stringify([{ id: 'BAD ID', provider: 'local', root }]), 'utf8')
+    await fs.writeFile(stateFile, JSON.stringify([{ id: 'BAD ID', provider: 'file', root }]), 'utf8')
     await assert.rejects(
-      () => createServer([{ id: 'seed', label: 'seed', provider: 'local', root }], { stateFile }),
+      () => createServer([{ id: 'seed', label: 'seed', provider: 'file', root }], { stateFile }),
     )
   } finally {
     await fs.rm(dir, { recursive: true, force: true })
@@ -852,9 +858,9 @@ test('browse 列任意绝对路径的子目录，不要求已登记', wrap(async
 
     const res = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent(outer)}`)
     assert.equal(res.status, 200)
-    const json = (await res.json()) as { path: string; parent: string | null; entries: { name: string }[] }
-    assert.equal(json.path, await fs.realpath(outer))
-    assert.equal(json.parent, path.dirname(await fs.realpath(outer)))
+    const json = (await res.json()) as { location: string; parent: string | null; entries: { name: string }[] }
+    assert.equal(json.location, fileUri(await fs.realpath(outer)))
+    assert.equal(json.parent, fileUri(path.dirname(await fs.realpath(outer))))
     assert.deepEqual(json.entries, [{ name: 'child-a' }, { name: 'child-b' }])
   } finally {
     await fs.rm(outer, { recursive: true, force: true })
@@ -870,8 +876,8 @@ test('browse 展开 ~ 并拒绝缺失路径、文件路径与相对路径', wrap
     process.env.HOME = home
     const res = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent('~')}`)
     assert.equal(res.status, 200)
-    const json = (await res.json()) as { path: string }
-    assert.equal(json.path, await fs.realpath(home))
+    const json = (await res.json()) as { location: string }
+    assert.equal(json.location, fileUri(await fs.realpath(home)))
 
     const missing = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent(path.join(home, 'nope'))}`)
     assert.equal(missing.status, 404)

@@ -81,6 +81,9 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
   const removeEntry = useTreeStore((state) => state.removeEntry)
   const workspaceId = useTreeStore((state) => state.activeWorkspaceId)
   const refreshAll = useTreeStore((state) => state.refreshAll)
+  const openTerminal = useTreeStore((state) => state.host.openTerminal)
+  const locationOf = useTreeStore((state) => state.locationOf)
+  const reportError = useTreeStore((state) => state.reportError)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
@@ -113,6 +116,18 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
       { label: '刷新', onSelect: () => void refreshAll() },
       { label: '新建文件夹', onSelect: onCreateDir },
     ]
+    // 远程目录才有「在此打开终端」：本机终端不归 ssh-web 管，宿主没接线时也不显示。
+    const location = locationOf(row.key)
+    if (openTerminal && location?.scheme === 'ssh' && location.device) {
+      items.push({
+        label: '在此打开终端',
+        onSelect: () => {
+          openTerminal({ device: location.device!, cwd: location.path }).catch((error: unknown) =>
+            reportError(error instanceof Error ? error.message : String(error)),
+          )
+        },
+      })
+    }
     if (!isRoot) {
       items.push({ label: '重命名', onSelect: () => setEditingKey(row.key) })
       items.push({

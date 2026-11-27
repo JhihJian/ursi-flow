@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createHash } from 'node:crypto'
-import { basename, build, childOf, crumbs, isWithin, keyOf, parentOf, parse, pathSegmentsOf, sameDevice } from '../src/index.ts'
+import { basename, build, childOf, crumbs, isWithin, parentOf, parse, pathSegmentsOf, sameDevice } from '../src/index.ts'
+import { keyOf } from '../src/keys.ts'
 
 test('keyOf 与 sha256(uri) 前 16 hex 一致', async () => {
   const uri = 'ssh://nm105/srv/proj'

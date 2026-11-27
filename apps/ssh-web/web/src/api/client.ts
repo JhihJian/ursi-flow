@@ -130,10 +130,21 @@ export class SshApi {
     })
   }
 
-  /** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */
-  terminalWsUrl(id: number, tmuxSession: string | undefined, cols: number, rows: number): string {
+  /**
+   * 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸，
+   * cwd 为远端初始目录（设备内绝对路径，仅在标签带 cwd 时发送）。
+   */
+  terminalWsUrl(
+    id: number,
+    tmuxSession: string | undefined,
+    cols: number,
+    rows: number,
+    cwd?: string,
+  ): string {
     const params = new URLSearchParams()
     if (tmuxSession) params.set('tmux_session', tmuxSession)
+    // 与 tmux_session 同一条编码链：URLSearchParams 负责 percent-encoding，中文、空格都能过。
+    if (cwd) params.set('cwd', cwd)
     params.set('cols', String(cols))
     params.set('rows', String(rows))
     const query = params.toString()

@@ -57,7 +57,8 @@ export function TerminalPane({
     if (!searchOpen) onSearchHandled()
   }, [searchOpen, onSearchHandled])
 
-  // 建桥生命周期只跟标签 key 绑定：同一标签的亮暗切换、激活切换都不重建、不重连。
+  // 建桥生命周期只跟标签身份绑定：同一标签的亮暗切换、激活切换都不重建、不重连。
+  // cwd 是身份的一部分（打开后不变，openTerminal 对已打开标签只激活），所以也在依赖里。
   useEffect(() => {
     const host = hostRef.current
     const tooltip = tooltipRef.current
@@ -72,7 +73,7 @@ export function TerminalPane({
       bridge = openTerminalBridge({
         host,
         tooltip,
-        target: { connectionId: tab.connectionId, tmuxSession: tab.tmuxSession },
+        target: { connectionId: tab.connectionId, tmuxSession: tab.tmuxSession, cwd: tab.cwd },
         light: store.getState().terminalLight,
         api,
         onState: (state) => {
@@ -99,7 +100,7 @@ export function TerminalPane({
       // 卸载（关闭标签或折叠模块）即断开，采样轮询随之停掉；重展开时重新建桥。
       store.getState().setTerminalState(tab.key, 'closed')
     }
-  }, [tab.key, tab.connectionId, tab.tmuxSession, api, store])
+  }, [tab.key, tab.connectionId, tab.tmuxSession, tab.cwd, api, store])
 
   // 激活时聚焦终端：首次打开与切标签都靠这里。
   useEffect(() => {

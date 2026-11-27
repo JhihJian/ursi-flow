@@ -4,14 +4,29 @@ import type { WorkspaceApi } from './api.ts'
 import { FileExplorer } from './explorer.tsx'
 import { FileView } from './file-view.tsx'
 import { useEditorStore } from './editor-store.ts'
-import { useTreeStore } from './tree-store.ts'
+import { useTreeStore, type FsHostBindings } from './tree-store.ts'
 
-/** 模块级 api 注入：侧边栏与工作区共用同一份，折叠侧边栏时工作区仍能保存。 */
-export function FsScope({ api, children }: { api: WorkspaceApi; children: ReactNode }) {
+/** 模块级注入：api 与宿主能力，侧边栏与工作区共用同一份，折叠侧边栏时工作区仍能保存。 */
+const NO_HOST: FsHostBindings = {}
+
+export function FsScope({
+  api,
+  host = NO_HOST,
+  children,
+}: {
+  api: WorkspaceApi
+  /** 不传表示独立运行：没有设备切换，也没有「在此打开终端」。 */
+  host?: FsHostBindings
+  children: ReactNode
+}) {
   const setApi = useTreeStore((state) => state.setApi)
+  const setHost = useTreeStore((state) => state.setHost)
   useEffect(() => {
     setApi(api)
   }, [setApi, api])
+  useEffect(() => {
+    setHost(host)
+  }, [setHost, host])
   return <>{children}</>
 }
 

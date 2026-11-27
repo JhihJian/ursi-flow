@@ -33,6 +33,28 @@ pub fn valid_tmux_session(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// 终端初始目录长度上限（字节）。远端 PATH_MAX 常见 4096，更长的路径在远端也用不了。
+pub const MAX_CWD_BYTES: usize = 4096;
+
+/// 终端初始目录校验：必须是设备内绝对路径。
+///
+/// 不像会话名那样走字符白名单：路径里合法出现的字符太多（空格、中文、`$`、`"` 等都要放行），
+/// 所以走黑名单：拒绝 NUL、换行，以及无法在 POSIX 单引号里原样表达的 `'` 与 `\`。
+/// 拼进远端脚本时仍经 [`shell_quote`] 转义，作为校验之外的第二道防线。
+pub fn valid_cwd(cwd: &str) -> bool {
+    cwd.starts_with('/')
+        && cwd.len() <= MAX_CWD_BYTES
+        && !cwd
+            .chars()
+            .any(|c| c == '\0' || c == '\n' || c == '\\' || c == '\'')
+}
+
+/// 把任意字符串包成 POSIX sh 单引号字面量：内部的 `'` 换成 `'\''`（关闭引号、转义引号、重开引号）。
+/// 入参已经过 [`valid_cwd`] 校验，正常不会含单引号；转义保留为纵深防御。
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 /// 泵任务发给 WS 任务的事件。Data 走 binary 帧，其余转 JSON 文本帧。
 #[derive(Debug)]
 pub enum WsEvent {
@@ -53,7 +75,8 @@ pub enum ControlMessage {
 
 /// 用户命令里除首词 `ssh` 之外的参数（host、-p、-i、-J、config 别名等）原样保留。
 /// `-t`/`-tt` 由调用方决定：批量采集不带 PTY，否则远端输出会带 CRLF。
-fn command_ssh_args(command: &str) -> Vec<String> {
+/// 也是 `GET /api/connections/by-name/{name}/ssh-args` 交给其它服务的调用参数。
+pub fn command_ssh_args(command: &str) -> Vec<String> {
     command
         .split_whitespace()
         .skip(1)
@@ -89,16 +112,19 @@ pub fn batch_ssh_args(command: &str, remote_script: &str) -> Vec<String> {
 /// 终端任务：在本地 PTY 中启动 ssh 子进程、泵数据。
 /// 建立或运行失败经 event_tx 发 Error；子进程退出发 Closed。
 /// 随调用方（WS 循环）取消而结束，PTY 与子进程随之释放。
+/// `cwd` 是远端初始目录（设备内绝对路径），调用方必须先过 [`valid_cwd`]。
 pub async fn run_terminal(
     connection: ConnectionConfig,
     tmux_session: Option<String>,
+    cwd: Option<String>,
     cols: u32,
     rows: u32,
     mut input_rx: mpsc::Receiver<ControlMessage>,
     event_tx: mpsc::Sender<WsEvent>,
 ) {
     if let Err(error) =
-        run_terminal_inner(&connection, tmux_session, cols, rows, &mut input_rx, &event_tx).await
+        run_terminal_inner(&connection, tmux_session, cwd, cols, rows, &mut input_rx, &event_tx)
+            .await
     {
         let _ = event_tx
             .send(WsEvent::Error {
@@ -108,21 +134,44 @@ pub async fn run_terminal(
     }
 }
 
+/// 无 tmux 时的回退提示：终端内黄色两行，说明已回退与各平台安装命令。
+const NO_TMUX_NOTICE: &str = r"printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'";
+
+/// 拼出远端一行启动命令（经 `ssh <args> '<script>'` 交给远端登录 shell 执行）。
+///
+/// 先扩 PATH（macOS 非交互会话不含 Homebrew 目录）。tmux 可用则接入指定会话，否则回退
+/// 普通 shell 并给出安装指引。POSIX sh 兼容，不依赖 bash。
+///
+/// - 不带 `cwd`：`tmux new -A -s <name>`，会话不存在则新建、存在则 attach，cwd 由 tmux 自己决定。
+/// - 带 `cwd`：`-c` 只在 tmux **新建会话**时生效，会话已存在时会被静默忽略，所以先
+///   `has-session` 分流：不存在则 `new -A -s -c`；存在则在会话里 `new-window -c` 开一个
+///   落在该目录的新 window 再 attach（`new-window` 不带 `-d` 会顺带选中它）。
+///   这样「按目录打开终端」无论会话是否已存在，用户看到的都是一个停在该目录的 shell。
+///
+/// 会话名已过白名单；cwd 经 [`valid_cwd`] 校验后由 [`shell_quote`] 转义。
+fn remote_terminal_script(name: &str, cwd: Option<&str>) -> String {
+    let Some(cwd) = cwd else {
+        return format!(
+            r"{TMUX_PATH_PREFIX}command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ {NO_TMUX_NOTICE}; exec $SHELL; }}",
+        );
+    };
+    let cwd = shell_quote(cwd);
+    format!(
+        r"{TMUX_PATH_PREFIX}if command -v tmux >/dev/null 2>&1; then if tmux has-session -t '{name}' 2>/dev/null; then tmux new-window -t '{name}:' -c {cwd} && tmux attach -t '{name}'; else tmux new -A -s '{name}' -c {cwd}; fi; else {NO_TMUX_NOTICE}; cd {cwd} 2>/dev/null; exec $SHELL; fi",
+    )
+}
+
 async fn run_terminal_inner(
     connection: &ConnectionConfig,
     tmux_session: Option<String>,
+    cwd: Option<String>,
     cols: u32,
     rows: u32,
     input_rx: &mut mpsc::Receiver<ControlMessage>,
     event_tx: &mpsc::Sender<WsEvent>,
 ) -> Result<()> {
     let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
-    // 远端启动命令：先扩 PATH（macOS 非交互会话不含 Homebrew 目录），
-    // tmux 可用则 attach 指定会话，否则回退普通 shell 并给出安装指引。
-    // 会话名已过白名单，单引号内拼接安全。POSIX sh 兼容。
-    let remote_script = format!(
-        r"{TMUX_PATH_PREFIX}command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'; exec $SHELL; }}",
-    );
+    let remote_script = remote_terminal_script(&name, cwd.as_deref());
     let args = ssh_args(&connection.command, &remote_script);
 
     // portable-pty：分配本地 PTY（初始尺寸即终端面板尺寸）并在其中启动 ssh。
@@ -509,6 +558,94 @@ pub async fn list_tmux_sessions(
             } else {
                 format!("tmux ls 异常退出：{code}：{detail}")
             }))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 引入 cwd 之前的终端启动脚本，逐字节锁定：不带 cwd 时远端行为必须完全不变。
+    fn legacy_terminal_script(name: &str) -> String {
+        format!(
+            r#"{TMUX_PATH_PREFIX}command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'; exec $SHELL; }}"#,
+        )
+    }
+
+    #[test]
+    fn terminal_script_without_cwd_is_unchanged() {
+        assert_eq!(remote_terminal_script("ssh-main", None), legacy_terminal_script("ssh-main"));
+        assert_eq!(remote_terminal_script("dev-1", None), legacy_terminal_script("dev-1"));
+    }
+
+    #[test]
+    fn terminal_script_with_cwd_branches_on_session_presence() {
+        let script = remote_terminal_script("ssh-main", Some("/srv/app"));
+        assert!(script.starts_with(TMUX_PATH_PREFIX));
+        // 会话不存在：新建会话并把初始目录交给 -c。
+        assert!(script.contains("tmux new -A -s 'ssh-main' -c '/srv/app'"));
+        // 会话已存在：-c 对已有会话无效，改为在会话里新开一个落在该目录的 window 再 attach。
+        assert!(script.contains(
+            "tmux new-window -t 'ssh-main:' -c '/srv/app' && tmux attach -t 'ssh-main'"
+        ));
+        // 分流顺序：先探 tmux，再探会话，都没有才回退 shell。
+        let tmux_at = script.find("if command -v tmux").expect("缺 tmux 探测");
+        let has_at = script.find("tmux has-session -t 'ssh-main'").expect("缺会话探测");
+        let cd_at = script.find("cd '/srv/app' 2>/dev/null; exec $SHELL").expect("缺回退分支");
+        assert!(tmux_at < has_at && has_at < cd_at);
+        // 回退 shell 时也要落在该目录，与有 tmux 时一致。
+        // 提示文本与无 cwd 版本逐字相同，且 printf 只包一层（不能再包成 `printf 'printf ...'`）。
+        let notice_range = |script: &str| {
+            let start = script.find("printf '").expect("缺回退提示");
+            // 提示以 `\033[0m\n'` 收尾，截到这里的闭引号为止。
+            let tail = "\\033[0m\\n'";
+            let end = start + script[start..].find(tail).expect("缺提示收尾") + tail.len();
+            start..end
+        };
+        assert_eq!(script.matches("printf '").count(), 1);
+        assert_eq!(&script[notice_range(&script)], &legacy_terminal_script("ssh-main")[notice_range(&legacy_terminal_script("ssh-main"))]);
+    }
+
+    #[test]
+    fn shell_quote_escapes_embedded_single_quotes() {
+        assert_eq!(shell_quote("/plain/path"), "'/plain/path'");
+        assert_eq!(shell_quote("/it's"), r"'/it'\''s'");
+        // 空格与非 ASCII 原样保留：它们在单引号里是字面量。
+        assert_eq!(shell_quote("/data/我的 目录"), "'/data/我的 目录'");
+    }
+
+    #[test]
+    fn valid_cwd_accepts_device_absolute_paths() {
+        assert!(valid_cwd("/"));
+        assert!(valid_cwd("/srv"));
+        assert!(valid_cwd("/data/我的 目录/x$(y)\"z"));
+        assert!(valid_cwd(&format!("/{}", "a".repeat(MAX_CWD_BYTES - 1))));
+    }
+
+    #[test]
+    fn valid_cwd_rejects_injection_surface() {
+        assert!(!valid_cwd(""), "空串不是路径");
+        assert!(!valid_cwd("srv"), "相对路径");
+        assert!(!valid_cwd("~/srv"), "本服务不展开 ~");
+        assert!(!valid_cwd("ssh://nm105/srv"), "位置 URI 不是设备内路径");
+        assert!(!valid_cwd("/it's"), "单引号");
+        assert!(!valid_cwd("/a\\b"), "反斜杠");
+        assert!(!valid_cwd("/a\nb"), "换行");
+        assert!(!valid_cwd("/a\0b"), "NUL");
+        assert!(!valid_cwd(&format!("/{}", "a".repeat(MAX_CWD_BYTES))), "超长");
+    }
+
+    /// 校验通过的 cwd 一定能在 sh 里安全地拼成单引号字面量：
+    /// 用 dash 风格的转义规则模拟一次往返，确认还原出的就是原字符串。
+    #[test]
+    fn valid_cwd_round_trips_through_shell_quote() {
+        for cwd in ["/", "/srv", "/data/我的 目录/x$(y)\"z", "/a;b|c&d"] {
+            assert!(valid_cwd(cwd), "{cwd:?} 应合法");
+            let quoted = shell_quote(cwd);
+            // 单引号字面量：去掉首尾引号即原值（校验已排除单引号，不会出现 '\'' 序列）。
+            assert!(!quoted.contains("'\\''"), "{cwd:?} 不应含转义序列");
+            assert_eq!(&quoted[1..quoted.len() - 1], cwd);
         }
     }
 }

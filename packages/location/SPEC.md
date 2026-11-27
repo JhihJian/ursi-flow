@@ -44,12 +44,13 @@ ssh://<设备名>/abs/path    远程，设备名是 ssh-web 的连接名
 
 ### 持久化键
 
-`keyOf` 返回规范 URI 的 sha256 前 16 个 hex。算法与 fs-web、pi-web 现有的 realpath 哈希一致，跨进程稳定。
+`@ursi/location/keys` 的 `keyOf` 返回规范 URI 的 sha256 前 16 个 hex。算法与 fs-web、pi-web 现有的 realpath 哈希一致，跨进程稳定。它与主出口分开，因为依赖 `node:crypto`，而主出口要保持纯浏览器可用。
 
 #### 验收
 
 - 同一 URI 两次求键一致。设备名大小写不同得到不同的键。
 - 键是 16 位小写 hex。
+- 主出口 `src/index.ts` 不出现任何 `node:` 模块，有测试守住。
 
 ### 共享测试向量
 

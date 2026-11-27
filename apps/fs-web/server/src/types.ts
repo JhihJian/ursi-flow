@@ -3,15 +3,18 @@
  * 前端用 `import type` 复制这些类型，不引服务端代码。
  */
 
+import type { Location } from '@ursi/location'
+
 export interface WorkspaceConfig {
-  /** 清单内唯一；静态配置用 slug，运行时添加用 root realpath 的 sha256 前 16 hex。 */
+  /** 清单内唯一；静态配置用 slug，运行时添加用 root 位置键（见 `@ursi/location/keys`）。 */
   id: string
   /** 展示名，缺省同 id。 */
   label?: string
   /** 一句话说明（这是什么目录），可选。 */
   description?: string
-  provider: 'local'
-  /** 本机绝对路径；先 realpath 再作为前缀。 */
+  /** 与 root 的 scheme 一一对应：file 走本机 provider，ssh 走远程 provider。 */
+  provider: Location['scheme']
+  /** 工作目录的身份：位置 URI（`file:///abs` 或 `ssh://<设备>/abs`）。 */
   root: string
 }
 
@@ -20,8 +23,8 @@ export interface WorkspaceInfo {
   label: string
   /** 一句话说明；无说明时不返回。 */
   description?: string
-  provider: 'local'
-  /** 目录绝对路径（运行时添加的条目为 realpath）。 */
+  provider: Location['scheme']
+  /** 位置 URI（运行时添加的条目为 realpath 后的规范 URI）。 */
   root: string
   /** root 不存在或不可读时为 false，该 workspace 只读出错信息。 */
   ready: boolean
@@ -89,9 +92,9 @@ export interface EntryDto {
 
 /** 任意目录浏览：给选目录组件用，只列子目录，不碰文件。 */
 export interface DirListingDto {
-  /** 规范绝对路径（realpath，`~` 已展开），组件以它为锚。 */
-  path: string
-  /** 上一级目录；根目录为 null。 */
+  /** 规范位置 URI（本机为 realpath 后的 `file://`，远程为 `ssh://<设备>` + 真实路径），组件以它为锚。 */
+  location: string
+  /** 上一级目录；设备根目录为 null。 */
   parent: string | null
   /** 子目录名，按名称排序。 */
   entries: { name: string }[]
@@ -112,6 +115,8 @@ export interface ApiError {
     | 'too_large'
     | 'binary'
     | 'git_unavailable'
+    | 'ssh_unavailable'
+    | 'device_not_found'
     | 'io'
   message: string
 }

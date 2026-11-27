@@ -42,6 +42,15 @@ pub struct ConnectionsResponse {
     pub connections: Vec<Connection>,
 }
 
+/// `GET /api/connections/by-name/{name}/ssh-args` 的响应：连接命令去掉首词 `ssh`
+/// 与 `-t`/`-tt` 后的参数，调用方自行拼到 `ssh` 后面。
+#[derive(Debug, serde::Serialize)]
+pub struct SshArgsResponse {
+    pub id: i64,
+    pub name: String,
+    pub args: Vec<String>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct TestConnectionRequest {
     pub command: String,

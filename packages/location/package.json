@@ -6,6 +6,7 @@
   "description": "位置契约：工作目录的身份是 URI（file:// 与 ssh://），这里只放解析、构造、派生与规范化纯函数。",
   "exports": {
     ".": "./src/index.ts",
+    "./keys": "./src/keys.ts",
     "./vectors.json": "./vectors.json"
   },
   "engines": {

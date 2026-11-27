@@ -26,6 +26,12 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 - 删除连接需在侧栏底部内联确认区输入连接名称二次确认，名称不匹配时不执行并提示；删除时该连接的会话标签一并关闭。
 - 命令原样存于本机 SQLite（`~/.ursi/ssh/ssh.db`）并完整回传展示，无独立凭证字段，不存在"只写不读"的凭证。
 
+#### 设备注册表
+
+连接 `name` 同时是位置契约里的设备名（`ssh://<name>/path`），`GET /api/connections/by-name/{name}/ssh-args` 把连接命令拆成调用参数交给其它服务。设备清单的唯一事实源是本服务的连接表，`~/.ssh/config` 是导入来源。
+
+前端层面由 `createSshModule` 导出的 `commands` 承担同一角色（见「工作区嵌入」）：`listDevices` 给出设备清单，`openTerminal` 在指定设备的指定目录打开终端。
+
 ### 终端与 tmux 会话
 
 #### 验收
@@ -45,6 +51,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 - 服务端推送的事件不打断终端：消息以带颜色的文本内联写入终端尾部（错误红色，远端退出黄色，tmux 内 `exit` 后退出码可见），同时在终端区底部显示一条事件条说明结果，终端已有内容保留供回看。
 - 服务端不持久化任何会话：WS 断开即终止 ssh 子进程，同一时间一个 tmux 会话只接一个终端；持久性完全由远端 tmux 承担。多标签仅为前端形态：关闭标签即断开对应 WS，远端 tmux 会话保留。嵌入工作区时侧边栏折叠即卸载全部终端，重开点击会话重新 attach 恢复屏幕，折叠窄条上实时显示激活标签的会话与连接状态（连接中/已连接/已退出/出错/未连接）及打开数。服务端侧的会话保活、自动重连不在范围内。
 - ssh 子进程以 `ssh -tt` 强制分配远端 PTY，`StrictHostKeyChecking=accept-new` 首次连接自动接受主机密钥；服务端不做额外主机密钥校验，这是内网工具的明确边界。
+- 按 cwd 打开：终端标签可携带远端初始目录 `cwd`（设备内绝对路径），建 WS 时作为 `cwd` 查询参数发给服务端；标签 key 仍只用 (连接, tmux 会话)，不含 cwd，同一 (连接, 会话) 已打开时 `openTerminal` 只激活、不改它的 cwd，新开时才带上。服务端校验 `cwd` 以 `/` 开头、不含 `'`、`\`、NUL、换行、不超过 4096 字节，否则 400。远端有 tmux 时先 `has-session` 分流：会话不存在则 `new -A -s -c <cwd>` 新建并落在该目录；会话已存在则 `new-window -c <cwd>` 在会话里新开一个落在该目录的 window 再 attach，同一会话以不同 cwd 多次打开每次多一个 window。远端无 tmux 时回退 shell 执行 `cd <cwd>` 再 `exec $SHELL`。不带 cwd 时行为与之前完全一致。
 
 ### 设备资源面板
 
@@ -66,6 +73,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 #### 验收
 
 - ssh-web 以 `@ursi/ssh-web/module` 接入 ursi-flow 工作区外壳：侧边栏是连接树与会话入口，工作区是标签栏加终端；`createSshModule({ apiBaseUrl })` 工厂创建独立的 store 实例，不设模块级单例；独立入口与嵌入共用同一套组件。
+- 工厂返回 `WorkspaceModule & { commands: SshCommands }`，与 fs-web 的 `FsCommands` 同一模式，由组合根注入给需要的模块。`commands.listDevices()` 走 `GET /connections` 返回 `{ device, label }[]`，`device` 与 `label` 都是连接 `name`，按名称排序；`commands.openTerminal({ device, cwd })` 按设备名找连接（找不到抛 `ssh-web 里没有名为 <device> 的连接`），store 里还没有连接列表时先 `loadConnections()`，再对默认会话（null）调 `openTerminal(connection.id, null, cwd)`。两条命令都直接走工厂闭包里的 controller（api + store），不依赖 Provider 是否已挂载：ssh 未在当前 profile 展开时，跨模块调用依然可用，打开的标签在该模块下次展开时出现。
 - 嵌入时宿主 vite 把 `/api/ssh-web/*` 代理到 8091 并重写为 `/api/*`（HTTP 与 WS 同规则），服务端路由保持 `/api` 不变；模块所有请求（含终端 WS）都走注入的前缀。
 - 样式全部作用域在 `.ssh-embed` 容器内，类名带 `ssh-` 前缀，右键菜单 portal 进容器并以容器坐标系定位，不越栏、不吃宿主样式；亮暗主题偏好存于带模块前缀的 localStorage 键（`ssh.terminal-light`）。
 - `Ctrl/Cmd+F` 仅在指针或焦点落在 ssh 模块内时拦截，其余场景不干扰宿主快捷键。

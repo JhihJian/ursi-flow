@@ -13,8 +13,8 @@ use crate::db;
 use crate::metrics::HostMetrics;
 use crate::models::SuccessResponse;
 use crate::session::{
-    valid_tmux_session, ControlMessage, WsEvent, EVENT_CAPACITY, INPUT_CAPACITY,
-    WS_TEXT_LIMIT_BYTES,
+    valid_cwd, valid_tmux_session, ControlMessage, WsEvent, EVENT_CAPACITY, INPUT_CAPACITY,
+    MAX_CWD_BYTES, WS_TEXT_LIMIT_BYTES,
 };
 
 /// 全局共享状态：连接库。会话状态完全由远端 tmux 承担，服务端无状态。
@@ -211,6 +211,8 @@ pub struct TerminalQuery {
     /// 初始 PTY 尺寸，取自前端终端面板实际大小，避免 80×24 闪排。
     cols: Option<u32>,
     rows: Option<u32>,
+    /// 远端初始目录（设备内绝对路径）。缺省时由远端 tmux 自行决定 cwd。
+    cwd: Option<String>,
 }
 
 /// 校验初始尺寸，缺省或非法时回退 80×24。
@@ -245,12 +247,21 @@ pub async fn get_terminal_ws(
         None => crate::session::DEFAULT_TMUX_SESSION.to_string(),
     };
     let (cols, rows) = initial_size(&query);
+    // `?cwd=`（空串）按未提供处理；其余原样校验，不 trim：空格在文件名里是合法字符。
+    let cwd = match query.cwd.as_deref().filter(|cwd| !cwd.is_empty()) {
+        None => None,
+        Some(cwd) if valid_cwd(cwd) => Some(cwd.to_string()),
+        Some(cwd) => {
+            return Err(bad_request(format!("非法 cwd：必须是设备内绝对路径，不含单引号、反斜杠、NUL 与换行，最长 {MAX_CWD_BYTES} 字节，收到：{cwd:?}")));
+        }
+    };
 
     let (event_tx, event_rx) = mpsc::channel::<WsEvent>(EVENT_CAPACITY);
     let (input_tx, input_rx) = mpsc::channel::<ControlMessage>(INPUT_CAPACITY);
     tokio::spawn(crate::session::run_terminal(
         config,
         Some(tmux_session),
+        cwd,
         cols,
         rows,
         input_rx,

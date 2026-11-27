@@ -9,11 +9,16 @@ export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connect
 export interface TerminalTarget {
   connectionId: number
   tmuxSession: string | null
+  /**
+   * 远端初始目录（设备内绝对路径）。只在标签首次打开（建 WS）时生效；
+   * 已打开的标签再被 openTerminal 命中只是激活，不会改它的 cwd。
+   */
+  cwd?: string
 }
 
 /** 一个打开的终端标签：同一 (连接, tmux 会话) 只允许一个标签。 */
 export interface TerminalTab extends TerminalTarget {
-  /** 稳定标识：`{connectionId}/{tmuxSession ?? 'main'}`。 */
+  /** 稳定标识：`{connectionId}/{tmuxSession ?? 'main'}`，不含 cwd。 */
   key: string
   /** 终端生命周期：openTerminal 置 connecting，TerminalPane 按 WS/事件推进，卸载落 closed。 */
   state: TerminalState
@@ -94,8 +99,11 @@ export interface SshStoreState {
   loadConnections: () => Promise<void>
   /** 选中连接：切换树选中并刷新该连接的 tmux 会话列表，不影响已打开的标签。 */
   selectConnection: (id: number) => Promise<void>
-  /** 打开（或激活）一个终端标签：attach 指定 tmux 会话（null = 默认 ssh-main）。 */
-  openTerminal: (connectionId: number, tmuxSession: string | null) => void
+  /**
+   * 打开（或激活）一个终端标签：attach 指定 tmux 会话（null = 默认 ssh-main）。
+   * 同一 (连接, 会话) 已打开时只激活，不改它的 cwd；新开时带上 cwd 作为远端初始目录。
+   */
+  openTerminal: (connectionId: number, tmuxSession: string | null, cwd?: string) => void
   /** 激活已打开的标签。 */
   activateTerminal: (key: string) => void
   /** 关闭标签（断开 WS；远端 tmux 会话保留），激活相邻标签。 */
@@ -215,7 +223,7 @@ export function createSshStore(
       await get().refreshTmuxSessions(id)
     },
 
-    openTerminal: (connectionId, tmuxSession) => {
+    openTerminal: (connectionId, tmuxSession, cwd) => {
       const key = terminalKey(connectionId, tmuxSession)
       const { terminals } = get()
       if (terminals.some((tab) => tab.key === key)) {
@@ -223,7 +231,7 @@ export function createSshStore(
         return
       }
       set({
-        terminals: [...terminals, { key, connectionId, tmuxSession, state: 'connecting' }],
+        terminals: [...terminals, { key, connectionId, tmuxSession, cwd, state: 'connecting' }],
         activeTerminalKey: key,
         sessionFormOpen: false,
         notice: null,

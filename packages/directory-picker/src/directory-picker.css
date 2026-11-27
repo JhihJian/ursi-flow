@@ -14,7 +14,7 @@
   color: inherit;
 }
 
-/* 面包屑：上级 / 主目录 / 逐级路径，可横向滚动。 */
+/* 面包屑：设备 / 上级 / 主目录 / 逐级路径，可横向滚动。 */
 .dp-crumbs {
   display: flex;
   align-items: center;
@@ -67,6 +67,33 @@
   flex: none;
   color: var(--dp-dim);
   opacity: 0.5;
+}
+
+/* 设备切换：由宿主注入清单，缺省不渲染。外观跟随面包屑按钮（灰度、等宽、小字号）。 */
+.dp-device {
+  flex: none;
+  max-width: 140px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 1px 3px;
+  font-family: var(--dp-mono);
+  font-size: 11px;
+  color: var(--dp-dim);
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.dp-device:hover:not(:disabled) {
+  color: inherit;
+  border-color: var(--dp-line);
+}
+.dp-device:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.dp-device:focus {
+  outline: none;
+  border-color: currentColor;
 }
 
 /* 路径 / 过滤二合一输入。 */

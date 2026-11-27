@@ -1,20 +1,24 @@
 import { useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { classifyInput, filterEntries, joinPath, pathSegments } from './path'
+import { basename, build, childOf, crumbs, parse } from '@ursi/location'
+import type { Location } from '@ursi/location'
+import { classifyInput, filterEntries } from './path'
 import { useDirectoryListing } from './use-directory-listing'
-import type { ListDirFn } from './types'
+import type { DeviceOption, ListDirFn } from './types'
 import './directory-picker.css'
 
 export interface DirBrowserProps {
-  /** 数据注入：任意路径 → 子目录清单。 */
+  /** 数据注入：任意导航目标（位置 URI 或本机简写）→ 子目录清单。 */
   listDir: ListDirFn
-  /** 初始目录；`~` 由服务端展开。 */
+  /** 初始位置；URI，或 `~` 这类由服务端解析的本机简写。 */
   initialPath: string
-  /** 确认选择当前目录。 */
-  onSelect: (path: string) => void
+  /** 确认选择当前位置，收到的是 URI。 */
+  onSelect: (uri: string) => void
   /** 取消（组件不自己管理开关状态）。 */
   onCancel: () => void
-  /** 快捷目录（如各 home 的默认位置），展示在列表上方。 */
+  /** 可切换的设备；本机固定在第一项。不传则不渲染设备选择。 */
+  devices?: DeviceOption[]
+  /** 快捷目录（位置 URI），展示在列表上方，只显示目录名。 */
   suggestions?: string[]
   /** 输入框占位文案。 */
   placeholder?: string
@@ -26,11 +30,39 @@ export interface DirBrowserProps {
   selectLabel?: string
 }
 
+/** 本机固定项：面包屑第一级与设备下拉的第一项。 */
+const LOCAL_LABEL = '本机'
+
+/** 未拿到清单前的锚点：初始目标是 URI 就用它，`~` 这类本机简写则落在设备根，清单回来后即被覆盖。 */
+function anchorOf(target: string): Location {
+  if (!target.includes('://')) return build('file', '/')
+  try {
+    return parse(target)
+  } catch {
+    return build('file', '/')
+  }
+}
+
+/** 设备根：本机 `file:///`，远程 `ssh://<设备>/`。 */
+function rootOf(loc: Location): string {
+  return loc.scheme === 'file' ? build('file', '/').uri : build('ssh', loc.device!, '/').uri
+}
+
+/** 快捷目录按钮文案：目录名；根目录显示「本机」或设备名。 */
+function suggestionLabel(uri: string): string {
+  try {
+    const loc = parse(uri)
+    return loc.path === '/' ? (loc.scheme === 'file' ? LOCAL_LABEL : loc.device!) : basename(loc)
+  } catch {
+    return uri
+  }
+}
+
 /**
- * 目录浏览主体：面包屑 + 路径/过滤二合一输入 + 子目录列表 + 确认按钮。
+ * 目录浏览主体：设备切换 + 面包屑 + 路径/过滤二合一输入 + 子目录列表 + 确认按钮。
  *
  * 交互约定：
- * - 输入含 `/`（或 `~`、`.`、`..`）时回车当路径导航，否则回车选中唯一过滤命中。
+ * - 输入含 `://`、`/`（或 `~`、`.`、`..`）时回车当路径导航，否则回车选中唯一过滤命中。
  * - ↑↓ 在列表内移动高亮，回车进入高亮目录，Esc 先清过滤再交给 onCancel。
  * - IME 组合期不抢按键；Enter/Escape 用 stopPropagation，不抢占宿主快捷键。
  * - 只列子目录：本组件用于「选目录」，不浏览文件。
@@ -40,6 +72,7 @@ export function DirBrowser({
   initialPath,
   onSelect,
   onCancel,
+  devices,
   suggestions = [],
   placeholder = '输入路径回车跳转，或输入文字过滤',
   reloadKey = 0,
@@ -55,13 +88,13 @@ export function DirBrowser({
   const [activeIndex, setActiveIndex] = useState(-1)
   const listRef = useRef<HTMLUListElement>(null)
 
-  const currentPath = listing?.path ?? initialPath
+  const current = listing?.location ?? anchorOf(initialPath)
   const isPathMode = classifyInput(typed) === 'path'
   const visibleEntries = useMemo(
     () => filterEntries(listing?.entries ?? [], isPathMode ? '' : typed),
     [listing, isPathMode, typed],
   )
-  const crumbs = useMemo(() => pathSegments(currentPath), [currentPath])
+  const trail = useMemo(() => crumbs(current), [current.uri])
 
   const submit = () => {
     const value = typed.trim()
@@ -70,12 +103,19 @@ export function DirBrowser({
       navigate(value)
       setTyped('')
       setActiveIndex(-1)
-    } else if (visibleEntries.length === 1) {
+    } else if (listing && visibleEntries.length === 1) {
       // 过滤唯一命中：回车直接进入，省一次点击。
-      navigate(joinPath(currentPath, visibleEntries[0].name))
+      navigate(childOf(listing.location, visibleEntries[0].name).uri)
       setTyped('')
       setActiveIndex(-1)
     }
+  }
+
+  const enter = (name: string) => {
+    if (!listing) return
+    navigate(childOf(listing.location, name).uri)
+    setTyped('')
+    setActiveIndex(-1)
   }
 
   const moveHighlight = (delta: number) => {
@@ -96,9 +136,7 @@ export function DirBrowser({
       event.preventDefault()
       event.stopPropagation()
       if (activeIndex >= 0 && !isPathMode) {
-        navigate(joinPath(currentPath, visibleEntries[activeIndex].name))
-        setTyped('')
-        setActiveIndex(-1)
+        enter(visibleEntries[activeIndex].name)
       } else {
         submit()
       }
@@ -126,16 +164,36 @@ export function DirBrowser({
   }
 
   const confirm = () => {
-    if (!loading) onSelect(currentPath)
+    if (!loading) onSelect(current.uri)
+  }
+
+  const switchDevice = (device: string) => {
+    navigate(device ? build('ssh', device, '/').uri : build('file', '/').uri)
   }
 
   return (
     <div className="dp">
       <div className="dp-crumbs">
+        {devices && devices.length > 0 ? (
+          <select
+            className="dp-device"
+            aria-label="设备"
+            value={current.scheme === 'file' ? '' : (current.device ?? '')}
+            disabled={loading}
+            onChange={(event) => switchDevice(event.target.value)}
+          >
+            <option value="">{LOCAL_LABEL}</option>
+            {devices.map((option) => (
+              <option key={option.device} value={option.device}>
+                {option.label ?? option.device}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <button
           type="button"
           className="dp-crumb-btn"
-          onClick={() => listing?.parent && navigate(listing.parent)}
+          onClick={() => listing?.parent && navigate(listing.parent.uri)}
           disabled={!listing?.parent || loading}
           title="上一级"
           aria-label="上一级"
@@ -145,7 +203,7 @@ export function DirBrowser({
         <button
           type="button"
           className="dp-crumb-btn"
-          onClick={() => navigate('~')}
+          onClick={() => navigate(current.scheme === 'file' ? '~' : rootOf(current))}
           disabled={loading}
           title="主目录"
           aria-label="主目录"
@@ -154,21 +212,21 @@ export function DirBrowser({
         </button>
         <button
           type="button"
-          className={`dp-crumb${crumbs.length === 0 ? ' dp-crumb--current' : ''}`}
-          onClick={() => navigate('/')}
+          className={`dp-crumb${trail.length === 0 ? ' dp-crumb--current' : ''}`}
+          onClick={() => navigate(rootOf(current))}
         >
-          /
+          {current.scheme === 'file' ? LOCAL_LABEL : (current.device ?? '')}
         </button>
-        {crumbs.map((segment, index) => (
-          <span key={segment.path} className="dp-crumb-wrap">
+        {trail.map((crumb) => (
+          <span key={crumb.loc.uri} className="dp-crumb-wrap">
             <span className="dp-crumb-sep">›</span>
             <button
               type="button"
-              className={`dp-crumb${index === crumbs.length - 1 ? ' dp-crumb--current' : ''}`}
-              onClick={() => navigate(segment.path)}
-              title={segment.path}
+              className={`dp-crumb${crumb.loc.uri === current.uri ? ' dp-crumb--current' : ''}`}
+              onClick={() => navigate(crumb.loc.uri)}
+              title={crumb.loc.uri}
             >
-              {segment.name}
+              {crumb.name}
             </button>
           </span>
         ))}
@@ -205,7 +263,7 @@ export function DirBrowser({
               title={suggested}
               onClick={() => navigate(suggested)}
             >
-              {suggested}
+              {suggestionLabel(suggested)}
             </button>
           ))}
         </div>
@@ -222,12 +280,8 @@ export function DirBrowser({
               <button
                 type="button"
                 className={`dp-row${index === activeIndex ? ' dp-row--active' : ''}`}
-                title={joinPath(currentPath, entry.name)}
-                onClick={() => {
-                  navigate(joinPath(currentPath, entry.name))
-                  setTyped('')
-                  setActiveIndex(-1)
-                }}
+                title={listing ? childOf(listing.location, entry.name).uri : entry.name}
+                onClick={() => enter(entry.name)}
               >
                 <span className="dp-row-name">{entry.name}</span>
                 {entry.note ? <span className="dp-row-note">{entry.note}</span> : null}
@@ -237,8 +291,8 @@ export function DirBrowser({
         )}
       </ul>
 
-      <p className="dp-hint" title={currentPath}>
-        {currentPath}
+      <p className="dp-hint" title={current.uri}>
+        {current.uri}
       </p>
 
       <div className="dp-foot">

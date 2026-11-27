@@ -7,7 +7,6 @@ import { createSshModule } from '@ursi/ssh-web/module'
 import { createSandboxModule } from '@ursi/sandbox-web/module'
 import { createPiModule } from '@ursi/pi-web/module'
 import '@ursi/directory-picker/style.css'
-import '@ursi/directory-picker/style.css'
 import '@ursi/fs-web/module.css'
 import '@ursi/ssh-web/module.css'
 import '@ursi/sandbox-web/module.css'
@@ -161,7 +160,20 @@ function assertRegistry(modules: WorkspaceModule[], views: WorkspaceView[]): voi
  * 组合根是唯一同时看见多个模块的地方，跨模块的边在这里显式接线：
  * 用 import 连边，删掉文件模块会直接编译失败，不留运行期才发现的悬空调用。
  */
-const files = createFsModule({ apiBaseUrl: '/api/fs-web' })
+/** ssh 先建：它的 commands 要注入给 fs，所以顺序上必须在 files 之前。 */
+const ssh = createSshModule({ apiBaseUrl: '/api/ssh-web' })
+
+/**
+ * fs 的远程目录能力由 ssh 提供：设备清单给选目录器，终端给目录右键。
+ * fs 不 import ssh，只接两个函数；ssh 被移除时这里编译失败。
+ */
+const files = createFsModule({
+  apiBaseUrl: '/api/fs-web',
+  host: {
+    devices: ssh.commands.listDevices,
+    openTerminal: ssh.commands.openTerminal,
+  },
+})
 
 /** Pi Web 是一个模块：配置、对话、会话共用同一份 home 与会话实体。 */
 const piModule = createPiModule({ apiBaseUrl: '/api/pi', storageKey: 'ursi.pi' })
@@ -174,7 +186,7 @@ const MODULES: WorkspaceModule[] = [
     openRootInFiles: files.commands.openRoot,
   }),
   files,
-  createSshModule({ apiBaseUrl: '/api/ssh-web' }),
+  ssh,
   createSandboxModule({ apiBase: '/sbx' }),
   piModule,
 ]
@@ -183,6 +195,7 @@ const MODULES: WorkspaceModule[] = [
 const WIRES: Array<{ from: string; to: string; capability: string }> = [
   { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
   { from: 'flow', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
+  { from: 'ssh', to: 'fs-web', capability: 'host.devices / host.openTerminal → ssh.commands' },
 ]
 
 /**

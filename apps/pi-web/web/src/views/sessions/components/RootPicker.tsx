@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { parse } from '@ursi/location'
 import { DirBrowser } from '@ursi/directory-picker'
 import type { ListDirFn } from '@ursi/directory-picker'
 import type { BrowseResult } from '../api'
@@ -18,6 +19,7 @@ interface RootPickerProps {
  *
  * 浏览与竞态处理复用 @ursi/directory-picker 的 DirBrowser；
  * 会话数经 entries 的 note 标注展示，服务端按会话数排序的顺序原样保留。
+ * 组件说 URI，pi-web 服务端说裸路径：这里只做两端互转，不改服务端。
  *
  * 在工作区内就地渲染（不做全屏浮层）：多区域布局里浮层一盖就是整个工作区，
  * 而且 position: fixed 在外壳的 portal 结构下坐标并不可靠。
@@ -35,8 +37,8 @@ export function RootPicker({
     async (target) => {
       const next: BrowseResult = await api.fetchBrowse(target)
       return {
-        path: next.path,
-        parent: next.parent,
+        location: parse(next.path),
+        parent: next.parent ? parse(next.parent) : null,
         entries: next.dirs.map((dir) => ({
           name: dir.name,
           note: dir.sessions > 0 ? `${dir.sessions} 个会话` : undefined,
@@ -58,9 +60,9 @@ export function RootPicker({
         <DirBrowser
           listDir={listDir}
           initialPath={root || defaultRoot || '~'}
-          onSelect={onPick}
+          onSelect={(uri) => onPick(parse(uri).path)}
           onCancel={onClose}
-          suggestions={suggestedRoots}
+          suggestions={suggestedRoots.map((path) => parse(path).uri)}
           selectLabel="使用这个目录"
           placeholder="绝对路径回车打开，如 ~/.pi/agent/sessions"
         />

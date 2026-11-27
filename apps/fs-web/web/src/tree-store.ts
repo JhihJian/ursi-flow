@@ -1,6 +1,15 @@
 import { create } from 'zustand'
+import { childOf, parse, type Location } from '@ursi/location'
 import { ApiClientError, WorkspaceApi, keyAppend, keyName, keySegments, keyToParent, makeKey } from './api.ts'
 import type { EntryDto, WorkspaceInfo } from './api.ts'
+
+/** 宿主注入的能力：组合根决定接哪些模块，fs-web 自己不 import 任何兄弟模块。 */
+export interface FsHostBindings {
+  /** 可切换的设备清单（位置契约里的设备名 = ssh-web 连接名）；不传则选目录器只有本机。 */
+  devices?: () => Promise<Array<{ device: string; label: string }>>
+  /** 在某位置的目录打开终端；只对 ssh 位置有意义，本机位置不显示此项。 */
+  openTerminal?: (target: { device: string; cwd: string }) => Promise<void>
+}
 
 export interface DirState {
   entries: EntryDto[]
@@ -17,6 +26,8 @@ export interface OpenDir {
 
 interface TreeState {
   api: WorkspaceApi
+  /** 宿主注入的跨模块能力，由 FsScope 在挂载时写入。 */
+  host: FsHostBindings
   workspaces: WorkspaceInfo[]
   workspaceError?: string
   activeWorkspaceId: string | null
@@ -43,6 +54,11 @@ interface TreeState {
   setStaleAll: () => void
   clearError: () => void
   setApi: (api: WorkspaceApi) => void
+  setHost: (host: FsHostBindings) => void
+  /** 把一次操作失败报到侧栏错误条（点击可关闭）。 */
+  reportError: (message: string) => void
+  /** 一个目录 FileKey 对应的位置：workspace root 位置 + 相对路径段。 */
+  locationOf: (key: string) => Location | null
 }
 
 function messageOf(error: unknown): string {
@@ -92,6 +108,7 @@ export function flattenOpen(openDirs: OpenDir[], dirs: Record<string, DirState>)
 
 export const useTreeStore = create<TreeState>((set, get) => ({
   api: new WorkspaceApi('/api/fs-web'),
+  host: {},
   workspaces: [],
   activeWorkspaceId: null,
   dirs: {},
@@ -285,6 +302,17 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     set({ api })
     // 编辑器 discard 走注入实例。
     injectEditorApiOf(api)
+  },
+
+  setHost: (host) => set({ host }),
+
+  reportError: (message) => set({ lastError: message }),
+
+  locationOf: (key) => {
+    const { workspaceId, path } = keySegments(key)
+    const workspace = get().workspaces.find((item) => item.id === workspaceId)
+    if (!workspace) return null
+    return path.reduce((loc, name) => childOf(loc, name), parse(workspace.root))
   },
 }))
 

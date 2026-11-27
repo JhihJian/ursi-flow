@@ -152,6 +152,8 @@ export function openTerminalBridge(options: TerminalBridgeOptions): TerminalBrid
       target.tmuxSession ?? undefined,
       initialSize.cols,
       initialSize.rows,
+      // 初始目录随握手一次发给服务端；标签打开后它就固定了，不再随这里变化。
+      target.cwd,
     ),
   )
   socket.binaryType = 'arraybuffer'

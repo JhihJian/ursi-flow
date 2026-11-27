@@ -1,14 +1,23 @@
 import { promises as fs, readFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { parentOf, parse, type Location } from '@ursi/location'
 import type { EntryDto, WorkspaceConfig } from './types.ts'
 import { gitBranchesOf, gitPullOf, gitPushOf, gitStatusOf } from './git-provider.ts'
 
 /**
- * 统一目录抽象。第一版只实现 local；SSH（无 watch 能力）与虚拟目录后续接入。
+ * 统一目录抽象。本机（file）与远程（ssh）各一个实现，按 workspace.provider 选择。
  * 所有路径参数都是相对 root 的 segments，安全检查在这里统一做。
  * 可选能力用可选方法声明（如 gitStatus?），调用前按 typeof === 'function' 判断。
  */
 export interface WorkspaceProvider {
+  /**
+   * 把用户给的位置规范化为真实位置：必须是已存在的目录，返回经过 realpath 的位置。
+   * 添加 workspace 与启动探活都走这里，所以重复检测比的是真实位置而不是用户输入。
+   */
+  realize(target: string): Promise<Location>
+  /** 列子目录，给选目录组件用；不受 workspace 清单约束。 */
+  browse(target: string): Promise<{ location: Location; parent: Location | null; entries: { name: string }[] }>
   list(workspace: WorkspaceConfig, segments: string[]): Promise<EntryDto[]>
   read(
     workspace: WorkspaceConfig,
@@ -32,6 +41,17 @@ export interface WorkspaceProvider {
   gitPull?(workspace: WorkspaceConfig): Promise<{ ok: true }>
   /** 分支与远端分支树；仅 local 实现。 */
   gitBranches?(workspace: WorkspaceConfig): Promise<import('./types.ts').GitBranchesDto>
+}
+
+function assertFile(target: Location): void {
+  if (target.scheme !== 'file') {
+    throw new ProviderError('bad_request', 400, `本机 provider 不处理 ${target.scheme} 位置：${target.uri}`)
+  }
+}
+
+/** 位置路径的 segments 形态，给错误消息用。 */
+function pathSegments(target: Location): string[] {
+  return target.path === '/' ? [] : target.path.slice(1).split('/')
 }
 
 /** provider 层错误：code 进 ApiError，层上不碰 HTTP。 */
@@ -141,9 +161,38 @@ function entryFromStats(name: string, stats: { isDirectory(): boolean; size: num
 
 export function createLocalProvider(): WorkspaceProvider {
   const provider = {
+    async realize(uri) {
+      const target = parse(uri, { home: os.homedir() })
+      assertFile(target)
+      const real = await fs.realpath(target.path).catch((error) => mapFsError(error, pathSegments(target)))
+      const stats = await fs.stat(real).catch((error) => mapFsError(error, pathSegments(target)))
+      if (!stats.isDirectory()) throw new ProviderError('bad_request', 400, `不是目录：${real}`)
+      return parse(real)
+    },
+
+    async browse(target) {
+      const location = await provider.realize(target)
+      const dirents = await fs.readdir(location.path, { withFileTypes: true }).catch((error) => mapFsError(error, pathSegments(location)))
+      const names = await Promise.all(
+        dirents.map(async (dirent) => {
+          // dirent.type 在部分平台不可靠，stat 兜底；不可读的条目直接跳过而不是让整次列目录失败。
+          const isDir = await fs.stat(path.join(location.path, dirent.name)).then((s) => s.isDirectory()).catch(() => false)
+          return isDir ? dirent.name : null
+        }),
+      )
+      return {
+        location,
+        parent: parentOf(location),
+        entries: names
+          .filter((name): name is string => name !== null)
+          .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+          .map((name) => ({ name })),
+      }
+    },
+
     async list(workspace, segments) {
       assertValidSegments(segments)
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       const dirents = await fs.readdir(absolute, { withFileTypes: true }).catch((error) => mapFsError(error, segments))
       const entries = await Promise.all(
         dirents.map(async (dirent) => {
@@ -165,7 +214,7 @@ export function createLocalProvider(): WorkspaceProvider {
     async read(workspace, segments) {
       assertValidSegments(segments)
       if (segments.length === 0) throw new ProviderError('bad_request', 400, 'read 需要文件路径')
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       const stats = await fs.stat(absolute).catch((error) => mapFsError(error, segments))
       if (!stats.isFile()) throw new ProviderError('bad_request', 400, 'read 只支持普通文件')
       if (stats.size > TEXT_LIMIT_BYTES) {
@@ -181,7 +230,7 @@ export function createLocalProvider(): WorkspaceProvider {
     async write(workspace, segments, content, options) {
       assertValidSegments(segments)
       if (segments.length === 0) throw new ProviderError('bad_request', 400, 'write 需要文件路径')
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       let currentMtime: number | null = null
       try {
         currentMtime = (await fs.stat(absolute)).mtimeMs
@@ -218,7 +267,7 @@ export function createLocalProvider(): WorkspaceProvider {
 
     async stat(workspace, segments) {
       assertValidSegments(segments)
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       const stats = await fs.stat(absolute).catch((error) => mapFsError(error, segments))
       return entryFromStats(path.basename(absolute) || workspace.id, stats)
     },
@@ -226,7 +275,7 @@ export function createLocalProvider(): WorkspaceProvider {
     async mkdir(workspace, segments) {
       assertValidSegments(segments)
       if (segments.length === 0) throw new ProviderError('bad_request', 400, 'mkdir 需要目录名')
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       await fs.mkdir(absolute).catch((error) => mapFsError(error, segments))
       const stats = await fs.stat(absolute)
       return entryFromStats(segments[segments.length - 1] ?? '', stats)
@@ -236,8 +285,8 @@ export function createLocalProvider(): WorkspaceProvider {
       assertValidSegments(segments)
       if (segments.length === 0) throw new ProviderError('bad_request', 400, 'rename 需要条目路径')
       assertValidSegment(newName)
-      const absolute = await resolveInsideRoot(workspace.root, segments)
-      const target = await resolveInsideRoot(workspace.root, [...segments.slice(0, -1), newName])
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
+      const target = await resolveInsideRoot(localRootOf(workspace), [...segments.slice(0, -1), newName])
       await fs.rename(absolute, target).catch((error) => mapFsError(error, segments))
       const stats = await fs.stat(target)
       return entryFromStats(newName, stats)
@@ -246,7 +295,7 @@ export function createLocalProvider(): WorkspaceProvider {
     async delete(workspace, segments) {
       assertValidSegments(segments)
       if (segments.length === 0) throw new ProviderError('bad_request', 400, '不能删除 workspace 根目录')
-      const absolute = await resolveInsideRoot(workspace.root, segments)
+      const absolute = await resolveInsideRoot(localRootOf(workspace), segments)
       const stats = await fs.stat(absolute).catch((error) => mapFsError(error, segments))
       if (stats.isDirectory()) {
         await fs.rm(absolute, { recursive: true }).catch((error) => mapFsError(error, segments))
@@ -272,21 +321,46 @@ export function createLocalProvider(): WorkspaceProvider {
   return provider
 }
 
-/** 单条 workspace 记录校验与规范化；配置文件与运行时状态文件共用。 */
+/**
+ * 本机 workspace 的 root 路径：从位置 URI 取设备内路径。
+ * 只对 `provider: 'file'` 有意义；ssh workspace 走 ssh-provider。
+ */
+export function localRootOf(workspace: WorkspaceConfig): string {
+  if (workspace.provider !== 'file') {
+    throw new ProviderError('bad_request', 400, `本机 provider 不处理 ${workspace.provider} 位置：${workspace.root}`)
+  }
+  return parse(workspace.root).path
+}
+
+/** 本机位置：裸路径 → 规范 `file://` URI。`~` 在这里展开。 */
+export function localUriOf(input: string): string {
+  return parse(input, { home: os.homedir() }).uri
+}
+
+/**
+ * 单条 workspace 记录校验与规范化；配置文件与运行时状态文件共用。
+ * root 必须是位置 URI；provider 必须与 root 的 scheme 一致。
+ */
 export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConfig {
   if (typeof item?.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(item.id)) {
     throw new Error(`workspace id 非法：${JSON.stringify(item?.id)}（小写字母、数字、短横线）：${source}`)
   }
-  if (item.provider !== 'local') throw new Error(`不支持的 provider：${item.provider}：${source}`)
-  if (typeof item.root !== 'string' || !path.isAbsolute(item.root)) {
-    throw new Error(`workspace ${item.id} 的 root 必须是绝对路径：${source}`)
+  let root: Location
+  try {
+    root = parse(typeof item.root === 'string' ? item.root : '', { home: os.homedir() })
+  } catch (error) {
+    throw new Error(`workspace ${item.id} 的 root 不是合法位置：${String(item.root)}（${error instanceof Error ? error.message : String(error)}）：${source}`)
+  }
+  // provider 可省略，省略时跟随 root 的 scheme；写了就必须一致。
+  if (item.provider !== undefined && item.provider !== root.scheme) {
+    throw new Error(`workspace ${item.id} 的 provider 与 root 不一致：${String(item.provider)} vs ${root.uri}：${source}`)
   }
   return {
     id: item.id,
     label: typeof item.label === 'string' && item.label ? item.label : item.id,
     description: typeof item.description === 'string' && item.description ? item.description : undefined,
-    provider: 'local',
-    root: item.root,
+    provider: root.scheme,
+    root: root.uri,
   }
 }
 
@@ -294,13 +368,12 @@ export function parseWorkspaceSeed(item: unknown, source: string): WorkspaceConf
 export function loadWorkspaceConfig(env: NodeJS.ProcessEnv): WorkspaceConfig[] {
   const file = env.FS_WEB_CONFIG
   if (!file) {
-    const root = process.cwd()
     return [
       {
         id: 'default',
-        label: path.basename(root) || root,
-        provider: 'local',
-        root,
+        label: path.basename(process.cwd()) || process.cwd(),
+        provider: 'file',
+        root: parse(process.cwd()).uri,
       },
     ]
   }

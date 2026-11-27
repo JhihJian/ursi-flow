@@ -1,10 +1,23 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { parse } from '@ursi/location'
 import type { GitBranchNodeDto, GitBranchesDto, GitChangeDto, GitStatusDto, WorkspaceConfig } from './types.ts'
 import { ProviderError } from './local-provider.ts'
 
 interface RunResult {
   stdout: string
+}
+
+/**
+ * git 只认本机目录：cwd 是 root 位置在设备内的路径。
+ * 调用方（本机 provider）已经保证 workspace 是 file 位置。
+ */
+function cwdOf(workspace: WorkspaceConfig): string {
+  const loc = parse(workspace.root)
+  if (loc.scheme !== 'file') {
+    throw new ProviderError('git_unavailable', 501, '远程目录暂不支持 git 操作')
+  }
+  return loc.path
 }
 
 /** 逐段校验 git 返回的路径段，防止 porcelain 输出意外产生越界段。 */
@@ -196,9 +209,9 @@ export async function gitStatusOf(workspace: WorkspaceConfig): Promise<GitStatus
   let statusOut: string
   let toplevel: string
   try {
-    const status = await runGit(workspace.root, ['status', '--porcelain=v1', '-z', '--branch'])
+    const status = await runGit(cwdOf(workspace), ['status', '--porcelain=v1', '-z', '--branch'])
     statusOut = status.stdout
-    toplevel = (await runGit(workspace.root, ['rev-parse', '--show-toplevel'])).stdout.trim()
+    toplevel = (await runGit(cwdOf(workspace), ['rev-parse', '--show-toplevel'])).stdout.trim()
   } catch (error) {
     // root 不是仓库：rev-parse 128 / status 128，按非仓库降级而非错误。
     if (error instanceof ProviderError && /fatal|not a git repository/i.test(error.message)) {
@@ -210,13 +223,13 @@ export async function gitStatusOf(workspace: WorkspaceConfig): Promise<GitStatus
   const { fields, branchLine } = splitRecords(statusOut)
   // 行数口径与变更列表一致：只统计 workspace root 之内的文件。
   // 传 pathspec（相对 toplevel）让 git 自己过滤，避免全仓库行数混进来。
-  const rootAbs = path.resolve(workspace.root)
+  const rootAbs = cwdOf(workspace)
   // pathspec 用绝对路径：git 接受仓库内绝对路径，且与 cwd 无关（cwd 是 root 或 root 子目录均可）。
   // workspace 就是仓库根时用 '.'（绝对路径 equals toplevel 时 git 也接受，但 '.' 最稳）。
   const pathspec = rootAbs === toplevel ? '.' : rootAbs
   let numstat = ''
   try {
-    numstat = (await runGit(workspace.root, ['diff', 'HEAD', '--numstat', '--', pathspec])).stdout
+    numstat = (await runGit(cwdOf(workspace), ['diff', 'HEAD', '--numstat', '--', pathspec])).stdout
   } catch (error) {
     // 无 HEAD（空仓库）时 diff 报 fatal，行数置 0。
     if (!(error instanceof ProviderError)) throw error
@@ -268,7 +281,7 @@ async function runGitSync(cwd: string, args: string[]): Promise<void> {
 
 /** 前置校验：当前分支有名字且有 upstream，否则给出明确错误。 */
 async function trackedBranchOf(workspace: WorkspaceConfig): Promise<void> {
-  const status = await runGit(workspace.root, ['status', '--porcelain=v1', '-z', '--branch'])
+  const status = await runGit(cwdOf(workspace), ['status', '--porcelain=v1', '-z', '--branch'])
   const { branch, upstream } = parseBranchLine(splitRecords(status.stdout).branchLine)
   if (!branch) throw new ProviderError('git_unavailable', 503, 'detached HEAD 无法同步')
   if (!upstream) throw new ProviderError('git_unavailable', 503, '当前分支没有上游，无法同步')
@@ -277,14 +290,14 @@ async function trackedBranchOf(workspace: WorkspaceConfig): Promise<void> {
 /** 推送当前分支到 upstream。 */
 export async function gitPushOf(workspace: WorkspaceConfig): Promise<{ ok: true }> {
   await trackedBranchOf(workspace)
-  await runGitSync(workspace.root, ['push'])
+  await runGitSync(cwdOf(workspace), ['push'])
   return { ok: true }
 }
 
 /** 拉取并快进当前分支；有冲突或需合并时拒绝，不产生合并提交。 */
 export async function gitPullOf(workspace: WorkspaceConfig): Promise<{ ok: true }> {
   await trackedBranchOf(workspace)
-  await runGitSync(workspace.root, ['pull', '--ff-only'])
+  await runGitSync(cwdOf(workspace), ['pull', '--ff-only'])
   return { ok: true }
 }
 
@@ -361,9 +374,9 @@ export async function gitBranchesOf(workspace: WorkspaceConfig): Promise<GitBran
   let statusOut: string
   let refsOut: string
   try {
-    statusOut = (await runGit(workspace.root, ['status', '--porcelain=v1', '-z', '--branch'])).stdout
+    statusOut = (await runGit(cwdOf(workspace), ['status', '--porcelain=v1', '-z', '--branch'])).stdout
     refsOut = (
-      await runGit(workspace.root, [
+      await runGit(cwdOf(workspace), [
         'for-each-ref',
         '--format=%(refname)|%(objectname:short)|%(upstream:short)|%(HEAD)',
         'refs/heads',

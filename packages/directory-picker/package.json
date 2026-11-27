@@ -13,7 +13,9 @@
   "scripts": {
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@ursi/location": "*"
+  },
   "peerDependencies": {
     "react": "^19.0.0"
   },

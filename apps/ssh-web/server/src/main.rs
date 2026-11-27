@@ -1,6 +1,7 @@
 mod app;
 mod db;
 mod handlers;
+mod location;
 mod metrics;
 mod models;
 mod session;
@@ -61,6 +62,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/connections/{id}/tmux-sessions/{name}/windows/{index}",
             delete(app::delete_tmux_window),
+        )
+        .route(
+            "/api/connections/by-name/{name}/ssh-args",
+            get(handlers::get_ssh_args),
         )
         .route("/api/connections/import", post(handlers::import_connections))
         .route("/api/ssh-config/hosts", get(handlers::discover_ssh_hosts))

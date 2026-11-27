@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HANDLED, route } from '../http/router.ts'
 import { HomeError, resolveRequestedHome } from '../shared/pi-home.ts'
+import { uriOf } from '../shared/locate.ts'
 import { homes, requireHome } from '../config/registry.ts'
 import { MAX_TEXT_BYTES, SESSIONS_ROOT } from '../config.ts'
 import {
@@ -117,7 +118,12 @@ route('GET', '/api/sessions/browse', 'none', async ({ url }) => {
   const path = await svc.resolveRoot(target)
   const listing = await svc.scanner.browse(path)
   if (!listing) throw new HomeError(`无法读取目录：${path}`, 400, 'browse_failed')
-  return listing
+  // 对外说 URI；扫描器内部以裸路径为键。
+  return {
+    path: uriOf(listing.path),
+    parent: listing.parent ? uriOf(listing.parent) : null,
+    dirs: listing.dirs.map((dir) => ({ ...dir, path: uriOf(dir.path) })),
+  }
 })
 
 route('GET', '/api/sessions/prefs', 'none', async () => requireService().prefs.get())

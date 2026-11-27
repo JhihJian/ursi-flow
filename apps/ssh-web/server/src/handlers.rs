@@ -6,10 +6,11 @@ use serde::Deserialize;
 
 use crate::app::{app_state, bad_request, not_found, AppError, AppResult};
 use crate::db;
+use crate::location::is_valid_device;
 use crate::models::{
     Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse,
-    DiscoverSshHostsResponse, ImportConnectionsResponse, ImportFailure, SuccessResponse,
-    TestConnectionRequest, TestConnectionResponse, UpdateConnectionRequest,
+    DiscoverSshHostsResponse, ImportConnectionsResponse, ImportFailure, SshArgsResponse,
+    SuccessResponse, TestConnectionRequest, TestConnectionResponse, UpdateConnectionRequest,
 };
 
 /// `POST /api/connections/test`：验证一条尚未保存的 ssh 命令能否连上远端。
@@ -146,4 +147,21 @@ pub async fn get_connection(Path(id): Path<i64>) -> AppResult<Json<Connection>> 
     let connection =
         db::get_connection(&db, id)?.ok_or_else(|| not_found(format!("连接 {id} 不存在")))?;
     Ok(Json(connection))
+}
+
+/// `GET /api/connections/by-name/{name}/ssh-args`：按连接名取 ssh 调用参数。
+/// `name` 就是位置契约 `ssh://<设备名>/path` 里的设备名，先按设备名规则校验，
+/// 不合法直接 400，不查库。
+pub async fn get_ssh_args(Path(name): Path<String>) -> AppResult<Json<SshArgsResponse>> {
+    if !is_valid_device(&name) {
+        return Err(bad_request(format!("非法设备名：{name}")));
+    }
+    let db = app_state().db.lock().await;
+    let connection = db::get_connection_by_name(&db, &name)?
+        .ok_or_else(|| not_found(format!("连接 {name} 不存在")))?;
+    Ok(Json(SshArgsResponse {
+        id: connection.id,
+        name: connection.name,
+        args: crate::session::command_ssh_args(&connection.command),
+    }))
 }

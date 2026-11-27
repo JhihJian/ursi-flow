@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ursi/directory-picker": "*",
+    "@ursi/location": "*",
     "@ursi/workspace-shell": "*",
     "pi-agent-trajectory-viewer": "git+https://github.com/JhihJian/pi-agent-trajectory-viewer.git#v0.1.0",
     "react": "^19.3.1",

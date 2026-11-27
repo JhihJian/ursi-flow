@@ -10,8 +10,8 @@
  * 但不经 URL 解析器：OpenSSH 的 Host 别名大小写敏感，而 URL 解析器会把主机名小写化。
  * 路径段用 percent-encoding，空格、中文、`#`、`%` 全部可逆。
  *
- * 三条边界：URI 是身份，不是存储键（键用 keyOf）；是契约，不是服务；
- * 是借形态，不是借解析器。
+ * 三条边界：URI 是身份，不是存储键（键在 keys.ts）；是契约，不是服务；
+ * 是借形态，不是借解析器。本文件纯浏览器可用，不依赖 Node。
  */
 
 export type Scheme = 'file' | 'ssh'
@@ -179,13 +179,6 @@ export function isWithin(root: Location, child: Location): boolean {
   return child.path === root.path || child.path.startsWith(root.path + '/')
 }
 
-/** 持久化键：规范 URI 的 sha256 前 16 个 hex。跨进程稳定，算法与 fs-web、pi-web 现有做法一致。 */
-export async function keyOf(loc: Location): Promise<string> {
-  const { createHash } = await import('node:crypto')
-  return createHash('sha256').update(loc.uri).digest('hex').slice(0, 16)
-}
-
-/** 两个位置是否是同一个位置。 */
 export function equals(a: Location, b: Location): boolean {
   return a.uri === b.uri
 }

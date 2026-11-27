@@ -77,6 +77,21 @@
 
 单条连接，预留给编辑表单回填。
 
+### `GET /connections/by-name/{name}/ssh-args`
+
+按连接名取这条连接的 ssh 调用参数。`name` 就是位置契约 `ssh://<设备名>/path` 里的设备名，调用方（fs-web 的远程目录 provider）从 URI 解出设备名后到这里换取实际连机器的参数，自己拼到 `ssh` 后面执行。本服务是设备注册表的拥有者，调用方不读 `~/.ssh/config`、不缓存连接清单。
+
+```json
+{"id": 1, "name": "nm105", "args": ["-p", "10000", "root@nm105"]}
+```
+
+`args` 是连接 `command` 去掉首词 `ssh` 与 `-t`/`-tt` 之后的参数，其余（`-p`、`-i`、`-J`、config 别名等）原样保留、顺序不变。去掉 `-t`/`-tt` 是因为是否分配 PTY 由调用方决定：批量执行带 `-t` 会让远端输出混入 CRLF。
+
+- `name` 不符合设备名规则 `[A-Za-z0-9][A-Za-z0-9._-]*`：400 `bad_request`，不查库。`user@host`、`host:port` 都在这里被拒，用户与端口归连接命令表达。
+- 设备名合法但没有这个连接：404 `not_found`。
+
+设备名大小写敏感，`nm105` 与 `NM105` 是两个连接，与位置契约一致。
+
 ## tmux 会话
 
 服务端不维护会话注册表：WS 握手即启动一条全新 OpenSSH 子进程并 attach 到远端 tmux，会话的创建、列表、保活全部由远端 tmux 承担。
@@ -125,12 +140,20 @@
 
 关闭 window（`tmux kill-window -t <name>:<index>`），其中窗格进程一并结束。返回 `{"success": true}`；失败语义同上。
 
-### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
+### `GET /connections/{id}/terminal?tmux_session=<name>&cwd=<path>&cols=<n>&rows=<n>`
 
 WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：
 
 - 不带 `tmux_session`：执行 `tmux new -A -s ssh-main`（默认会话，不存在则新建）。
 - 带 `tmux_session`：执行 `tmux new -A -s <name>`。会话名服务端白名单校验（ASCII 字母数字下划线连字符，1–64），非法返回 400 `bad_request` 后拒绝升级。
+- `cwd`（可选）：远端初始目录，设备内绝对路径（如 `/srv/app`），供「在设备的这个目录打开终端」这类跨模块调用使用。校验规则：以 `/` 开头，不含 `'`、`\`、NUL、换行，不超过 4096 字节，否则 400 `bad_request`（空串按未提供处理）。
+  - 不带 `cwd`：行为同上，初始目录由 tmux 自己决定（会话已有则以会话当前 window 为准）。
+  - 带 `cwd`：`-c` 只在 tmux **新建会话**时生效，会话已存在时会被静默忽略，所以远端先 `tmux has-session -t <name>` 分流：
+    - 会话不存在：`tmux new -A -s <name> -c <cwd>`，新会话落在该目录。
+    - 会话已存在：`tmux new-window -t <name>: -c <cwd> && tmux attach -t <name>`，在会话里新开一个落在该目录的 window 再 attach。同一会话以不同 `cwd` 多次打开，每次都会多一个 window。
+    - 远端无 tmux：`cd <cwd> 2>/dev/null; exec $SHELL`，回退的普通 shell 也落在该目录。
+  - `cwd` 指向的目录不存在时 tmux 不报错，shell 落在登录目录；回退 shell 同理（`cd` 失败静默）。终端照常可用。
+  - `cwd` 只在握手时生效一次：已打开的终端 WS 不会因再次传 `cwd` 而换目录。
 - `cols`/`rows`（可选）：PTY 初始尺寸，取自前端终端面板实际大小，2–500，缺省或非法回退 80×24。
 - ssh 以 `ssh -tt` 运行，强制分配远端 PTY；`StrictHostKeyChecking=accept-new` 首次连接自动接受主机密钥。
 - 认证失败、主机不可达等错误原样经 WS 下发（OpenSSH 自身 stderr 输出），由前端红色内联显示。

@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
+import { parse } from '@ursi/location'
 import { DirBrowser } from '@ursi/directory-picker'
 import { useAppStore } from '../../../pi-store'
 import { api } from '../api/client'
+import type { ListDirFn } from '@ursi/directory-picker'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
@@ -182,9 +184,13 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
   const [browsing, setBrowsing] = useState(false)
   const sources = homes.filter((h) => h.valid && h.path !== path.trim())
 
-  const listDir = useCallback(
-    (target: string) =>
-      api.browseDirs(target).then((dto) => ({ path: dto.path, parent: dto.parent, entries: dto.entries })),
+  const listDir = useCallback<ListDirFn>(
+    (target) =>
+      api.browseDirs(target).then((dto) => ({
+        location: parse(dto.path),
+        parent: dto.parent ? parse(dto.parent) : null,
+        entries: dto.entries,
+      })),
     [],
   )
 
@@ -254,8 +260,8 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
         <DirBrowser
           listDir={listDir}
           initialPath={path.trim() || '~'}
-          onSelect={(picked) => {
-            setPath(picked)
+          onSelect={(uri) => {
+            setPath(parse(uri).path)
             setBrowsing(false)
             setError(null)
           }}

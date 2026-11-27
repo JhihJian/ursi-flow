@@ -19,6 +19,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.14.28",
     "@ursi/directory-picker": "*",
+    "@ursi/location": "*",
     "lucide-react": "0.468.0",
     "markdown-it": "^15.0.3",
     "monaco-editor": "^0.58.0",
