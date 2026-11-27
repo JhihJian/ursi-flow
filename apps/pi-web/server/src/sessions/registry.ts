@@ -196,7 +196,7 @@ export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
     projectDir: row.projectDir,
   }
   if (existing) {
-    const before = JSON.stringify(existing.disk)
+    const before = JSON.stringify([existing.disk, existing.origin])
     if (existing.state === 'discovered' || existing.state === 'evicted') {
       existing.disk = disk
       existing.state = 'discovered'
@@ -205,7 +205,11 @@ export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
       existing.filePath = row.path
       existing.persistence = 'file'
       existing.seenAt = Date.now()
-      if (before !== JSON.stringify(disk)) bump()
+      // 磁盘上的文件没有归属：哪个作用域扫到它，它就归哪个作用域管。
+      // 同一个 sessions 目录既能按 home 访问也能按 root 访问，不对齐的话
+      // 换一种访问方式列表就是空的。
+      existing.origin = origin
+      if (before !== JSON.stringify([disk, origin])) bump()
       return existing
     }
     // 运行中的会话：文件是运行时输出的追加副本，只刷新大小与时间。

@@ -200,6 +200,13 @@ function withTotals(row, totals) {
   }
 }
 
+/**
+ * pi 把子代理的对话记在 `<会话>/subagents/*.jsonl`，文件头里只有父会话的 sessionId，
+ * 没有自己的 id。它们是父会话的附属记录而不是独立会话，收进来会和父文件撞同一个 id，
+ * 每次扫描交替覆盖、版本号永远在跳。
+ */
+const SUBAGENT_DIR = 'subagents'
+
 /** 根目录下（含子目录，`MAX_DEPTH` 层内）的会话文件，按路径排好便于稳定输出。 */
 async function collectFiles(root, maxFiles) {
   const files = []
@@ -219,6 +226,7 @@ async function collectFiles(root, maxFiles) {
       }
       const path = join(dir, entry.name)
       if (entry.isDirectory()) {
+        if (entry.name === SUBAGENT_DIR) continue
         if (depth < MAX_DEPTH) await walk(path, depth + 1)
         continue
       }

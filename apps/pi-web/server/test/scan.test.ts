@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createScanner } from '../src/sessions/scan.ts'
@@ -94,6 +94,23 @@ test('非 .jsonl 文件与符号链接目录外的内容都不进列表', async 
   const scanner = createScanner()
   const { sessions } = await scanner.list(root)
   assert.equal(sessions.some((session) => session.path.endsWith('notes.md')), false)
+})
+
+test('subagents 目录里的子代理记录不当成独立会话：它们只有父会话的 id', async (t) => {
+  const root = await makeFixtureRoot()
+  t.after(() => rm(root, { recursive: true, force: true }))
+  // pi 的写法：父会话一个 jsonl，旁边一个以会话 id 命名的目录放子代理对话。
+  const subDir = join(root, 'proj-alpha', CANONICAL_ID, 'subagents')
+  await mkdir(subDir, { recursive: true })
+  await writeFile(
+    join(subDir, 'agent-acompact-5b6686c16f601e2f.jsonl'),
+    `${JSON.stringify({ type: 'user', sessionId: CANONICAL_ID, cwd: '/demo/alpha' })}\n`,
+  )
+  const scanner = createScanner()
+  const { sessions } = await scanner.list(root)
+  // 父会话只出现一次，子代理文件不出现。
+  assert.equal(sessions.filter((session) => session.id === CANONICAL_ID).length, 1)
+  assert.equal(sessions.some((session) => session.path.includes('subagents')), false)
 })
 
 test('文件没变化就不重读，追加内容后才重新补明细', async (t) => {
