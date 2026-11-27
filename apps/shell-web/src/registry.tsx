@@ -181,10 +181,20 @@ const piModule = createPiModule({ apiBaseUrl: '/api/pi', storageKey: 'ursi.pi' }
 
 /** 工厂在模块级只调一次，保持组件引用稳定，避免宿主重渲染时重挂模块内部状态。 */
 const MODULES: WorkspaceModule[] = [
-  createTodoModule({ openRootInFiles: files.commands.openRoot }),
+  // todo 的项目目录可以是远程设备：浏览走 fs 的 browse，设备与终端走 ssh 的 commands。
+  createTodoModule({
+    openRootInFiles: files.commands.openRoot,
+    host: {
+      listDir: files.commands.browse,
+      devices: ssh.commands.listDevices,
+      openTerminal: ssh.commands.openTerminal,
+    },
+  }),
+  // flow 在工作台本机执行，flow home 只能是本机目录：只接浏览，不接设备清单。
   createFlowModule({
     apiBaseUrl: '/api/flow-web',
     openRootInFiles: files.commands.openRoot,
+    host: { listDir: files.commands.browse },
   }),
   files,
   ssh,
@@ -194,8 +204,9 @@ const MODULES: WorkspaceModule[] = [
 
 /** 跨模块依赖的说明，Registry 页直接展示，避免边藏在代码里。 */
 const WIRES: Array<{ from: string; to: string; capability: string }> = [
-  { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
-  { from: 'flow', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot' },
+  { from: 'todo', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot；host.listDir → fs.commands.browse' },
+  { from: 'todo', to: 'ssh', capability: 'host.devices / host.openTerminal → ssh.commands' },
+  { from: 'flow', to: 'fs-web', capability: 'openRootInFiles → fs.commands.openRoot；host.listDir → fs.commands.browse' },
   { from: 'ssh', to: 'fs-web', capability: 'host.devices / host.openTerminal → ssh.commands' },
 ]
 

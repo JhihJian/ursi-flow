@@ -239,14 +239,6 @@ export function sidebarItems(input: {
   return items
 }
 
-export function shortPath(path: string, home: string): string {
-  if (home !== '' && path.startsWith(home)) {
-    const rest = path.slice(home.length).replace(/^\//, '')
-    return rest === '' ? '~' : `~/${rest}`
-  }
-  return path
-}
-
 function isFlowValue(value: unknown): value is FlowValue {
   if (value === null) return true
   if (['string', 'number', 'boolean'].includes(typeof value)) return true

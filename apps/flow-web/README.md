@@ -11,8 +11,16 @@
 
 数据归属：
 
-- Flow 包留在用户指定的 flow home，默认 `~/.ursi/flow`，工作台只读不写。
+- Flow 包留在用户指定的 flow home，默认 `file://<home>/.ursi/flow`，工作台只读不写。
 - 设置与运行日志写在工作台状态目录，默认 `~/.ursi/flow-web`：`settings.json` 记录 flow home，`runs/<runId>/` 是运行头、快照与事件流。
+
+## flow home 与路径
+
+flow home 是[位置契约](../../packages/location/SPEC.md)里的位置 URI，设置文件与所有 API 里都是 `file:///abs/path` 形态。输入时三种写法都收：`file:///abs`、裸绝对路径 `/abs`、本机简写 `~`、`~/x`，保存时统一成规范 URI。只接受本机，`ssh://` 与相对路径被拒绝（400），原配置保留。
+
+不接远程是有意的：Flow 引擎在本服务进程内执行，执行器契约的 `cwd` 是单个字符串，没有「在哪台机器跑」的维度，远端目录读回来也会在本机执行。等执行器契约有了设备维度再设计。
+
+Flow 包自己的路径（`dir`、`path`、`flowPath`、`cwd`）仍是裸绝对路径，它们是给引擎与文件系统用的执行路径，不是跨模块身份。「在文件模块打开 Flow 目录」跨模块时转成位置 URI 再传。
 
 ## 运行
 
@@ -40,7 +48,7 @@ cd ../server && npm start
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `FLOW_WEB_PORT` / `FLOW_WEB_HOST` | `8094` / `0.0.0.0` | 服务端监听地址 |
-| `FLOW_WEB_HOME` | `~/.ursi/flow` | 首次启动时的 flow home；之后以设置文件为准 |
+| `FLOW_WEB_HOME` | `~/.ursi/flow` | 首次启动时的 flow home（位置 URI 或本机路径简写）；之后以设置文件为准 |
 | `FLOW_WEB_STATE` | `~/.ursi/flow-web` | 设置与运行日志根目录 |
 | `FLOW_WEB_RUNS` | `<状态目录>/runs` | 单独指定运行日志根目录 |
 | `FLOW_WEB_STATIC_DIR` | `web/dist` | 静态产物目录 |
@@ -50,9 +58,9 @@ cd ../server && npm start
 
 | 方法与路径 | 作用 |
 | --- | --- |
-| `GET /api/config` | 读取 flow home、状态目录、运行根目录与当前执行器 |
-| `PUT /api/config` | 保存 flow home（绝对路径，目录不存在时创建） |
-| `GET /api/flows` | 扫描 flow home，返回每个包的摘要 |
+| `GET /api/config` | 读取 flow home（位置 URI）、状态目录、运行根目录与当前执行器 |
+| `PUT /api/config` | 保存 flow home：接受 `file://` URI、绝对路径或 `~` 简写，存成规范 URI；目录不存在时创建；`ssh://` 与相对路径返回 400 |
+| `GET /api/flows` | 扫描 flow home，返回每个包的摘要（`dir` 是裸路径） |
 | `GET /api/flows/:id` | 单个包的起始节点、变量、节点、结果边与并行结构 |
 | `GET /api/runs` | 运行清单，按开始时间倒序；每条带执行器标识、步数与最近一次快照的变量 |
 | `POST /api/runs` | 用启动变量开始一次运行，返回 `runId` |
@@ -104,10 +112,15 @@ cd ../server && npm start
 ## 测试
 
 ```sh
-npm test -w @ursi/flow-web-server   # 配置、扫描、解析、运行、确认、停止
-npm test -w @ursi/flow-web          # 变量表单、状态文案、选中映射、操作可用性
+npm test -w @ursi/flow-web-server   # flow home 规范化与拒绝、扫描、解析、运行、确认、停止
+npm test -w @ursi/flow-web          # 变量表单、状态文案、选中发布、操作可用性、flow home 编辑区与选目录器
 ```
 
 ## 接入工作区外壳
 
-`src/module.tsx` 导出 `createFlowModule({ apiBaseUrl, openRootInFiles })`。工作区外壳注册模块、注入 API 前缀与文件模块命令，开发代理把 `/api/flow-web` 转发到本服务并把前缀重写回 `/api`。模块样式随 `@ursi/flow-web/styles.css` 引入，全部挂在 `.flow-*` 根类下。
+`src/module.tsx` 导出 `createFlowModule({ apiBaseUrl, openRootInFiles, host })`：
+
+- `openRootInFiles(root)` 接位置 URI。flow 把 Flow 包目录从裸路径转成 `file://` URI 再传，自己不 import 文件模块。
+- `host.listDir` 是 flow home 选目录器的数据源，组合根接文件模块的 `commands.browse`。不注入设备清单：flow home 必须在本机，选目录器只有本机一项。未注入时侧边栏不显示「浏览目录…」。
+
+工作区外壳注册模块、注入 API 前缀与这两项能力，开发代理把 `/api/flow-web` 转发到本服务并把前缀重写回 `/api`。模块样式随 `@ursi/flow-web/styles.css` 引入，全部挂在 `.flow-*` 根类下。

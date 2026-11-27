@@ -42,6 +42,8 @@
 
 项目（`Project`）：`id`、`name`、`description?`、`path?`、`created_at`、`updated_at?`。
 
+`path` 是项目目录，值为[位置契约](../../../packages/location/SPEC.md)的位置 URI：`file:///abs/path` 指本机，`ssh://<设备>/abs/path` 指远程设备。服务端把它当不透明字符串原样保存与返回，不校验、不展开 `~`、不访问文件系统。由 `todo` CLI 等其它写入方写进去的裸路径（如 `/abs/path`）也原样保留，接收方（看板前端、文件模块）按本机简写处理。
+
 ## 接口
 
 | 方法与路径 | 说明 |
@@ -66,8 +68,10 @@
 项目：
 
 ```json
-{ "name": "必填", "description": "可选", "path": "可选" }
+{ "name": "必填", "description": "可选", "path": "可选，位置 URI，如 file:///abs/path 或 ssh://nm105/abs/path" }
 ```
+
+`path` 服务端不做形态校验，只去掉首尾空白后非空即保存；规范化（裸路径转 `file:///`）由看板前端在保存前完成，服务端与 CLI 写入的值不强制是 URI。
 
 任务创建：
 

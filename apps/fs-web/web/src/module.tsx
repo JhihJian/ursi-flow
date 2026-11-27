@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { parse } from '@ursi/location'
+import type { DirListing } from '@ursi/directory-picker'
 import { useWorkspace } from '@ursi/workspace-shell'
 import type { ModuleSidebarProps, WorkspaceModule } from '@ursi/workspace-shell'
 import { WorkspaceApi, keyName, keySegments } from './api.ts'
@@ -24,6 +25,11 @@ export interface FsCommands {
   findRoot: (root: string) => Promise<{ id: string; label: string; root: string } | null>
   /** 按位置打开目录：已登记则激活，未登记则登记后激活。会修改 fs 的目录清单。 */
   openRoot: (root: string) => Promise<{ id: string; label: string; root: string }>
+  /**
+   * 浏览任意位置的子目录（本机与 ssh 设备），给选目录组件当数据源。
+   * 浏览是 fs 的能力：todo、flow 等模块的选目录器经组合根接这一条，自己不加浏览路由。
+   */
+  browse: (target: string) => Promise<DirListing>
 }
 
 const KIND = 'workspace.file'
@@ -58,6 +64,7 @@ export function createFsModule(
    * fs 未在当前 profile 里展开时，跨模块调用依然要能工作。
    */
   const commands: FsCommands = {
+    browse: (target) => api.listDir(target),
     findRoot: async (root) => {
       const target = normalize(root)
       const list = await api.workspaces()

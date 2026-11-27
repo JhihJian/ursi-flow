@@ -1,12 +1,14 @@
-import { useEffect, useRef, type ReactNode } from 'react'
-import type { WorkspaceModule } from '@ursi/workspace-shell'
+import { useEffect, useMemo, type ReactNode } from 'react'
+import type { Selection, WorkspaceModule } from '@ursi/workspace-shell'
 import { useWorkspace } from '@ursi/workspace-shell'
 import { createFlowClient, type FlowClient } from './api'
 import { FlowSidebar } from './components/FlowSidebar'
 import { FlowWorkspace } from './components/FlowWorkspace'
+import { FlowHostContext, type FlowHost } from './host'
 import { statusLabel } from './lib/flow'
 import {
   FLOW_KIND,
+  FLOW_SELECTION_KINDS,
   createActions,
   selectionFor,
   type ActionSnapshot,
@@ -36,20 +38,34 @@ function SnapshotBridge() {
   return null
 }
 
-/** 把所选运行发布到外壳；只清自己发布的选中。 */
+/** 选中是否同一份：类型、标识与摘要都相同。 */
+function sameSelection(left: Selection | null, right: Selection | null): boolean {
+  if (left === null || right === null) return left === right
+  return left.kind === right.kind && left.id === right.id && left.label === right.label
+}
+
+/**
+ * 把当前选中发布到外壳：打开了运行发 `flow.run`，只选中了包发 `flow.package`。
+ * 只清自己发布的两种选中，不抹别的模块的。
+ *
+ * 只有选中真的变了才调 `select`：`select` 会重渲染外壳，外壳重渲染又会跑到这里，
+ * 每次都发一个新对象就成死循环。
+ */
 function SelectionBridge() {
   const { selection, select } = useWorkspace()
   const run = useFlowStore((state) => state.run)
   const flows = useFlowStore((state) => state.flows)
-  const current = useRef(selection)
-  current.current = selection
+  const flowId = useFlowStore((state) => state.flowId)
 
-  const next = selectionFor(run, flows)
+  const next = useMemo(() => selectionFor(run, flows, flowId), [run, flows, flowId])
 
   useEffect(() => {
-    if (next !== null) select(next)
-    else if (current.current?.kind === FLOW_KIND) select(null)
-  }, [next, select])
+    if (next !== null) {
+      if (!sameSelection(selection, next)) select(next)
+    } else if (selection !== null && FLOW_SELECTION_KINDS.includes(selection.kind)) {
+      select(null)
+    }
+  }, [next, selection, select])
 
   return null
 }
@@ -69,15 +85,19 @@ function FlowStatus() {
 }
 
 function flowModule(client: FlowClient, options: FlowModuleOptions): WorkspaceModule {
+  // host 在工厂里固定引用：组合根每次渲染传新对象也不会让读它的组件重渲染。
+  const host: FlowHost = options.host ?? {}
   return {
     id: 'flow',
     title: 'Flow',
     Provider: ({ children }: { children: ReactNode }) => (
-      <FlowProvider client={client}>
-        <SnapshotBridge />
-        <SelectionBridge />
-        {children}
-      </FlowProvider>
+      <FlowHostContext.Provider value={host}>
+        <FlowProvider client={client}>
+          <SnapshotBridge />
+          <SelectionBridge />
+          {children}
+        </FlowProvider>
+      </FlowHostContext.Provider>
     ),
     Sidebar: FlowSidebar,
     Workspace: FlowWorkspace,

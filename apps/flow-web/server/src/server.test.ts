@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
-import { readSettings, writeSettings } from './config.ts'
+import { parse } from '@ursi/location'
+import { defaultFlowHome, readSettings, writeSettings } from './config.ts'
 import { listFlows, readFlow } from './flows.ts'
 import { createRunService } from './runs.ts'
 
@@ -87,20 +88,47 @@ async function writeFlow(home: string, id: string, text: string): Promise<void> 
   await writeFile(join(home, id, 'FLOW.md'), text, 'utf8')
 }
 
-test('flow home 默认是 ~/.ursi/flow，保存时创建目录并拒绝相对路径', async () => {
+test('flow home 默认是 ~/.ursi/flow 的位置 URI', async () => {
   const state = await tempDir('flow-web-state-')
-  const settings = await readSettings(state)
-  assert.match(settings.flowHome, /\.ursi\/flow$/)
+  assert.equal(defaultFlowHome(), `file://${homedir()}/.ursi/flow`)
+  assert.match((await readSettings(state)).flowHome, /^file:\/\/.*\/\.ursi\/flow$/)
+})
 
+test('flow home 接受裸路径、file:// URI 与 ~ 简写，一律存成规范 URI', async () => {
+  const state = await tempDir('flow-web-state-')
+  const home = join(state, 'flows')
+  for (const input of [home, `file://${home}`, `file://localhost/${home}`]) {
+    const saved = await writeSettings(state, { flowHome: input })
+    assert.equal(saved.flowHome, `file://${home}`)
+    assert.equal((await readSettings(state)).flowHome, `file://${home}`)
+  }
+
+  // `~` 简写按服务进程的 home 解析；用一个随机目录名，测完即删。
+  const name = `flow-web-test-${process.pid}`
+  const viaTilde = await writeSettings(state, { flowHome: `~/.ursi/${name}` })
+  assert.equal(viaTilde.flowHome, `file://${homedir()}/.ursi/${name}`)
+  await rm(parse(viaTilde.flowHome).path, { recursive: true, force: true })
+})
+
+test('flow home 拒绝 ssh:// 与相对路径，原配置保留', async () => {
+  const state = await tempDir('flow-web-state-')
   const home = join(state, 'flows')
   const saved = await writeSettings(state, { flowHome: home })
-  assert.equal(saved.flowHome, home)
-  assert.equal((await readSettings(state)).flowHome, home)
 
-  await assert.rejects(
-    () => writeSettings(state, { flowHome: 'relative/dir' }),
-    /绝对路径/,
-  )
+  for (const input of ['ssh://nm105/srv', 'relative/dir']) {
+    await assert.rejects(() => writeSettings(state, { flowHome: input }), /本机/)
+  }
+  assert.equal((await readSettings(state)).flowHome, saved.flowHome)
+})
+
+test('listFlows 接受 URI 形态的 home，返回的 dir 是裸路径', async () => {
+  const home = await tempDir('flow-web-home-')
+  await writeFlow(home, 'two-steps', AGENT_FLOW)
+
+  const flows = await listFlows(`file://${home}`)
+  assert.equal(flows.length, 1)
+  assert.equal(flows[0].dir, join(home, 'two-steps'))
+  assert.equal((await readFlow(`file://${home}`, 'two-steps')).path, join(home, 'two-steps', 'FLOW.md'))
 })
 
 test('列出 Flow 包并解析结构与变量', async () => {

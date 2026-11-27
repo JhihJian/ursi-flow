@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronsRight, Folder, Plus } from 'lucide-react'
 import { parse } from '@ursi/location'
 import { DirBrowser } from '@ursi/directory-picker'
-import type { DeviceOption, ListDirFn } from '@ursi/directory-picker'
+import type { DeviceOption } from '@ursi/directory-picker'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
 import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
@@ -204,16 +204,6 @@ function AddDirectoryForm({ onDone }: { onDone: () => void }) {
     }
   }, [listDevices])
 
-  const listDir = useCallback<ListDirFn>(
-    (target) =>
-      api.browse(target).then((dto) => ({
-        location: parse(dto.location),
-        parent: dto.parent ? parse(dto.parent) : null,
-        entries: dto.entries,
-      })),
-    [api],
-  )
-
   return (
     <div className="wsx-wslist-adding">
       <InlineInput
@@ -227,7 +217,7 @@ function AddDirectoryForm({ onDone }: { onDone: () => void }) {
       />
       {expanded ? (
         <DirBrowser
-          listDir={listDir}
+          listDir={api.listDir}
           initialPath="~"
           devices={devices}
           onSelect={(root) => {

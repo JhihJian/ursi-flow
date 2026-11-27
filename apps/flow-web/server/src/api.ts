@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type http from 'node:http'
 import { EngineError } from 'ursi-flow'
 import type { FlowVariables } from 'ursi-flow'
-import { pathsOf, readSettings, writeSettings } from './config.ts'
+import { FlowHomeError, pathsOf, readSettings, writeSettings } from './config.ts'
 import { listFlows, readFlow } from './flows.ts'
 import { readBody, sendError, sendJson } from './http-util.ts'
 import { createRunService } from './runs.ts'
@@ -159,6 +159,10 @@ class HttpError extends Error {
 
 function respondWithError(res: http.ServerResponse, error: unknown): void {
   if (error instanceof HttpError) {
+    sendError(res, error.status, 'invalid', error.message)
+    return
+  }
+  if (error instanceof FlowHomeError) {
     sendError(res, error.status, 'invalid', error.message)
     return
   }

@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { parse } from '@ursi/location'
 import type {
   FlowDefinition,
   FlowDestination,
@@ -44,6 +45,7 @@ export interface FlowParallelView {
 export interface FlowSummary {
   /** 包目录名，也是 Flow 标识。 */
   id: string
+  /** 包目录的本机绝对路径，给引擎与文件模块当执行路径，不是跨模块身份。 */
   dir: string
   name: string
   description: string
@@ -70,13 +72,18 @@ export function assertFlowId(id: string): void {
     throw new Error(`非法的 Flow 标识：${id}`)
 }
 
+/**
+ * `home` 是设置里的位置 URI（或本机路径简写），这里只在入口解析一次；
+ * 之后交给 `node:fs` 与引擎的都是裸路径，因为 Flow 包是本机执行路径，不是跨模块身份。
+ */
 export async function listFlows(home: string): Promise<FlowSummary[]> {
-  const entries = await readdir(home, { withFileTypes: true }).catch(() => [])
+  const root = parse(home).path
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
   const flows: FlowSummary[] = []
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
-    if (!(await isFlowPackage(join(home, entry.name)))) continue
-    flows.push(await readFlow(home, entry.name))
+    if (!(await isFlowPackage(join(root, entry.name)))) continue
+    flows.push(await readFlow(root, entry.name))
   }
   return flows.sort((left, right) => left.id.localeCompare(right.id, 'zh-Hans-CN'))
 }
@@ -92,7 +99,7 @@ async function isFlowPackage(dir: string): Promise<boolean> {
 /** 读取并解析一个 Flow 包。解析失败也返回摘要，让界面能标出是哪一份坏了。 */
 export async function readFlow(home: string, id: string): Promise<FlowDetail> {
   assertFlowId(id)
-  const dir = join(home, id)
+  const dir = join(parse(home).path, id)
   const path = join(dir, 'FLOW.md')
   const base: FlowDetail = {
     id,

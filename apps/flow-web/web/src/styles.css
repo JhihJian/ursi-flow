@@ -70,6 +70,35 @@
   margin-top: var(--flow-space-xs);
 }
 
+/* 「浏览目录…」展开入口：虚线框，与文件模块的添加目录同形。 */
+.flow-browse-toggle {
+  display: block;
+  width: 100%;
+  margin-top: var(--flow-space-xs);
+  padding: 2px 4px;
+  border: 1px dashed var(--flow-faint);
+  background: none;
+  font-family: var(--flow-mono);
+  font-size: 11px;
+  color: var(--flow-faint);
+  cursor: pointer;
+}
+
+.flow-browse-toggle:hover {
+  color: var(--flow-ink);
+  border-color: var(--flow-ink);
+}
+
+/* 选目录器：变量接到 flow 的灰阶，嵌入外壳与独立入口都不依赖宿主的 --wsx-*。 */
+.flow-home-browse {
+  --wsx-line: var(--flow-line);
+  --wsx-dim: var(--flow-faint);
+  --wsx-mono: var(--flow-mono);
+  margin-top: var(--flow-space-xs);
+  padding: var(--flow-space-xs);
+  border: 1px solid var(--flow-line);
+}
+
 .flow-input {
   flex: 1;
   min-width: 0;

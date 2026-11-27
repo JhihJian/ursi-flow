@@ -341,6 +341,34 @@
   min-height: 56px;
 }
 
+/* Path 字段下方的「浏览目录…」展开按钮与展开后的选目录器。 */
+.project-sheet-browse {
+  align-self: flex-start;
+  margin-top: var(--space-xs);
+  padding: 2px 6px;
+  border: 1px dashed var(--gray-400);
+  background: none;
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.project-sheet-browse:hover {
+  color: var(--gray-900);
+  border-color: var(--gray-900);
+}
+
+.project-sheet .dp {
+  margin-top: var(--space-sm);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.project-sheet-error {
+  font-size: 11px;
+  color: #b43c3c;
+}
+
 /* Right-click menu on lists */
 .context-menu {
   position: fixed;

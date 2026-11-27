@@ -2,6 +2,7 @@
 parent: ../../SPEC.md
 depends-on:
   - ../ursi-flow/SPEC.md
+  - ../../packages/location/SPEC.md
 references:
   - README.md
   - ../ursi-flow/docs/flow-spec.md
@@ -21,9 +22,19 @@ references:
 #### 验收
 
 - 侧边栏列出 flow home 下每个包含 `FLOW.md` 的子目录，显示名称、标识、节点数与变量数；目录名即 Flow 标识。
-- flow home 默认 `~/.ursi/flow`，可在侧边栏改成本机绝对路径：保存后立即重扫，目录不存在时自动创建，相对路径与空值被拒绝且原配置保留。
+- flow home 是[位置契约](../../packages/location/SPEC.md)的位置 URI，默认 `file://<home>/.ursi/flow`。输入框接受 `file:///abs`、裸绝对路径 `/abs`、本机简写 `~`、`~/x`，保存后一律存成规范 URI 并立即重扫；目录不存在时自动创建。`ssh://` 与相对路径被拒绝（文案说明「必须是本机目录」）且原配置保留，接口按 400 回。
+- 组合根注入了 `host.listDir` 时，编辑区多一个「浏览目录…」展开选目录器，只有本机一项、不切设备；选中即保存。未注入（如独立部署）时不显示，只留输入框。
 - 解析失败的包照样列出并标出原因，不阻塞其它包；选中它时启动入口禁用并显示同一条原因。
 - 折叠后的窄条给出当前 Flow、运行中数量与包总数，整条可点开。
+
+### 两类路径
+
+flow home 是跨模块说的「哪台机器的哪个目录」，所以用位置 URI。Flow 包自己的路径（`FlowSummary.dir`、`FlowDetail.path`、`RunView.flowPath`、`cwd`）保持裸绝对路径：它们是给引擎与 `node:fs` 用的本机执行路径，不是身份。服务端只在读设置与扫描入口处 `parse(home).path` 一次，之后全走裸路径。
+
+#### 验收
+
+- `GET /api/config` 与 `PUT /api/config` 返回的 `flowHome` 都是 `file:///...`；`GET /api/flows` 返回的 `dir`、`GET /api/flows/:id` 返回的 `dir` 与 `path` 都是裸绝对路径，不带 `file://`。
+- 服务端把设置里的 URI 交给 `node:fs` 与引擎之前都先 `parse().path`，设置里存什么形态的输入都不影响扫描与执行。
 
 ### 运行一次 Flow
 
@@ -45,18 +56,29 @@ references:
 
 #### 验收
 
-- 模块 id 为 `flow`，发布 `flow.run` 选中；选中摘要形如「Flow 名 · 状态」，状态栏常驻显示包数量、运行中数量与当前状态。
+- 模块 id 为 `flow`，`context.kind` 为 `flow.run`；打开了运行时发布 `flow.run`，摘要形如「Flow 名 · 状态」；只选中了 Flow 包、还没打开运行时发布 `flow.package`（标识是 Flow 标识）。两者都没有时只清自己这两种选中，不动别的模块的。状态栏常驻显示包数量、运行中数量与当前状态。
+- 选中真的变了才调外壳的 `select`：同一次运行轮询刷新不重发布，不会与外壳来回重渲染。
 - Provider 只放数据上下文，不渲染布局 DOM；侧边栏与工作区样式都挂在模块根类下，不写全局选择器。
-- 动作注册在 `actions`：停止运行、复制运行摘要、在文件模块打开 Flow 目录。会改运行状态的带确认文案，目标模块未启用或组合根未接线时给出禁用原因。
-- 跨模块只走组合根注入的 `openRootInFiles`，模块不 import 文件模块；执行后 `shell.reveal('fs-web')`。
+- 动作注册在 `actions`：停止运行、复制运行摘要（只对 `flow.run`）、在文件模块打开 Flow 目录（对两种选中都适用，没启动过运行也能用）。会改运行状态的带确认文案，目标模块未启用或组合根未接线时给出禁用原因。
+- 跨模块只走组合根注入的 `openRootInFiles` 与 `host.listDir`，模块不 import 文件模块。「在文件模块打开 Flow 目录」传的是位置 URI（`file:///...`），确认文案里显示的也是 URI，执行后 `shell.reveal('fs-web')`。
+- 选目录器的数据源由组合根注入文件模块的 `commands.browse`，flow 自己不加浏览路由。
 - 工作区固定三列：启动变量、结构图、运行记录与运行详情；切换 Flow 时三列的位置与尺寸不变，结构图占剩余宽度与整列高度。
 - 小图按原始尺寸居中，大图等比缩到容器内，图区不出现滚动条；窄宽度下退回单列，滚动发生在模块自己的容器内。
 - 模块内统一 `border-box`，工作区四边与外壳对齐，节点详情贴列底时底线可见、不被裁切。
+
+### 不接远程 Flow 包
+
+flow home 只接受本机，`ssh://` 明确拒绝。原因在引擎：`apps/ursi-flow` 在 flow-web 服务端进程内跑，执行器契约的 `Instruct.cwd` 与 `CommandInvocation.cwd` 都是单个字符串，没有「在哪台机器执行」的维度，现在也只有 `fake` 执行器。就算把远端的 `FLOW.md` 读回来，接上真实执行器也会在本机 `spawn(cwd=/srv/proj)`。远程 Flow 包等执行器契约有了设备维度后再设计，不在这次范围里。
+
+#### 验收
+
+- `PUT /api/config` 传 `ssh://nm105/srv` 返回 400，文案含「必须是本机目录」，设置文件里的原值不变。
+- 选目录器不出现设备切换，组合根也不给 flow 注入设备清单。
 
 ### 独立部署
 
 #### 验收
 
-- `apps/flow-web/server` 托管 `web/dist` 与同源 `/api`，默认监听 `0.0.0.0:8094`；`FLOW_WEB_PORT`、`FLOW_WEB_HOME`、`FLOW_WEB_STATE`、`FLOW_WEB_STATIC_DIR` 可覆盖默认值。
-- `web` 可独立构建与预览，`/api` 由 `FLOW_WEB_API` 指向服务端；独立入口与外壳内模块共用同一套组件。
+- `apps/flow-web/server` 托管 `web/dist` 与同源 `/api`，默认监听 `0.0.0.0:8094`；`FLOW_WEB_PORT`、`FLOW_WEB_HOME`、`FLOW_WEB_STATE`、`FLOW_WEB_STATIC_DIR` 可覆盖默认值。`FLOW_WEB_HOME` 只在设置文件不存在时生效，接受位置 URI 或本机路径简写。
+- `web` 可独立构建与预览，`/api` 由 `FLOW_WEB_API` 指向服务端；独立入口与外壳内模块共用同一套组件。独立部署没有组合根，flow home 只有输入框、没有选目录器。
 - 运行日志写在状态目录的 `runs/<runId>/`，与 flow 包分开；改动 flow home 不移动、不删除既有运行。

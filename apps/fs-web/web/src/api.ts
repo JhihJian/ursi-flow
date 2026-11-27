@@ -1,3 +1,5 @@
+import { parse } from '@ursi/location'
+import type { ListDirFn } from '@ursi/directory-picker'
 import type { ApiError, DirListingDto, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
 
 export type { ApiError, DirListingDto, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo }
@@ -63,6 +65,17 @@ export class WorkspaceApi {
     }
     return json as DirListingDto
   }
+
+  /**
+   * 选目录组件的数据源：服务端 DTO 里的位置是 URI 字符串，这里解析成 Location 再交给组件。
+   * 模块内的「添加目录」与导出给兄弟模块的 `commands.browse` 共用这一份适配。
+   */
+  listDir: ListDirFn = (target) =>
+    this.browse(target).then((dto) => ({
+      location: parse(dto.location),
+      parent: dto.parent ? parse(dto.parent) : null,
+      entries: dto.entries,
+    }))
 
   list(workspaceId: string, path: string[]): Promise<{ entries: EntryDto[] }> {
     return this.post('list', { workspaceId, path })
