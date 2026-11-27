@@ -60,6 +60,8 @@ export default defineConfig({
   server: { host: '0.0.0.0', port: 5191, strictPort: true, proxy },
   preview: { host: '0.0.0.0', port: 4191, strictPort: true, proxy },
   build: {
+    // esbuild 多目标降级 ES2021 逻辑赋值时会弄丢声明（曾致 xterm 崩溃），钉到 es2022。
+    target: 'es2022',
     outDir: 'dist',
     // 两个页面入口：真实工作台与不依赖后端的骨架预览。
     rollupOptions: {

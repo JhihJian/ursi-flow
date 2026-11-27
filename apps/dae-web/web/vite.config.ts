@@ -9,6 +9,9 @@ import { defineConfig } from 'vite'
 const apiTarget = process.env.DAE_WEB_API ?? 'http://127.0.0.1:9527'
 
 export default defineConfig({
+  // esbuild 在多浏览器目标下降级 ES2021 逻辑赋值时可能弄丢枚举 IIFE 的 let 声明
+  // （曾致 xterm requestMode 崩溃），内网环境直接钉到 es2022 原生保留。
+  build: { target: 'es2022' },
   plugins: [react()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

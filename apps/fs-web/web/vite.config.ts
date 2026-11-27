@@ -10,5 +10,6 @@ export default defineConfig({
   resolve: { dedupe: ['react', 'react-dom'] },
   server: { host: '0.0.0.0', port: 5192, strictPort: true, proxy: { '/api/fs-web': { target: fsApi, changeOrigin: false } } },
   preview: { host: '0.0.0.0', port: 4192, strictPort: true, proxy: { '/api/fs-web': { target: fsApi, changeOrigin: false } } },
-  build: { outDir: 'dist' },
+  // esbuild 多目标降级 ES2021 逻辑赋值时会弄丢声明（曾致 xterm 崩溃），钉到 es2022。
+  build: { target: 'es2022', outDir: 'dist' },
 })

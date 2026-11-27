@@ -22,5 +22,6 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': { target: api, changeOrigin: false } },
   },
-  build: { outDir: 'dist' },
+  // esbuild 多目标降级 ES2021 逻辑赋值时会弄丢声明（曾致 xterm 崩溃），钉到 es2022。
+  build: { target: 'es2022', outDir: 'dist' },
 })
