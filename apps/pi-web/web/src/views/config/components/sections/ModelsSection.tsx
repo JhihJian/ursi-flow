@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../api/client'
 import type {
   DiscoveryResult,
+  GeneralListing,
   ModelCatalog,
   ModelsListing,
   ProbeResult,
@@ -19,47 +20,85 @@ import {
   removeModelFromEntry,
   type DraftModel,
 } from './models-discover-helpers'
+import { ScopedModelsPanel } from './ScopedModelsPanel'
 
 /**
- * 自定义模型（models.json）：provider 列表 + JSON 详情编辑，split view 结构。
- * 合并写回语义：保存时只提交当前编辑的条目（其余原样保留），条目置 null 删除。
- * apiKey 以掩码回显，原样提交会被服务端还原成原文；改成新值就写新值。
- * 发现模型：拉取后是可浏览列表，逐个添加进草稿，保存才落盘。
+ * 模型配置：pi 里所有模型相关配置的唯一入口，左列表三个固定项 + 自建 provider。
+ *
+ * - 默认模型：settings.json 的 defaultProvider/defaultModel + defaultThinkingLevel
+ * - 启用模型：settings.json 的 enabledModels（ScopedModelsPanel，含模型目录刷新）
+ * - 自建 provider：models.json 的 providers（发现、测试、逐个添加）
+ *
+ * 写回全部走 runWrite 乐观锁；草稿 JSON 是 provider 编辑的唯一真源。
  */
+
+const DEFAULT_PANE = '__default__'
+const ENABLED_PANE = '__enabled__'
+const THINKING_LEVELS = ['', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 export function ModelsSection({ home }: { home: string }) {
   const [listing, setListing] = useState<ModelsListing | null>(null)
+  const [general, setGeneral] = useState<GeneralListing | null>(null)
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(DEFAULT_PANE)
   const [creating, setCreating] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const runWrite = useAppStore((s) => s.runWrite)
+  const setFooter = useAppStore((s) => s.setFooter)
 
   const reload = useCallback(async () => {
     try {
-      const [data, models] = await Promise.all([api.getModels(home), api.getModelCatalog(home)])
+      const [data, models, generalData] = await Promise.all([
+        api.getModels(home),
+        api.getModelCatalog(home),
+        api.getGeneral(home),
+      ])
       setListing(data)
+      setGeneral(generalData)
       setCatalog(models)
       setError(null)
       setCreating(false)
       setSelected((current) =>
-        current && data.providers.some((p) => p.name === current)
+        current && (current === DEFAULT_PANE || current === ENABLED_PANE || data.providers.some((p) => p.name === current))
           ? current
-          : (data.providers[0]?.name ?? null),
+          : DEFAULT_PANE,
       )
+      return models
     } catch (err) {
       setError(describeError(err))
+      return undefined
     }
   }, [home])
 
+  // 运行时目录是 context / 输出上限的唯一来源：首次打开自动采集一次，
+  // 之后只在用户点「刷新模型目录」时重新采集（它会加载扩展并访问网关）。
+  const refreshCatalog = useCallback(async () => {
+    setRefreshing(true)
+    setFooter('busy', '采集模型目录…')
+    try {
+      const models = await api.refreshModelCatalog(home)
+      setCatalog(models)
+      setError(null)
+      setFooter('ok', `模型目录已更新：${models.candidates.length} 个候选`)
+    } catch (err) {
+      setFooter('error', `采集模型目录失败：${describeError(err)}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [home, setFooter])
+
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void reload().then((models) => {
+      if (models && models.catalogFetchedAt === null) void refreshCatalog()
+    })
+  }, [reload, refreshCatalog])
 
   if (error) return <ErrorBanner message={error} />
-  if (!listing || !catalog) return <Loading />
+  if (!listing || !general || !catalog) return <Loading />
 
   const selectedProvider = listing.providers.find((p) => p.name === selected) ?? null
+  const catalogNote = `settings 启用 ${catalog.enabledModels.length} 条 · 自建 ${catalog.modelsJsonProviders.length} 个 · 运行目录 ${catalog.store.reduce((sum, item) => sum + item.modelCount, 0)} 个模型`
 
   async function saveOne(name: string, entry: Record<string, unknown> | null, label: string) {
     return runWrite(label, async () => {
@@ -68,19 +107,63 @@ export function ModelsSection({ home }: { home: string }) {
     })
   }
 
-  const catalogNote = `settings 启用 ${catalog.enabledModels.length} 条 · 自建 ${catalog.modelsJsonProviders.length} 个 · 运行目录 ${catalog.store.reduce((sum, item) => sum + item.modelCount, 0)} 个模型`
+  /** 写 models.json 的 modelOverrides（启用模型面板的行内 contextWindow/maxTokens）。 */
+  async function saveOverride(
+    overrideProvider: string,
+    overrideModelId: string,
+    override: Record<string, unknown> | null,
+    label: string,
+  ): Promise<boolean> {
+    return runWrite(label, async () => {
+      await api.putModelOverride(home, overrideProvider, overrideModelId, override, catalog!.modelsRevision)
+      await reload()
+    })
+  }
+
+  async function saveEnabled(next: string[] | null, label: string): Promise<boolean> {
+    return runWrite(label, async () => {
+      const result = await api.putGeneralKey(home, 'enabledModels', next, general!.revision)
+      if (result.changed) await reload()
+    })
+  }
+
+  const reloadThen = async () => {
+    await reload()
+  }
 
   return (
     <SectionSplit
       list={
         <>
           <SectionListHead
-            title="自定义模型"
+            title="模型配置"
             actions={
               <button type="button" className="btn small" onClick={() => setCreating(true)}>
                 新增
               </button>
             }
+          />
+          <SectionListItem
+            active={selected === DEFAULT_PANE && !creating}
+            title="默认模型"
+            sub={
+              catalog.configured.provider && catalog.configured.modelId
+                ? `${catalog.configured.provider}/${catalog.configured.modelId}`
+                : '（未设置，pi 自动选）'
+            }
+            onClick={() => {
+              setCreating(false)
+              setSelected(DEFAULT_PANE)
+            }}
+          />
+          <SectionListItem
+            active={selected === ENABLED_PANE && !creating}
+            title="启用模型"
+            sub={`enabledModels · ${catalog.enabledModels.length} 条`}
+            onClick={() => {
+              setCreating(false)
+              setSelected(ENABLED_PANE)
+            }}
           />
           {listing.providers.map((provider) => (
             <SectionListItem
@@ -118,6 +201,24 @@ export function ModelsSection({ home }: { home: string }) {
             onSave={(name, entry) => saveOne(name, entry, `新增 provider ${name}`)}
             onCancel={() => setCreating(false)}
           />
+        ) : selected === DEFAULT_PANE ? (
+          <DefaultModelPane home={home} general={general} catalog={catalog} onChanged={reloadThen} />
+        ) : selected === ENABLED_PANE ? (
+          <div className="detail-sheet is-plain">
+            <SectionDetailHead
+              title="启用模型（enabledModels）"
+              meta="对齐 pi 的 /scoped-models：逐条开关、可排序、可加模式"
+            />
+            <ScopedModelsPanel
+              catalog={catalog}
+              onRefresh={async () => {
+              await refreshCatalog()
+            }}
+              refreshing={refreshing}
+              onSaveOverride={saveOverride}
+              onSave={saveEnabled}
+            />
+          </div>
         ) : selectedProvider ? (
           <ProviderEditor
             key={selectedProvider.name}
@@ -128,10 +229,117 @@ export function ModelsSection({ home }: { home: string }) {
             onDelete={() => saveOne(selectedProvider.name, null, `删除 provider ${selectedProvider.name}`)}
           />
         ) : (
-          <EmptyState title="没有选中的 provider" hint="在左侧选择一个 provider，或点「新增」。" />
+          <EmptyState title="没有选中的配置项" hint="在左侧选择默认模型、启用模型或一个 provider。" />
         )
       }
     />
+  )
+}
+
+/** 默认模型 + 默认思考级别（settings.json 的 defaultProvider/defaultModel/defaultThinkingLevel）。 */
+function DefaultModelPane({
+  home,
+  general,
+  catalog,
+  onChanged,
+}: {
+  home: string
+  general: GeneralListing
+  catalog: ModelCatalog
+  onChanged: () => Promise<void>
+}) {
+  const runWrite = useAppStore((s) => s.runWrite)
+
+  const provider = typeof general.managed.defaultProvider === 'string' ? general.managed.defaultProvider : ''
+  const modelId = typeof general.managed.defaultModel === 'string' ? general.managed.defaultModel : ''
+  // 未显式设置默认模型时，pi 会自动选启用清单里的第一个可解析模型；界面把
+  // 这个生效值亮出来，避免「默认为空」看起来像配置丢了。
+  const effectiveDefault =
+    provider && modelId
+      ? `${provider}/${modelId}`
+      : (catalog.candidates.find((candidate) => candidate.enabled && !candidate.pattern)?.ref ?? '')
+  const thinking = typeof general.managed.defaultThinkingLevel === 'string' ? general.managed.defaultThinkingLevel : ''
+
+  async function writeModel(nextProvider: string, nextModelId: string) {
+    await runWrite('保存默认模型', async () => {
+      const result = await api.putGeneralModel(home, nextProvider, nextModelId, general.revision)
+      if (result.changed) await onChanged()
+    })
+  }
+
+  async function writeThinking(level: string) {
+    await runWrite('保存思考级别', async () => {
+      const result = await api.putGeneralKey(home, 'defaultThinkingLevel', level || null, general.revision)
+      if (result.changed) await onChanged()
+    })
+  }
+
+  return (
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title="默认模型"
+        meta="settings.json 受管 key；留空时 pi 自动选第一个可解析的启用模型"
+      />
+      <div className="settings-form-narrow">
+        <div className="stack">
+          <Field
+            label="默认模型"
+            hint={
+              provider && modelId
+                ? 'defaultProvider + defaultModel 两个 key，留空表示交给 pi 自动选。'
+                : `未显式设置，pi 自动选：${effectiveDefault || '（没有可解析的启用模型）'}`
+            }
+          >
+            <div className="field-row">
+              <input
+                className="input"
+                key={`${provider}/${modelId}`}
+                defaultValue={effectiveDefault}
+                placeholder="provider/modelId"
+                list="model-catalog-refs"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  const raw = (e.target as HTMLInputElement).value.trim()
+                  if (raw === effectiveDefault) return
+                  const [nextProvider, ...rest] = raw.split('/')
+                  void writeModel(nextProvider ?? '', rest.join('/'))
+                }}
+                onBlur={(e) => {
+                  const raw = e.target.value.trim()
+                  // 展示的可能是 pi 自动选出的生效值；没改就不落盘，避免把自动选择固化为显式设置。
+                  if (raw === effectiveDefault) return
+                  const [nextProvider, ...rest] = raw.split('/')
+                  void writeModel(raw ? (nextProvider ?? '') : '', raw ? rest.join('/') : '')
+                }}
+              />
+              <datalist id="model-catalog-refs">
+                {catalog.refs.map((ref) => (
+                  <option key={ref} value={ref} />
+                ))}
+              </datalist>
+            </div>
+          </Field>
+
+          <Field label="默认思考级别" hint="对应 defaultThinkingLevel；不同模型支持的级别不同，pi 会就近取值。">
+            <select
+              className="select"
+              value={thinking}
+              onChange={(e) => void writeThinking(e.target.value)}
+            >
+              {THINKING_LEVELS.map((level) => (
+                <option key={level || 'unset'} value={level}>
+                  {level === '' ? '（未设置）' : level}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <p className="mono-dim">
+          新会话的启动模型取启用清单第一条；模型不在选择器里出现时，先到「启用模型」里加一条，
+          自建模型在左侧 provider 里配置。
+        </p>
+      </div>
+    </div>
   )
 }
 

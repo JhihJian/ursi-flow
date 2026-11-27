@@ -6,7 +6,7 @@ split 词汇表 CSS，为配置视图定下的布局契约。只取骨架职责�
 
 ## 结构
 
-每个列表型分区（凭据、自定义模型、Skills、Subagent、插件、MCP、常规）用
+每个列表型分区（模型配置、凭据、Skills、Subagent、插件、MCP）用
 `components/layout.tsx` 的四个结构组件组装：
 
 ```
@@ -26,6 +26,10 @@ SectionSplit（分区根，panel-split）
 - 编辑器组件（ProviderEditor、EntryEditor、ServerEditor、ProfileEditor）
   只换外层容器为 `detail-sheet is-plain` + `SectionDetailHead`，内部表单
   与写回语义不变。
+- 模型配置分区把 pi 的模型相关配置收进一个菜单：左列表 = 默认模型、
+  启用模型、自建 provider×N + 新增；右侧对应默认模型表单、
+  ScopedModelsPanel、ProviderEditor。常规分区是非模型项的纯表单页
+  （`.section` 直接作滚动层）。
 
 ## 高度链约定（防滚动回归）
 
@@ -38,5 +42,6 @@ SectionSplit（分区根，panel-split）
 
 - 只学布局骨架（split view、分组列表、footer 状态行），不移植其
   primitives 全家桶与模态/焦点管理/移动端单 pane 逻辑。
-- general 分区收敛为两项（常规设置 / 启用模型），不逐设置项拆详情页。
+- 模型相关配置（默认模型/思考级别/启用模型/自建 provider）合并为「模型
+  配置」一个菜单，分区 id 保留 `models` 不变；常规分区只留非模型项。
 - 发现模型列表、逐个添加等交互只在本仓实现。
