@@ -11,6 +11,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::db;
 use crate::metrics::HostMetrics;
+use crate::models::SuccessResponse;
 use crate::session::{
     valid_tmux_session, ControlMessage, WsEvent, EVENT_CAPACITY, INPUT_CAPACITY,
     WS_TEXT_LIMIT_BYTES,
@@ -92,6 +93,21 @@ pub async fn get_tmux_sessions(
         .await
         .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
     Ok(Json(crate::models::TmuxSessionsResponse { sessions }))
+}
+
+/// `DELETE /api/connections/{id}/tmux-sessions/{name}`：移除远端 tmux 会话。
+/// 服务端不维护会话，会话存活状态以远端 tmux 为准。
+pub async fn delete_tmux_session(
+    Path((id, name)): Path<(i64, String)>,
+) -> AppResult<Json<SuccessResponse>> {
+    if !valid_tmux_session(&name) {
+        return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+    }
+    let config = load_connection(id).await?;
+    crate::session::kill_tmux_session(&config, &name)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 /// `GET /api/connections/{id}/metrics`：采样远端设备资源。

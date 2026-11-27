@@ -102,6 +102,8 @@ export interface SshStoreState {
   closeSessionForm: () => void
   /** 刷新指定连接（缺省为当前选中连接）的 tmux 会话列表。 */
   refreshTmuxSessions: (id?: number) => Promise<void>
+  /** 移除远端 tmux 会话：kill-session 后刷新列表，打开中的标签一并关闭（其中进程随会话结束）。 */
+  killTmuxSession: (connectionId: number, session: string) => Promise<void>
   /** 采样指定连接的设备资源；同一连接同一时间只跑一轮。 */
   refreshMetrics: (id: number) => Promise<void>
   /** 只保留这些连接的采样状态（已无 live 终端的连接被丢弃）。 */
@@ -262,6 +264,24 @@ export function createSshStore(
             },
           },
         }))
+      }
+    },
+
+    killTmuxSession: async (connectionId, session) => {
+      await api.killTmuxSession(connectionId, session)
+      await get().refreshTmuxSessions(connectionId)
+      // 会话内进程已随 kill-session 结束，打开中的对应标签一并关闭。
+      const { terminals, activeTerminalKey } = get()
+      const closed = new Set(
+        terminals
+          .filter((tab) => tab.connectionId === connectionId && (tab.tmuxSession ?? 'main') === session)
+          .map((tab) => tab.key),
+      )
+      if (closed.size > 0) {
+        set({
+          terminals: terminals.filter((tab) => !closed.has(tab.key)),
+          activeTerminalKey: nextActiveKey(terminals, closed, activeTerminalKey),
+        })
       }
     },
 

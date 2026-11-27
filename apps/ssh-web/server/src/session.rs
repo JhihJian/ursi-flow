@@ -290,6 +290,31 @@ pub async fn probe_connection(connection: &ConnectionConfig) -> Result<String> {
     }))
 }
 
+/// 移除远端 tmux 会话（`tmux kill-session -t <name>`）。
+/// 名称必须先过白名单：远端脚本用单引号拼接，白名单外的字符一律拒绝。
+pub async fn kill_tmux_session(connection: &ConnectionConfig, name: &str) -> Result<()> {
+    if !valid_tmux_session(name) {
+        return Err(anyhow!("非法 tmux 会话名：{name}"));
+    }
+    let script = format!("tmux kill-session -t '{name}'");
+    let (_out, err, code) = exec_collect(connection, &script).await?;
+    let detail = err.trim();
+    match code {
+        0 => Ok(()),
+        // 255 是 ssh 自身的失败（不可达、认证失败），原样返回它的 stderr。
+        255 => Err(anyhow!(if detail.is_empty() {
+            "ssh 连接失败（exit 255）".to_string()
+        } else {
+            format!("ssh 连接失败：{detail}")
+        })),
+        _ => Err(anyhow!(if detail.is_empty() {
+            format!("移除 tmux 会话失败（exit {code}）")
+        } else {
+            format!("移除 tmux 会话失败：{detail}")
+        })),
+    }
+}
+
 /// 远端无 tmux 时由脚本打印的标记。用显式探测替代「退出码 127」，
 /// 避免不同远端 shell 在找不到命令时返回别的码被当成异常报错。
 const NO_TMUX_MARKER: &str = "__ssh_web_no_tmux__";

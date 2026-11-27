@@ -71,6 +71,13 @@ export class SshApi {
     return this.request(`/connections/${id}/tmux-sessions`)
   }
 
+  /** 移除远端 tmux 会话（kill-session，其中进程一并结束）。 */
+  killTmuxSession(id: number, session: string): Promise<{ success: boolean }> {
+    return this.request(`/connections/${id}/tmux-sessions/${encodeURIComponent(session)}`, {
+      method: 'DELETE',
+    })
+  }
+
   /** 采样远端设备资源。每次请求由服务端跑一轮独立的批量 ssh。 */
   getMetrics(id: number): Promise<HostMetrics> {
     return this.request(`/connections/${id}/metrics`)
