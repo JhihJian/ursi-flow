@@ -308,6 +308,11 @@ export interface BuiltinInstallResult {
   installedPath: string
 }
 
+export interface BuiltinUninstallResult {
+  ok: true
+  fileName: string
+}
+
 /** 心跳文件里的一个活会话。 */
 export interface LiveSession {
   sessionId: string

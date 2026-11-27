@@ -381,7 +381,7 @@ display: none;
 font-size: 13px;
 }
 
-.pi-manager-root .config-detail {
+.pi-manager-root.config-detail {
 flex: 1;
   min-width: 0;
   display: flex;
@@ -391,7 +391,7 @@ flex: 1;
   container-type: inline-size;
 }
 
-.pi-manager-root .config-detail > [hidden] {
+.pi-manager-root.config-detail > [hidden] {
 display: none;
 }
 
@@ -1369,6 +1369,36 @@ display: flex;
 .pi-manager-root .mono-dim {
 color: var(--gray-400);
   font-size: 12px;
+}
+
+/* 插件分区里内置扩展小节的列头与右侧状态。 */
+.pi-manager-root .builtin-head {
+display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-sm) var(--space-xs);
+  border-top: 1px solid var(--gray-200);
+  margin-top: var(--space-sm);
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.pi-manager-root .builtin-head-state {
+font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ok);
+}
+
+.pi-manager-root .builtin-head-state.is-on {
+color: var(--ok);
 }
 
 .pi-manager-root .catalog-summary {

@@ -36,6 +36,7 @@ function createLiveFeed(base: string): () => Promise<LiveSessionFeed> {
   return async () => {
   const response = await fetch(`${base}/api/sessions?state=live`)
   const payload = (await response.json()) as {
+    heartbeatDetected?: boolean
     sessions?: Array<{
       id: string
       filePath: string | null
@@ -69,6 +70,7 @@ function createLiveFeed(base: string): () => Promise<LiveSessionFeed> {
     ),
     stale: 0,
     warnings: [],
+    heartbeatDetected: payload.heartbeatDetected === true,
     now,
   }
   }

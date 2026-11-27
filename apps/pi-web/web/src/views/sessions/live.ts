@@ -27,6 +27,8 @@ export interface LiveSessionFeed {
   stale: number
   warnings: string[]
   now: number
+  /** 心跳插件是否装在任一 home：会话视图的运行态功能以此为开关。 */
+  heartbeatDetected: boolean
 }
 
 export interface LiveSessionSource {

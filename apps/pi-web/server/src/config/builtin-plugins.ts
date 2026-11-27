@@ -78,7 +78,7 @@ export interface InstallResult {
 
 /** 安装（或重装）一个内置扩展；已安装时整体替换并如实回报。 */
 export function installBuiltinExtension(home: string, id: string): InstallResult {
-  const extension = BUILTIN_EXTENSIONS.find((item) => item.id === id)
+  const extension = BUILTIN_EXTENSIONS.find((item) => item.fileName === id)
   if (!extension) throw new HomeError(`没有这个内置扩展：${id}`, 404, 'builtin_not_found')
   const source = sourcePathOf(extension)
   if (!existsSync(source)) {
@@ -106,7 +106,7 @@ export function installBuiltinExtension(home: string, id: string): InstallResult
 
 /** 卸载一个内置扩展：清掃四种安装形态，本来就没装时按成功返回（幂等）。 */
 export function uninstallBuiltinExtension(home: string, id: string): { ok: true; fileName: string } {
-  const extension = BUILTIN_EXTENSIONS.find((item) => item.id === id)
+  const extension = BUILTIN_EXTENSIONS.find((item) => item.fileName === id)
   if (!extension) throw new HomeError(`没有这个内置扩展：${id}`, 404, 'builtin_not_found')
   const stem = join(home, 'extensions', extension.fileName.replace(/\.ts$/, ''))
   rmSync(`${stem}.ts`, { force: true })

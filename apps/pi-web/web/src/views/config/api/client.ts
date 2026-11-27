@@ -13,6 +13,9 @@ import type {
   ModelsListing,
   MutationResult,
   PluginsListing,
+  BuiltinExtensionsListing,
+  BuiltinInstallResult,
+  BuiltinUninstallResult,
   ProbeResult,
   DiscoveryResult,
   SkillContent,
@@ -337,6 +340,12 @@ export function createApiClient(base: string | (() => string) = '') {
   getPlugins: (home: string) => request<PluginsListing>(base, 'GET', '/api/config/plugins', home),
   mutatePluginEntry: (home: string, action: 'enable' | 'disable' | 'remove', index: number, revision: string) =>
     request<MutationResult>(base, 'POST', '/api/config/plugins/entry', home, { action, index, revision }),
+  getBuiltinExtensions: (home: string) =>
+    request<BuiltinExtensionsListing>(base, 'GET', '/api/config/plugins/builtin', home),
+  installBuiltinExtension: (home: string, id: string) =>
+    request<BuiltinInstallResult>(base, 'POST', '/api/config/plugins/builtin/install', home, { id }),
+  uninstallBuiltinExtension: (home: string, id: string) =>
+    request<BuiltinUninstallResult>(base, 'POST', '/api/config/plugins/builtin/uninstall', home, { id }),
 
   // ---- 会话与任务（给会话模块和任务分区用） ----
   getSessionDisk: async (home: string): Promise<SessionDisk> => {

@@ -42,13 +42,14 @@ export function SectionListHead({ title, actions }: { title: string; actions?: R
   )
 }
 
-/** 左列表行：主标题 + 副行 + 右侧徽标；选中态走 aria-current。 */
+/** 左列表行：主标题 + 副行 + 右侧徽标；选中态走 aria-current，mark 驱动行首状态点。 */
 export function SectionListItem({
   active,
   title,
   sub,
   badges,
   disabled,
+  mark,
   onClick,
 }: {
   active: boolean
@@ -56,6 +57,8 @@ export function SectionListItem({
   sub?: ReactNode
   badges?: ReactNode
   disabled?: boolean
+  /** 行首状态点：ok 绿 / off 灭 / warn 黄；不传保持默认灰。 */
+  mark?: 'ok' | 'off' | 'warn'
   onClick: () => void
 }) {
   return (
@@ -63,6 +66,7 @@ export function SectionListItem({
       type="button"
       className="list-item"
       aria-current={active || undefined}
+      data-mark={mark}
       disabled={disabled}
       onClick={onClick}
     >

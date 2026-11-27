@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseJsonc, stripJsonComments } from '../src/shared/jsonc.ts'
 import { readSnapshotSync, writeSnapshot, ConflictError } from '../src/shared/rw.ts'
 import { readSettings, mutateSettings } from '../src/config/settings-file.ts'
@@ -17,8 +18,18 @@ import {
 import { readCachedCatalog } from '../src/config/models-runtime.ts'
 import { createHash } from 'node:crypto'
 import { listPackages, applyPackagesMutation } from '../src/config/plugins.ts'
+import {
+  BUILTIN_EXTENSIONS,
+  installBuiltinExtension,
+  uninstallBuiltinExtension,
+  listBuiltinExtensions,
+} from '../src/config/builtin-plugins.ts'
+import { detectPlugin } from '../src/chat/live-sessions.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from '../src/config/agents.ts'
 import { readLiveSessions, readLiveSessionsAllHomes } from '../src/chat/live-sessions.ts'
+
+/** 仓库 apps/pi-web 根：内置扩展源文件与安装对账用。 */
+const REPO_APP_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
 function makeHome(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-manager-test-'))
@@ -342,6 +353,44 @@ test('plugins：remove 删除条目', () => {
   writeFileSync(join(dir, 'settings.json'), JSON.stringify({ packages: ['a', 'b'] }))
   const result = applyPackagesMutation(dir, 'remove', 0)
   assert.deepEqual(result.packages, ['b'])
+})
+
+test('内置扩展：安装后 detectPlugin 为真，重装替换，卸载后恢复未装', () => {
+  const dir = makeHome()
+  const [heartbeat] = BUILTIN_EXTENSIONS
+  assert.equal(detectPlugin(dir), false)
+
+  const install = installBuiltinExtension(dir, heartbeat.fileName)
+  assert.equal(install.replaced, false)
+  assert.equal(detectPlugin(dir), true)
+  const copied = readFileSync(join(dir, 'extensions', heartbeat.fileName), 'utf8')
+  const source = readFileSync(join(REPO_APP_ROOT, heartbeat.sourceRelative), 'utf8')
+  assert.equal(copied, source)
+
+  // 已安装时再装是整体替换，内容仍与源一致。
+  const reinstall = installBuiltinExtension(dir, heartbeat.fileName)
+  assert.equal(reinstall.replaced, true)
+  assert.equal(detectPlugin(dir), true)
+
+  uninstallBuiltinExtension(dir, heartbeat.fileName)
+  assert.equal(detectPlugin(dir), false)
+  // 未知 id 给 404。
+  assert.throws(() => installBuiltinExtension(dir, 'no-such.ts'), /没有这个内置扩展/)
+})
+
+test('内置扩展：清单与探测一致，源文件随仓库存在', () => {
+  const dir = makeHome()
+  const listing = listBuiltinExtensions(dir)
+  assert.ok(listing.length >= 1)
+  for (const entry of listing) {
+    assert.equal(entry.installed, false)
+    assert.equal(entry.installedPath, null)
+    assert.equal(entry.sourceAvailable, true)
+  }
+  installBuiltinExtension(dir, listing[0].id)
+  const after = listBuiltinExtensions(dir)
+  assert.equal(after[0].installed, true)
+  assert.equal(after[0].installedPath, join(dir, 'extensions', after[0].fileName))
 })
 
 // ---------------------------------------------------------------------------

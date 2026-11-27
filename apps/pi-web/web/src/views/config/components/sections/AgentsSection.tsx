@@ -129,7 +129,7 @@ export function AgentsSection({ home }: { home: string }) {
             <SectionListItem
               key={profile.file}
               active={profile.file === selected && !creating}
-              data-mark={profile.fields.enabled ? 'ok' : 'off'}
+              mark={profile.fields.enabled ? 'ok' : 'off'}
               title={profile.name}
               sub={profile.description || '（无描述）'}
               onClick={() => {
@@ -140,7 +140,7 @@ export function AgentsSection({ home }: { home: string }) {
           ))}
           <SectionListItem
             active={builtinSelected}
-            data-mark={listing.settings.builtInEnabled ? 'ok' : 'off'}
+            mark={listing.settings.builtInEnabled ? 'ok' : 'off'}
             title="内置 agent"
             sub="agents/settings.json · 开关与禁用列表"
             onClick={() => {

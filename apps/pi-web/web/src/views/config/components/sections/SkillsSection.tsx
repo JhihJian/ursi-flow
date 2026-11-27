@@ -78,7 +78,7 @@ export function SkillsSection({ home }: { home: string }) {
             <SectionListItem
               key={item.relDir}
               active={item.relDir === selected}
-              data-mark={item.disableModelInvocation ? 'off' : 'ok'}
+              mark={item.disableModelInvocation ? 'off' : 'ok'}
               title={item.name}
               sub={item.description || '（无描述）'}
               badges={<span className="badge">{formatBytes(item.bytes)}</span>}

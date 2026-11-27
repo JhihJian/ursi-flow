@@ -18,7 +18,10 @@
 | `GET /api/homes/:id` | none | home 实体（`sessionsRoot`、`capabilities`、`profileRevision`） |
 | `GET /api/homes/:id/runtime-profile` | none | 运行时配置快照（模型候选、subagent、默认 cwd、目录采集时间） |
 | `/api/config/*` | required | settings / skills / agents / mcp / models / plugins |
-| `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径 |
+| `GET /api/config/plugins/builtin` | required | 内置扩展清单（是否已安装、源文件是否可用、`heartbeatDetected` 总开关） |
+| `POST /api/config/plugins/builtin/install` | required | 一键安装内置扩展到 home 的 extensions/（已安装则覆盖；`id` 必填） |
+| `POST /api/config/plugins/builtin/uninstall` | required | 卸载内置扩展（清掃 .ts/.js/index 四种形态；幂等） |
+| `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径；响应带 `heartbeatDetected` |
 | `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`） |
 | `GET /api/sessions/config` | none | 会话视图初始值 |
 | `GET /api/sessions/browse?path=` | none | 目录列举 |

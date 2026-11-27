@@ -50,6 +50,7 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     setPicking,
     liveByPath,
     liveError,
+    liveEnabled,
     focusDay,
     clearFocusDay,
   } = useSessionsController()
@@ -84,10 +85,23 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
     if (selectedDays.size === 1) return `筛选 ${[...selectedDays][0].slice(5)}`
     return `筛选 ${selectedDays.size} 天`
   }, [selectedDays])
-  const liveForRow = (row: SessionRow) => primaryLive(liveByPath.get(row.path))
+  const liveForRow = (row: SessionRow) => (liveEnabled ? primaryLive(liveByPath.get(row.path)) : null)
 
   // 运行态不单独成列表：存活会话在下面的项目分组里用绿点标出（按会话文件路径
   // 对齐），与磁盘列表是同一份清单；还没写文件的对话在对话视图里看。
+  // 绿点等功能只在心跳插件已安装时开启，未安装时在脚注给出安装引导。
+  const runningCount = useMemo(
+    () =>
+      liveEnabled
+        ? new Set(
+            [...liveByPath.values()]
+              .flat()
+              .filter((item) => item.status === 'running')
+              .map((item) => item.sessionId),
+          ).size
+        : 0,
+    [liveEnabled, liveByPath],
+  )
   const groups = groupSessions(allRows, query, selectedDays)
   const { pinned, rest } = splitPinnedGroups(groups, pinnedProjects)
   const pinnedKeySet = useMemo(() => new Set(pinnedProjects), [pinnedProjects])
@@ -391,11 +405,17 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
               </p>
             ) : null}
 
-            {liveError ? (
-              <p className="sidebar-note" title={liveError}>
-                运行态读取失败，只显示历史会话
+            {liveEnabled ? (
+              liveError ? (
+                <p className="sidebar-note" title={liveError}>
+                  运行态读取失败，只显示历史会话
+                </p>
+              ) : null
+            ) : (
+              <p className="sidebar-note is-hint" title="设置 → 插件 → 内置扩展，一键安装后这里会显示运行中的会话">
+                运行中功能未开启：未检测到会话心跳插件
               </p>
-            ) : null}
+            )}
 
             {pinned.length > 0 ? (
               <section className="pinned-section">
@@ -413,6 +433,7 @@ export function SessionsSidebar({ collapsed, collapse, expand }: ModuleSidebarPr
 
           <p className="sidebar-foot">
             {listing ? `${listing.sessions.length} 个会话 · ${groups.length} 个项目` : '—'}
+            {runningCount > 0 ? ` · ${runningCount} 个运行中` : ''}
             {listing && listing.pendingDetails > 0 ? ` · 补明细 ${listing.pendingDetails}` : ''}
             {listing?.truncated ? ' · 已截断' : ''}
             {daySummary ? ` · ${daySummary}` : ''}

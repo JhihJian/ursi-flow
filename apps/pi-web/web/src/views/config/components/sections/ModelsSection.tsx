@@ -169,7 +169,7 @@ export function ModelsSection({ home }: { home: string }) {
             <SectionListItem
               key={provider.name}
               active={provider.name === selected && !creating}
-              data-mark={provider.hasApiKey ? 'ok' : 'off'}
+              mark={provider.hasApiKey ? 'ok' : 'off'}
               title={provider.name}
               sub={provider.baseUrl || '（无 baseUrl）'}
               badges={<span className="badge">{provider.modelCount}</span>}

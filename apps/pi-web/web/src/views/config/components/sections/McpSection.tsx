@@ -75,7 +75,7 @@ export function McpSection({ home }: { home: string }) {
             <SectionListItem
               key={server.name}
               active={server.name === selected && !creating}
-              data-mark={server.enabled ? 'ok' : 'off'}
+              mark={server.enabled ? 'ok' : 'off'}
               title={server.name}
               sub={server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : server.exposure === 'codemode' ? describeTransport(server) : `exposure: ${server.exposure}`}
               badges={<span className="badge">{server.entry && typeof (server.entry as { url?: unknown }).url === 'string' ? 'http' : 'stdio'}</span>}

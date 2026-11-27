@@ -84,6 +84,8 @@ export interface SessionsController {
   live: LiveSessionInfo[]
   liveByPath: Map<string, LiveSessionInfo[]>
   liveError: string | null
+  /** 心跳插件已检测到：运行态功能（绿点、运行中列表）总开关。 */
+  liveEnabled: boolean
   /** 打开某条会话（可按会话文件或 id 定位），会切根目录并放开日期筛选。 */
   openSession: (input: { root?: string; id?: string; sessionFile?: string }) => void
   /** 命令跳转后要额外放开的日期；侧边栏消费一次后自行并入筛选。 */
@@ -142,6 +144,8 @@ export function SessionsProvider({
   const [notice, setNotice] = useState<Notice | null>(null)
   const [live, setLive] = useState<LiveSessionInfo[]>([])
   const [liveError, setLiveError] = useState<string | null>(null)
+  /** 心跳插件是否检测到：未检测到时运行态功能整体关闭（不显示绿点）。 */
+  const [liveEnabled, setLiveEnabled] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<{
     id?: string
     sessionFile?: string
@@ -177,7 +181,8 @@ export function SessionsProvider({
 
   const { listing, loading, error, reload } = useSessions(root, api)
 
-  // 运行态：来源由宿主注入，5 秒一次；失败只降级成一行小字，不影响磁盘列表。
+  // 运行态：来源由宿主注入，5 秒一次；心跳插件未检测到时整段不跑（功能门控），
+  // 安装插件后下个轮询周期自动开启。失败只降级成一行小字，不影响磁盘列表。
   const liveSource = options.liveSessions
   useEffect(() => {
     if (!liveSource) return
@@ -187,7 +192,8 @@ export function SessionsProvider({
         .fetch()
         .then((feed: LiveSessionFeed) => {
           if (!alive) return
-          setLive(feed.sessions)
+          setLive(feed.heartbeatDetected ? feed.sessions : [])
+          setLiveEnabled(feed.heartbeatDetected)
           setLiveError(null)
         })
         .catch((failure: unknown) => {
@@ -202,7 +208,7 @@ export function SessionsProvider({
     }
   }, [liveSource])
 
-  const liveByPath = useMemo(() => indexLiveByFile({ sessions: live, stale: 0, warnings: [], now: Date.now() }), [live])
+  const liveByPath = useMemo(() => indexLiveByFile({ sessions: live, stale: 0, warnings: [], heartbeatDetected: liveEnabled, now: Date.now() }), [live, liveEnabled])
 
   // 命令跳转：等列表到达后按会话文件优先、id 兜底选中，并记下要放开的日期。
   useEffect(() => {
@@ -331,6 +337,7 @@ export function SessionsProvider({
     live,
     liveByPath,
     liveError,
+    liveEnabled,
     openSession,
     focusDay,
     clearFocusDay: () => setFocusDay(null),
