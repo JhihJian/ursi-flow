@@ -69,6 +69,14 @@
 - 有 tmux 但无会话（exit 1）：`{"sessions": []}`。
 - SSH 失败（不可达、认证失败、主机密钥问题等，ssh 退出码 255）：502 `ssh_error`，错误消息附 OpenSSH 自身 stderr，不再笼统报“tmux ls 异常退出”。
 
+### `DELETE /connections/{id}/tmux-sessions/{name}`
+
+移除远端 tmux 会话：经 ssh 在远端执行 `tmux kill-session -t <name>`（批量调用，`BatchMode=yes`）。会话内进程随之结束；前端把打开中的对应标签一并关闭。返回 `{"success": true}`。
+
+- 会话名与终端 WS 同一白名单（ASCII 字母数字下划线连字符，1–64），非法返回 400 `bad_request`。
+- 会话不存在等 tmux 自身失败：502 `ssh_error`，消息附 tmux 的 stderr（如 `can't find session`）。
+- SSH 失败（退出码 255）：502 `ssh_error`，消息附 OpenSSH 自身 stderr。
+
 ### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
 
 WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：

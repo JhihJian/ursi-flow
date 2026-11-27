@@ -43,8 +43,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/connections/{id}/tmux-sessions",
-            get(app::get_tmux_sessions)
-                .delete(app::delete_tmux_session),
+            get(app::get_tmux_sessions),
         )
         .route(
             "/api/connections/{id}/tmux-sessions/{name}",

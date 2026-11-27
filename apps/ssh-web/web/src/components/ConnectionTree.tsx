@@ -15,6 +15,9 @@ export function ConnectionTree() {
   /** 删除确认：记住待删连接，在侧栏底部内联确认，不用 window.prompt。 */
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
   const [confirmName, setConfirmName] = useState('')
+  /** 移除 tmux 会话确认：记住待移除的连接与会话，同样走侧栏底部内联确认。 */
+  const [pendingKill, setPendingKill] = useState<{ connection: Connection; session: string } | null>(null)
+  const [killConfirmName, setKillConfirmName] = useState('')
   const connections = useSshStore((state) => state.connections)
   const activeId = useSshStore((state) => state.activeId)
   const notice = useSshStore((state) => state.notice)
@@ -26,6 +29,7 @@ export function ConnectionTree() {
   const setEditor = useSshStore((state) => state.setEditor)
   const removeConnection = useSshStore((state) => state.removeConnection)
   const refreshTmuxSessions = useSshStore((state) => state.refreshTmuxSessions)
+  const killTmuxSession = useSshStore((state) => state.killTmuxSession)
 
   const toMenuState = (event: MouseEvent, items: MenuState['items']): MenuState | null => {
     if (!container) return null
@@ -59,6 +63,24 @@ export function ConnectionTree() {
       )
     }
     setMenu(toMenuState(event, items))
+  }
+
+  const openSessionContextMenu = (event: MouseEvent, connection: Connection, session: string) => {
+    // 与连接行菜单一样拦住冒泡，避免触发树的空白处菜单。
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu(
+      toMenuState(event, [
+        {
+          label: 'Remove session',
+          danger: true,
+          onSelect: () => {
+            setPendingKill({ connection, session })
+            setKillConfirmName('')
+          },
+        },
+      ]),
+    )
   }
 
   const toggleCollapse = (id: number): void => {
@@ -100,7 +122,21 @@ export function ConnectionTree() {
     })
   }
 
-  const renderSessionChildren = (connectionId: number, state: SessionsState | undefined) => {
+  const submitKill = () => {
+    if (!pendingKill) return
+    if (killConfirmName !== pendingKill.session) {
+      store.getState().setNotice('名称不匹配，未移除。')
+      return
+    }
+    const { connection, session } = pendingKill
+    setPendingKill(null)
+    setKillConfirmName('')
+    killTmuxSession(connection.id, session).catch((error: unknown) => {
+      store.getState().setNotice(error instanceof Error ? error.message : String(error))
+    })
+  }
+
+  const renderSessionChildren = (connection: Connection, state: SessionsState | undefined) => {
     if (!state || state.loading) return <li className="ssh-tree-note">查询中…</li>
     if (state.error !== null) {
       return (
@@ -124,8 +160,8 @@ export function ConnectionTree() {
           rowKey="::default"
           label="main"
           meta="默认会话 ssh-main"
-          open={isOpen(connectionId, null)}
-          onClick={() => openTerminal(connectionId, null)}
+          open={isOpen(connection.id, null)}
+          onClick={() => openTerminal(connection.id, null)}
         />
         {state.sessions.map((session) => (
           <SessionChildRow
@@ -134,8 +170,9 @@ export function ConnectionTree() {
             label={session.name}
             meta={new Date(session.created * 1000).toLocaleString()}
             attached={session.attached}
-            open={isOpen(connectionId, session.name)}
-            onClick={() => openTerminal(connectionId, session.name)}
+            open={isOpen(connection.id, session.name)}
+            onClick={() => openTerminal(connection.id, session.name)}
+            onContextMenu={(event) => openSessionContextMenu(event, connection, session.name)}
           />
         ))}
         {state.sessions.length === 0 ? <li className="ssh-tree-note">远端暂无 tmux 会话</li> : null}
@@ -193,7 +230,7 @@ export function ConnectionTree() {
               </div>
               {expanded ? (
                 <ul className="ssh-tree-children">
-                  {renderSessionChildren(connection.id, sessionsByConnection[connection.id])}
+                  {renderSessionChildren(connection, sessionsByConnection[connection.id])}
                 </ul>
               ) : null}
             </li>
@@ -201,7 +238,7 @@ export function ConnectionTree() {
         })}
         {connections.length === 0 ? <li className="ssh-empty">右键新建连接</li> : null}
       </ul>
-      {notice && !pendingDelete ? <div className="ssh-tree-note ssh-error-note">{notice}</div> : null}
+      {notice && !pendingDelete && !pendingKill ? <div className="ssh-tree-note ssh-error-note">{notice}</div> : null}
       {pendingDelete ? (
         <div className="ssh-confirm">
           <div className="ssh-confirm-text">
@@ -237,6 +274,41 @@ export function ConnectionTree() {
           </div>
         </div>
       ) : null}
+      {pendingKill ? (
+        <div className="ssh-confirm">
+          <div className="ssh-confirm-text">
+            移除 tmux 会话 <b>{pendingKill.session}</b>（其中进程一并结束）。输入会话名确认：
+          </div>
+          <input
+            className="ssh-input"
+            autoFocus
+            value={killConfirmName}
+            onChange={(event) => setKillConfirmName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submitKill()
+              if (event.key === 'Escape') {
+                setPendingKill(null)
+                setKillConfirmName('')
+              }
+            }}
+          />
+          <div className="ssh-confirm-actions">
+            <button type="button" className="ssh-btn ssh-btn-danger" onClick={submitKill}>
+              移除
+            </button>
+            <button
+              type="button"
+              className="ssh-btn"
+              onClick={() => {
+                setPendingKill(null)
+                setKillConfirmName('')
+              }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )
@@ -250,6 +322,7 @@ function SessionChildRow({
   attached,
   open,
   onClick,
+  onContextMenu,
 }: {
   rowKey: string
   label: string
@@ -257,6 +330,7 @@ function SessionChildRow({
   attached?: number
   open: boolean
   onClick: () => void
+  onContextMenu?: (event: MouseEvent) => void
 }) {
   const attachedNote =
     attached !== undefined && attached > 0
@@ -267,6 +341,7 @@ function SessionChildRow({
       key={rowKey}
       className={open ? 'ssh-tree-row child active' : 'ssh-tree-row child'}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       title={attachedNote}
     >
       <span className="ssh-tree-label">
