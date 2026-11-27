@@ -21,6 +21,8 @@
 		<string>@FS_PORT@</string>
 		<key>FS_WEB_STATE</key>
 		<string>@URSI_HOME@/fs-web/workspaces.json</string>
+		<key>SSH_WEB_API</key>
+		<string>http://@BACKEND_HOST@:@SSH_PORT@/api</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>

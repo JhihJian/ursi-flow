@@ -7,7 +7,9 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [工作区外壳](packages/workspace-shell/SPEC.md) | 固定骨架与全局选中：标题栏、可堆叠的侧边栏、工作区、右侧控制面板、状态栏。模块只声明侧边栏、工作区与上下文，外壳负责布局、折叠、选中分派与操作渲染，不含领域逻辑。独立入口在 `shell-web`，todo、fs、ssh、沙箱与 pi 系列模块以 npm workspace 包或仓库内源码接入，组合关系见 `shell-web/src/registry.tsx`。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
-| [目录选择组件](packages/directory-picker/SPEC.md) | 共享 UI 包：给各应用的「输入服务器目录路径」场景提供统一的目录浏览组件（面包屑 + 路径/过滤二合一 + 子目录列表）。数据由调用方注入 `listDir`，浏览路由归各应用服务端；fs-web 添加目录与 pi-web 选根 / 新增 pi home 已接入。 |
+| [位置契约](packages/location/SPEC.md) | 纯函数包 `@ursi/location`，定义工作目录的身份：`file:///abs/path` 与 `ssh://<设备>/abs/path`。解析、构造、派生相邻位置、求持久化键，前后端共用。它是约定不是服务：没有进程与数据库，设备清单归 ssh-web。设计见 [URI 契约](docs/design/location/URI-CONTRACT.md)。 |
+| [目录选择组件](packages/directory-picker/SPEC.md) | 共享 UI 包：给各应用的「输入服务器目录」场景提供统一的目录浏览组件（设备下拉 + 面包屑 + 路径/过滤二合一 + 子目录列表）。目标与结果都是位置 URI，数据由调用方注入 `listDir`，设备清单由调用方注入 `devices`，浏览路由归各应用服务端；fs-web 添加目录与 pi-web 选根 / 新增 pi home 已接入。 |
+| [fs-web 文件管理器](apps/fs-web/SPEC.md) | 工作区的文件资源管理器：目录树、文件编辑、目录操作与 git 状态视图。每个 workspace 是一个位置 URI，本机目录与 SSH 远程目录共用同一套界面与操作，远程目录经 ssh-web 取连接参数、一次操作一次 ssh 调用，没有 git 视图。 |
 | [SUMM-Todo 看板](apps/todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，服务端启动系统 OpenSSH 子进程（`ssh -tt`）建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite，可按 [工作区接入设计](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) 作为一栏接入 shell-web。 |
 | [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API 并注入 Bearer token（dae 只监听 loopback、拒绝外部 Origin、启用 api.secret），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并按配置源编排校验与写入。 |
@@ -24,6 +26,7 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 
 - **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的其他模块。
 - **连上主机。** SSH 终端由自己的 Rust 服务托管页面并提供同源 API 与 WS 桥，读写 `~/.ursi/ssh/ssh.db`，同样不依赖 ursi-flow 的其他模块。它也以 `@ursi/ssh-web/module` 接入 [工作区外壳](packages/workspace-shell/SPEC.md) 成为独立一栏，服务与数据归属不变。
+- **管文件。** [fs-web 文件管理器](apps/fs-web/SPEC.md) 由零依赖 Node 服务托管页面并提供同源 API，目录清单存本机状态文件。本机目录直接读写；远程目录只认位置 URI 里的设备名，向 ssh-web 查询连接参数后以 `ssh` 在远端执行，自己不保存任何凭据。它以 `@ursi/fs-web/module` 接入工作区外壳，组合根把 ssh-web 的设备清单与「在此打开终端」两条命令注入给它。
 - **看清出站路由。** dae 路由观察台由零依赖 Node 服务托管页面，按 dae native API 读取本机代理状态，不持有自己的数据；连接与流记录留在 dae 进程内存，重启即丢。配置采用 dae 的 managed layout，写入由 dae 自己完成，本服务只注入 token、编排校验与等待热加载。
 - **推进一次 Flow。** [Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md，把每一步渲染好的提示词交给执行器，校验回执后交给 Flow Core 选边，并把过程写成日志实体与可恢复快照。
 - **在浏览器里跑 Flow。** [Flow 工作台](apps/flow-web/SPEC.md) 的服务端读用户 flow home 里的 `FLOW.md`，用 `apps/ursi-flow` 的引擎开跑并保存运行；页面负责选包、填变量、回答人工确认与看过程日志。运行事实归工作台状态目录，Flow 包本身只读。它同时是工作区外壳里的 `flow` 模块，通过组合根注入的文件模块命令打开 Flow 目录。
@@ -37,7 +40,9 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 
 | 主题 | 设计文档 |
 | --- | --- |
+| 位置契约 | [URI 形态、基座边界与分步落地](docs/design/location/URI-CONTRACT.md) |
 | SUMM-Todo 看板 | [布局、拖拽与数据流](docs/design/todo-web/DASHBOARD.md) · [工作区外壳与模块组合](docs/design/todo-web/WORKSPACE-SHELL.md) |
+| fs-web 文件管理器 | [分阶段范围与关键决策](apps/fs-web/README.md) · [HTTP 契约](apps/fs-web/server/HTTP.md) |
 | Pi Web | [接口与状态机契约](apps/pi-web/HTTP.md) · [配置视图布局骨架](docs/design/pi-web/CONFIG-LAYOUT.md) · [单一侧栏](docs/design/pi-web/SINGLE-SIDEBAR.md) |
 | SSH 终端 | [接入工作区外壳](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) |
 | dae 路由观察台 | [同源代理、页面结构与刷新策略](docs/design/dae-web/OVERVIEW.md) |

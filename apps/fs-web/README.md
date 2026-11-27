@@ -6,10 +6,9 @@
 
 | 阶段 | 范围 | 明确不做 |
 | --- | --- | --- |
-| 1（当前） | 本机目录浏览 + 编辑闭环 + 运行时目录管理（状态文件持久化、二级侧栏目录列表） | SSH、虚拟目录、watch/SSE、拖拽移动、搜索、上传下载、二进制预览 |
+| 1 | 本机目录浏览 + 编辑闭环 + 运行时目录管理（状态文件持久化、二级侧栏目录列表） | 虚拟目录、watch/SSE、拖拽移动、搜索、上传下载、二进制预览 |
 | 1.5 | Git 状态视图：分支/上游（含 ahead/behind）、变更文件徽标与目录聚合、增删行数（手动刷新 + 文件操作后刷新）；推送/拉取同步动作与状态条 | diff 内容查看、暂存/提交、轮询与自动刷新、SSH 远端 git |
-| 2 | SSH provider：连接池 + keepalive、操作超时、错误分类 | 远程 watch、跨主机复制 |
-| 3 | 虚拟目录聚合 + 本地 SSE 推送 | 跨挂载点移动 |
+| 2（当前） | SSH 远程目录：以位置 URI 为身份，经 ssh-web 取连接参数，一次操作一次 ssh 调用；选目录器可切设备，目录右键「在此打开终端」 | 远程 watch、跨主机复制、连接池 |
 
 ## 关键决策
 
@@ -20,25 +19,34 @@ Node 24 原生运行 TypeScript（`--experimental-strip-types` 已默认，仅�
 ### 统一目录抽象：能力声明式 Provider
 
 ```
-WorkspaceProvider = { list, read, write, stat, mkdir, rename, delete }
-watch 是可选能力，local 后续实现，SSH 不实现（SFTP 无变更通知）
+WorkspaceProvider = { realize, browse, list, read, write, stat, mkdir, rename, delete }
+gitStatus / gitPush / gitPull / gitBranches 是可选能力，仅 file 实现
 ```
 
-传输层不用 URI 字符串，用 `workspaceId + path segments 数组`，规避文件名 `#`/空格/中文的编解码问题。虚拟目录后续实现为挂载点表聚合：最长前缀优先遮蔽、挂载点自身不可 rename/delete、跨挂载点移动拒绝。
+workspace 的 `root` 是[位置契约](../../packages/location/SPEC.md)里的 URI：`file:///abs/path` 或 `ssh://<设备>/abs/path`，provider 按 scheme 选择。URI 只做身份：标清「哪台机器的哪个目录」，让选目录器、清单、其它模块说同一个东西。进入传输层后 URI 退场，文件接口仍用 `workspaceId + path segments 数组`，规避文件名 `#`/空格/中文的编解码问题。虚拟目录后续实现为挂载点表聚合：最长前缀优先遮蔽、挂载点自身不可 rename/delete、跨挂载点移动拒绝。
+
+### SSH 远程目录
+
+- 设备名就是 ssh-web 的连接名，设备清单的唯一事实源是 ssh-web 连接表；fs-web 不复制、不缓存。
+- 连接参数由服务端向 ssh-web `GET /connections/by-name/{name}/ssh-args` 查询，地址由 `SSH_WEB_API` 注入（shell-web 部署下为 `http://127.0.0.1:8091/api`），未配置时 ssh 位置一律 503。
+- 一次操作一次 `ssh` 调用，远端只依赖 POSIX shell 与 coreutils（`realpath`、`stat`、`base64`），内容以 base64 走 stdout，不依赖 SFTP；连接复用交给用户 ssh 配置的 ControlMaster，fs-web 不建连接池。
+- 远端脚本里的路径一律单引号转义，先 `realpath` 再做前缀校验，与本机越界防护对等。ssh 调用带 `-o LogLevel=ERROR`，远端登录 banner 不会盖掉真实错误。
+- 错误分类：设备不在连接表 404 `device_not_found`，ssh 自身失败（exit 255）503 `ssh_unavailable`，远端路径不存在 404 `not_found`。
 
 ### 安全基线
 
-- workspace `root` 先 `realpath` 再作为前缀；每个请求路径逐段校验（拒绝 `..`、绝对段、NUL），最终路径必须以 root 前缀开头。
+- workspace `root` 先 `realpath` 再作为前缀；每个请求路径逐段校验（拒绝 `..`、绝对段、NUL），最终路径必须以 root 前缀开头。ssh provider 在远端做同一套校验。
 - root 内符号链接指向外部时拒绝访问（read/write/stat/delete 都校验 realpath 前缀）。
-- 服务默认绑定 `127.0.0.1`，无鉴权；对外暴露需自行加访问控制。
+- 服务无鉴权，监听 `0.0.0.0`，以可信内网为前提。
 - 带浏览器 `Origin` 头的写请求必须来自回环地址或与 Host 同名的站点，否则拒绝（403 `forbidden_origin`），防恶意网页盲打；无 Origin 的客户端（curl 等）不受影响。
-- 运行时可添加任意本机目录，攻击面等于「本机文件系统经 HTTP 可读写」，以仅回环监听 + Origin 校验为前提；SSH 凭据后续只存私钥路径或走 ssh-agent，不落明文。
+- 运行时可添加任意本机或已登记设备上的目录，攻击面等于「本机与这些设备的文件系统经 HTTP 可读写」。fs-web 不保存任何 SSH 凭据，全部由用户的 ssh 配置与 ssh-agent 提供。
 
 ### 运行时目录管理：状态文件是唯一事实源
 
 - 清单不再只靠启动配置：首启用内置默认或 `FS_WEB_CONFIG` 播种，写入运行时状态文件（默认 `~/.local/state/fs-web/workspaces.json`，`FS_WEB_STATE` 可覆盖）；此后 `FS_WEB_CONFIG` 不再生效。
 - 运行时添加/重命名/移除走 API，变更原子写回状态文件（tmp + rename），重启保留；文件损坏启动即报错，不静默回退。
-- 添加的目录 `id` 取 root realpath 的 sha256 前 16 位，跨重启稳定，重命名不影响已打开文件。
+- 添加的目录 `id` 取 realpath 后位置 URI 的 sha256 前 16 位，跨重启稳定，重命名不影响已打开文件。
+- 每条记录的 `root` 是位置 URI，`provider` 缺省取 root 的 scheme；播种时两者不一致直接启动失败。
 
 ### 前端：二级侧边栏
 
@@ -86,14 +94,15 @@ git diff --numstat HEAD
 fs-web/
 ├── server/            # 服务端（无第三方依赖，Node 24 直跑 TS）
 │   ├── src/types.ts         # ApiError / EntryDto / WorkspaceInfo 等共享类型
-│   ├── src/local-provider.ts # Provider 接口 + 路径安全 + 本机文件系统实现
-│   ├── src/git-provider.ts   # git 只读命令封装与 porcelain 解析
+│   ├── src/local-provider.ts # Provider 接口 + 本机文件系统实现
+│   ├── src/ssh-provider.ts   # SSH 远程目录实现（一次操作一次 ssh 调用）
+│   ├── src/git-provider.ts   # git 只读命令封装与 porcelain 解析（仅 file）
 │   ├── src/server.ts         # node:http 路由 + workspace 清单 + 状态文件 + 启动入口
 │   ├── HTTP.md               # HTTP 契约
 │   └── test/api.test.ts      # 真实 HTTP 链路测试（node:test）
 ├── web/src/           # 前端模块（导出 @ursi/fs-web 的 ./module 接入入口，也提供独立预览）
 │   ├── api.ts          # HTTP 客户端 + FileKey（JSON segments）工具
-│   ├── tree-store.ts   # 树状态：清单、目录缓存、展开序、增删改、运行时目录管理
+│   ├── tree-store.ts   # 树状态：清单、目录缓存、展开序、增删改、运行时目录管理、宿主注入与 FileKey→位置
 │   ├── git-store.ts    # git 快照：徽标映射、过期丢弃
 │   ├── git-bar.tsx     # git 摘要条（分支/变更数/重试入口）
 │   ├── editor-store.ts # 编辑器状态：草稿、mtime 乐观锁、冲突分支
@@ -114,7 +123,8 @@ fs-web/
 
 ```sh
 # 服务（无依赖，Node 24 直跑 TS）
-node fs-web/server/src/server.ts          # 默认 127.0.0.1:8199；目录清单存 ~/.local/state/fs-web/
+node fs-web/server/src/server.ts          # 默认 0.0.0.0:8199；目录清单存 ~/.local/state/fs-web/
+SSH_WEB_API=http://127.0.0.1:8091/api node fs-web/server/src/server.ts   # 接上 ssh-web 才能添加 ssh:// 目录
 FS_WEB_CONFIG=xxx.json node fs-web/server/src/server.ts --host 0.0.0.0 --port 8199   # 仅首次播种；FS_WEB_STATE 可改状态文件位置
 
 # 前端：嵌入工作区宿主

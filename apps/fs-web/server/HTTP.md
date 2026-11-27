@@ -6,19 +6,19 @@
 
 服务无鉴权且可运行时添加任意本机目录（攻击面等于本机文件系统经 HTTP 可读写），因此安全前提是：
 
-- 默认仅绑定 `127.0.0.1`；对外监听必须自行加访问控制。
+- 默认监听 `0.0.0.0:8199`，无鉴权，以可信内网为前提。
 - 带浏览器 `Origin` 头的请求必须来自回环地址或与 Host 同名的站点（覆盖 shell-web 开发代理形态），否则 403 `forbidden_origin`，防恶意网页盲打写接口；无 Origin 的客户端不受影响。
 - 路径安全见下方「路径安全」一节：越出 workspace root 一律拒绝，添加目录只登记不放宽校验。
 
 ## workspace 清单与状态文件
 
-清单在服务端持久化：状态文件（默认 `$XDG_STATE_HOME/fs-web/workspaces.json`，回退 `~/.local/state`，`FS_WEB_STATE` 可覆盖）存在即唯一事实源；不存在时用内置默认或 `FS_WEB_CONFIG` 播种并立即写入。运行时 add/rename/remove 即时原子写回（tmp + rename）。文件损坏或条目非法时启动失败（fail-fast），不静默回退。静态配置的 `id` 只允许小写字母、数字与短横线；运行时添加的目录 `id` 取 root realpath 的 sha256 前 16 位 hex。
+清单在服务端持久化：状态文件（默认 `$XDG_STATE_HOME/fs-web/workspaces.json`，回退 `~/.local/state`，`FS_WEB_STATE` 可覆盖）存在即唯一事实源；不存在时用内置默认或 `FS_WEB_CONFIG` 播种并立即写入。运行时 add/rename/remove 即时原子写回（tmp + rename）。文件损坏或条目非法时启动失败（fail-fast），不静默回退。每条记录是 `{ id, provider, root, label?, description? }`：`root` 是位置 URI（`file:///abs/path` 或 `ssh://<设备>/abs/path`），`provider` 与 root 的 scheme 一一对应，播种时不一致直接启动失败。静态配置的 `id` 只允许小写字母、数字与短横线；运行时添加的目录 `id` 取 realpath 后位置 URI 的 sha256 前 16 位 hex。
 
 | 接口 | 方法 | body | 响应 |
 | --- | --- | --- | --- |
 | workspaces | GET | - | `WorkspaceInfo[]` |
-| browse | GET | - | `DirListingDto`（query `path`）；任意绝对路径或 `~` 的子目录清单，不经 workspace 清单、只读列目录（选目录组件用）；`~` 在服务端展开，返回 realpath 与 parent |
-| workspaces-add | POST | `{ root, label? }` | `WorkspaceInfo`；非绝对路径/不存在/非目录报错，已记录返回 409 `exists` |
+| browse | GET | - | `DirListingDto`（query `path`）；任意位置的子目录清单，不经 workspace 清单、只读列目录（选目录组件用）。`path` 是位置 URI（`file:///abs`、`ssh://设备/abs`）或本机简写（绝对路径、`~`），`~` 在服务端展开；返回 `location`（realpath 后的 URI）、`parent`（设备根为 null）与 `entries` |
+| workspaces-add | POST | `{ root, label? }` | `WorkspaceInfo`；`root` 是位置 URI 或本机简写。设备未登记 404 `device_not_found`，ssh 连不上 503 `ssh_unavailable`，路径不存在 404 `not_found`，不是目录 400 `not_dir`，已记录同一位置返回 409 `exists`；未配置 `SSH_WEB_API` 时 ssh 位置一律 503 `ssh_unavailable` |
 | workspaces-rename | POST | `{ workspaceId, label?, description? }` | `WorkspaceInfo`；至少一项，只改元数据，id 与 root 不变；传空字符串 description 表示清除说明 |
 | workspaces-remove | POST | `{ workspaceId }` | `{ ok: true }`；只从清单移除，不动文件系统，未就绪条目也可移除 |
 | list | POST | `{ workspaceId, path }` | `{ entries: EntryDto[] }`（目录优先、按名排序） |
@@ -46,6 +46,7 @@
 ## 路径安全
 
 - segments 逐段校验：拒绝 `.`/`..`、绝对段、`/`、`\`、NUL、控制字符、超 255 字符。
-- 目标路径 realpath 后必须仍在 root 的 realpath 之下，软链跳出即拒绝（403 `path_outside_root`）。
+- 目标路径 realpath 后必须仍在 root 的 realpath 之下，软链跳出即拒绝（403 `path_outside_root`）。ssh workspace 在远端做同一套校验。
+- ssh workspace 的 git 接口一律 501 `git_unavailable`；一次操作一次 ssh 调用，ssh 自身失败（exit 255）为 503 `ssh_unavailable`。
 - `GET browse` 是唯一的例外：不经 workspace 清单、只读列子目录（返回名与 parent，不读文件内容），权限与 workspaces-add 同级；写接口仍全部约束在 workspace root 内。
 - 请求体上限 5MB；write 先写同目录临时文件再 rename 原子替换。

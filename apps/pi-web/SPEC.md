@@ -4,6 +4,7 @@ references:
   - HTTP.md
   - ../../docs/design/pi-web/OVERVIEW.md
   - ../../packages/workspace-shell/MODULE-CONTRACT.md
+  - ../../docs/design/location/URI-CONTRACT.md
 ---
 
 # Pi Web
@@ -33,6 +34,7 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - `GET /api/homes` 的每条记录都带 `sessionsRoot`、`profileRevision` 与 `capabilities`（skill / agent / mcp / 插件数量、默认模型、是否有可用凭据），前端不自己拼路径或统计。
 - home 清单原子落盘到 `$PI_WEB_STATE/homes.json`；条目 id 是 realpath 的 sha256 前 16 位，跨重启稳定。
 - 创建支持初始化、复制、登记三种模式，只创建最后一级目录，目标已存在且非空返回 409。路径输入可展开目录浏览器（`GET /api/homes/browse`，任意目录、只列子目录、`~` 服务端展开）逐级选择后回填。
+- 目录入参是[位置契约](../../packages/location/SPEC.md)的 URI：接受 `file:///abs/path` 与本机简写（裸绝对路径、`~`），响应返回 realpath 后的 URI。pi 只在本机运行，`ssh://` 入参一律拒绝，选目录器不接设备切换。
 - `GET /api/homes/:id/runtime-profile` 返回服务端解析好的模型候选（`enabledModels` 范围、provider 与显示名、支持的思考档位与映射）、subagent 清单、默认 cwd 与会话根；前端不重算匹配规则。
 - 配置写入返回新的 `profileRevision`；该 home 下已加载的会话据此标记 `stale`。
 

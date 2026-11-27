@@ -105,6 +105,8 @@ macOS 没有 systemd，脚本按 `uname -s` 换实现，服务清单、占位符
 | fs-web | `BACKEND_HOST:FS_PORT` | `node apps/fs-web/server/src/server.ts` | `$URSI_HOME/fs-web` |
 | dae-web | 独立端口，默认 `8092` | `node server/src/server.ts` | 无（dae 默认在 `127.0.0.1:9527`） |
 
+后端之间只有一条互相调用的边：fs-web 访问远程目录时向 ssh-web 查询连接参数，地址由单元里的 `SSH_WEB_API` 指定，渲染为 `http://BACKEND_HOST:SSH_PORT/api`。ssh-web 没起来时 fs-web 照常启动，只是 ssh 位置的目录报 503 `ssh_unavailable`，本机目录不受影响。
+
 ## 入口路由
 
 | 入口路径 | 目标 | 前缀处理 |

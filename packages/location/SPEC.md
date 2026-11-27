@@ -13,7 +13,7 @@ file:///abs/path           本机（工作台服务所在机器）
 ssh://<设备名>/abs/path    远程，设备名是 ssh-web 的连接名
 ```
 
-形态借自 RFC 3986，与 git、GVfs、sshfs 一致。但不经 URL 解析器：OpenSSH 的 Host 别名大小写敏感，而 URL 解析器会把主机名小写化，所以自己按 `://` 切。路径段用 percent-encoding，空格、中文、`#`、`%` 全部可逆。
+形态借自 RFC 3986，与 git、GVfs、sshfs 一致。但不经通用 URL 解析器，自己按 `://` 切。原因有两条：OpenSSH 的 Host 别名大小写敏感，`ssh -G nm105` 与 `ssh -G NM105` 解析到不同的机器，身份层必须原样保留设备名。通用解析器把未编码的 `#` 当片段截断、把 `%2F` 留在段内不拆，而目录名里的 `#` 与 `%` 需要的是逐段可逆编解码。路径段用 percent-encoding，空格、中文、`#`、`%` 全部可逆。
 
 这是契约，不是服务：没有进程、没有数据库，各模块照旧独立部署。包里只有纯函数，前后端都能用。
 
@@ -73,4 +73,4 @@ ssh://<设备名>/abs/path    远程，设备名是 ssh-web 的连接名
 
 - 父级：[ursi-flow](../../SPEC.md)。
 - 使用方：`@ursi/directory-picker`、fs-web 服务端与前端、pi-web 服务端（本机路径规范化）。ssh-web 的 Rust 侧只做最小解析。
-- 设计背景与取舍见 [ARCHITECHTURE.md](../../ARCHITECHTURE.md) 的「位置契约」一节。
+- 设计背景与取舍见 [位置契约设计](../../docs/design/location/URI-CONTRACT.md)。

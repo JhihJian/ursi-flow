@@ -12,7 +12,7 @@ references:
 
 ursi-flow 把可重复的工作过程写成以 `FLOW.md` 为入口的包。[ursi-flow](apps/ursi-flow/SPEC.md) 是这部分能力的交付包：其中的 [Flow Core](apps/ursi-flow/core/SPEC.md) 是无状态推进 SDK，[Flow Executor](apps/ursi-flow/executor/SPEC.md) 定义执行器的两个方法，[Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md、逐步调用执行器、按回执选边并产出最终结果，过程写成日志实体与文件存储。包自带命令行，装上就能执行一个 Flow 包。
 
-[Flow 工作台](apps/flow-web/SPEC.md) 用浏览器浏览 flow home 里的包、启动运行、回答人工确认并查看过程日志。独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端。[Pi Web](apps/pi-web/SPEC.md) 是浏览器里的 pi 工作台：配置、对话与会话浏览共用一个进程与一套领域模型，一份 pi home 决定整套能力，会话只有一个身份，历史、运行中与一次性任务都是同一实体的不同状态。
+[Flow 工作台](apps/flow-web/SPEC.md) 用浏览器浏览 flow home 里的包、启动运行、回答人工确认并查看过程日志。独立的 [SUMM-Todo 看板](apps/todo-web/SPEC.md) 读取本机待办库，用于查看和维护项目与任务。[dae 路由观察台](apps/dae-web/SPEC.md) 读取本机 dae 的代理状态，用于查看连接走向与路由判决。[SSH 终端](apps/ssh-web/SPEC.md) 管理本机 SSH 连接配置，在浏览器中提供远端 PTY 终端，它的连接表同时是[位置契约](packages/location/SPEC.md)里的设备清单。[fs-web 文件管理器](apps/fs-web/SPEC.md) 浏览与编辑本机及远程目录，目录身份统一用位置 URI（`file:///abs`、`ssh://<设备>/abs`）。[Pi Web](apps/pi-web/SPEC.md) 是浏览器里的 pi 工作台：配置、对话与会话浏览共用一个进程与一套领域模型，一份 pi home 决定整套能力，会话只有一个身份，历史、运行中与一次性任务都是同一实体的不同状态。
 
 模块职责、调用关系和设计文档见[架构与设计索引](ARCHITECHTURE.md)。
 

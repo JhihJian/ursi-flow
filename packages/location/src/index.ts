@@ -7,7 +7,8 @@
  *   ssh://<设备名>/abs/path    远程，设备名是 ssh-web 的连接名
  *
  * 形态借自 RFC 3986，与 git、GVfs、sshfs 一致，所以长期稳定。
- * 但不经 URL 解析器：OpenSSH 的 Host 别名大小写敏感，而 URL 解析器会把主机名小写化。
+ * 但不经通用 URL 解析器：OpenSSH 的 Host 别名大小写敏感（`ssh -G nm105` 与 `ssh -G NM105` 是两台机器），
+ * 且通用解析器会把未编码的 `#` 截成片段，而目录名里的 `#` 需要逐段可逆编解码。
  * 路径段用 percent-encoding，空格、中文、`#`、`%` 全部可逆。
  *
  * 三条边界：URI 是身份，不是存储键（键在 keys.ts）；是契约，不是服务；
