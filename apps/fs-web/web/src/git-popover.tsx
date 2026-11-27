@@ -136,6 +136,29 @@ export function GitPopover({
   const ref = useRef<HTMLDivElement>(null)
   const container = useMenuContainer()
   const [position, setPosition] = useState<{ left: number; top: number; height: number } | null>(null)
+  // onClose 常是调用方的内联箭头函数，用 ref 持最新值，监听只在开合时挂一次。
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const close = () => onCloseRef.current()
+  // 打开前的焦点元素：关闭后还给 chip，键盘用户不会丢位置。
+  const openerRef = useRef<HTMLElement | null>(null)
+  const open = state !== null
+  const prevOpen = useRef(false)
+  useEffect(() => {
+    if (open && !prevOpen.current) openerRef.current = document.activeElement as HTMLElement | null
+    if (!open && prevOpen.current) {
+      openerRef.current?.focus?.()
+      openerRef.current = null
+    }
+    prevOpen.current = open
+  }, [open])
+  // 挂载后焦点进第一个可点的行。放在 effect 里而不是 ref 回调里：内联回调每次渲染
+  // 都是新函数，放那里会在父组件每次重渲染时把焦点拉回第一项。焦点已在弹层里就不动。
+  useEffect(() => {
+    if (!open || !ref.current) return
+    if (ref.current.contains(document.activeElement)) return
+    ref.current.querySelector<HTMLButtonElement>('.wsx-git-popover-row:not(.wsx-git-popover-row--static)')?.focus()
+  }, [open, state, position])
 
   useLayoutEffect(() => {
     if (!state || !container) {
@@ -155,19 +178,18 @@ export function GitPopover({
 
   useEffect(() => {
     if (!state) return
-    const close = (): void => onClose()
     const onPointerDown = (event: PointerEvent): void => {
       if (ref.current?.contains(event.target as Node)) return
       if (state.anchor.contains(event.target as Node)) return // 点锚点本身交给 chip 的 toggle
-      onClose()
+      close()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') close()
     }
     const onScroll = (event: Event): void => {
       // 页面滚动时跟随关闭；弹层自身的内滚不关
       if (ref.current?.contains(event.target as Node)) return
-      onClose()
+      close()
     }
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKeyDown)
@@ -179,7 +201,7 @@ export function GitPopover({
       window.removeEventListener('resize', close)
       window.removeEventListener('scroll', onScroll, true)
     }
-  }, [state, onClose])
+  }, [state])
 
   if (!state || !container || !position) return null
 
@@ -214,7 +236,7 @@ export function GitPopover({
                 // 叶子动作行（打开文件）点击后收起；目录展开行保持弹层打开
                 const isLeaf = row.kind === 'branch' || row.kind === 'change-file'
                 row.onClick?.()
-                if (isLeaf && row.onClick) onClose()
+                if (isLeaf && row.onClick) close()
               }}
             >
               <span className="wsx-git-popover-caret">

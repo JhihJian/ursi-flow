@@ -51,7 +51,7 @@ parent: ../../SPEC.md
 - 替换了全部七份拷贝：todo 项目列表、任务表格、任务关系图，ssh 连接树与终端区，fs 文件树与目录列表，pi 会话与配置。仓库里不再有本地 `ContextMenu` 实现。
 - todo、fs、pi 配置三家原来是视口坐标，已改为容器相对坐标；ssh 与 pi 会话原本就是。
 - todo 工作区（任务表格、任务图）的容器是 `.todo-workspace` 根，经 `MenuContainerProvider` 下发；关系图的三处 `setMenu` 收口到一个 `openAt`。
-- 组件测试 20 例覆盖：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、二次确认不还焦点（`npm run test:sidebar`）。
+- 组件测试 21 例覆盖：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、重渲染不抢焦点、二次确认不还焦点（`npm run test:sidebar`）。
 
 ### 菜单容器的选择
 

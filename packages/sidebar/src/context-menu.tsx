@@ -69,6 +69,15 @@ export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
     }
     prevOpen.current = open
   }, [open])
+  // 挂载后焦点进第一个可用项。放在 effect 里而不是 ref 回调里：内联回调每次渲染
+  // 都是新函数，React 会先 ref(null) 再 ref(node)，放那里会在父组件每次重渲染时把焦点拉回第一项。
+  useEffect(() => {
+    if (!open || !ref.current) return
+    // 焦点已经在本菜单里（父组件重渲染、用户 Tab 到了别的项）就不动它；
+    // 只有焦点在菜单外（首次打开，或二次确认换菜单后旧项已卸载）才进第一个可用项。
+    if (ref.current.contains(document.activeElement)) return
+    ref.current.querySelector<HTMLButtonElement>('.sb-menu-item:not(:disabled)')?.focus()
+  }, [open, state, position])
 
   useLayoutEffect(() => {
     if (!state || !container) {
@@ -120,11 +129,7 @@ export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
 
   return createPortal(
     <div
-      ref={(node) => {
-        ref.current = node
-        // 菜单挂载后焦点进第一个可用项；关闭时上面的 effect 还回去。
-        node?.querySelector<HTMLButtonElement>('.sb-menu-item:not(:disabled)')?.focus()
-      }}
+      ref={ref}
       className="sb-menu"
       role="menu"
       style={{ left: position.left, top: position.top, width: MENU_WIDTH }}

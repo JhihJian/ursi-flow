@@ -260,3 +260,12 @@ test('二次确认换菜单时焦点不还回去，直接进新菜单的第一�
   expect(document.activeElement).toBe(opener)
   opener.remove()
 })
+
+test('父组件重渲染不把焦点拉回第一项：用户 Tab 到别的项后列表刷新，焦点留在原处', () => {
+  const { host, rerender, onClose } = mount({ x: 10, y: 10, items })
+  const buttons = host.querySelectorAll<HTMLButtonElement>('.sb-menu-item')
+  buttons[1].focus()
+  // 调用方传了新的 state 对象（如菜单项按最新数据重算），位置 effect 会重跑。
+  rerender(<ContextMenu state={{ x: 10, y: 10, items: [...items] }} onClose={onClose} container={host} />)
+  expect(document.activeElement).toBe(buttons[1])
+})
