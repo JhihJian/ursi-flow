@@ -183,3 +183,17 @@ SessionThread(sessionFile)
 - **`TrajectoryViewer` 的 `sessionRevision`**：只读用 `row.modified`，续聊用本地计数，两套值域。统一用 `SessionThread` 的本地计数器，与来源无关。
 - **`/trajectory` 的运行时分支返回 JSON**：`SessionThread` 在 `live` 为真后不再触发只读加载，`fetchSessionText` 同时识别 `content-type`。
 - **侧栏挂载即扫描**：`useSessions` 与 5 秒 live 轮询在 Provider 里，侧栏一挂就跑。这是必须的（树要显示），改 SPEC 的「首次激活才挂载」。
+
+## 落地记录
+
+三次提交：`7aa6532`（第 1 步）、`202bb88`（第 2、3 步合并，按文件分批）、`0bf8bcd`（架构索引）。与设计稿的偏差：
+
+| 设计稿 | 实际 | 原因 |
+| --- | --- | --- |
+| 新建 `pi-home-store.ts`，从 `app-store.ts` 拆出 home | `app-store.ts` 整文件搬到 `src/pi-store.ts` | `client.ts` 的 home 方法依赖同文件的 `request`/`apiUrl` 基础设施，拆分要动 11 个文件；`footer`/`runWrite` 本就是全局页脚 |
+| `SessionThread`、`DraftPage` 放 `views/sessions/components/` | 放 `src/` 根 | 它们同时用 chat 与 sessions，属于组合根；子模块不得反向 import |
+| `SessionThread` 用 effect 监听 `chats[0].sessionFile` 从空变非空 | `ChatProvider` 的 `active` 按 `sessionFile` 或 `sessionId` 匹配，`onChatCreated` 先切页再开流 | `sessionFile` 要等 SSE `state` 帧才有，用 `sessionId` 记页可以立即切页 |
+| `sessions/module.test.tsx` 其余 8 用例迁 `module.test.tsx` | 只迁了装配相关的 5 条 | 其余是跨模块命令与日期筛选的旧行为，命令已删，筛选逻辑未动 |
+| 第 2 步单独提交（UI 不变） | 与第 3 步合并 | 第 2 步做完 UI 还是三个旧侧栏，但 `view`/`setView` 已删，中间态编译不过 |
+
+额外修了一处设计稿没写的：`commonDirPrefix` 保留前导斜杠，与 `projectKey` 同形态，`startsWith` 才能命中。
