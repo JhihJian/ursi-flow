@@ -117,10 +117,11 @@ async fn run_terminal_inner(
     event_tx: &mpsc::Sender<WsEvent>,
 ) -> Result<()> {
     let name = tmux_session.unwrap_or_else(|| DEFAULT_TMUX_SESSION.to_string());
-    // 远端启动命令：tmux 可用则 attach 指定会话，否则回退普通 shell 并给出安装指引。
+    // 远端启动命令：先扩 PATH（macOS 非交互会话不含 Homebrew 目录），
+    // tmux 可用则 attach 指定会话，否则回退普通 shell 并给出安装指引。
     // 会话名已过白名单，单引号内拼接安全。POSIX sh 兼容。
     let remote_script = format!(
-        r"command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'; exec $SHELL; }}",
+        r"{TMUX_PATH_PREFIX}command -v tmux >/dev/null 2>&1 && tmux new -A -s '{name}' || {{ printf '\033[33m[ssh-web] 远端未安装 tmux，已回退普通 shell，断开后会话不保留。\n[ssh-web] 安装 tmux：Debian/Ubuntu 执行 sudo apt install tmux，Fedora/RHEL 执行 sudo dnf install tmux，macOS 执行 brew install tmux\033[0m\n'; exec $SHELL; }}",
     );
     let args = ssh_args(&connection.command, &remote_script);
 
@@ -296,7 +297,7 @@ pub async fn kill_tmux_session(connection: &ConnectionConfig, name: &str) -> Res
     if !valid_tmux_session(name) {
         return Err(anyhow!("非法 tmux 会话名：{name}"));
     }
-    let script = format!("tmux kill-session -t '{name}'");
+    let script = format!("{TMUX_PATH_PREFIX}tmux kill-session -t '{name}'");
     let (_out, err, code) = exec_collect(connection, &script).await?;
     let detail = err.trim();
     match code {
@@ -319,6 +320,12 @@ pub async fn kill_tmux_session(connection: &ConnectionConfig, name: &str) -> Res
 /// 避免不同远端 shell 在找不到命令时返回别的码被当成异常报错。
 const NO_TMUX_MARKER: &str = "__ssh_web_no_tmux__";
 
+/// 远端 tmux 脚本前置的 PATH 扩展：macOS sshd 对非交互会话只提供系统默认
+/// PATH（/usr/bin:/bin:/usr/sbin:/sbin），Homebrew 装的 tmux 在
+/// /opt/homebrew/bin（Apple Silicon）或 /usr/local/bin（Intel），
+/// 不扩 PATH 会被误判为未安装。前缀对 Linux 无害。
+const TMUX_PATH_PREFIX: &str = r#"PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"; "#;
+
 /// 列出远端 tmux 会话。远端没有 tmux 时返回 None（前端据此展示安装指引）。
 /// tmux 无会话（exit 1）是正常空态。
 pub async fn list_tmux_sessions(
@@ -328,7 +335,7 @@ pub async fn list_tmux_sessions(
     // 竖线不在会话名白名单里，不会冲突。tmux 缺失由 else 分支显式标记，
     // 不依赖 command -v 失败时的退出码。
     let script = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux ls -F '#{{session_name}}|#{{session_attached}}|#{{session_created}}' 2>/dev/null; else echo {NO_TMUX_MARKER}; fi",
+        "{TMUX_PATH_PREFIX}if command -v tmux >/dev/null 2>&1; then tmux ls -F '#{{session_name}}|#{{session_attached}}|#{{session_created}}' 2>/dev/null; else echo {NO_TMUX_MARKER}; fi",
     );
     let (out, err, code) = exec_collect(connection, &script).await?;
     if out.lines().any(|line| line.trim() == NO_TMUX_MARKER) {
