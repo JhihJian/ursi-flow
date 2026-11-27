@@ -1,12 +1,14 @@
 import { usePi } from './pi-context'
 import { usePiNav } from './pi-nav'
 import { Composer } from './composer'
+import { useChatController } from './views/chat/chat-context'
 import { shortRoot } from './views/sessions/lib/format'
 
 /** 新对话页：没有表单，目录来自侧栏点选，这里只有输入框。 */
 export function DraftPage() {
   const { home } = usePi()
   const { cwd } = usePiNav()
+  const { error, clearError } = useChatController()
 
   return (
     <div className="pichat pichat-workspace">
@@ -22,6 +24,11 @@ export function DraftPage() {
           <p className="pichat-hint">模型与思考级别在下面选，发出第一条消息才建会话。</p>
         </div>
       </div>
+      {error ? (
+        <div className="pichat-banner is-error" onClick={clearError} title="点击关闭">
+          {error}
+        </div>
+      ) : null}
       <Composer mode="draft" />
     </div>
   )

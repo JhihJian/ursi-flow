@@ -17,12 +17,44 @@ type ReadOnly =
  * 会话页：一条会话的轨迹与输入框。只读轨迹与续聊是同一页面的两种模式：
  * 没装配运行时时从磁盘读文件，装配后改用事件流里的权威 transcript，两者是同一份数据。
  */
+
+type Parsed = { ok: true; value: ReturnType<typeof parsePiJsonl> } | { ok: false; message: string }
+
+/** 库没带类型声明，rows 就是 JSONL 行；这里只认用户消息行的最小结构。 */
+interface UserRow {
+  type?: string
+  message?: { role?: string; content?: unknown }
+}
+
+/** 轨迹里第一条用户消息的文本，截到与列表行同一长度。 */
+function firstUserText(parsed: Parsed | null): string | null {
+  if (!parsed?.ok) return null
+  const first = (parsed.value.rows as UserRow[]).find((row) => {
+    if (row.type !== 'message' || row.message?.role !== 'user') return false
+    return typeof userText(row.message.content) === 'string'
+  })
+  const text = first ? userText(first.message!.content) : null
+  if (!text) return null
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > 80 ? `${flat.slice(0, 80).trimEnd()}…` : flat
+}
+
+/** 用户消息正文是字符串或内容块数组，块数组只取文本块。 */
+function userText(content: unknown): string | null {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return null
+  const text = content
+    .filter((block): block is { type: string; text: string } => typeof block === 'object' && block !== null && (block as { type?: string }).type === 'text' && typeof (block as { text?: unknown }).text === 'string')
+    .map((block) => block.text)
+    .join(' ')
+  return text || null
+}
+
 export function SessionThread({ sessionFile }: { sessionFile: string }) {
   const { setCwd } = usePiNav()
   const { root, listing, api } = useSessionsController()
   const chat = useChatController()
-  // 新建的对话 sessionFile 要等 SSE 的 state 帧才补；这期间 PiNav 用 sessionId 记页。
-  const live = chat.active?.sessionFile === sessionFile || chat.active?.sessionId === sessionFile
+  const live = chat.active?.sessionFile === sessionFile
 
   const row = useMemo(
     () => listing?.sessions.find((item) => item.path === sessionFile) ?? null,
@@ -96,6 +128,7 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
 
   const {
     error,
+    clearError,
     connectionLost,
     retry,
     compacting,
@@ -124,10 +157,8 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
     await close()
   }
 
-  // 标题：列表行有首条消息可退；只有运行时没落盘时退到 sessionId。
-  const title = row
-    ? sessionTitle(row)
-    : (chat.active?.name ?? chat.active?.sessionId.slice(0, 12) ?? '')
+  // 标题：列表行有首条消息可退；刚建的对话还没落盘，从流式 transcript 里取首条用户消息。
+  const title = row ? sessionTitle(row) : chat.active?.name ?? firstUserText(parsed) ?? chat.active?.sessionId.slice(0, 12) ?? ''
   const cwd = row?.cwd ?? chat.active?.cwd ?? ''
   const stats = parsed?.ok ? parsed.value.stats : null
 
@@ -160,7 +191,11 @@ export function SessionThread({ sessionFile }: { sessionFile: string }) {
         </span>
       </header>
 
-      {error ? <div className="pichat-banner is-error">{error}</div> : null}
+      {error ? (
+        <div className="pichat-banner is-error" onClick={clearError} title="点击关闭">
+          {error}
+        </div>
+      ) : null}
       {connectionLost ? (
         <div className="pichat-banner">
           <span>事件流断开，正在重连；重连后会补回这段输出。</span>

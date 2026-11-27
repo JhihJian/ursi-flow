@@ -101,7 +101,10 @@ function ChatLayer({ children, apiBaseUrl }: { children: ReactNode; apiBaseUrl: 
         home: homePath,
         sessionFile: page.kind === 'session' ? page.sessionFile : null,
         cwd,
-        onChatCreated: (chat) => toSession(chat.sessionId),
+        // createChat 的响应就带 sessionFile，页面直接按它记，侧栏高亮与只读轨迹都按它查。
+        onChatCreated: (chat) => {
+          if (chat.sessionFile) toSession(chat.sessionFile)
+        },
       }}
     >
       {children}

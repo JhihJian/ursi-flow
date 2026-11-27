@@ -102,6 +102,8 @@ export interface ChatController {
   compacting: boolean
   connectionLost: boolean
   error: string | null
+  /** 关掉错误条；文本已经在输入框里，用户看一眼就够了。 */
+  clearError: () => void
   notice: Notice | null
   clearNotice: () => void
   uiRequests: UiRequest[]
@@ -185,9 +187,7 @@ export function ChatProvider({
     () =>
       options.sessionFile === null
         ? null
-        : (chats.find(
-            (chat) => chat.sessionFile === options.sessionFile || chat.sessionId === options.sessionFile,
-          ) ?? null),
+        : (chats.find((chat) => chat.sessionFile === options.sessionFile) ?? null),
     [chats, options.sessionFile],
   )
   const activeId = active?.sessionId ?? null
@@ -655,6 +655,7 @@ export function ChatProvider({
     compacting,
     connectionLost,
     error,
+    clearError: () => setError(null),
     notice,
     clearNotice: () => setNotice(null),
     uiRequests,
