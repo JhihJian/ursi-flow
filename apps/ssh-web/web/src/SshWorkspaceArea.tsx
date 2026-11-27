@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ConnectionEditorSheet } from './components/ConnectionEditorSheet'
+import { BatchImportSheet } from './components/BatchImportSheet'
 import { NewSessionForm } from './components/NewSessionForm'
 import { ResourcePanel } from './components/ResourcePanel'
 import { SessionTabBar } from './components/SessionTabBar'
@@ -60,6 +61,7 @@ export function SshWorkspaceArea() {
             {resourcesOpen ? <ResourcePanel /> : null}
           </div>
           <ConnectionEditorSheet />
+          <BatchImportSheet />
         </div>
       </SshContainerProvider>
     </div>

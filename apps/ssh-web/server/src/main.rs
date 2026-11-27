@@ -4,6 +4,7 @@ mod handlers;
 mod metrics;
 mod models;
 mod session;
+mod ssh_config;
 
 use axum::routing::{delete, get, post};
 use axum::Router;
@@ -49,6 +50,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/connections/{id}/tmux-sessions/{name}",
             delete(app::delete_tmux_session),
         )
+        .route("/api/connections/import", post(handlers::import_connections))
+        .route("/api/ssh-config/hosts", get(handlers::discover_ssh_hosts))
         .route("/api/connections/{id}/metrics", get(app::get_metrics))
         .route("/api/connections/{id}/terminal", get(app::get_terminal_ws))
         .fallback_service(ServeDir::new(static_dir()).fallback(ServeFile::new(index)));

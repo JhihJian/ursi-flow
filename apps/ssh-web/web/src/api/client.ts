@@ -1,7 +1,9 @@
 import type {
   Connection,
   ConnectionInput,
+  DiscoveredHost,
   HostMetrics,
+  ImportConnectionsResponse,
   TestConnectionResponse,
   TmuxSessionsResponse,
 } from './types'
@@ -81,6 +83,19 @@ export class SshApi {
   /** 采样远端设备资源。每次请求由服务端跑一轮独立的批量 ssh。 */
   getMetrics(id: number): Promise<HostMetrics> {
     return this.request(`/connections/${id}/metrics`)
+  }
+
+  /** 从本机 ssh config 发现可批量导入的主机（ssh -G 解析 user/port）。 */
+  discoverSshHosts(): Promise<{ hosts: DiscoveredHost[] }> {
+    return this.request('/ssh-config/hosts')
+  }
+
+  /** 批量导入连接；单条失败不阻断其余，失败明细在响应里。 */
+  importConnections(inputs: ConnectionInput[]): Promise<ImportConnectionsResponse> {
+    return this.request('/connections/import', {
+      method: 'POST',
+      body: JSON.stringify({ connections: inputs }),
+    })
   }
 
   /** 终端 WS 地址：tmuxSession 缺省为 ssh-main，cols/rows 为面板初始尺寸。 */

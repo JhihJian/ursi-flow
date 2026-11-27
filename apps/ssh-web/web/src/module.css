@@ -108,7 +108,6 @@
   flex: none;
   min-width: 19px;
   height: 19px;
-  margin-left: auto;
   padding: 0 var(--ssh-space-xs);
   border: 0;
   background: none;
@@ -799,6 +798,74 @@
   cursor: default;
 }
 
+/* ── ssh config 批量导入弹框：复用 sheet 外壳，主体是一列可勾选编辑的行 ── */
+
+.ssh-import-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ssh-space-sm) var(--ssh-space-md);
+}
+
+.ssh-import-toolbar {
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--ssh-space-xs);
+}
+
+.ssh-import-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ssh-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssh-import-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ssh-space-sm);
+  min-width: 0;
+}
+
+.ssh-import-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ssh-space-xs);
+  flex: none;
+  font-size: 11px;
+  color: var(--ssh-gray-600);
+  cursor: pointer;
+}
+
+.ssh-import-name {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.ssh-import-command {
+  flex: 2 1 220px;
+  min-width: 0;
+}
+
+.ssh-import-note {
+  padding: var(--ssh-space-sm) 0;
+  color: var(--ssh-gray-600);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ssh-import-note-error {
+  color: var(--ssh-danger);
+}
+
+.ssh-import-result {
+  padding: 0 var(--ssh-space-md) var(--ssh-space-sm);
+  border-top: 1px solid var(--ssh-gray-200);
+}
+
 .ssh-btn:disabled:hover {
   background: var(--ssh-white);
 }
@@ -1173,6 +1240,7 @@
   align-items: center;
   gap: var(--ssh-space-sm, 8px);
   min-width: 0;
+  margin-left: auto;
 }
 
 .ssh-status-text {
@@ -1217,6 +1285,7 @@
 .ssh-standalone-status {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   flex: none;
   height: 24px;
   padding: 0 12px;

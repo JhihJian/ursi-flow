@@ -445,6 +445,11 @@
   text-overflow: ellipsis;
 }
 
+/* 模块自带布局的状态组件（如 ssh）在这里放行宽度，由模块内容自己右对齐/分配。 */
+.ws-status-item:has(> .ws-slot .ssh-status) {
+  flex: 1;
+}
+
 .ws-status-sep {
   flex: none;
   color: var(--ws-line);

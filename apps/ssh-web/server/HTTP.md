@@ -30,6 +30,30 @@
 
 返回 `{"id": 1}`，状态 201。
 
+### `POST /connections/import`
+
+批量创建连接（供 ssh config 批量导入）。请求体：
+
+```json
+{"connections": [{"name": "nm105", "command": "ssh -p 10000 root@nm105"}]}
+```
+
+每条独立校验（规则同 POST）与插入：单条失败不阻断其余，被跳过的条目原样返回提交名（空名用占位）与原因（同名冲突、命令不合法）。返回：
+
+```json
+{"imported": [{"id": 7}, {"id": 8}], "failed": [{"name": "nm105", "reason": "同名连接已存在"}]}
+```
+
+### `GET /ssh-config/hosts`
+
+从服务端本机 `~/.ssh/config` 发现可批量导入的主机：`grep ^Host` 列出具体 Host 别名（跳过 `*`/`?`/`!` 通配模式），逐台 `ssh -G`（`BatchMode=yes`，单台 5 秒超时）解析最终生效的 user 与非默认 port；Include、别名、Match 都由 OpenSSH 自身解释。单台解析失败跳过且不影响其余。config 不存在或无 Host 行时返回空数组。返回：
+
+```json
+{"hosts": [{"host": "nm105", "user": "root", "port": 10000}, {"host": "mac", "user": "jhihjian", "port": null}]}
+```
+
+`port` 仅在解析结果非默认 22 时返回数值，否则为 null（前端按无 `-p` 处理）。
+
 ### `POST /connections/test`
 
 保存前的连接自检：只验证传输层与认证，不读远端 tmux、不写库。批量 ssh（`BatchMode=yes`）执行一次 `hostname`，`command` 校验规则同 POST。返回：

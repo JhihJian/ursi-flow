@@ -31,6 +31,25 @@ export interface TmuxSessionsResponse {
   sessions: TmuxSession[] | null
 }
 
+/** 本机 ssh config 里发现的一台可免密登录主机。 */
+export interface DiscoveredHost {
+  host: string
+  user: string | null
+  /** 非默认端口才返回；缺省走 ssh 默认 22。 */
+  port: number | null
+}
+
+/** 批量导入中被跳过的一条：原样返回提交名与原因。 */
+export interface ImportFailure {
+  name: string
+  reason: string
+}
+
+export interface ImportConnectionsResponse {
+  imported: { id: number }[]
+  failed: ImportFailure[]
+}
+
 /** WS 控制帧（前端 → 服务端）。 */
 export type ControlFrame = { type: 'input'; data: string } | { type: 'resize'; cols: number; rows: number }
 

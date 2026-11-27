@@ -27,6 +27,7 @@ export function ConnectionTree() {
   const openTerminal = useSshStore((state) => state.openTerminal)
   const openSessionForm = useSshStore((state) => state.openSessionForm)
   const setEditor = useSshStore((state) => state.setEditor)
+  const setBatchImportOpen = useSshStore((state) => state.setBatchImportOpen)
   const removeConnection = useSshStore((state) => state.removeConnection)
   const refreshTmuxSessions = useSshStore((state) => state.refreshTmuxSessions)
   const killTmuxSession = useSshStore((state) => state.killTmuxSession)
@@ -193,6 +194,15 @@ export function ConnectionTree() {
           }}
         >
           ↻
+        </button>
+        <button
+          type="button"
+          className="ssh-mini-btn"
+          title="从本机 ssh config 批量导入连接"
+          aria-label="批量导入连接"
+          onClick={() => setBatchImportOpen(true)}
+        >
+          ⇩
         </button>
         <button
           type="button"

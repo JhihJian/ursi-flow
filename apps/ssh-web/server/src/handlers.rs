@@ -2,11 +2,13 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::extract::Path;
 use axum::Json;
+use serde::Deserialize;
 
 use crate::app::{app_state, bad_request, not_found, AppError, AppResult};
 use crate::db;
 use crate::models::{
-    Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse, SuccessResponse,
+    Connection, ConnectionsResponse, CreateConnectionRequest, CreateResponse,
+    DiscoverSshHostsResponse, ImportConnectionsResponse, ImportFailure, SuccessResponse,
     TestConnectionRequest, TestConnectionResponse, UpdateConnectionRequest,
 };
 
@@ -48,12 +50,63 @@ pub async fn post_connection(
     Json(request): Json<CreateConnectionRequest>,
 ) -> AppResult<Response> {
     let (name, command) = request.validate().map_err(bad_request)?;
+    insert_connection_unique(&name, &command).await
+}
+
+/// 同名校验 + 写库。连接发现与手工新建共用同一入口，重名直接 409。
+async fn insert_connection_unique(name: &str, command: &str) -> AppResult<Response> {
     let db = app_state().db.lock().await;
-    if db::get_connection_by_name(&db, &name)?.is_some() {
+    if db::get_connection_by_name(&db, name)?.is_some() {
         return Err(AppError::Conflict(format!("连接名已存在：{name}")));
     }
-    let id = db::insert_connection(&db, &name, &command)?;
+    let id = db::insert_connection(&db, name, command)?;
     Ok((StatusCode::CREATED, Json(CreateResponse { id })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportConnectionsRequest {
+    pub connections: Vec<CreateConnectionRequest>,
+}
+
+/// `POST /api/connections/import`：批量导入连接（来自 ssh config 发现）。
+/// 每条独立校验与插入：单条失败跳过并记入 `failed`，其余照常导入。
+pub async fn import_connections(
+    Json(request): Json<ImportConnectionsRequest>,
+) -> AppResult<Json<ImportConnectionsResponse>> {
+    let mut imported = Vec::new();
+    let mut failed = Vec::new();
+    for entry in request.connections {
+        let name = entry.name.trim().to_string();
+        let display = if name.is_empty() {
+            "（空名称）".to_string()
+        } else {
+            name.clone()
+        };
+        match entry.validate() {
+            Ok((name, command)) => {
+                let db = app_state().db.lock().await;
+                if db::get_connection_by_name(&db, &name)?.is_some() {
+                    failed.push(ImportFailure {
+                        name: display,
+                        reason: "同名连接已存在".into(),
+                    });
+                } else {
+                    let id = db::insert_connection(&db, &name, &command)?;
+                    imported.push(CreateResponse { id });
+                }
+            }
+            Err(reason) => failed.push(ImportFailure { name: display, reason }),
+        }
+    }
+    Ok(Json(ImportConnectionsResponse { imported, failed }))
+}
+
+/// `GET /api/ssh-config/hosts`：从本机 `~/.ssh/config` 发现可批量导入的主机。
+pub async fn discover_ssh_hosts() -> AppResult<Json<DiscoverSshHostsResponse>> {
+    let hosts = crate::ssh_config::discover_hosts()
+        .await
+        .map_err(|error| AppError::Internal(error))?;
+    Ok(Json(DiscoverSshHostsResponse { hosts }))
 }
 
 /// `PUT /api/connections/{id}`：更新连接。省略字段表示不改。

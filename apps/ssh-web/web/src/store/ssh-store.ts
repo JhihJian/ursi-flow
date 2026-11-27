@@ -1,7 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { ApiError, SshApi } from '../api/client'
 import { memoryPercent } from '../resource-metrics'
-import type { Connection, ConnectionInput, HostMetrics, TestConnectionResponse, TmuxSession } from '../api/types'
+import type { Connection, ConnectionInput, HostMetrics, ImportConnectionsResponse, TestConnectionResponse, TmuxSession } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
 
@@ -82,6 +82,8 @@ export interface SshStoreState {
   metricsByConnection: Record<number, ConnectionMetrics>
   /** 资源面板是否展开；状态栏指标不受它影响。 */
   resourcesOpen: boolean
+  /** ssh config 批量导入弹框是否打开。 */
+  batchImportOpen: boolean
   editor: EditorTarget | null
   notice: string | null
   /** 终端面板亮色（白底）主题，跨刷新保留。 */
@@ -110,9 +112,13 @@ export interface SshStoreState {
   retainMetrics: (ids: number[]) => void
   setResourcesOpen: (open: boolean) => void
   toggleResources: () => void
+  /** 打开/关闭批量导入弹框；打开时由弹框自身拉取发现列表。 */
+  setBatchImportOpen: (open: boolean) => void
   saveConnection: (target: EditorTarget, input: ConnectionInput) => Promise<void>
   /** 自检一条 ssh 命令：只验证能否连上，不读远端 tmux。 */
   verifyConnection: (command: string) => Promise<TestConnectionResponse>
+  /** 批量导入连接：单条失败不阻断其余，失败明细由弹框展示。 */
+  importConnections: (inputs: ConnectionInput[]) => Promise<ImportConnectionsResponse>
   removeConnection: (id: number) => Promise<void>
   setEditor: (editor: EditorTarget | null) => void
   setNotice: (message: string | null) => void
@@ -179,6 +185,7 @@ export function createSshStore(
     sessionsByConnection: {},
     metricsByConnection: {},
     resourcesOpen: false,
+    batchImportOpen: false,
     editor: null,
     notice: null,
     terminalLight: readLight(),
@@ -346,6 +353,7 @@ export function createSshStore(
 
     setResourcesOpen: (open) => set({ resourcesOpen: open }),
     toggleResources: () => set((state) => ({ resourcesOpen: !state.resourcesOpen })),
+    setBatchImportOpen: (open) => set({ batchImportOpen: open }),
 
     saveConnection: async (target, input) => {
       if (target.kind === 'new') {
@@ -360,6 +368,12 @@ export function createSshStore(
     },
 
     verifyConnection: (command) => api.testConnection(command),
+
+    importConnections: async (inputs) => {
+      const result = await api.importConnections(inputs)
+      if (result.imported.length > 0) await get().loadConnections()
+      return result
+    },
 
     removeConnection: async (id) => {
       await api.deleteConnection(id)
