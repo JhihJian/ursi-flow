@@ -90,8 +90,9 @@ function toRow(entity: SessionEntity): SessionRow {
     firstMessage: entity.disk?.firstMessage ?? '',
     messageCount: entity.disk?.messageCount ?? 0,
     created: entity.disk?.createdAt ?? entity.seenAt,
-    // 与服务端排序同一口径：还没落盘的新会话按注册时刻算「今天」，不会被日期筛掉。
-    modified: Math.max(entity.disk?.updatedAt ?? 0, entity.seenAt),
+    // 与服务端 modifiedOf 同一口径：活动时间看文件修改时间，还没落盘的新会话才用注册时刻，
+    // 这样既不会被日期筛掉，也不会和刚扫描过的老会话并列。
+    modified: entity.disk?.updatedAt ?? entity.seenAt,
     size: entity.disk?.size ?? 0,
     format: entity.disk?.format ?? 'unknown',
     detailsPending: false,

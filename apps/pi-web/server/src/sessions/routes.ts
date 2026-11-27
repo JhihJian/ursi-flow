@@ -7,7 +7,7 @@ import { homes, requireHome } from '../config/registry.ts'
 import { MAX_TEXT_BYTES, SESSIONS_ROOT } from '../config.ts'
 import {
   collectionCursor,
-  externalOrigin,
+  originOfRoot,
   findByPath,
   getEntity,
   homeOrigin,
@@ -49,8 +49,9 @@ async function originFromQuery(url: URL): Promise<SessionOrigin | null> {
   const root = url.searchParams.get('root')
   if (root && root.trim()) {
     const path = await requireService().resolveRoot(root)
-    touchExternalRoot(path)
-    return externalOrigin(path)
+    const origin = originOfRoot(path)
+    if (origin.kind === 'external') touchExternalRoot(path)
+    return origin
   }
   const home = url.searchParams.get('home')
   if (home && home.trim()) {

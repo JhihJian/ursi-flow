@@ -52,11 +52,11 @@ erDiagram
 | --- | --- | --- |
 | 身份 | `id` | 会话头 `SessionHeader.id`。服务端创建时用 uuidv7 铸造，经 `SessionManager.create(cwd, dir, { id })` 交给 `createAgentSession({ sessionManager })`，文件头自动记录同一个 id；`IdentitySource` 为 `minted` |
 | 身份 | `identitySource` | `minted`（服务端铸造 uuidv7 写入会话头）/ `header`（老文件自带头部 id）/ `derived`（无头文件，按 `(filePath, 首行内容)` 哈希派生，见 1.5） |
-| 归属 | `origin` | `{ kind: 'home', homeId }` 或 `{ kind: 'external', rootPath }`，创建时写入，之后不变 |
+| 归属 | `origin` | `{ kind: 'home', homeId }` 或 `{ kind: 'external', rootPath }`。运行时登记的会话按 home 写入，之后不变；扫描登记的会话跟着扫到它的作用域走。按 `root=` 访问时，`root` 正好是某个已登记 home 的 `sessions/` 就按 home 算（`originOfRoot`），否则是 external。这样侧栏按目录取列表与 `createChat` 登记的是同一个作用域 |
 | 归属 | `kind` | `chat` / `task` / `cli` / `subagent`，决定默认 UI、配额分桶与回收策略 |
 | 结构 | `parentFile` | 头部 `parentSession` 的事实值。`parentId` 是由文件反解出的可空派生，不存字段 |
 | 持久化 | `persistence` | `memory`（已创建但还没有消息，尚未落文件）/ `file` |
-| 磁盘事实 | `filePath` / `cwd` / `title` / `disk` | `disk` 含 `size`、`mtime`、`format`、`messageCount`、`firstMessage`、`createdAt`、`updatedAt`、`fileSessionId` |
+| 磁盘事实 | `filePath` / `cwd` / `title` / `disk` | `title` 优先，没名字时用 `firstMessage`；本服务端开的对话在首条消息的 `agent_start` 时经 SDK `setSessionName` 用首条用户消息命名，名字写进会话文件的 `session_info` 条目，`/name` 改过的不再覆盖。原说明： `disk` 含 `size`、`mtime`、`format`、`messageCount`、`firstMessage`、`createdAt`、`updatedAt`、`fileSessionId` |
 | 生命周期 | `state` / `stateSince` / `error` | `error` 带 `phase: 'assemble' \| 'turn'`，决定 `failed` 的恢复路径（见第 2 节） |
 | 运行 | `runtimes[]` | 每项 `RuntimeFact { instanceId, origin: 'local' \| 'process', host, pid, status, updatedAt }`；本进程直接写，其它进程由心跳补 |
 | 运行 | `model` / `queue` / `interactions[]` | 当前模型与思考级别、排队输入数、待回执的扩展 UI 请求 |
@@ -145,7 +145,8 @@ RuntimeProfile {
 | --- | --- | --- | --- |
 | Home 注册表字段 | config 域 | 侧栏、会话页、配置页 | 否 |
 | Home 派生字段（`sessionsRoot`/`capabilities`/`profileRevision`） | 派生服务 | 侧栏、会话页、配置页 | 是 |
-| `PiSession.origin`/`kind`/`identitySource` | 创建事务写一次，不可变 | 侧栏、会话页、配置页 | 否 |
+| `PiSession.origin`/`kind`/`identitySource` | 运行时登记时写一次不再变；扫描登记的 `origin` 随扫到它的作用域改写 | 侧栏、会话页、配置页 | 否 |
+| `PiSession.seenAt` | 注册时写；之后只在实质变化（状态、文件、标题）时刷，心跳不刷 | 列表排序兜底、外部根回收 | 否 |
 | `PiSession.persistence` | 首条消息落盘时由运行时写一次 | 侧栏、会话页、配置页 | 是（看文件是否存在） |
 | `PiSession.disk` | 扫描器 | 侧栏、会话页、配置页 | 是 |
 | `PiSession.state`/`error`/`queue`/`interactions`/`execution` | SessionService 状态机 | 侧栏、会话页、配置页 | 否（重启回落 `discovered`） |
@@ -380,4 +381,3 @@ v1 的目标是让三种页面读同一套实体、同一份权威、同一个�
 - `trajectories` 的 LRU 上限与两个窗口的分桶缓存（当前只按页面各自缓存）。
 - chat 与 sessions 的轨迹配色映射、`ContextMenu` 与解析代码合并成一份共享层（当前仍是每个子模块一份）。
 - 会话级 `capabilities` 的前端解禁提示、`stale` 应用按钮的可见入口。
-- **同一文件在注册表里有两份实体**：前端列表请求带 `root=<home>/sessions`，`originFromQuery` 一律按外部目录算 origin；`createChat` 按 home 算。于是扫描结果注册一份 `external` 实体，运行时注册一份 `home` 实体，同一文件两条记录。后果是刚建的新会话（只有 home 那份）不出现在列表里，直到落盘并被扫描成 external。修法：`root` 命中某个已登记 home 的 `sessions/` 时按 home 算 origin，并把已有 external 实体并入。

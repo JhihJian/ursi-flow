@@ -62,6 +62,8 @@ interface UiRequest {
 }
 
 interface ChatRecord extends ChatInfo {
+  /** 最近一次收到的用户消息：还没名字的会话在 agent_start 时拿它命名。 */
+  lastPrompt: string
   /** 运行时实例标识：心跳与释放都按它比对，同一会话不同实例互不干扰。 */
   instanceId: string
   session: AgentSession
@@ -98,6 +100,17 @@ export function listChats(home?: string): ChatInfo[] {
 export function getChat(sessionId: string): ChatInfo | null {
   const chat = chats.get(sessionId)
   return chat ? publicInfo(chat) : null
+}
+
+/**
+ * 没名字的会话用首条用户消息命名。走 SDK 的 setSessionName 把名字写进会话文件，
+ * 列表扫描、会话页标题、/name 改名都从同一处读。此时用户消息已入树，有父节点可挂。
+ */
+export function nameIfUnnamed(chat: Pick<ChatRecord, "name" | "lastPrompt" | "session">): void {
+  if (chat.name || !chat.lastPrompt) return
+  const title = chat.lastPrompt.replace(/\s+/g, ' ').slice(0, 60).trim()
+  if (!title) return
+  chat.session.setSessionName(title)
 }
 
 /** 把运行时快照写进会话实体：state、队列、模型、错误都由这里同步。 */
@@ -481,6 +494,7 @@ export async function createChat(options: CreateChatOptions): Promise<ChatInfo> 
     thinkingLevel: assembled.thinkingLevel,
     sessionFile: assembled.sessionFile,
     name: null,
+    lastPrompt: '',
     state: 'idle',
     isStreaming: false,
     partial: '',
@@ -529,6 +543,7 @@ function handleEvent(chat: ChatRecord, event: { type: string } & Record<string, 
     case 'agent_start':
       chat.state = 'running'
       chat.error = null
+      nameIfUnnamed(chat)
       syncEntity(chat)
       broadcast(chat, { type: 'agent_start' })
       break
@@ -686,6 +701,7 @@ export async function promptChat(
   const trimmed = text.trim()
   if (!trimmed) throw new HomeError('消息不能为空', 400, 'invalid_request')
   chat.lastActivity = Date.now()
+  chat.lastPrompt = trimmed
 
   const accepted = new Promise<{ disposition: PromptDisposition }>((resolve, reject) => {
     const run = chat.session.prompt(trimmed, {

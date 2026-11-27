@@ -1,4 +1,6 @@
+import { join } from 'node:path'
 import { homeIdOf } from '../config/homes.ts'
+import { homes } from '../config/registry.ts'
 import { EPOCH, EXTERNAL_ROOT_LIMIT, EXTERNAL_ROOT_TTL_MS } from '../config.ts'
 
 /**
@@ -176,6 +178,16 @@ export function externalOrigin(rootPath: string): SessionOrigin {
   return { kind: 'external', rootPath }
 }
 
+/**
+ * 一个扫描目录的归属：正好是某个已登记 home 的 sessions/ 就归该 home，
+ * 否则是外部目录。归属必须与 createChat 写入的一致，否则运行时登记的
+ * home 实体在按目录访问的列表里永远缺席。
+ */
+export function originOfRoot(rootPath: string): SessionOrigin {
+  const owner = homes.list().find((entry) => entry.valid && join(entry.path, 'sessions') === rootPath)
+  return owner ? homeOrigin(owner.path) : externalOrigin(rootPath)
+}
+
 function sameOrigin(a: SessionOrigin, b: SessionOrigin): boolean {
   return scopeKeyOf(a) === scopeKeyOf(b)
 }
@@ -282,6 +294,7 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
       || entity.error?.message !== snapshot.error?.message
       || entity.queue !== (snapshot.queue ?? 0)
       || entity.filePath !== snapshot.filePath
+      || (snapshot.title != null && snapshot.title !== entity.title)
     if (entity.state !== snapshot.state) entity.stateSince = Date.now()
     entity.state = snapshot.state
     entity.error = snapshot.error ?? null
@@ -294,8 +307,12 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
     entity.interactions = snapshot.interactions ?? 0
     entity.execution = snapshot.execution ?? null
     entity.profileRevision = snapshot.profileRevision ?? entity.profileRevision
-    entity.seenAt = Date.now()
-    if (changed) bump()
+    // 只有实质变化才刷 seenAt：心跳每几秒一次，每次都刷会让所有活跃会话的
+    // modified 相同，列表排序退化成注册顺序，刚发消息的新会话排不到前面。
+    if (changed) {
+      entity.seenAt = Date.now()
+      bump()
+    }
   }
 
   const now = Date.now()
@@ -424,8 +441,13 @@ export function listEntities(filter: SessionFilter = {}): PiSession[] {
   return out.sort((a, b) => modifiedOf(b) - modifiedOf(a) || a.id.localeCompare(b.id))
 }
 
+/**
+ * 活动时间：有磁盘事实就用文件修改时间，还没落盘的新会话才用注册时刻。
+ * seenAt 每次扫描、每次实质变化都会刷，拿它参与排序会让整份列表在同一毫秒
+ * 上并列，退化成注册顺序。
+ */
 export function modifiedOf(entity: PiSession): number {
-  return Math.max(entity.disk?.updatedAt ?? 0, entity.seenAt)
+  return entity.disk?.updatedAt ?? entity.seenAt
 }
 
 /** 能力由状态与身份派生，不单独存字段。 */
