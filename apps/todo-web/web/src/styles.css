@@ -369,77 +369,6 @@
   color: #b43c3c;
 }
 
-/* Right-click menu on lists */
-.context-menu {
-  position: fixed;
-  z-index: 200;
-  padding: var(--space-xs) 0;
-  border: 1px solid var(--gray-900);
-  background: var(--white);
-}
-
-.context-menu-heading {
-  padding: var(--space-xs) var(--space-sm);
-  color: var(--gray-400);
-  font-size: 11px;
-  border-bottom: 1px solid var(--gray-200);
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  width: 100%;
-  padding: var(--space-xs) var(--space-sm);
-  border: 0;
-  background: none;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--gray-900);
-  cursor: pointer;
-}
-
-.context-menu-icon {
-  display: flex;
-  flex: none;
-  align-items: center;
-}
-
-.context-menu-label {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.context-menu-check {
-  flex: none;
-  color: var(--gray-400);
-}
-
-.context-menu-item:hover:not(:disabled),
-.context-menu-item:focus-visible:not(:disabled) {
-  outline: none;
-  background: var(--gray-200);
-}
-
-/* 状态机不接受的下一步仍然列出，但不可点。 */
-.context-menu-item:disabled {
-  color: var(--gray-400);
-  cursor: default;
-}
-
-.context-menu-item:disabled .context-menu-icon {
-  opacity: 0.45;
-}
-
-.context-menu-item.danger {
-  color: #b43c3c;
-}
-
-.context-menu-item.danger:hover {
-  background: rgba(180, 60, 60, 0.1);
-}
-
 /* Tasks section */
 .tasks-section {
   margin-bottom: var(--space-xl);
@@ -1627,7 +1556,9 @@
 /* ---- 嵌入工作区外壳时的模块分区 ---- */
 
 /* 工作区：任务列表 + 两个贴底浮层，自己撑满外壳给的高度。 */
+/* 右键菜单 portal 进工作区根（不滚动），坐标相对它换算。 */
 .todo-workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;

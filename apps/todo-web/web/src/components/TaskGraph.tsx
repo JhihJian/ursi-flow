@@ -14,7 +14,8 @@ import {
 } from '@/lib/task-graph'
 import { cx, errorMessage } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
-import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
+import { toContainerPoint, useMenuContainer } from './menu-container'
 import { StatusIcon } from './StatusIcon'
 
 type SessionMode = TaskGraphEdgeKind | 'move'
@@ -86,6 +87,13 @@ export function TaskGraph() {
 
   const [drag, setDrag] = useState<GraphDrag | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const menuContainer = useMenuContainer()
+  /** 收视口坐标开菜单，内部换算成工作区容器的相对坐标。 */
+  const openAt = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => {
+    const point = toContainerPoint(menuContainer, clientX, clientY)
+    if (!point) return
+    setMenu({ ...point, items, heading })
+  }
   /** 开始拖动时把当前所有根节点的位置固定下来，拖动过程中其它节点不会跟着重排。 */
   const dragBaseRef = useRef<GraphPositions>({})
 
@@ -298,18 +306,18 @@ export function TaskGraph() {
     if (!task) return
     const reachable = new Set(nextStatuses(task.status))
     const rect = event.currentTarget.getBoundingClientRect()
-    setMenu({
-      x: rect.left,
-      y: rect.bottom + 4,
-      heading: node.title,
-      items: STATUS_ORDER.map((status) => ({
+    openAt(
+      rect.left,
+      rect.bottom + 4,
+      STATUS_ORDER.map((status) => ({
         label: STATUS_LABELS[status],
         icon: <StatusIcon status={status} />,
         checked: task.status === status,
         disabled: !reachable.has(status),
         onSelect: () => void applyStatus(task, status),
       })),
-    })
+      node.title,
+    )
   }
 
   const openNodeMenu = (event: React.MouseEvent, node: TaskGraphNode) => {
@@ -335,11 +343,10 @@ export function TaskGraph() {
       danger: true,
       onSelect: () => {
         // 删除不可恢复，用同一菜单做二次确认。
-        setMenu({
-          x: event.clientX,
-          y: event.clientY,
-          heading: `Delete "${node.title}"?`,
-          items: [
+        openAt(
+          event.clientX,
+          event.clientY,
+          [
             {
               label: 'delete task',
               danger: true,
@@ -353,10 +360,11 @@ export function TaskGraph() {
             },
             { label: 'cancel', onSelect: () => {} },
           ],
-        })
+          `Delete "${node.title}"?`,
+        )
       },
     })
-    setMenu({ x: event.clientX, y: event.clientY, items })
+    openAt(event.clientX, event.clientY, items)
   }
 
   const pending = pendingPath(drag, nodesById, canvasRef.current)
@@ -423,17 +431,13 @@ export function TaskGraph() {
                   event.preventDefault()
                   event.stopPropagation()
                   const store = useTodoStore.getState()
-                  setMenu({
-                    x: event.clientX,
-                    y: event.clientY,
-                    items: [
-                      {
-                        label: 'remove',
-                        onSelect: () =>
-                          removeRelation(store.setTaskPredecessor(edge.to, null)),
-                      },
-                    ],
-                  })
+                  openAt(event.clientX, event.clientY, [
+                    {
+                      label: 'remove',
+                      onSelect: () =>
+                        removeRelation(store.setTaskPredecessor(edge.to, null)),
+                    },
+                  ])
                 }}
               />
             </g>
@@ -555,7 +559,7 @@ export function TaskGraph() {
           )
         })}
       </div>
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={menuContainer} />
     </div>
   )
 }

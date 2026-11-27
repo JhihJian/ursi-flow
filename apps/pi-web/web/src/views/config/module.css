@@ -213,21 +213,13 @@ list-style: none;
   flex-direction: column;
 }
 
+/* 行的竖线与 hover/激活灰底由 @ursi/sidebar 的 .sb-row 提供；左内边距 2px 补回竖线的位置。 */
 .pi-manager-root .preset-item {
-display: flex;
+  display: flex;
   align-items: stretch;
-  border-left: 2px solid transparent;
+  padding-left: 2px;
   cursor: pointer;
   user-select: none;
-}
-
-.pi-manager-root .preset-item:hover {
-background: var(--gray-200);
-}
-
-.pi-manager-root .preset-item.active {
-border-left-color: var(--black);
-  background: var(--gray-200);
 }
 
 .pi-manager-root .preset-item.invalid .preset-name {
@@ -254,7 +246,7 @@ display: flex;
   white-space: nowrap;
 }
 
-.pi-manager-root .preset-item.active .preset-name {
+.pi-manager-root .preset-item.is-active .preset-name {
 color: var(--black);
   font-weight: 500;
 }

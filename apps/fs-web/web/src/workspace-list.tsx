@@ -152,7 +152,7 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   return (
     <li
       data-wsx-ws-id={workspace.id}
-      className={'wsx-wslist-item' + (active ? ' wsx-wslist-item--active' : '') + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
+      className={'sb-row wsx-wslist-item' + (active ? ' is-active' : '') + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
       title={itemSummary(workspace) + (workspace.error ? `（${workspace.error}）` : '')}
       onClick={() => selectWorkspace(workspace.id)}
       onContextMenu={(event) => {

@@ -4,12 +4,14 @@ import type { Task, TaskStatus } from '@/api/types'
 import { formatTaskTime, prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore, type TaskView } from '@/store/todo-store'
-import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 import { DayFilter } from './DayFilter'
 import { StatusIcon } from './StatusIcon'
 import { TaskGraph } from './TaskGraph'
+import { toContainerPoint, useMenuContainer } from './menu-container'
 
-type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+/** 收视口坐标，内部换算成菜单容器坐标。 */
+type OpenMenu = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => void
 
 const statuses: TaskStatus[] = ['pending', 'in_progress', 'blocked', 'done']
 
@@ -173,7 +175,12 @@ export function TaskSection() {
 
   const openNewTask = useTodoStore((state) => state.openNewTask)
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  const menuContainer = useMenuContainer()
+  const openMenu: OpenMenu = (clientX, clientY, items, heading) => {
+    const point = toContainerPoint(menuContainer, clientX, clientY)
+    if (!point) return
+    setMenu({ ...point, items, heading })
+  }
 
   const changeView = (next: TaskView) => {
     void setView(next).catch((error) => alert(`Failed to load task graph: ${errorMessage(error)}`))
@@ -278,7 +285,7 @@ export function TaskSection() {
           </tbody>
         </table>
       )}
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={menuContainer} />
     </section>
   )
 }

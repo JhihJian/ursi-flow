@@ -27,8 +27,9 @@ parent: ../../SPEC.md
 #### 验收
 
 - `style.css` 在各入口于模块样式**之前**加载（shell-web 的 `registry.tsx` 与各独立入口的 `main.tsx` 均已如此）。模块自己刻意的底色（如 todo 拖拽悬停的白底）因此能盖过 `.sb-row:hover` 的灰底。
-- 接入行：todo `ProjectItem`、ssh 父行与子行、pi 会话 `session-item`、flow `flow-item`。fs 目录列表（圆角两行）、fs 文件树（虚拟化双击重命名）、pi Home 行（三行）暂不接。
-- hover 灰底统一为 `--ws-line`（#e5e5e5）。接入前 pi 会话用 #f5f5f5、flow 用 #fafafa，现在与 todo、ssh 一致。
+- 已接入全部侧边栏行：todo 项目项、ssh 父行与子行、pi 会话项与 Home 行、flow 项、fs 目录行。fs 文件树（虚拟化，行高由测量驱动）不接。
+- hover 灰底统一为 `--ws-line`（#e5e5e5）。接入前 pi 会话用 #f5f5f5、flow 用 #fafafa、fs 目录行激活用 8% 墨色淡染，现在全部一致。
+- 行有圆角时（fs 目录行 4px），`inset box-shadow` 竖线跟随圆角，视觉上无碍。
 - 无全局选择器，无 `position: fixed`。
 
 ### 右键菜单（`ContextMenu`）
@@ -43,27 +44,27 @@ parent: ../../SPEC.md
 
 #### 验收
 
-- 替换了全部五份侧边栏拷贝：todo `ProjectList`、ssh `ConnectionTree` 与 `TerminalPane`、fs `tree` 与 `workspace-list`、pi 会话与配置。
+- 替换了全部七份拷贝：todo 项目列表、任务表格、任务关系图，ssh 连接树与终端区，fs 文件树与目录列表，pi 会话与配置。仓库里不再有本地 `ContextMenu` 实现。
 - todo、fs、pi 配置三家原来是视口坐标，已改为容器相对坐标；ssh 与 pi 会话原本就是。
-- todo 的工作区菜单（`TaskSection`、`TaskGraph`）仍用本地拷贝，没有收编：任务图是整页滚动画布，菜单要越过多个滚动容器，需要先给工作区找一个不滚动的定位容器，是另一件事。
+- todo 工作区（任务表格、任务图）的容器是 `.todo-workspace` 根，经 `MenuContainerProvider` 下发；关系图的三处 `setMenu` 收口到一个 `openAt`。
 - 组件测试 16 例覆盖：坐标夹紧与左翻、点外关闭与阻止冒泡、Esc、resize、滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染（`npm run test:sidebar`）。
 
 ### 菜单容器的选择
 
 菜单容器要满足两点：不滚动，且 `position: relative`。各模块的接法：
 
-- todo：`ProjectList` 外面多包一层 `.project-list-frame`（不滚动）作容器，内层 `.project-list-body` 照旧滚动。
+- todo：侧栏 `ProjectList` 外面多包一层 `.project-list-frame`（不滚动）作容器，内层 `.project-list-body` 照旧滚动；工作区用 `.todo-workspace` 根，经 `MenuContainerProvider` 下发到任务表格与关系图。
 - ssh：既有侧边栏根。
 - pi：`.pi-sidebar` 根经 `menuContainer` prop 下发到会话与配置两处。
-- fs：`.wsx-explorer` 根，经 `MenuContainerProvider` 下发到两列列表（`menu-container.ts` 单独成文件，避免 explorer 与 tree 互相 import）。
+- fs：`.wsx-explorer` 根，经 `MenuContainerProvider` 下发到两列列表。
 
 #### 验收
 
-- 各模块 typecheck 通过，既有测试通过（pi 51 例、todo 74 例、flow 28 例）。
+- 各模块 typecheck 通过，既有测试通过（pi 53 例、todo 74 例、flow 28 例）。
 
 ## 归属与边界
 
 - 父级：[ursi-flow](../../SPEC.md)。零运行时依赖（React 为 peer），不依赖其它 `packages/`。
 - 各模块 package.json 以 `"@ursi/sidebar": "*"` 依赖，样式由入口或组合根引入，模块之间不互相 import。
-- 后续新应用接侧边栏行时：行加 `sb-row`、选中加 `is-active`、左内边距加 2px；右键菜单传一个不滚动且 `position: relative` 的容器。
-- 工作区（非侧边栏）的菜单不属于本包范围。
+- 后续新应用接侧边栏行时：行加 `sb-row`、选中加 `is-active`、左内边距加 2px；右键菜单传一个不滚动且 `position: relative` 的容器。多个消费者共用一个容器时，用 Context 下发（Context 单独成文件，避免容器组件与消费者互相 import）。
+- 工作区的菜单也用本包的 `ContextMenu`，容器规则相同；本包不管工作区的行样式。

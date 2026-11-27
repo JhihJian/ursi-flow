@@ -834,27 +834,20 @@ button.wsx-git-sync-status {
   list-style: none;
 }
 
+/* 行的竖线与 hover/激活灰底由 @ursi/sidebar 的 .sb-row 提供。 */
 .wsx-wslist-item {
   /* 两行条目：第一行图标 + 名称 + 右侧状态，第二行路径（点击复制）。 */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0 4px;
-  padding: 3px 5px;
+  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
+  padding: 3px 5px 3px 7px;
   border-radius: 4px;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
   overflow: hidden;
-}
-
-.wsx-wslist-item:hover {
-  background: var(--wsx-line, var(--ws-line, #e5e5e5));
-}
-
-/* 当前目录用更实的底色区分于 hover。 */
-.wsx-wslist-item--active {
-  background: color-mix(in srgb, var(--wsx-ink, var(--ws-ink, #1a1a1a)) 8%, transparent);
 }
 
 /* 名称行整行：图标 + 名称 + 行尾状态，路径另起一行。 */

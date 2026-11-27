@@ -148,7 +148,7 @@ function HomeItem({
   return (
     <li
       data-pi-home-id={home.id}
-      className={`preset-item${active ? ' active' : ''}${home.valid ? '' : ' invalid'}`}
+      className={`sb-row preset-item${active ? ' is-active' : ''}${home.valid ? '' : ' invalid'}`}
       title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}\n右键查看更多操作`}
       onClick={onSelect}
       onContextMenu={(event) => {
