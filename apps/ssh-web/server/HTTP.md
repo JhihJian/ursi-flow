@@ -101,6 +101,30 @@
 - 会话不存在等 tmux 自身失败：502 `ssh_error`，消息附 tmux 的 stderr（如 `can't find session`）。
 - SSH 失败（退出码 255）：502 `ssh_error`，消息附 OpenSSH 自身 stderr。
 
+### `GET /connections/{id}/tmux-sessions/{name}/windows`
+
+列出一个 tmux 会话内的 window（tmux 状态栏里的「标签」）：远端执行 `tmux list-windows -t <name> -F '{window_index}|{window_name}|{window_active}|{window_panes}'`。返回：
+
+```json
+{"windows": [{"index": 0, "name": "bash", "active": true, "panes": 1}]}
+```
+
+- 远端无 tmux：`{"windows": null}`，前端不渲染 window 条。
+- 会话不存在（exit 1）：`{"windows": []}`。
+- SSH 失败（退出码 255）：502 `ssh_error`，消息附 OpenSSH 自身 stderr。
+
+### `POST /connections/{id}/tmux-sessions/{name}/windows`
+
+新建 window：远端执行 `tmux new-window [-n <name>] -t <name>:`（名称可空，tmux 默认以当前程序命名）。返回 `{"success": true}`。名称与服务名同一白名单，非法返回 400 `bad_request`；会话不存在等失败为 502 `ssh_error`。
+
+### `POST /connections/{id}/tmux-sessions/{name}/windows/{index}/select`
+
+切换会话的当前 window（`tmux select-window -t <name>:<index>`）。作用于远端 tmux server：正在 attach 的终端立即收到新画面。返回 `{"success": true}`；序号限 0–999，越界返回 400。
+
+### `DELETE /connections/{id}/tmux-sessions/{name}/windows/{index}`
+
+关闭 window（`tmux kill-window -t <name>:<index>`），其中窗格进程一并结束。返回 `{"success": true}`；失败语义同上。
+
 ### `GET /connections/{id}/terminal?tmux_session=<name>&cols=<n>&rows=<n>`
 
 WebSocket 升级请求，启动一条全新 OpenSSH 子进程并 attach：

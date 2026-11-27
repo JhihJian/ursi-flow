@@ -95,6 +95,86 @@ pub async fn get_tmux_sessions(
     Ok(Json(crate::models::TmuxSessionsResponse { sessions }))
 }
 
+/// window 序号路径参数校验。
+fn window_index(index: u32) -> AppResult<u32> {
+    // tmux 默认 base-index 0，上限 999 足够；避免把任意数字拼进目标串。
+    if index <= 999 {
+        Ok(index)
+    } else {
+        Err(bad_request(format!("非法 window 序号：{index}")))
+    }
+}
+
+/// `GET /api/connections/{id}/tmux-sessions/{name}/windows`：列出会话内的 window。
+pub async fn get_tmux_windows(
+    Path((id, name)): Path<(i64, String)>,
+) -> AppResult<Json<crate::models::TmuxWindowsResponse>> {
+    if !valid_tmux_session(&name) {
+        return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+    }
+    let config = load_connection(id).await?;
+    let windows = crate::session::list_tmux_windows(&config, &name)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(crate::models::TmuxWindowsResponse { windows }))
+}
+
+/// `POST /api/connections/{id}/tmux-sessions/{name}/windows`：新建 window。
+pub async fn post_tmux_window(
+    Path((id, name)): Path<(i64, String)>,
+    request: Option<Json<crate::models::CreateTmuxWindowRequest>>,
+) -> AppResult<Json<SuccessResponse>> {
+    if !valid_tmux_session(&name) {
+        return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+    }
+    // 请求体可省略或名称为空：tmux 默认以当前程序命名。
+    let window_name = request
+        .map(|Json(body)| body.name.trim().to_string())
+        .unwrap_or_default();
+    if window_name.len() > 64
+        || !window_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(bad_request(format!("非法 window 名：{window_name}")));
+    }
+    let config = load_connection(id).await?;
+    crate::session::new_tmux_window(&config, &name, &window_name)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+/// `POST /api/connections/{id}/tmux-sessions/{name}/windows/{index}/select`：切换当前 window。
+pub async fn select_tmux_window(
+    Path((id, name, index)): Path<(i64, String, u32)>,
+) -> AppResult<Json<SuccessResponse>> {
+    if !valid_tmux_session(&name) {
+        return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+    }
+    window_index(index)?;
+    let config = load_connection(id).await?;
+    crate::session::select_tmux_window(&config, &name, index)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+/// `DELETE /api/connections/{id}/tmux-sessions/{name}/windows/{index}`：关闭 window。
+pub async fn delete_tmux_window(
+    Path((id, name, index)): Path<(i64, String, u32)>,
+) -> AppResult<Json<SuccessResponse>> {
+    if !valid_tmux_session(&name) {
+        return Err(bad_request(format!("非法 tmux 会话名：{name}")));
+    }
+    window_index(index)?;
+    let config = load_connection(id).await?;
+    crate::session::kill_tmux_window(&config, &name, index)
+        .await
+        .map_err(|error| AppError::Ssh(format!("{error:#}")))?;
+    Ok(Json(SuccessResponse { success: true }))
+}
+
 /// `DELETE /api/connections/{id}/tmux-sessions/{name}`：移除远端 tmux 会话。
 /// 服务端不维护会话，会话存活状态以远端 tmux 为准。
 pub async fn delete_tmux_session(

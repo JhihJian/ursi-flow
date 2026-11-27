@@ -1,7 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { ApiError, SshApi } from '../api/client'
 import { memoryPercent } from '../resource-metrics'
-import type { Connection, ConnectionInput, HostMetrics, ImportConnectionsResponse, TestConnectionResponse, TmuxSession } from '../api/types'
+import type { Connection, ConnectionInput, HostMetrics, ImportConnectionsResponse, TestConnectionResponse, TmuxSession, TmuxWindow } from '../api/types'
 
 export type EditorTarget = { kind: 'new' } | { kind: 'edit'; connection: Connection }
 
@@ -78,6 +78,8 @@ export interface SshStoreState {
   sessionFormOpen: boolean
   /** 每个连接各自的 tmux 会话列表（树默认全展开，需要逐连接的数据）。 */
   sessionsByConnection: Record<number, SessionsState>
+  /** 打开中标签的 window 列表：键为终端标签 key。仅远端有 tmux 的标签有列表。 */
+  windowsByTab: Record<string, { loading: boolean; windows: TmuxWindow[]; error: string | null }>
   /** 连接中设备的最近一次采样与走势；键为连接 id。 */
   metricsByConnection: Record<number, ConnectionMetrics>
   /** 资源面板是否展开；状态栏指标不受它影响。 */
@@ -104,6 +106,16 @@ export interface SshStoreState {
   closeSessionForm: () => void
   /** 刷新指定连接（缺省为当前选中连接）的 tmux 会话列表。 */
   refreshTmuxSessions: (id?: number) => Promise<void>
+  /** 拉取指定终端标签的 window 列表。仅远端有 tmux 的标签有意义。 */
+  refreshTmuxWindows: (tabKey: string, connectionId: number, session: string) => Promise<void>
+  /** 切换会话的当前 window，成功后刷新列表；作用在远端 tmux server 上。 */
+  selectTmuxWindow: (tabKey: string, connectionId: number, session: string, index: number) => Promise<boolean>
+  /** 新建 window（名称可空），成功后刷新列表。 */
+  createTmuxWindow: (tabKey: string, connectionId: number, session: string, name?: string) => Promise<boolean>
+  /** 关闭 window，成功后刷新列表。 */
+  killTmuxWindow: (tabKey: string, connectionId: number, session: string, index: number) => Promise<boolean>
+  /** 标签关闭时清掉它的 window 状态。 */
+  dropTmuxWindows: (tabKey: string) => void
   /** 移除远端 tmux 会话：kill-session 后刷新列表，打开中的标签一并关闭（其中进程随会话结束）。 */
   killTmuxSession: (connectionId: number, session: string) => Promise<void>
   /** 采样指定连接的设备资源；同一连接同一时间只跑一轮。 */
@@ -183,6 +195,7 @@ export function createSshStore(
     activeTerminalKey: null,
     sessionFormOpen: false,
     sessionsByConnection: {},
+    windowsByTab: {},
     metricsByConnection: {},
     resourcesOpen: false,
     batchImportOpen: false,
@@ -222,6 +235,7 @@ export function createSshStore(
     closeTerminal: (key) => {
       const { terminals, activeTerminalKey } = get()
       const next = nextActiveKey(terminals, new Set([key]), activeTerminalKey)
+      get().dropTmuxWindows(key)
       set({
         terminals: terminals.filter((tab) => tab.key !== key),
         activeTerminalKey: next,
@@ -272,6 +286,82 @@ export function createSshStore(
           },
         }))
       }
+    },
+
+    refreshTmuxWindows: async (tabKey, connectionId, session) => {
+      const current = get().windowsByTab[tabKey]
+      // 已有列表时保留旧数据做占位，避免每次轮询闪烁。
+      set((state) => ({
+        windowsByTab: {
+          ...state.windowsByTab,
+          [tabKey]: { loading: true, windows: current?.windows ?? [], error: null },
+        },
+      }))
+      try {
+        const { windows } = await api.listTmuxWindows(connectionId, session)
+        // 标签可能已在拉取期间关闭，别给死标签写状态。
+        if (!get().terminals.some((tab) => tab.key === tabKey)) return
+        set((state) => ({
+          windowsByTab: {
+            ...state.windowsByTab,
+            [tabKey]: { loading: false, windows: windows ?? [], error: null },
+          },
+        }))
+      } catch (error) {
+        if (!get().terminals.some((tab) => tab.key === tabKey)) return
+        set((state) => ({
+          windowsByTab: {
+            ...state.windowsByTab,
+            [tabKey]: {
+              loading: false,
+              windows: current?.windows ?? [],
+              error: toMessage(error),
+            },
+          },
+        }))
+      }
+    },
+
+    selectTmuxWindow: async (tabKey, connectionId, session, index) => {
+      try {
+        await api.selectTmuxWindow(connectionId, session, index)
+        await get().refreshTmuxWindows(tabKey, connectionId, session)
+        return true
+      } catch (error) {
+        get().setNotice(toMessage(error))
+        return false
+      }
+    },
+
+    createTmuxWindow: async (tabKey, connectionId, session, name = '') => {
+      try {
+        await api.createTmuxWindow(connectionId, session, name)
+        await get().refreshTmuxWindows(tabKey, connectionId, session)
+        return true
+      } catch (error) {
+        get().setNotice(toMessage(error))
+        return false
+      }
+    },
+
+    killTmuxWindow: async (tabKey, connectionId, session, index) => {
+      try {
+        await api.killTmuxWindow(connectionId, session, index)
+        await get().refreshTmuxWindows(tabKey, connectionId, session)
+        return true
+      } catch (error) {
+        get().setNotice(toMessage(error))
+        return false
+      }
+    },
+
+    dropTmuxWindows: (tabKey) => {
+      set((state) => {
+        if (!(tabKey in state.windowsByTab)) return state
+        const next = { ...state.windowsByTab }
+        delete next[tabKey]
+        return { windowsByTab: next }
+      })
     },
 
     killTmuxSession: async (connectionId, session) => {

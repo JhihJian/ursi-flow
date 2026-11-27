@@ -6,6 +6,7 @@ import type {
   ImportConnectionsResponse,
   TestConnectionResponse,
   TmuxSessionsResponse,
+  TmuxWindowsResponse,
 } from './types'
 
 export interface SshApiOptions {
@@ -78,6 +79,37 @@ export class SshApi {
     return this.request(`/connections/${id}/tmux-sessions/${encodeURIComponent(session)}`, {
       method: 'DELETE',
     })
+  }
+
+  /** 列出 tmux 会话内的 window；windows 为 null 表示远端没有 tmux。 */
+  listTmuxWindows(id: number, session: string): Promise<TmuxWindowsResponse> {
+    return this.request(
+      `/connections/${id}/tmux-sessions/${encodeURIComponent(session)}/windows`,
+    )
+  }
+
+  /** 新建 tmux window；name 可空，tmux 默认以当前程序命名。 */
+  createTmuxWindow(id: number, session: string, name = ''): Promise<{ success: boolean }> {
+    return this.request(
+      `/connections/${id}/tmux-sessions/${encodeURIComponent(session)}/windows`,
+      { method: 'POST', body: JSON.stringify({ name }) },
+    )
+  }
+
+  /** 切换会话的当前 window（作用于远端 tmux server，attach 中的终端立即换画面）。 */
+  selectTmuxWindow(id: number, session: string, index: number): Promise<{ success: boolean }> {
+    return this.request(
+      `/connections/${id}/tmux-sessions/${encodeURIComponent(session)}/windows/${index}/select`,
+      { method: 'POST' },
+    )
+  }
+
+  /** 关闭 tmux window（kill-window，其中窗格进程一并结束）。 */
+  killTmuxWindow(id: number, session: string, index: number): Promise<{ success: boolean }> {
+    return this.request(
+      `/connections/${id}/tmux-sessions/${encodeURIComponent(session)}/windows/${index}`,
+      { method: 'DELETE' },
+    )
   }
 
   /** 采样远端设备资源。每次请求由服务端跑一轮独立的批量 ssh。 */

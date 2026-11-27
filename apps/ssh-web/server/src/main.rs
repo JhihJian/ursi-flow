@@ -50,6 +50,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/connections/{id}/tmux-sessions/{name}",
             delete(app::delete_tmux_session),
         )
+        .route(
+            "/api/connections/{id}/tmux-sessions/{name}/windows",
+            get(app::get_tmux_windows).post(app::post_tmux_window),
+        )
+        .route(
+            "/api/connections/{id}/tmux-sessions/{name}/windows/{index}/select",
+            post(app::select_tmux_window),
+        )
+        .route(
+            "/api/connections/{id}/tmux-sessions/{name}/windows/{index}",
+            delete(app::delete_tmux_window),
+        )
         .route("/api/connections/import", post(handlers::import_connections))
         .route("/api/ssh-config/hosts", get(handlers::discover_ssh_hosts))
         .route("/api/connections/{id}/metrics", get(app::get_metrics))

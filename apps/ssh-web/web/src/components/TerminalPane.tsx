@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { ContextMenu, type MenuState } from './ContextMenu'
+import { WindowBar } from './WindowBar'
 import type { SearchAddon } from '@xterm/addon-search'
 import { openTerminalBridge, type TerminalBridge } from '../terminal/bridge'
 import { TerminalSearch } from '../terminal/search'
@@ -136,6 +137,8 @@ export function TerminalPane({
       style={{ background: surfaceBackground, visibility: active ? 'visible' : 'hidden' }}
       onContextMenu={openMenu}
     >
+      {/* window 条只跟激活标签走：非激活面板隐藏时也用不着展示。 */}
+      {active ? <WindowBar tab={tab} /> : null}
       <div className="ssh-terminal-host" ref={hostRef} />
       <div className="ssh-link-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
       <TerminalSearch

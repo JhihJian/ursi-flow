@@ -68,6 +68,31 @@ pub struct TmuxSessionsResponse {
     pub sessions: Option<Vec<TmuxSession>>,
 }
 
+/// 远端 tmux 会话里的一个 window（终端内 tmux 状态栏里的「标签」）。
+#[derive(Debug, Clone, Serialize)]
+pub struct TmuxWindow {
+    /// window 序号，tmux 的切换/关闭都以序号为准。
+    pub index: u32,
+    pub name: String,
+    /// 是否为该会话的当前 window。
+    pub active: bool,
+    /// 该 window 的窗格数（tmux 可再分屏）。
+    pub panes: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TmuxWindowsResponse {
+    /// None 表示远端没有 tmux（已回退普通 shell）。
+    pub windows: Option<Vec<TmuxWindow>>,
+}
+
+/// 新建 window 的请求体：名称可空（tmux 默认以当前程序命名）。
+#[derive(Debug, Deserialize)]
+pub struct CreateTmuxWindowRequest {
+    #[serde(default)]
+    pub name: String,
+}
+
 /// `~/.ssh/config` 里发现的一台可免密登录主机：Host 别名及解析出的 user/port。
 #[derive(Debug, Serialize)]
 pub struct DiscoveredHost {

@@ -8,7 +8,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 
 use crate::models::Connection as ConnectionConfig;
-use crate::models::TmuxSession;
+use crate::models::{TmuxSession, TmuxWindow};
 
 /// 连接超时：不可达时 ssh 自身也会退出，这里兜底防悬挂。
 pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
@@ -314,6 +314,142 @@ pub async fn kill_tmux_session(connection: &ConnectionConfig, name: &str) -> Res
             format!("移除 tmux 会话失败：{detail}")
         })),
     }
+}
+
+/// window 名称白名单：与会话名同规则（ASCII 字母数字下划线连字符，1-64）。
+/// 空串合法：表示不重命名，tmux 默认以当前程序命名。
+fn valid_tmux_window_name(name: &str) -> bool {
+    name.is_empty() || valid_tmux_session(name)
+}
+
+/// 列出一个 tmux 会话内的 window（终端内 tmux 状态栏里的「标签」）。
+/// 远端没有 tmux 时返回 None（前端不渲染 window 条）。
+pub async fn list_tmux_windows(
+    connection: &ConnectionConfig,
+    session: &str,
+) -> Result<Option<Vec<TmuxWindow>>> {
+    if !valid_tmux_session(session) {
+        return Err(anyhow!("非法 tmux 会话名：{session}"));
+    }
+    // 竖线分隔字段；window 名可能含空格但不含竖线。window_active 输出 0 或 1。
+    // tmux 缺失由显式标记区分，会话不存在（exit 1）是空态，都不是错误。
+    let script = format!(
+        "{TMUX_PATH_PREFIX}if command -v tmux >/dev/null 2>&1; then tmux list-windows -t '{session}' -F '#{{window_index}}|#{{window_name}}|#{{window_active}}|#{{window_panes}}' 2>/dev/null; else echo {NO_TMUX_MARKER}; fi"
+    );
+    let (out, err, code) = exec_collect(connection, &script).await?;
+    if out.lines().any(|line| line.trim() == NO_TMUX_MARKER) {
+        return Ok(None);
+    }
+    match code {
+        0 => {
+            let windows = out
+                .lines()
+                .filter_map(|line| {
+                    let mut parts = line.splitn(4, '|');
+                    Some(TmuxWindow {
+                        index: parts.next()?.parse().ok()?,
+                        name: parts.next()?.to_string(),
+                        active: parts.next()? == "1",
+                        panes: parts.next()?.parse().unwrap_or(1),
+                    })
+                })
+                .collect();
+            Ok(Some(windows))
+        }
+        // 会话不存在、远端无 tmux server：视为无 window 可展示，不报错。
+        1 => Ok(Some(Vec::new())),
+        255 => {
+            let detail = err.trim();
+            Err(anyhow!(if detail.is_empty() {
+                "ssh 连接失败（exit 255）".to_string()
+            } else {
+                format!("ssh 连接失败：{detail}")
+            }))
+        }
+        code => {
+            let detail = err.trim();
+            Err(anyhow!(if detail.is_empty() {
+                format!("tmux list-windows 异常退出：{code}")
+            } else {
+                format!("tmux list-windows 异常退出：{code}：{detail}")
+            }))
+        }
+    }
+}
+
+/// window 操作的统一收尾：区分 ssh 失败（255）与 tmux 自身失败。
+async fn window_op_result(code: i32, stderr: &str, action: &str) -> Result<()> {
+    let detail = stderr.trim();
+    match code {
+        0 => Ok(()),
+        255 => Err(anyhow!(if detail.is_empty() {
+            "ssh 连接失败（exit 255）".to_string()
+        } else {
+            format!("ssh 连接失败：{detail}")
+        })),
+        _ => Err(anyhow!(if detail.is_empty() {
+            format!("{action}失败（exit {code}）")
+        } else {
+            format!("{action}失败：{detail}")
+        })),
+    }
+}
+
+/// 切换会话的当前 window（`tmux select-window -t session:index`）。
+/// 作用于远端 tmux server：正在 attach 的终端立即收到新画面。
+pub async fn select_tmux_window(
+    connection: &ConnectionConfig,
+    session: &str,
+    index: u32,
+) -> Result<()> {
+    if !valid_tmux_session(session) {
+        return Err(anyhow!("非法 tmux 会话名：{session}"));
+    }
+    let script = format!(
+        "{TMUX_PATH_PREFIX}tmux select-window -t '{session}:{index}'"
+    );
+    let (_out, err, code) = exec_collect(connection, &script).await?;
+    window_op_result(code, &err, "切换 window").await
+}
+
+/// 新建 window（`tmux new-window -t session:`，PWD 取会话当前路径，名称可空）。
+pub async fn new_tmux_window(
+    connection: &ConnectionConfig,
+    session: &str,
+    name: &str,
+) -> Result<()> {
+    if !valid_tmux_session(session) {
+        return Err(anyhow!("非法 tmux 会话名：{session}"));
+    }
+    if !valid_tmux_window_name(name) {
+        return Err(anyhow!("非法 window 名：{name}"));
+    }
+    let name_flag = if name.is_empty() {
+        String::new()
+    } else {
+        format!(" -n '{name}'")
+    };
+    let script = format!(
+        "{TMUX_PATH_PREFIX}tmux new-window{name_flag} -t '{session}:'"
+    );
+    let (_out, err, code) = exec_collect(connection, &script).await?;
+    window_op_result(code, &err, "新建 window").await
+}
+
+/// 关闭 window（`tmux kill-window -t session:index`），其中窗格与进程一并结束。
+pub async fn kill_tmux_window(
+    connection: &ConnectionConfig,
+    session: &str,
+    index: u32,
+) -> Result<()> {
+    if !valid_tmux_session(session) {
+        return Err(anyhow!("非法 tmux 会话名：{session}"));
+    }
+    let script = format!(
+        "{TMUX_PATH_PREFIX}tmux kill-window -t '{session}:{index}'"
+    );
+    let (_out, err, code) = exec_collect(connection, &script).await?;
+    window_op_result(code, &err, "关闭 window").await
 }
 
 /// 远端无 tmux 时由脚本打印的标记。用显式探测替代「退出码 127」，

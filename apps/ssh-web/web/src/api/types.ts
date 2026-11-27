@@ -31,6 +31,19 @@ export interface TmuxSessionsResponse {
   sessions: TmuxSession[] | null
 }
 
+/** tmux 会话里的一个 window（终端内 tmux 状态栏里的「标签」）。 */
+export interface TmuxWindow {
+  index: number
+  name: string
+  active: boolean
+  panes: number
+}
+
+/** tmux windows 响应：windows 为 null 表示远端没有 tmux。 */
+export interface TmuxWindowsResponse {
+  windows: TmuxWindow[] | null
+}
+
 /** 本机 ssh config 里发现的一台可免密登录主机。 */
 export interface DiscoveredHost {
   host: string
