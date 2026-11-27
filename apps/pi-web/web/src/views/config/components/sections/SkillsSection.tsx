@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { SkillContent, SkillItem, SkillsListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Loading } from '../ui'
 
 /**
@@ -58,87 +59,71 @@ export function SkillsSection({ home }: { home: string }) {
   }
 
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">Skills</h1>
-        <input
-          className="filter-input"
-          placeholder="Filter skills"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          aria-label="过滤 skills"
-        />
-      </header>
-      {listing.warnings.map((w, i) => (
-        <p key={i} className="section-warn">
-          {w}
-        </p>
-      ))}
-      {filtered.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">Model</th>
-              <th>Name</th>
-              <th className="col-size">Size</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((item) => (
-              <tr
-                key={item.relDir}
-                className={item.relDir === selected ? 'is-selected' : undefined}
-                onClick={() => setSelected(item.relDir)}
-                title={item.filePath}
-              >
-                <td className="col-state">
-                  <span className={`state-mark${item.disableModelInvocation ? ' off' : ''}`} aria-hidden>
-                    {item.disableModelInvocation ? '×' : '✓'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cell-title">{item.name}</div>
-                  <div className="cell-sub">{item.description || '（无描述）'}</div>
-                </td>
-                <td className="col-size">{formatBytes(item.bytes)}</td>
-              </tr>
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead
+            title="Skills"
+            actions={
+              <input
+                className="filter-input"
+                placeholder="Filter"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label="过滤 skills"
+              />
+            }
+          />
+          {filtered.map((item) => (
+            <SectionListItem
+              key={item.relDir}
+              active={item.relDir === selected}
+              data-mark={item.disableModelInvocation ? 'off' : 'ok'}
+              title={item.name}
+              sub={item.description || '（无描述）'}
+              badges={<span className="badge">{formatBytes(item.bytes)}</span>}
+              onClick={() => setSelected(item.relDir)}
+            />
+          ))}
+          {filtered.length === 0 ? (
+            <p className="mono-dim">{needle ? '没有匹配的 skill' : 'skills/ 目录为空'}。</p>
+          ) : null}
+        </>
+      }
+      detail={
+        selectedSkill ? (
+          <div className="detail-sheet is-plain">
+            <SectionDetailHead
+              title={selectedSkill.name}
+              meta={`skills/${selectedSkill.relDir} · ${formatBytes(selectedSkill.bytes)}`}
+              actions={
+                selectedSkill.disableModelInvocation ? (
+                  <button type="button" className="btn btn-primary" onClick={() => void toggle(selectedSkill, false)}>
+                    启用模型调用
+                  </button>
+                ) : (
+                  <button type="button" className="btn" onClick={() => void toggle(selectedSkill, true)}>
+                    禁用模型调用
+                  </button>
+                )
+              }
+            />
+            {listing.warnings.map((w, i) => (
+              <p key={i} className="section-warn">
+                {w}
+              </p>
             ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState title={needle ? '没有匹配的 skill' : 'skills/ 目录为空'} />
-      )}
-
-      {selectedSkill ? (
-        <div className="detail-sheet">
-          <div className="detail-grip" aria-hidden />
-          <div className="detail-body">
-            <div className="detail-head">
-              <h2 className="detail-title">{selectedSkill.name}</h2>
-              <span className="detail-meta">
-                skills/{selectedSkill.relDir} · {formatBytes(selectedSkill.bytes)}
-              </span>
-            </div>
             <p className="detail-desc">{selectedSkill.description || '（无描述）'}</p>
             <SkillContentView home={home} relDir={selectedSkill.relDir} />
-            <div className="detail-actions">
-              {selectedSkill.disableModelInvocation ? (
-                <button type="button" className="btn btn-primary" onClick={() => void toggle(selectedSkill, false)}>
-                  启用模型调用
-                </button>
-              ) : (
-                <button type="button" className="btn" onClick={() => void toggle(selectedSkill, true)}>
-                  禁用模型调用
-                </button>
-              )}
-              <span className="detail-hint">
-                开关写进 SKILL.md frontmatter（行级切换，正文不变），备份 .bak-manager。
-              </span>
-            </div>
+            <p className="detail-hint">
+              开关写进 SKILL.md frontmatter（行级切换，正文不变），备份 .bak-manager。
+            </p>
           </div>
-        </div>
-      ) : null}
-    </section>
+        ) : (
+          <EmptyState title="没有选中的 skill" hint="在左侧选择一个 skill。" />
+        )
+      }
+    />
   )
 }
 

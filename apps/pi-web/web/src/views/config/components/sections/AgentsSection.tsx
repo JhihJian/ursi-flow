@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { AgentProfile, AgentProfileFields, AgentsListing, AgentsSettingsView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionFooterNote, SectionListAction, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading, Switch } from '../ui'
 
 /**
@@ -109,87 +110,90 @@ export function AgentsSection({ home }: { home: string }) {
     return ok
   }
 
-  return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">Subagent</h1>
-        <button type="button" className="btn small" onClick={() => setCreating(true)}>
-          新增 profile
-        </button>
-      </header>
-      {listing.profiles.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">On</th>
-              <th>Profile</th>
-              <th className="col-size">File</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.profiles.map((profile) => (
-              <tr
-                key={profile.file}
-                className={profile.file === selected && !creating ? 'is-selected' : undefined}
-                title={profile.description}
-                onClick={() => {
-                  setCreating(false)
-                  setSelected(profile.file)
-                }}
-              >
-                <td className="col-state">
-                  <span className={`state-mark${profile.fields.enabled ? '' : ' off'}`}>
-                    {profile.fields.enabled ? '✓' : '×'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cell-title">{profile.name}</div>
-                  <div className="cell-sub">{profile.description || '（无描述）'}</div>
-                </td>
-                <td className="col-size">{profile.file}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState title="agents/ 目录没有 profile" hint="点击右上角「新增 profile」。" />
-      )}
+  const BUILTIN_ITEM = '__builtin__'
+  const builtinSelected = selected === BUILTIN_ITEM && !creating
 
-      {creating ? (
-        <ProfileEditor
-          key="__new__"
-          file=""
-          initial={{
-            name: '',
-            description: '',
-            fields: emptyFields(),
-            presentKeys: [],
-            extraKeys: [],
-            unparsedKeys: [],
-            body: '',
-          }}
-          isNew
-          onSave={(draft) => save('', draft, '')}
-          onCancel={() => setCreating(false)}
-        />
-      ) : selectedProfile ? (
-        <ProfileEditor
-          key={selectedProfile.file}
-          file={selectedProfile.file}
-          initial={draftOf(selectedProfile)}
-          revision={selectedProfile.revision}
-          onSave={(draft) => save(selectedProfile.file, draft, selectedProfile.revision)}
-          onDelete={async () => {
-            const ok = await runWrite(`删除 profile ${selectedProfile.file}`, async () => {
-              await api.deleteAgentProfile(home, selectedProfile.file)
-              await reload()
-            })
-            return ok
-          }}
-        />
-      ) : null}
-      <BuiltInCard settings={listing.settings} onSaved={reload} />
-    </section>
+  return (
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead
+            title="Subagent"
+            actions={
+              <button type="button" className="btn small" onClick={() => setCreating(true)}>
+                新增
+              </button>
+            }
+          />
+          {listing.profiles.map((profile) => (
+            <SectionListItem
+              key={profile.file}
+              active={profile.file === selected && !creating}
+              data-mark={profile.fields.enabled ? 'ok' : 'off'}
+              title={profile.name}
+              sub={profile.description || '（无描述）'}
+              onClick={() => {
+                setCreating(false)
+                setSelected(profile.file)
+              }}
+            />
+          ))}
+          <SectionListItem
+            active={builtinSelected}
+            data-mark={listing.settings.builtInEnabled ? 'ok' : 'off'}
+            title="内置 agent"
+            sub="agents/settings.json · 开关与禁用列表"
+            onClick={() => {
+              setCreating(false)
+              setSelected(BUILTIN_ITEM)
+            }}
+          />
+          <SectionListAction onClick={() => setCreating(true)}>新增 profile</SectionListAction>
+        </>
+      }
+      footer={
+        <SectionFooterNote note="profile 与内置开关都是全局 agents/；项目级 .pi/agents/ 本页不编辑。" />
+      }
+      detail={
+        creating ? (
+          <ProfileEditor
+            key="__new__"
+            file=""
+            initial={{
+              name: '',
+              description: '',
+              fields: emptyFields(),
+              presentKeys: [],
+              extraKeys: [],
+              unparsedKeys: [],
+              body: '',
+            }}
+            isNew
+            onSave={(draft) => save('', draft, '')}
+            onCancel={() => setCreating(false)}
+          />
+        ) : builtinSelected ? (
+          <BuiltInCard settings={listing.settings} onSaved={reload} />
+        ) : selectedProfile ? (
+          <ProfileEditor
+            key={selectedProfile.file}
+            file={selectedProfile.file}
+            initial={draftOf(selectedProfile)}
+            revision={selectedProfile.revision}
+            onSave={(draft) => save(selectedProfile.file, draft, selectedProfile.revision)}
+            onDelete={async () => {
+              const ok = await runWrite(`删除 profile ${selectedProfile.file}`, async () => {
+                await api.deleteAgentProfile(home, selectedProfile.file)
+                await reload()
+              })
+              return ok
+            }}
+          />
+        ) : (
+          <EmptyState title="没有选中的 profile" hint="在左侧选择一个 profile，或点「新增」。" />
+        )
+      }
+    />
   )
 }
 
@@ -254,16 +258,12 @@ function ProfileEditor({
   }
 
   return (
-    <div className="detail-sheet">
-      <div className="detail-grip" aria-hidden />
-      <div className="detail-body">
-        <div className="detail-head">
-          <h2 className="detail-title">{isNew ? '新增 profile' : file}</h2>
-          <span className="detail-meta">
-            受管 key 用表单编辑，其余 frontmatter key 原样保留；保存为 agents/&lt;name&gt;.md
-          </span>
-        </div>
-        <div className="detail-form">
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title={isNew ? '新增 profile' : file}
+        meta="受管 key 用表单编辑，其余 frontmatter key 原样保留；保存为 agents/<name>.md"
+      />
+      <div className="detail-form">
           {initial.unparsedKeys.length > 0 ? (
             <p className="section-warn">
               这些受管 key 的值不是标准写法，保存时原样保留：{initial.unparsedKeys.join('、')}。在表单里改动后才会重写。
@@ -527,7 +527,6 @@ function ProfileEditor({
             ) : null}
             {revision ? <span className="detail-hint">写入前用 revision 做乐观锁</span> : null}
           </div>
-        </div>
       </div>
     </div>
   )
@@ -561,14 +560,12 @@ function BuiltInCard({
   }
 
   return (
-    <div className="detail-sheet">
-      <div className="detail-grip" aria-hidden />
-      <div className="detail-body">
-        <div className="detail-head">
-          <h2 className="detail-title">内置 agent</h2>
-          <span className="detail-meta">agents/settings.json · 禁用列表里的内置 agent 不再加载</span>
-        </div>
-        <div className="detail-form">
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title="内置 agent"
+        meta="agents/settings.json · 禁用列表里的内置 agent 不再加载"
+      />
+      <div className="detail-form">
           <div className="row-between">
             <Switch
               pressed={settings.builtInEnabled}
@@ -610,9 +607,7 @@ function BuiltInCard({
             <button type="button" className="btn btn-primary" onClick={() => void save()}>
               保存设置
             </button>
-            <span className="detail-hint">profile 与内置开关都是全局 agents/；项目级 .pi/agents/ 本页不编辑。</span>
           </div>
-        </div>
       </div>
     </div>
   )

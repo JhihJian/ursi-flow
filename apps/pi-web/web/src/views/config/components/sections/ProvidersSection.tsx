@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { AuthEntryView, AuthListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
 
 /**
@@ -14,14 +15,6 @@ const TYPE_LABEL: Record<AuthEntryView['type'], string> = {
   api_key: 'API key',
   oauth: 'OAuth',
   unknown: '未知',
-}
-
-function formatExpires(expires: number | null): string {
-  if (!expires) return '—'
-  const date = new Date(expires)
-  const expired = expires < Date.now()
-  const text = `${date.toLocaleString('zh-CN', { hour12: false })}`
-  return expired ? `${text}（已过期）` : text
 }
 
 function newEntryTemplate(type: 'api_key' | 'oauth'): Record<string, unknown> {
@@ -71,65 +64,46 @@ export function ProvidersSection({ home }: { home: string }) {
   }
 
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">凭据</h1>
-        <div className="field-row">
-          <span className="section-desc">auth.json · 凭据字段只回显掩码</span>
-          <button type="button" className="btn small" onClick={() => setCreating(true)}>
-            新增条目
-          </button>
-        </div>
-      </header>
-      {listing.entries.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">Type</th>
-              <th>Provider</th>
-              <th className="col-size">凭据</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.entries.map((entry) => (
-              <tr
-                key={entry.provider}
-                className={entry.provider === selected && !creating ? 'is-selected' : undefined}
-                onClick={() => {
-                  setCreating(false)
-                  setSelected(entry.provider)
-                }}
-              >
-                <td className="col-state">
-                  <span className="state-mark">{TYPE_LABEL[entry.type]}</span>
-                </td>
-                <td>
-                  <div className="cell-title">{entry.provider}</div>
-                  <div className="cell-sub">
-                    {entry.keyCommand
-                      ? '从命令取密钥'
-                      : entry.maskedFields.length > 0
-                        ? `掩码字段：${entry.maskedFields.join('、')}`
-                        : '（无凭据字段）'}
-                  </div>
-                </td>
-                <td className="col-size">
-                  {entry.type === 'oauth' ? formatExpires(entry.expires) : entry.maskedFields.length > 0 ? '已设置' : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState title="auth.json 里还没有凭据" hint="点击右上角「新增条目」。" />
-      )}
-      <p className="mono-dim">
-        凭据原文不会回传到页面。OAuth 条目由 pi CLI 登录刷新，这里可以改字段或删除。
-        由环境变量提供的密钥（如 provider 扩展读的 `*_API_KEY`）不写进 auth.json，本页看不到。
-      </p>
-
-      {creating ? (
-        <EntryEditor
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead
+            title="凭据"
+            actions={
+              <button type="button" className="btn small" onClick={() => setCreating(true)}>
+                新增
+              </button>
+            }
+          />
+          {listing.entries.map((entry) => (
+            <SectionListItem
+              key={entry.provider}
+              active={entry.provider === selected && !creating}
+              data-mark={entry.maskedFields.length > 0 || entry.keyCommand ? 'ok' : 'warn'}
+              title={entry.provider}
+              sub={entry.keyCommand
+                ? '从命令取密钥'
+                : entry.maskedFields.length > 0
+                  ? `掩码字段：${entry.maskedFields.join('、')}`
+                  : '（无凭据字段）'}
+              badges={<span className="badge">{TYPE_LABEL[entry.type]}</span>}
+              onClick={() => {
+                setCreating(false)
+                setSelected(entry.provider)
+              }}
+            />
+          ))}
+          {listing.entries.length === 0 ? (
+            <p className="mono-dim">auth.json 里还没有凭据。</p>
+          ) : null}
+        </>
+      }
+      footer={
+        <SectionFooterNote note="凭据原文不会回传到页面；环境变量提供的密钥不写进 auth.json，本页看不到。" />
+      }
+      detail={
+        creating ? (
+          <EntryEditor
           key="__new__"
           provider=""
           entry={newEntryTemplate('api_key')}
@@ -147,8 +121,10 @@ export function ProvidersSection({ home }: { home: string }) {
           onSave={(provider, next) => saveOne(provider, next, `保存凭据 ${provider}`)}
           onDelete={() => saveOne(selectedEntry.provider, null, `删除凭据 ${selectedEntry.provider}`)}
         />
-      ) : null}
-    </section>
+      ) : (
+        <EmptyState title="没有选中的凭据" hint="在左侧选择一个条目，或点「新增」。" />
+      )}
+    />
   )
 }
 
@@ -200,16 +176,12 @@ function EntryEditor({
   }
 
   return (
-    <div className="detail-sheet">
-      <div className="detail-grip" aria-hidden />
-      <div className="detail-body">
-        <div className="detail-head">
-          <h2 className="detail-title">{isNew ? '新增条目' : provider}</h2>
-          <span className="detail-meta">
-            key / access / refresh 显示为掩码时，原样保存即保留原文；改成新值则写新值
-          </span>
-        </div>
-        <div className="detail-form">
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title={isNew ? '新增条目' : provider}
+        meta="key / access / refresh 显示为掩码时，原样保存即保留原文；改成新值则写新值"
+      />
+      <div className="detail-form">
           {keyCommand ? (
             <p className="detail-hint">
               该条目的 key 是命令形式（{keyCommand}），pi 在首次需要时执行取密钥；管理台不会执行。
@@ -268,7 +240,6 @@ function EntryEditor({
               </button>
             ) : null}
           </div>
-        </div>
       </div>
     </div>
   )

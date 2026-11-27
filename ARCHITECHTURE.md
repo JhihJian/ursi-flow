@@ -37,7 +37,7 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | 主题 | 设计文档 |
 | --- | --- |
 | SUMM-Todo 看板 | [布局、拖拽与数据流](docs/design/todo-web/DASHBOARD.md) · [工作区外壳与模块组合](docs/design/todo-web/WORKSPACE-SHELL.md) |
-| Pi Web | [接口与状态机契约](apps/pi-web/HTTP.md) |
+| Pi Web | [接口与状态机契约](apps/pi-web/HTTP.md) · [配置视图布局骨架](docs/design/pi-web/CONFIG-LAYOUT.md) |
 | SSH 终端 | [接入工作区外壳](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) |
 | dae 路由观察台 | [同源代理、页面结构与刷新策略](docs/design/dae-web/OVERVIEW.md) |
 | Pi Web 架构 | [领域模型、状态机与实体契约](docs/design/pi-web/OVERVIEW.md) |

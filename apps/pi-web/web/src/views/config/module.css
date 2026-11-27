@@ -643,6 +643,143 @@ display: flex;
   gap: var(--space-xs);
 }
 
+/* 行首状态点：list-item-mark 留位，配合 :before 填色，
+   选中/停用态由 list-item 上的 data-mark 属性驱动。 */
+.pi-manager-root .list-item-mark {
+flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gray-400);
+}
+
+.pi-manager-root .list-item[data-mark='ok'] .list-item-mark {
+background: var(--ok);
+}
+
+.pi-manager-root .list-item[data-mark='off'] .list-item-mark {
+background: var(--gray-200);
+}
+
+.pi-manager-root .list-item[data-mark='warn'] .list-item-mark {
+background: var(--warn);
+}
+
+.pi-manager-root .list-item-action {
+color: var(--gray-600);
+}
+
+.pi-manager-root .list-item-action .list-item-mark {
+background: none;
+  position: relative;
+}
+
+.pi-manager-root .list-item-action .list-item-mark::before {
+content: '+';
+  position: absolute;
+  inset: 0;
+  font-size: 10px;
+  line-height: 6px;
+  color: inherit;
+}
+
+/*
+ * 分区骨架：panel-split 是分区根（占满 config-section-host），
+ * panel-list / panel-detail 是仅有的两个滚动层，panel-footer 固定不滚。
+ */
+.pi-manager-root .panel-split {
+flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pi-manager-root .panel-body {
+flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.pi-manager-root .panel-list {
+width: var(--list-width);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--gray-200);
+  overflow-y: auto;
+  padding: var(--space-sm);
+}
+
+.pi-manager-root .panel-list-head {
+display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-xs) var(--space-sm);
+  position: sticky;
+  top: calc(var(--space-sm) * -1);
+  background: var(--white);
+  z-index: 1;
+}
+
+.pi-manager-root .panel-list-title {
+font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.pi-manager-root .panel-list-fill {
+flex: 1;
+}
+
+.pi-manager-root .panel-detail {
+flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+}
+
+.pi-manager-root .panel-detail-head {
+display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  margin-bottom: var(--space-md);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.pi-manager-root .panel-detail-head-main {
+display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.pi-manager-root .panel-footer {
+flex: none;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
+  border-top: 1px solid var(--gray-200);
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.pi-manager-root .panel-footer .footer-msg.error {
+color: var(--danger);
+}
+
+.pi-manager-root .panel-footer .footer-msg.ok {
+color: var(--ok);
+}
+
 .pi-manager-root .badge {
 display: inline-block;
   padding: 1px var(--space-xs);
@@ -983,6 +1120,13 @@ flex: none;
   border-top: 1px solid var(--gray-900);
   background: var(--white);
   animation: detail-sheet-rise 200ms ease-out;
+}
+
+/* split view 详情列里的平铺变体：去底部抽屉的边框与升入动画。 */
+.pi-manager-root .detail-sheet.is-plain {
+border-top: 0;
+  animation: none;
+  max-width: 760px;
 }
 
 @keyframes detail-sheet-rise { from {
@@ -1474,6 +1618,16 @@ position: absolute;
 .pi-manager-root .sidebar-item-label, .pi-manager-root .config-sidebar-heading {
 display: none;
 }
+
+.pi-manager-root .panel-detail {
+padding: var(--space-sm) var(--space-md) var(--space-md);
+}
+
+.pi-manager-root .panel-detail-head {
+flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+}
 }
 
 .pi-manager-root .detail-block {
@@ -1488,6 +1642,18 @@ font-size: 11px;
 
 .pi-manager-root .model-table td, .pi-manager-root .model-table th {
 padding: 4px 8px;
+}
+
+/* 发现模型列表的滚动区：列表超高时内滚，不撑开详情列。 */
+.pi-manager-root .discover-scroll {
+max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--gray-200);
+  border-radius: 4px;
+}
+
+.pi-manager-root .discover-scroll .item-table {
+margin: 0;
 }
 
 .pi-manager-root .error-text {

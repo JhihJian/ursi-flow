@@ -3,6 +3,7 @@ import { api } from '../../api/client'
 import type { GeneralListing, ModelCatalog } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
 import { ErrorBanner, Field, Loading, Switch } from '../ui'
+import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { ScopedModelsPanel } from './ScopedModelsPanel'
 
 /**
@@ -21,6 +22,8 @@ export function GeneralSection({ home }: { home: string }) {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [toolsBusy, setToolsBusy] = useState(false)
+  // 分区内二选一：常规设置 / 启用模型（enabledModels 面板体量大，单独成页）。
+  const [pane, setPane] = useState<'settings' | 'enabled'>('settings')
   const runWrite = useAppStore((s) => s.runWrite)
   const setFooter = useAppStore((s) => s.setFooter)
 
@@ -137,13 +140,40 @@ export function GeneralSection({ home }: { home: string }) {
   }
 
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">常规</h1>
-        <span className="section-desc">settings.json 受管 key · 其余 {listing.unmanagedKeys.length} 个 key 不会改动</span>
-      </header>
-      <div className="settings-form-narrow">
-        <div className="stack">
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead title="常规" />
+          <SectionListItem
+            active={pane === 'settings'}
+            data-mark={undefined}
+            title="常规设置"
+            sub="默认模型、思考级别、工具、codemode"
+            onClick={() => setPane('settings')}
+          />
+          <SectionListItem
+            active={pane === 'enabled'}
+            data-mark={undefined}
+            title="启用模型"
+            sub={`enabledModels · ${catalog.enabledModels.length} 条`}
+            onClick={() => setPane('enabled')}
+          />
+        </>
+      }
+      footer={
+        <SectionFooterNote
+          note={`settings.json 受管 key · 其余 ${listing.unmanagedKeys.length} 个 key 不会改动`}
+        />
+      }
+      detail={
+        pane === 'settings' ? (
+          <div className="detail-sheet is-plain">
+            <SectionDetailHead
+              title="常规设置"
+              meta="settings.json 受管 key；默认模型留空时 pi 自动选第一个可解析的启用模型"
+            />
+            <div className="settings-form-narrow">
+            <div className="stack">
         <Field
           label="默认模型"
           hint={
@@ -296,26 +326,29 @@ export function GeneralSection({ home }: { home: string }) {
           自建 provider 在「自定义模型」分区，内置 subagent 开关在「Subagent」分区。
         </p>
       </div>
-
-      <div className="section-body">
-        <div className="section-head-inline">
-          <h2 className="section-caption">启用模型（enabledModels）</h2>
-          <span className="mono-dim">对齐 pi 的 /scoped-models：逐条开关、可排序、可加模式</span>
-        </div>
-        <ScopedModelsPanel
-          catalog={catalog}
-          onRefresh={refreshCatalog}
-          refreshing={refreshing}
-          onSaveOverride={saveOverride}
-          onSave={(next, label) =>
-            runWrite(label, async () => {
-              const result = await api.putGeneralKey(home, 'enabledModels', next, listing!.revision)
-              if (result.changed) await reload()
-            })
-          }
-        />
-      </div>
-    </section>
+          </div>
+        ) : (
+          <div className="detail-sheet is-plain">
+            <SectionDetailHead
+              title="启用模型（enabledModels）"
+              meta="对齐 pi 的 /scoped-models：逐条开关、可排序、可加模式"
+            />
+            <ScopedModelsPanel
+              catalog={catalog}
+              onRefresh={refreshCatalog}
+              refreshing={refreshing}
+              onSaveOverride={saveOverride}
+              onSave={(next, label) =>
+                runWrite(label, async () => {
+                  const result = await api.putGeneralKey(home, 'enabledModels', next, listing!.revision)
+                  if (result.changed) await reload()
+                })
+              }
+            />
+          </div>
+        )
+      }
+    />
   )
 }
 

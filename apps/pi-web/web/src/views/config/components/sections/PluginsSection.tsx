@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { PackageEntryView, PluginsListing } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Loading } from '../ui'
 
 /**
@@ -46,60 +47,36 @@ export function PluginsSection({ home }: { home: string }) {
   }
 
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">插件</h1>
-        <span className="section-desc">settings.json packages · 禁用不卸载，npm/ 保持原样</span>
-      </header>
-      {listing.packages.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">State</th>
-              <th>Package</th>
-              <th className="col-size">Filters</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.packages.map((entry) => (
-              <tr
-                key={entry.index}
-                className={entry.index === selected ? 'is-selected' : undefined}
-                title={entry.installedDir ? `npm/${entry.installedDir}` : 'npm/ 未检测到安装目录'}
-                onClick={() => setSelected(entry.index)}
-              >
-                <td className="col-state">
-                  <span className={`state-mark${entry.disabled ? ' off' : ''}`}>
-                    {entry.disabled ? '×' : '✓'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cell-title">{entry.source || '（无 source）'}</div>
-                  <div className="cell-sub">
-                    {entry.kind === 'plain' ? 'string 形式（启用）' : 'object 形式'}
-                    {entry.autoload ? ' · autoload' : ''}
-                  </div>
-                </td>
-                <td className="col-size">{entry.hasFilters ? 'yes' : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState title="settings.json 没有 packages 条目" hint="用 pi CLI 安装插件后这里会出现。" />
-      )}
-      <p className="mono-dim">安装、升级与清理用 pi CLI 完成；这里只切换启用状态与移除条目。</p>
-
-      {selectedEntry ? (
-        <div className="detail-sheet" key={selectedEntry.index}>
-          <div className="detail-grip" aria-hidden />
-          <div className="detail-body">
-            <div className="detail-head">
-              <h2 className="detail-title">{selectedEntry.source}</h2>
-              <span className="detail-meta">
-                条目 #{selectedEntry.index} · {selectedEntry.installedDir ? `npm/${selectedEntry.installedDir}` : '未检测到安装目录'}
-              </span>
-            </div>
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead title="插件" />
+          {listing.packages.map((entry) => (
+            <SectionListItem
+              key={entry.index}
+              active={entry.index === selected}
+              data-mark={entry.disabled ? 'off' : 'ok'}
+              title={entry.source || '（无 source）'}
+              sub={`${entry.kind === 'plain' ? 'string 形式（启用）' : 'object 形式'}${entry.autoload ? ' · autoload' : ''}`}
+              badges={entry.hasFilters ? <span className="badge warn">filters</span> : undefined}
+              onClick={() => setSelected(entry.index)}
+            />
+          ))}
+          {listing.packages.length === 0 ? (
+            <p className="mono-dim">settings.json 没有 packages 条目；用 pi CLI 安装后这里会出现。</p>
+          ) : null}
+        </>
+      }
+      footer={
+        <SectionFooterNote note="安装、升级与清理用 pi CLI 完成；这里只切换启用状态与移除条目。禁用不卸载，npm/ 保持原样。" />
+      }
+      detail={
+        selectedEntry ? (
+          <div className="detail-sheet is-plain" key={selectedEntry.index}>
+            <SectionDetailHead
+              title={selectedEntry.source}
+              meta={`条目 #${selectedEntry.index} · ${selectedEntry.installedDir ? `npm/${selectedEntry.installedDir}` : '未检测到安装目录'}`}
+            />
             {selectedEntry.hasFilters ? (
               <p className="section-warn">
                 该条目带资源过滤列表（extensions/skills/prompts/themes 非空）。禁用会永久丢失过滤信息，
@@ -129,9 +106,11 @@ export function PluginsSection({ home }: { home: string }) {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
-    </section>
+        ) : (
+          <EmptyState title="没有选中的插件" hint="在左侧选择一个条目。" />
+        )
+      }
+    />
   )
 }
 

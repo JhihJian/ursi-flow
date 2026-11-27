@@ -8,13 +8,23 @@ import type {
   ProviderView,
 } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading } from '../ui'
+import {
+  appendModelToEntry,
+  diffDiscovered,
+  filterModels,
+  modelIdOf,
+  modelsOf,
+  removeModelFromEntry,
+  type DraftModel,
+} from './models-discover-helpers'
 
 /**
- * 自定义模型（models.json）：provider 列表 + JSON 详情编辑。
- * 合并写回语义：保存时只提交当前编辑的条目（其余原样保留），
- * 条目置 null 删除。apiKey 以掩码回显，原样提交会被服务端还原成原文；
- * 改成新值就写新值。文件允许 JSONC，写回输出纯 JSON，注释会丢（UI 明示）。
+ * 自定义模型（models.json）：provider 列表 + JSON 详情编辑，split view 结构。
+ * 合并写回语义：保存时只提交当前编辑的条目（其余原样保留），条目置 null 删除。
+ * apiKey 以掩码回显，原样提交会被服务端还原成原文；改成新值就写新值。
+ * 发现模型：拉取后是可浏览列表，逐个添加进草稿，保存才落盘。
  */
 
 export function ModelsSection({ home }: { home: string }) {
@@ -58,156 +68,79 @@ export function ModelsSection({ home }: { home: string }) {
     })
   }
 
+  const catalogNote = `settings 启用 ${catalog.enabledModels.length} 条 · 自建 ${catalog.modelsJsonProviders.length} 个 · 运行目录 ${catalog.store.reduce((sum, item) => sum + item.modelCount, 0)} 个模型`
+
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">自定义模型</h1>
-        <div className="field-row">
-          {listing.hadComments ? (
-            <span className="section-warn">文件含注释，保存写回纯 JSON 会丢注释（备份 .bak-manager）</span>
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead
+            title="自定义模型"
+            actions={
+              <button type="button" className="btn small" onClick={() => setCreating(true)}>
+                新增
+              </button>
+            }
+          />
+          {listing.providers.map((provider) => (
+            <SectionListItem
+              key={provider.name}
+              active={provider.name === selected && !creating}
+              data-mark={provider.hasApiKey ? 'ok' : 'off'}
+              title={provider.name}
+              sub={provider.baseUrl || '（无 baseUrl）'}
+              badges={<span className="badge">{provider.modelCount}</span>}
+              onClick={() => {
+                setCreating(false)
+                setSelected(provider.name)
+              }}
+            />
+          ))}
+          {listing.providers.length === 0 ? (
+            <p className="mono-dim">
+              models.json 没有自建 provider。本机的 provider 可能由扩展注册，扩展不写入 models.json。
+            </p>
           ) : null}
-          <button type="button" className="btn small" onClick={() => setCreating(true)}>
-            新增 provider
-          </button>
-        </div>
-      </header>
-      {listing.providers.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">Key</th>
-              <th>Provider</th>
-              <th className="col-size">Models</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.providers.map((provider) => (
-              <tr
-                key={provider.name}
-                className={provider.name === selected && !creating ? 'is-selected' : undefined}
-                title={provider.baseUrl}
-                onClick={() => {
-                  setCreating(false)
-                  setSelected(provider.name)
-                }}
-              >
-                <td className="col-state">
-                  <span className={`state-mark${provider.hasApiKey ? '' : ' off'}`}>
-                    {provider.hasApiKey ? '✓' : '—'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cell-title">{provider.name}</div>
-                  <div className="cell-sub">{provider.baseUrl || '（无 baseUrl）'}</div>
-                </td>
-                <td className="col-size">{provider.modelCount}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState
-          title="models.json 没有自建 provider"
-          hint="本机的 provider 可能由扩展（extensions/providers/）注册，扩展不写入 models.json。"
+        </>
+      }
+      footer={
+        <SectionFooterNote
+          note={listing.hadComments ? '文件含注释，保存写回纯 JSON 会丢注释（备份 .bak-manager）' : catalogNote}
         />
-      )}
-
-      <ModelCatalogSummary catalog={catalog} />
-
-      {creating ? (
-        <ProviderEditor
-          key="__new__"
-          home={home}
-          provider={{ name: '', baseUrl: '', apiKeyMasked: null, hasApiKey: false, modelCount: 0, entry: { baseUrl: '', models: [] } }}
-          isNew
-          onSave={(name, entry) => saveOne(name, entry, `新增 provider ${name}`)}
-          onCancel={() => setCreating(false)}
-        />
-      ) : selectedProvider ? (
-        <ProviderEditor
-          key={selectedProvider.name}
-          home={home}
-          provider={selectedProvider}
-          isNew={false}
-          onSave={(name, entry) => saveOne(name, entry, `保存 provider ${name}`)}
-          onDelete={() => saveOne(selectedProvider.name, null, `删除 provider ${selectedProvider.name}`)}
-        />
-      ) : null}
-    </section>
+      }
+      detail={
+        creating ? (
+          <ProviderEditor
+            key="__new__"
+            home={home}
+            provider={{ name: '', baseUrl: '', apiKeyMasked: null, hasApiKey: false, modelCount: 0, entry: { baseUrl: '', models: [] } }}
+            isNew
+            onSave={(name, entry) => saveOne(name, entry, `新增 provider ${name}`)}
+            onCancel={() => setCreating(false)}
+          />
+        ) : selectedProvider ? (
+          <ProviderEditor
+            key={selectedProvider.name}
+            home={home}
+            provider={selectedProvider}
+            isNew={false}
+            onSave={(name, entry) => saveOne(name, entry, `保存 provider ${name}`)}
+            onDelete={() => saveOne(selectedProvider.name, null, `删除 provider ${selectedProvider.name}`)}
+          />
+        ) : (
+          <EmptyState title="没有选中的 provider" hint="在左侧选择一个 provider，或点「新增」。" />
+        )
+      }
+    />
   )
 }
 
-function modelsOf(entry: Record<string, unknown>): Array<Record<string, unknown>> {
-  const models = entry.models
-  if (Array.isArray(models)) {
-    return models.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
-  }
-  if (models && typeof models === 'object') {
-    return Object.entries(models as Record<string, unknown>)
-      .filter(([, value]) => value !== null && typeof value === 'object' && !Array.isArray(value))
-      .map(([id, value]) => ({ id, ...(value as Record<string, unknown>) }))
-  }
-  return []
-}
-
-function modelIdOf(model: Record<string, unknown>): string {
-  return typeof model.id === 'string' ? model.id : ''
-}
-
-function ModelRows({
-  models,
-  onRemove,
-}: {
-  models: Array<Record<string, unknown>>
-  onRemove?: (index: number) => void
-}) {
-  if (models.length === 0) return <p className="mono-dim">该 provider 还没有模型。</p>
-  return (
-    <table className="item-table model-table">
-      <thead>
-        <tr>
-          <th>Model</th>
-          <th className="col-size">Context</th>
-          <th className="col-size">Max out</th>
-          <th className="col-size">能力</th>
-          {onRemove ? <th className="col-state" /> : null}
-        </tr>
-      </thead>
-      <tbody>
-        {models.map((model, index) => {
-          const capabilities = [
-            model.reasoning === true ? '思考' : null,
-            Array.isArray(model.input) && model.input.includes('image') ? '图片' : null,
-          ].filter(Boolean)
-          return (
-            <tr key={`${modelIdOf(model)}-${index}`} title={typeof model.baseUrl === 'string' ? model.baseUrl : undefined}>
-              <td>
-                <div className="cell-title">{modelIdOf(model) || '（缺 id）'}</div>
-                <div className="cell-sub">{typeof model.name === 'string' ? model.name : '—'}</div>
-              </td>
-              <td className="col-size">{typeof model.contextWindow === 'number' ? model.contextWindow.toLocaleString('en-US') : '—'}</td>
-              <td className="col-size">{typeof model.maxTokens === 'number' ? model.maxTokens.toLocaleString('en-US') : '—'}</td>
-              <td className="col-size">{capabilities.length > 0 ? capabilities.join(' / ') : '—'}</td>
-              {onRemove ? (
-                <td className="col-state">
-                  <button
-                    type="button"
-                    className="btn small btn-danger"
-                    title={`从草稿移除 ${modelIdOf(model) || '该模型'}`}
-                    onClick={() => {
-                      if (window.confirm(`从草稿移除模型 ${modelIdOf(model) || '（缺 id）'}？`)) onRemove(index)
-                    }}
-                  >
-                    删除
-                  </button>
-                </td>
-              ) : null}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  )
+function modelCapabilities(model: DraftModel): string {
+  const capabilities = [
+    model.reasoning === true ? '思考' : null,
+    Array.isArray(model.input) && model.input.includes('image') ? '图片' : null,
+  ].filter(Boolean)
+  return capabilities.length > 0 ? capabilities.join(' / ') : '—'
 }
 
 function ProviderEditor({
@@ -233,18 +166,18 @@ function ProviderEditor({
   const [testResult, setTestResult] = useState<ProbeResult | null>(null)
   const [discovering, setDiscovering] = useState(false)
   const [discovered, setDiscovered] = useState<DiscoveryResult | null>(null)
+  const [discoverQuery, setDiscoverQuery] = useState('')
   const nameValid = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)
 
-  const models = useMemo(() => {
-    try {
-      const parsed = JSON.parse(text) as unknown
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? modelsOf(parsed as Record<string, unknown>)
-        : []
-    } catch {
-      return []
-    }
-  }, [text])
+  const models = useMemo(() => modelsOfDraft(text), [text])
+  const diff = useMemo(
+    () => (discovered ? diffDiscovered(discovered.models as unknown as DraftModel[], models) : null),
+    [discovered, models],
+  )
+  const shownDiscovered = useMemo(
+    () => (discovered ? filterModels(discovered.models as unknown as DraftModel[], discoverQuery) : []),
+    [discovered, discoverQuery],
+  )
 
   function parseDraft(): Record<string, unknown> | null {
     try {
@@ -301,186 +234,241 @@ function ProviderEditor({
     }
   }
 
-  function appendDiscovered() {
-    if (!discovered) return
+  /** 把一个发现模型追加进草稿；草稿变驱动 diff 重算，该行自动翻成「已存在」。 */
+  function addOne(model: DraftModel) {
     const entry = parseDraft()
     if (!entry) return
-    const existing = modelsOf(entry)
-    const known = new Set(existing.map(modelIdOf))
-    const added = discovered.models.filter((model) => !known.has(model.id))
-    if (added.length === 0) return
-    const nextModels: Array<Record<string, unknown>> = [
-      ...existing,
-      ...added.map((model) => ({ ...model }) as Record<string, unknown>),
-    ]
-    const next = { ...entry, models: nextModels }
-    setText(JSON.stringify(next, null, 2))
-    setDiscovered({ ...discovered, models: [] })
+    setText(JSON.stringify(appendModelToEntry(entry, model), null, 2))
   }
 
-  /** 把草稿里的 models 数组删掉一项（对象映射形态会被规整成数组）；只改草稿，保存才落盘。 */
+  function addAllMissing() {
+    if (!diff || diff.missing.length === 0) return
+    const entry = parseDraft()
+    if (!entry) return
+    const next = diff.missing.reduce((acc, model) => appendModelToEntry(acc, model), entry)
+    setText(JSON.stringify(next, null, 2))
+  }
+
   function removeModel(index: number) {
     const entry = parseDraft()
     if (!entry) return
-    const current = modelsOf(entry)
-    if (index < 0 || index >= current.length) return
-    const nextModels = current.filter((_, i) => i !== index)
-    const next = { ...entry, models: nextModels }
-    setText(JSON.stringify(next, null, 2))
+    setText(JSON.stringify(removeModelFromEntry(entry, index), null, 2))
   }
 
   return (
-    <div className="detail-sheet">
-      <div className="detail-grip" aria-hidden />
-      <div className="detail-body">
-        <div className="detail-head">
-          <h2 className="detail-title">{isNew ? '新增 provider' : provider.name}</h2>
-          <span className="detail-meta">
-            apiKey 显示为掩码时，原样保存即保留原值；改成新值则写新值。
-          </span>
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title={isNew ? '新增 provider' : provider.name}
+        meta="apiKey 显示为掩码时，原样保存即保留原值；改成新值则写新值。"
+      />
+      <div className="detail-form">
+        <div className="detail-grid">
+          <Field label="provider 名">
+            <input
+              className="input"
+              value={name}
+              readOnly={!isNew}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="如 my-provider"
+            />
+          </Field>
         </div>
-        <div className="detail-form">
-          <div className="detail-grid">
-            <Field label="provider 名">
+
+        <Field label="条目 JSON" hint="pi 的 provider 条目：baseUrl / api / apiKey / headers / models / modelOverrides。">
+          <textarea
+            className="textarea code"
+            value={text}
+            spellCheck={false}
+            onChange={(e) => setText(e.target.value)}
+          />
+          {jsonError ? <span className="field-hint">{jsonError}</span> : null}
+        </Field>
+
+        <div className="detail-block">
+          <div className="section-head-inline">
+            <span className="field-label">模型</span>
+            <span className="mono-dim">{models.length} 个 · 对齐 pi --list-models 的列</span>
+          </div>
+          <ModelRows models={models} onRemove={removeModel} />
+        </div>
+
+        <div className="detail-grid">
+          <Field label="测试连接" hint="用当前草稿与该 home 的 auth.json 发一次真实请求（16 token，20s 超时）。">
+            <div className="field-row">
               <input
                 className="input"
-                value={name}
-                readOnly={!isNew}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="如 my-provider"
+                value={testModelId}
+                list="provider-model-ids"
+                placeholder={models[0]?.id ? String(models[0].id) : 'model id'}
+                onChange={(e) => setTestModelId(e.target.value)}
               />
-            </Field>
-          </div>
-
-          <Field label="条目 JSON" hint="pi 的 provider 条目：baseUrl / api / apiKey / headers / models / modelOverrides。">
-            <textarea
-              className="textarea code"
-              value={text}
-              spellCheck={false}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {jsonError ? <span className="field-hint">{jsonError}</span> : null}
-          </Field>
-
-          <div className="detail-block">
-            <div className="section-head-inline">
-              <span className="field-label">模型</span>
-              <span className="mono-dim">{models.length} 个 · 对齐 pi --list-models 的列</span>
+              <datalist id="provider-model-ids">
+                {models.map((model) => (
+                  <option key={modelIdOf(model)} value={modelIdOf(model)} />
+                ))}
+              </datalist>
+              <button type="button" className="btn small" disabled={testing} onClick={() => void runTest()}>
+                {testing ? '测试中…' : '测试'}
+              </button>
             </div>
-            <ModelRows models={models} onRemove={removeModel} />
-          </div>
+            {testResult ? (
+              <span className={`field-hint${testResult.ok ? '' : ' error-text'}`}>
+                {testResult.ok
+                  ? `连接成功：${testResult.latencyMs ?? 0}ms${testResult.status ? ` · HTTP ${testResult.status}` : ''}${testResult.responseText ? ` · ${testResult.responseText}` : ''}`
+                  : `测试失败：${testResult.error ?? '未知错误'}`}
+              </span>
+            ) : null}
+          </Field>
+        </div>
 
-          <div className="detail-grid">
-            <Field label="测试连接" hint="用当前草稿与该 home 的 auth.json 发一次真实请求（16 token，20s 超时）。">
-              <div className="field-row">
-                <input
-                  className="input"
-                  value={testModelId}
-                  list="provider-model-ids"
-                  placeholder={models[0]?.id ? String(models[0].id) : 'model id'}
-                  onChange={(e) => setTestModelId(e.target.value)}
-                />
-                <datalist id="provider-model-ids">
-                  {models.map((model) => (
-                    <option key={modelIdOf(model)} value={modelIdOf(model)} />
-                  ))}
-                </datalist>
-                <button type="button" className="btn small" disabled={testing} onClick={() => void runTest()}>
-                  {testing ? '测试中…' : '测试'}
-                </button>
-              </div>
-              {testResult ? (
-                <span className={`field-hint${testResult.ok ? '' : ' error-text'}`}>
-                  {testResult.ok
-                    ? `连接成功：${testResult.latencyMs ?? 0}ms${testResult.status ? ` · HTTP ${testResult.status}` : ''}${testResult.responseText ? ` · ${testResult.responseText}` : ''}`
-                    : `测试失败：${testResult.error ?? '未知错误'}`}
-                </span>
-              ) : null}
-            </Field>
-
-            <Field label="发现模型" hint="请求上游 /models（只读，不改文件）；把缺失的模型追加到上面的 JSON。">
-              <div className="field-row">
-                <button type="button" className="btn small" disabled={discovering} onClick={() => void runDiscover()}>
-                  {discovering ? '请求中…' : '从上游拉取'}
-                </button>
-                {discovered && discovered.models.length > 0 ? (
-                  <button type="button" className="btn small btn-primary" onClick={appendDiscovered}>
-                    追加缺失的 {discovered.models.length} 个
-                  </button>
-                ) : null}
-              </div>
-              {discovered ? (
-                <span className="field-hint">
-                  {discovered.models.length > 0
-                    ? `${discovered.endpoint} · ${discovered.models.length} 个模型`
-                    : discovered.endpoint || '（没有模型）'}
-                </span>
-              ) : null}
-            </Field>
-          </div>
-
-          <div className="field-row">
-            <button type="button" className="btn btn-primary" disabled={!nameValid} onClick={() => void commit()}>
-              保存
+        <div className="detail-block">
+          <div className="section-head-inline">
+            <span className="field-label">发现模型</span>
+            <button type="button" className="btn small" disabled={discovering} onClick={() => void runDiscover()}>
+              {discovering ? '请求中…' : '从上游拉取'}
             </button>
-            {onDelete ? (
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => {
-                  if (window.confirm(`删除 provider ${provider.name}？`)) void onDelete()
-                }}
-              >
-                删除
-              </button>
-            ) : null}
-            {onCancel ? (
-              <button type="button" className="btn" onClick={onCancel}>
-                取消
-              </button>
-            ) : null}
           </div>
+          <p className="field-hint">请求上游 /models（只读，不改文件）；在下方列表逐个添加，保存才落盘。</p>
+          {discovered ? (
+            discovered.models.length > 0 ? (
+              <>
+                <div className="field-row">
+                  <input
+                    className="input"
+                    value={discoverQuery}
+                    placeholder="按 id 或名称过滤"
+                    onChange={(e) => setDiscoverQuery(e.target.value)}
+                  />
+                  {diff && diff.missing.length > 0 ? (
+                    <button type="button" className="btn small" onClick={addAllMissing}>
+                      添加全部缺失（{diff.missing.length}）
+                    </button>
+                  ) : null}
+                </div>
+                <div className="discover-scroll">
+                  <table className="item-table model-table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th className="col-size">Context</th>
+                        <th className="col-size">Max out</th>
+                        <th className="col-size">能力</th>
+                        <th className="col-state" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownDiscovered.map((model) => {
+                        const id = modelIdOf(model)
+                        const exists = !id || (diff?.existingIds.has(id) ?? false)
+                        return (
+                          <tr key={id || Math.random().toString(36).slice(2)} title={typeof model.baseUrl === 'string' ? model.baseUrl : undefined}>
+                            <td>
+                              <div className="cell-title">{id || '（缺 id，手动补后可加）'}</div>
+                              <div className="cell-sub">{typeof model.name === 'string' ? model.name : '—'}</div>
+                            </td>
+                            <td className="col-size">{typeof model.contextWindow === 'number' ? model.contextWindow.toLocaleString('en-US') : '—'}</td>
+                            <td className="col-size">{typeof model.maxTokens === 'number' ? model.maxTokens.toLocaleString('en-US') : '—'}</td>
+                            <td className="col-size">{modelCapabilities(model)}</td>
+                            <td className="col-state">
+                              {exists ? (
+                                <span className="badge">已存在</span>
+                              ) : (
+                                <button type="button" className="btn small" onClick={() => addOne(model)}>
+                                  添加
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <span className="field-hint mono-dim">{discovered.endpoint} · 拉取到 {discovered.models.length} 个模型</span>
+              </>
+            ) : (
+              <p className="field-hint error-text">{discovered.endpoint || '（没有模型）'}</p>
+            )
+          ) : null}
+        </div>
+
+        <div className="field-row">
+          <button type="button" className="btn btn-primary" disabled={!nameValid} onClick={() => void commit()}>
+            保存
+          </button>
+          {onDelete ? (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                if (window.confirm(`删除 provider ${provider.name}？`)) void onDelete()
+              }}
+            >
+              删除
+            </button>
+          ) : null}
+          {onCancel ? (
+            <button type="button" className="btn" onClick={onCancel}>
+              取消
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
   )
 }
 
-/**
- * 只读模型来源汇总：pi 的实际模型清单通常分散在 settings.json（启用模型）、
- * models.json（自建 provider）、models-store.json（运行态刷新的内置目录）。
- * 这里把三者并列展示，避免只看 models.json 时误以为没配模型。
- */
-function ModelCatalogSummary({ catalog }: { catalog: ModelCatalog }) {
-  const storeTotal = catalog.store.reduce((sum, item) => sum + item.modelCount, 0)
-  const configured = catalog.configured.provider && catalog.configured.modelId
-    ? `${catalog.configured.provider}/${catalog.configured.modelId}`
-    : '（未设置，交给 pi 自动选）'
+function modelsOfDraft(text: string): DraftModel[] {
+  try {
+    const parsed = JSON.parse(text) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? modelsOf(parsed as Record<string, unknown>)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function ModelRows({ models, onRemove }: { models: DraftModel[]; onRemove?: (index: number) => void }) {
+  if (models.length === 0) return <p className="mono-dim">该 provider 还没有模型。</p>
   return (
-    <div className="catalog-summary">
-      <div className="catalog-summary-head">
-        <span className="field-label">模型来源</span>
-        <span className="mono-dim">
-          settings.json 启用 {catalog.enabledModels.length} 条 · 自建 provider{' '}
-          {catalog.modelsJsonProviders.length} 个 · 运行目录 {catalog.store.length} 个 provider / {storeTotal} 个模型
-        </span>
-      </div>
-      <div className="catalog-summary-row">
-        <span className="cell-sub">当前默认</span>
-        <span className="cell-title">{configured}</span>
-      </div>
-      {catalog.store.length > 0 ? (
-        <div className="catalog-summary-row">
-          <span className="cell-sub">运行目录缓存</span>
-          <span className="cell-title">
-            {catalog.store.map((item) => `${item.provider}（${item.modelCount}）`).join('、')}
-          </span>
-        </div>
-      ) : null}
-      <p className="mono-dim">
-        运行目录来自 models-store.json，是 pi 刷新内置 provider 目录后的缓存，这里只读展示。
-        由扩展注册的 provider 不写进任何配置文件，管理台按文件管理，不加载扩展。
-      </p>
-    </div>
+    <table className="item-table model-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th className="col-size">Context</th>
+          <th className="col-size">Max out</th>
+          <th className="col-size">能力</th>
+          {onRemove ? <th className="col-state" /> : null}
+        </tr>
+      </thead>
+      <tbody>
+        {models.map((model, index) => (
+          <tr key={`${modelIdOf(model)}-${index}`} title={typeof model.baseUrl === 'string' ? model.baseUrl : undefined}>
+            <td>
+              <div className="cell-title">{modelIdOf(model) || '（缺 id）'}</div>
+              <div className="cell-sub">{typeof model.name === 'string' ? model.name : '—'}</div>
+            </td>
+            <td className="col-size">{typeof model.contextWindow === 'number' ? model.contextWindow.toLocaleString('en-US') : '—'}</td>
+            <td className="col-size">{typeof model.maxTokens === 'number' ? model.maxTokens.toLocaleString('en-US') : '—'}</td>
+            <td className="col-size">{modelCapabilities(model)}</td>
+            {onRemove ? (
+              <td className="col-state">
+                <button
+                  type="button"
+                  className="btn small btn-danger"
+                  title={`从草稿移除 ${modelIdOf(model) || '该模型'}`}
+                  onClick={() => {
+                    if (window.confirm(`从草稿移除模型 ${modelIdOf(model) || '（缺 id）'}？`)) onRemove(index)
+                  }}
+                >
+                  删除
+                </button>
+              </td>
+            ) : null}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

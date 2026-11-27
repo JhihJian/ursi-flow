@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { McpListing, McpServerView } from '../../api/types'
 import { describeError, useAppStore } from '../../store/app-store'
+import { SectionDetailHead, SectionFooterNote, SectionListHead, SectionListItem, SectionSplit } from '../layout'
 import { EmptyState, ErrorBanner, Field, Loading, Switch } from '../ui'
 
 /**
@@ -59,61 +60,42 @@ export function McpSection({ home }: { home: string }) {
   }
 
   return (
-    <section className="section">
-      <header className="section-head">
-        <h1 className="section-title">MCP</h1>
-        <div className="field-row">
-          {!listing.exists ? <span className="section-desc">mcp.json 尚不存在，保存后创建</span> : null}
-          <button type="button" className="btn small" onClick={() => setCreating(true)}>
-            新增 server
-          </button>
-        </div>
-      </header>
-      {listing.servers.length > 0 ? (
-        <table className="item-table">
-          <thead>
-            <tr>
-              <th className="col-state">State</th>
-              <th>Server</th>
-              <th className="col-size">Transport</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listing.servers.map((server) => (
-              <tr
-                key={server.name}
-                className={server.name === selected && !creating ? 'is-selected' : undefined}
-                onClick={() => {
-                  setCreating(false)
-                  setSelected(server.name)
-                }}
-              >
-                <td className="col-state">
-                  <span className={`state-mark${server.enabled ? '' : ' off'}`}>
-                    {server.enabled ? '✓' : '×'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cell-title">{server.name}</div>
-                  <div className="cell-sub">
-                    {server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : server.exposure === 'codemode' ? '' : `exposure: ${server.exposure}`}
-                  </div>
-                </td>
-                <td className="col-size">{describeTransport(server)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState title="mcp.json 没有 server" hint="点击右上角「新增 server」。" />
-      )}
-      <p className="mono-dim">
-        本页只管理全局 mcp.json；项目级 .pi/mcp.json 请直接编辑项目文件。
-        运行状态与工具发现由 pi 会话负责，管理台不 spawn 任何 server。
-      </p>
-
-      {creating ? (
-        <ServerEditor
+    <SectionSplit
+      list={
+        <>
+          <SectionListHead
+            title="MCP"
+            actions={
+              <button type="button" className="btn small" onClick={() => setCreating(true)}>
+                新增
+              </button>
+            }
+          />
+          {listing.servers.map((server) => (
+            <SectionListItem
+              key={server.name}
+              active={server.name === selected && !creating}
+              data-mark={server.enabled ? 'ok' : 'off'}
+              title={server.name}
+              sub={server.maskedFields.length > 0 ? `掩码字段：${server.maskedFields.join('、')}` : server.exposure === 'codemode' ? describeTransport(server) : `exposure: ${server.exposure}`}
+              badges={<span className="badge">{server.entry && typeof (server.entry as { url?: unknown }).url === 'string' ? 'http' : 'stdio'}</span>}
+              onClick={() => {
+                setCreating(false)
+                setSelected(server.name)
+              }}
+            />
+          ))}
+          {listing.servers.length === 0 ? (
+            <p className="mono-dim">mcp.json 没有 server{listing.exists ? '' : '（文件尚不存在，保存后创建）'}。</p>
+          ) : null}
+        </>
+      }
+      footer={
+        <SectionFooterNote note="只管理全局 mcp.json；项目级 .pi/mcp.json 请直接编辑。运行状态与工具发现由 pi 会话负责。" />
+      }
+      detail={
+        creating ? (
+          <ServerEditor
           key="__new__"
           server={{
             name: '',
@@ -142,8 +124,10 @@ export function McpSection({ home }: { home: string }) {
           onDelete={() => saveOne(selectedServer.name, null, `删除 server ${selectedServer.name}`)}
           onPatchState={(patch, label) => patchState(selectedServer, patch, label)}
         />
-      ) : null}
-    </section>
+      ) : (
+        <EmptyState title="没有选中的 server" hint="在左侧选择一个 server，或点「新增」。" />
+      )}
+    />
   )
 }
 
@@ -234,14 +218,12 @@ function ServerEditor({
   }
 
   return (
-    <div className="detail-sheet">
-      <div className="detail-grip" aria-hidden />
-      <div className="detail-body">
-        <div className="detail-head">
-          <h2 className="detail-title">{isNew ? '新增 server' : server.name}</h2>
-          <span className="detail-meta">stdio：command/args/env · http：url/headers · 密钥字段显示掩码</span>
-        </div>
-        <div className="detail-form">
+    <div className="detail-sheet is-plain">
+      <SectionDetailHead
+        title={isNew ? '新增 server' : server.name}
+        meta="stdio：command/args/env · http：url/headers · 密钥字段显示掩码"
+      />
+      <div className="detail-form">
           {!isNew && onPatchState ? (
             <div className="detail-grid">
               <Field label="启用" hint="enabled: false 时 pi 不连接该 server；打开会删除该 key。">
@@ -356,7 +338,6 @@ function ServerEditor({
               </button>
             ) : null}
           </div>
-        </div>
       </div>
     </div>
   )
