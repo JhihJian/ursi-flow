@@ -1,6 +1,6 @@
-import type { ApiError, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
+import type { ApiError, DirListingDto, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo } from '../../server/src/types.ts'
 
-export type { ApiError, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo }
+export type { ApiError, DirListingDto, EntryDto, GitBranchesDto, GitStatusDto, WorkspaceInfo }
 export type { GitChangeDto } from '../../server/src/types.ts'
 
 /** 统一错误：code 与服务端 ApiError 对齐，组件按 code 分支。 */
@@ -49,6 +49,19 @@ export class WorkspaceApi {
     const res = await fetch(`${this.baseUrl}/workspaces`, { headers: { accept: 'application/json' } })
     if (!res.ok) throw new ApiClientError('io', res.status, `workspace 列表请求失败（${res.status}）`)
     return (await res.json()) as WorkspaceInfo[]
+  }
+
+  /** 任意目录浏览（选目录组件用，不经 workspace 清单）；非 2xx 抛 ApiClientError。 */
+  async browse(rawPath: string): Promise<DirListingDto> {
+    const res = await fetch(`${this.baseUrl}/browse?path=${encodeURIComponent(rawPath)}`, {
+      headers: { accept: 'application/json' },
+    })
+    const json: unknown = await res.json().catch(() => ({ code: 'io', message: `响应不是 JSON（${res.status}）` }))
+    if (!res.ok) {
+      const apiError = json as ApiError
+      throw new ApiClientError(apiError.code ?? 'io', res.status, apiError.message ?? `请求失败（${res.status}）`)
+    }
+    return json as DirListingDto
   }
 
   list(workspaceId: string, path: string[]): Promise<{ entries: EntryDto[] }> {

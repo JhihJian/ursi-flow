@@ -2030,3 +2030,29 @@ color: var(--gray-900);
   min-height: 0;
   overflow-y: auto;
 }
+
+.pi-manager-root .preset-create-path {
+  display: flex;
+  gap: var(--space-xs);
+}
+.pi-manager-root .preset-create-path .preset-inline-input {
+  flex: 1;
+  min-width: 0;
+}
+.pi-manager-root .preset-create-browse {
+  flex: none;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+.pi-manager-root .preset-create-browse:hover {
+  border-color: var(--gray-900);
+  color: var(--gray-900);
+}
+.pi-manager-root .preset-create-path + .dp {
+  max-height: 320px;
+  overflow-y: auto;
+}

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ChevronsRight, Folder, Plus } from 'lucide-react'
+import { DirBrowser } from '@ursi/directory-picker'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
 import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
@@ -176,6 +177,53 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   )
 }
 
+/** 添加目录面板：可直接输路径回车提交，或展开目录浏览器逐级选择。 */
+function AddDirectoryForm({ onDone }: { onDone: () => void }) {
+  const addWorkspace = useTreeStore((state) => state.addWorkspace)
+  const api = useTreeStore((state) => state.api)
+  const [expanded, setExpanded] = useState(false)
+
+  const listDir = useCallback(
+    (path: string) => api.browse(path).then((dto) => ({ path: dto.path, parent: dto.parent, entries: dto.entries })),
+    [api],
+  )
+
+  return (
+    <div className="wsx-wslist-adding">
+      <InlineInput
+        initial=""
+        placeholder="输入绝对路径，如 /data/dev"
+        onDone={(value) => {
+          onDone()
+          const root = value.trim()
+          if (root) void addWorkspace(root)
+        }}
+      />
+      {expanded ? (
+        <DirBrowser
+          listDir={listDir}
+          initialPath="~"
+          onSelect={(root) => {
+            onDone()
+            void addWorkspace(root)
+          }}
+          onCancel={onDone}
+          selectLabel="添加此目录"
+          placeholder="路径回车跳转，文字过滤"
+        />
+      ) : (
+        <button
+          type="button"
+          className="wsx-wslist-browse-toggle"
+          onClick={() => setExpanded(true)}
+        >
+          浏览目录…
+        </button>
+      )}
+    </div>
+  )
+}
+
 interface WorkspaceListProps {
   onRemove: (workspaceId: string, wasActive: boolean) => void
   /** 折叠 rail 由宿主（standalone 可拖宽布局）控制；缺省不渲染。 */
@@ -234,19 +282,7 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
           <Plus size={12} aria-hidden="true" />
         </button>
       </div>
-      {adding ? (
-        <div className="wsx-wslist-adding">
-          <InlineInput
-            initial=""
-            placeholder="输入绝对路径，如 /data/dev"
-            onDone={(value) => {
-              setAdding(false)
-              const root = value.trim()
-              if (root) void addWorkspace(root)
-            }}
-          />
-        </div>
-      ) : null}
+      {adding ? <AddDirectoryForm onDone={() => setAdding(false)} /> : null}
       <ul className="wsx-wslist-items">
         {workspaces.map((workspace) => (
           <WorkspaceItem

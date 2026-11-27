@@ -87,6 +87,16 @@ export interface EntryDto {
   mtime: number
 }
 
+/** 任意目录浏览：给选目录组件用，只列子目录，不碰文件。 */
+export interface DirListingDto {
+  /** 规范绝对路径（realpath，`~` 已展开），组件以它为锚。 */
+  path: string
+  /** 上一级目录；根目录为 null。 */
+  parent: string | null
+  /** 子目录名，按名称排序。 */
+  entries: { name: string }[]
+}
+
 /** 服务端错误：code 供前端分支，message 直接展示。 */
 export interface ApiError {
   code:

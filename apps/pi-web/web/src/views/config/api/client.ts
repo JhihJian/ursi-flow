@@ -8,6 +8,7 @@ import type {
   GeneralListing,
   HomeCheck,
   HomeDefaults,
+  DirBrowse,
   McpListing,
   ModelCatalog,
   ModelsListing,
@@ -258,6 +259,19 @@ export function createApiClient(base: string | (() => string) = '') {
     })
   },
   homeCheck: (home: string) => request<HomeCheck>(base, 'GET', '/api/homes/check', home),
+  /** 任意目录浏览：选目录组件的数据源，`~` 由服务端展开。 */
+  browseDirs: (path: string) => {
+    const url = new URL(apiUrl(base, `/api/homes/browse?path=${encodeURIComponent(path)}`), window.location.origin)
+    return fetch(url).then(async (res) => {
+      const text = await res.text()
+      const json = text ? (JSON.parse(text) as unknown) : null
+      if (!res.ok) {
+        const err = (json as { error?: { code?: string; message?: string } } | null)?.error
+        throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`)
+      }
+      return json as DirBrowse
+    })
+  },
   /** pi home 清单：注册表条目 + 自动发现（默认位置、env、同机其他用户）。 */
   getHomes: () => requestNoHome<HomesListing>(base, 'GET', '/api/homes'),
   createHome: (input: HomeCreateInput) =>

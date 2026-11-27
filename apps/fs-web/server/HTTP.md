@@ -1,6 +1,6 @@
 # fs-web HTTP 契约
 
-基址 `/api/fs-web`。除 `GET workspaces` 外一律 `POST + JSON body`；路径一律用 `path` 字段传 segments 数组（相对 workspace root），不走 URL 编码。错误统一 `{ code, message }`，code 取值见 `server/src/types.ts` 的 `ApiError`。
+基址 `/api/fs-web`。除 `GET workspaces` 与 `GET browse` 外一律 `POST + JSON body`；路径一律用 `path` 字段传 segments 数组（相对 workspace root），不走 URL 编码。错误统一 `{ code, message }`，code 取值见 `server/src/types.ts` 的 `ApiError`。
 
 ## 安全边界
 
@@ -17,6 +17,7 @@
 | 接口 | 方法 | body | 响应 |
 | --- | --- | --- | --- |
 | workspaces | GET | - | `WorkspaceInfo[]` |
+| browse | GET | - | `DirListingDto`（query `path`）；任意绝对路径或 `~` 的子目录清单，不经 workspace 清单、只读列目录（选目录组件用）；`~` 在服务端展开，返回 realpath 与 parent |
 | workspaces-add | POST | `{ root, label? }` | `WorkspaceInfo`；非绝对路径/不存在/非目录报错，已记录返回 409 `exists` |
 | workspaces-rename | POST | `{ workspaceId, label?, description? }` | `WorkspaceInfo`；至少一项，只改元数据，id 与 root 不变；传空字符串 description 表示清除说明 |
 | workspaces-remove | POST | `{ workspaceId }` | `{ ok: true }`；只从清单移除，不动文件系统，未就绪条目也可移除 |
@@ -46,4 +47,5 @@
 
 - segments 逐段校验：拒绝 `.`/`..`、绝对段、`/`、`\`、NUL、控制字符、超 255 字符。
 - 目标路径 realpath 后必须仍在 root 的 realpath 之下，软链跳出即拒绝（403 `path_outside_root`）。
+- `GET browse` 是唯一的例外：不经 workspace 清单、只读列子目录（返回名与 parent，不读文件内容），权限与 workspaces-add 同级；写接口仍全部约束在 workspace root 内。
 - 请求体上限 5MB；write 先写同目录临时文件再 rename 原子替换。

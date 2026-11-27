@@ -841,3 +841,51 @@ test('跨站 Origin 被拒绝，回环与同 Host 放行', wrap(async (ctx) => {
   const noOrigin = await post('list', { workspaceId: 't', path: [] })
   assert.equal(noOrigin.status, 200)
 }))
+
+test('browse 列任意绝对路径的子目录，不要求已登记', wrap(async (ctx) => {
+  const outer = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-browse-'))
+  try {
+    const sub = path.join(outer, 'child-a')
+    await fs.mkdir(sub)
+    await fs.mkdir(path.join(outer, 'child-b'))
+    await fs.writeFile(path.join(outer, 'file.txt'), 'x')
+
+    const res = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent(outer)}`)
+    assert.equal(res.status, 200)
+    const json = (await res.json()) as { path: string; parent: string | null; entries: { name: string }[] }
+    assert.equal(json.path, await fs.realpath(outer))
+    assert.equal(json.parent, path.dirname(await fs.realpath(outer)))
+    assert.deepEqual(json.entries, [{ name: 'child-a' }, { name: 'child-b' }])
+  } finally {
+    await fs.rm(outer, { recursive: true, force: true })
+  }
+}))
+
+test('browse 展开 ~ 并拒绝缺失路径、文件路径与相对路径', wrap(async (ctx) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-web-home-'))
+  const file = path.join(home, 'plain.txt')
+  await fs.writeFile(file, 'x')
+  try {
+    // ~ 展开到临时 home：环境变量只对本进程生效，服务端同进程继承。
+    process.env.HOME = home
+    const res = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent('~')}`)
+    assert.equal(res.status, 200)
+    const json = (await res.json()) as { path: string }
+    assert.equal(json.path, await fs.realpath(home))
+
+    const missing = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent(path.join(home, 'nope'))}`)
+    assert.equal(missing.status, 404)
+    expectError(await missing.json(), 'not_found')
+
+    const fileRes = await fetch(`${ctx.baseUrl}/browse?path=${encodeURIComponent(file)}`)
+    assert.equal(fileRes.status, 400)
+    expectError(await fileRes.json(), 'bad_request')
+
+    const relative = await fetch(`${ctx.baseUrl}/browse?path=rel`)
+    assert.equal(relative.status, 400)
+    expectError(await relative.json(), 'bad_request')
+  } finally {
+    delete process.env.HOME
+    await fs.rm(home, { recursive: true, force: true })
+  }
+}))

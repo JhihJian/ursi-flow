@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { FsWebStandalone } from './src/standalone.tsx'
+import '@ursi/directory-picker/style.css'
 import './src/standalone.css'
 import './src/module.css'
 

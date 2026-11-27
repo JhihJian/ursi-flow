@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { DirBrowser } from '@ursi/directory-picker'
 import { useAppStore } from '../store/app-store'
+import { api } from '../api/client'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 
@@ -177,7 +179,14 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
   const [from, setFrom] = useState(homePath)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [browsing, setBrowsing] = useState(false)
   const sources = homes.filter((h) => h.valid && h.path !== path.trim())
+
+  const listDir = useCallback(
+    (target: string) =>
+      api.browseDirs(target).then((dto) => ({ path: dto.path, parent: dto.parent, entries: dto.entries })),
+    [],
+  )
 
   async function submit() {
     const target = path.trim()
@@ -217,21 +226,44 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
           </button>
         ))}
       </div>
-      <input
-        className="preset-inline-input"
-        autoFocus
-        value={path}
-        placeholder={mode === 'adopt' ? '已有 pi home 的绝对路径' : '新目录绝对路径，如 ~/.pi/work'}
-        aria-label="pi home 路径"
-        onChange={(e) => {
-          setPath(e.target.value)
-          setError(null)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void submit()
-          if (e.key === 'Escape') onDone()
-        }}
-      />
+      <div className="preset-create-path">
+        <input
+          className="preset-inline-input"
+          value={path}
+          placeholder={mode === 'adopt' ? '已有 pi home 的绝对路径' : '新目录绝对路径，如 ~/.pi/work'}
+          aria-label="pi home 路径"
+          onChange={(e) => {
+            setPath(e.target.value)
+            setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void submit()
+            if (e.key === 'Escape') onDone()
+          }}
+        />
+        <button
+          type="button"
+          className="preset-create-browse"
+          aria-expanded={browsing}
+          onClick={() => setBrowsing((current) => !current)}
+        >
+          {browsing ? '收起浏览' : '浏览目录…'}
+        </button>
+      </div>
+      {browsing ? (
+        <DirBrowser
+          listDir={listDir}
+          initialPath={path.trim() || '~'}
+          onSelect={(picked) => {
+            setPath(picked)
+            setBrowsing(false)
+            setError(null)
+          }}
+          onCancel={() => setBrowsing(false)}
+          selectLabel="用这个目录"
+          placeholder="路径回车跳转，文字过滤"
+        />
+      ) : null}
       <input
         className="preset-inline-input"
         value={name}

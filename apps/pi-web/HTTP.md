@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | `GET /api/health` | none | 状态、写策略、状态目录、home 数量；不触发 SDK 加载 |
 | `GET /api/homes/defaults`、`/api/homes/check` | none | 默认位置、路径有效性 |
+| `GET /api/homes/browse` | none | 任意目录浏览（选目录组件用）：query `path`，`~` 展开 + realpath，只列子目录 |
 | `GET/POST/PATCH/DELETE /api/homes` | none | home 清单与增删改 |
 | `GET /api/homes/:id` | none | home 实体（`sessionsRoot`、`capabilities`、`profileRevision`） |
 | `GET /api/homes/:id/runtime-profile` | none | 运行时配置快照（模型候选、subagent、默认 cwd、目录采集时间） |

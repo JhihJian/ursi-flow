@@ -18,10 +18,12 @@
     "apps/flow-web/web",
     "apps/flow-web/server",
     "apps/pi-web/server",
-    "apps/pi-web/web"
+    "apps/pi-web/web",
+    "packages/directory-picker"
   ],
   "scripts": {
     "test": "node --test apps/fs-web/server/test/*.test.ts",
+    "test:directory-picker": "npm run test -w @ursi/directory-picker",
     "test:todo-web": "npm run test -w @ursi/todo-web",
     "dev:shell-web": "npm run dev -w @ursi/shell-web",
     "build:shell-web": "npm run build -w @ursi/shell-web",

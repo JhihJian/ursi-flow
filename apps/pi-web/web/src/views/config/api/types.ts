@@ -12,6 +12,13 @@ export interface HomeCheck {
   valid: boolean
 }
 
+/** 任意目录浏览（选目录组件用）：只列子目录，`~` 已展开，path 为 realpath。 */
+export interface DirBrowse {
+  path: string
+  parent: string | null
+  entries: { name: string }[]
+}
+
 export type HomeSource = 'default' | 'env' | 'user' | 'manual'
 
 /** 一个 pi home 的摘要：服务端清单条目 + 自动发现项。 */

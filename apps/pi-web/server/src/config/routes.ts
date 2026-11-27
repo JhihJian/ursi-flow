@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
+import { homedir } from 'node:os'
+import { readdir, realpath, stat } from 'node:fs/promises'
 import { HomeError, defaultHomeIfValid, looksLikePiHome, resolveRequestedHome } from '../shared/pi-home.ts'
 import { homes, homeViewOf, requireHome } from './registry.ts'
 import { readSettings, mutateSettings } from './settings-file.ts'
@@ -58,6 +60,43 @@ route('GET', '/api/homes/check', 'none', async ({ url }) => {
   const raw = url.searchParams.get('home')
   const real = await resolveRequestedHome(raw)
   return { home: real, valid: looksLikePiHome(real) }
+})
+
+/**
+ * 任意目录浏览：给选目录组件用。`~` 展开、realpath、目录校验都在服务端，
+ * 只列子目录（选 home / 选目录场景不浏览文件），不要求是合法 pi home。
+ */
+route('GET', '/api/homes/browse', 'none', async ({ url }) => {
+  const raw = (url.searchParams.get('path') ?? '').trim()
+  if (!raw) throw new HomeError('path 缺失', 400, 'invalid_request')
+  const expanded = raw === '~' || raw.startsWith('~/') ? join(homedir(), raw.slice(1)) : raw
+  if (!isAbsolute(expanded)) {
+    throw new HomeError(`path 必须是绝对路径：${raw}`, 400, 'invalid_request')
+  }
+  let real: string
+  try {
+    real = await realpath(expanded)
+  } catch {
+    throw new HomeError(`目录不存在：${expanded}`, 404, 'browse_not_found')
+  }
+  const info = await stat(real).catch(() => null)
+  if (!info?.isDirectory()) {
+    throw new HomeError(`不是目录：${real}`, 400, 'invalid_request')
+  }
+  const names = await readdir(real)
+  const dirs: string[] = []
+  for (const name of names) {
+    const child = join(real, name)
+    const childInfo = await stat(child).catch(() => null)
+    if (childInfo?.isDirectory()) dirs.push(name)
+  }
+  dirs.sort((a, b) => a.localeCompare(b))
+  const parent = dirname(real)
+  return {
+    path: real,
+    parent: parent === real ? null : parent,
+    entries: dirs.map((name) => ({ name })),
+  }
 })
 
 

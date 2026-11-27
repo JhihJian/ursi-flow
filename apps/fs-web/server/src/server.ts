@@ -9,7 +9,12 @@ import {
   parseWorkspaceSeed,
   ProviderError,
 } from './local-provider.ts'
-import type { ApiError, GitStatusDto, WorkspaceConfig, WorkspaceInfo } from './types.ts'
+import type { ApiError, DirListingDto, GitStatusDto, WorkspaceConfig, WorkspaceInfo } from './types.ts'
+
+/** `~` 与 `~/xx` 展开为当前用户主目录，与 pi-web 的 resolveRoot 同语义。 */
+function expandHome(raw: string): string {
+  return raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw
+}
 
 /** 内存中的 workspace 记录：配置 + 探活结果 + realpath（用于重复检测）。 */
 interface WorkspaceRecord extends WorkspaceConfig {
@@ -155,6 +160,47 @@ export async function createServer(
 
   function workspaceList(): WorkspaceInfo[] {
     return [...workspaces.values()].map(infoOf)
+  }
+
+  /**
+   * 任意目录浏览：给「添加目录」等未登记路径的选目录场景用，不经 provider、
+   * 不受 workspace root 约束（与 workspaces-add 同级的探路能力，只读列目录）。
+   * `~` 在服务端展开，与 pi-web 的 resolveRoot 同语义；返回规范绝对路径供组件锚定。
+   */
+  async function browseDir(query: URLSearchParams): Promise<DirListingDto> {
+    const raw = (query.get('path') ?? '').trim()
+    if (!raw) throw new ProviderError('bad_request', 400, 'path 缺失')
+    const target = expandHome(raw)
+    if (!path.isAbsolute(target)) {
+      throw new ProviderError('bad_request', 400, `path 必须是绝对路径：${raw}`)
+    }
+    const real = await fs.realpath(target).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ProviderError('not_found', 404, `目录不存在：${target}`)
+      }
+      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
+    })
+    const stats = await fs.stat(real).catch((error) => {
+      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
+    })
+    if (!stats.isDirectory()) {
+      throw new ProviderError('bad_request', 400, `不是目录：${real}`)
+    }
+    const names = await fs.readdir(real).catch((error) => {
+      throw new ProviderError('io', 500, error instanceof Error ? error.message : String(error))
+    })
+    const dirs: string[] = []
+    for (const name of names) {
+      const child = path.join(real, name)
+      if (await fs.stat(child).then((s) => s.isDirectory()).catch(() => false)) dirs.push(name)
+    }
+    dirs.sort((a, b) => a.localeCompare(b))
+    const parent = path.dirname(real)
+    return {
+      path: real,
+      parent: parent === real ? null : parent,
+      entries: dirs.map((name) => ({ name })),
+    }
   }
 
   /** 运行时添加目录：absolute path → realpath → 必须是目录 → 哈希 id → 落盘 → 入清单。 */
@@ -328,8 +374,13 @@ export async function createServer(
       return
     }
 
+    if (req.method === 'GET' && route === 'browse') {
+      send(res, 200, await browseDir(new URL(req.url ?? '/', 'http://localhost').searchParams))
+      return
+    }
+
     if (req.method !== 'POST') {
-      send(res, 405, { code: 'bad_request', message: '本服务除 GET workspaces 外一律 POST + JSON' } satisfies ApiError)
+      send(res, 405, { code: 'bad_request', message: '本服务除 GET workspaces、GET browse 外一律 POST + JSON' } satisfies ApiError)
       return
     }
 

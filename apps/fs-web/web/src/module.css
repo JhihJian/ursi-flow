@@ -1026,3 +1026,21 @@ button.wsx-git-sync-status {
 .wsx-panel-fill {
   height: 100%;
 }
+
+/* 添加目录面板里的「浏览目录…」展开按钮。 */
+.wsx-wslist-browse-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  border: 1px dashed var(--wsx-dim, #999999);
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--wsx-dim, #999999);
+  cursor: pointer;
+}
+.wsx-wslist-browse-toggle:hover {
+  color: inherit;
+  border-color: inherit;
+}

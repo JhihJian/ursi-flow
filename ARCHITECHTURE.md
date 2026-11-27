@@ -7,6 +7,7 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 | 模块 | 职责与数据归属 |
 | --- | --- |
 | [工作区外壳](packages/workspace-shell/SPEC.md) | 固定骨架与全局选中：标题栏、可堆叠的侧边栏、工作区、右侧控制面板、状态栏。模块只声明侧边栏、工作区与上下文，外壳负责布局、折叠、选中分派与操作渲染，不含领域逻辑。独立入口在 `shell-web`，todo、fs、ssh、沙箱与 pi 系列模块以 npm workspace 包或仓库内源码接入，组合关系见 `shell-web/src/registry.tsx`。新模块按 [接入规范](packages/workspace-shell/MODULE-CONTRACT.md) 实现。 |
+| [目录选择组件](packages/directory-picker/SPEC.md) | 共享 UI 包：给各应用的「输入服务器目录路径」场景提供统一的目录浏览组件（面包屑 + 路径/过滤二合一 + 子目录列表）。数据由调用方注入 `listDir`，浏览路由归各应用服务端；fs-web 添加目录与 pi-web 选根 / 新增 pi home 已接入。 |
 | [SUMM-Todo 看板](apps/todo-web/SPEC.md) | 独立的待办 Web 看板，读写 SUMM-Todo 本机 SQLite 库，展示项目、任务和周期统计。 |
 | [SSH 终端](apps/ssh-web/SPEC.md) | 独立的浏览器 SSH 终端，服务端启动系统 OpenSSH 子进程（`ssh -tt`）建立会话，WebSocket 桥接 xterm.js 与远端 PTY。连接配置存本机 SQLite，可按 [工作区接入设计](docs/design/ssh-web/WORKSPACE-INTEGRATION.md) 作为一栏接入 shell-web。 |
 | [dae 路由观察台](apps/dae-web/SPEC.md) | 本机 dae 的观察与配置界面。零依赖 Node 服务托管 React 页面，把 `/api` 转发到 dae native API 并注入 Bearer token（dae 只监听 loopback、拒绝外部 Origin、启用 api.secret），展示运行态、连接、流历史、规则、DNS 与日志，回放连接的路由判决，并按配置源编排校验与写入。 |
