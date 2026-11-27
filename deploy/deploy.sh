@@ -179,6 +179,8 @@ build() {
   # shell-web 直接 import 各模块入口；sandbox-web 的样式 exports 指向 dist，先构一次。
   (cd "$ROOT/apps/ursi-sandbox/web" && npm run build:css)
   npm --prefix "$ROOT" run build:shell-web
+  # pi-web 的前端是独立 vite 应用，服务端托管 web/dist，不构建页面就是旧的。
+  npm --prefix "$ROOT" run build:pi-web
   if [ ! -d "$ROOT/apps/ursi-flow/node_modules" ] ||
     [ "$ROOT/apps/ursi-flow/package-lock.json" -nt "$ROOT/apps/ursi-flow/node_modules/.package-lock.json" ]; then
     (cd "$ROOT/apps/ursi-flow" && npm ci)
