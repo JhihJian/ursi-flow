@@ -170,6 +170,15 @@ test('页面滚动关闭，菜单自身内滚不关', () => {
   expect(onClose).toHaveBeenCalledTimes(1)
 })
 
+test('容器内的滚动容器滚动也关闭：菜单挂在不滚动的外层，列表在内层滚', () => {
+  const { host, onClose } = mount({ x: 10, y: 10, items })
+  // 模拟 todo 项目列表的结构：菜单与列表是兄弟，列表自己滚。
+  const list = document.createElement('div')
+  host.prepend(list)
+  fireEvent.scroll(list)
+  expect(onClose).toHaveBeenCalledTimes(1)
+})
+
 test('state 清空后监听被移除，不再触发 onClose', () => {
   const { host, onClose, rerender } = mount({ x: 10, y: 10, items })
   rerender(<ContextMenu state={null} onClose={onClose} container={host} />)
@@ -200,4 +209,41 @@ test('菜单项数量变化时位置按新高度重算', () => {
   )
   // 6 行 = 180，400 - 180 - 8 = 212
   expect(host.querySelector<HTMLElement>('[role="menu"]')!.style.top).toBe('212px')
+})
+
+test('打开后焦点进第一个可用项；关闭后还给打开前的焦点元素', () => {
+  const opener = document.createElement('button')
+  document.body.appendChild(opener)
+  opener.focus()
+  const { host, rerender, onClose } = mount({
+    x: 10,
+    y: 10,
+    items: [{ label: '不可用', disabled: true, onSelect: () => {} }, ...items],
+  })
+  const first = host.querySelector<HTMLButtonElement>('.sb-menu-item:not(:disabled)')!
+  expect(document.activeElement).toBe(first)
+  expect(first.textContent).toBe('编辑')
+
+  rerender(<ContextMenu state={null} onClose={onClose} container={host} />)
+  expect(document.activeElement).toBe(opener)
+  opener.remove()
+})
+
+test('二次确认换菜单时焦点不还回去，直接进新菜单的第一项', () => {
+  const opener = document.createElement('button')
+  document.body.appendChild(opener)
+  opener.focus()
+  const { host, rerender, onClose } = mount({ x: 10, y: 10, items })
+  rerender(
+    <ContextMenu
+      state={{ x: 10, y: 10, heading: '确认？', items: [{ label: '删除', danger: true, onSelect: () => {} }] }}
+      onClose={onClose}
+      container={host}
+    />,
+  )
+  expect(document.activeElement).not.toBe(opener)
+  expect(document.activeElement?.textContent).toBe('删除')
+  rerender(<ContextMenu state={null} onClose={onClose} container={host} />)
+  expect(document.activeElement).toBe(opener)
+  opener.remove()
 })

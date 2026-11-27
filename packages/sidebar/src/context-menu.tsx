@@ -56,6 +56,19 @@ export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   const close = () => onCloseRef.current()
+  // 打开前的焦点元素：关闭后还回去，键盘用户不会丢位置。
+  // 只在「无 → 有」时记，「有 → 换一个菜单」（二次确认）不重记，否则会记成正在卸载的旧菜单项。
+  const openerRef = useRef<HTMLElement | null>(null)
+  const open = state !== null
+  const prevOpen = useRef(false)
+  useEffect(() => {
+    if (open && !prevOpen.current) openerRef.current = document.activeElement as HTMLElement | null
+    if (!open && prevOpen.current) {
+      openerRef.current?.focus?.()
+      openerRef.current = null
+    }
+    prevOpen.current = open
+  }, [open])
 
   useLayoutEffect(() => {
     if (!state || !container) {
@@ -106,7 +119,11 @@ export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
 
   return createPortal(
     <div
-      ref={ref}
+      ref={(node) => {
+        ref.current = node
+        // 菜单挂载后焦点进第一个可用项；关闭时上面的 effect 还回去。
+        node?.querySelector<HTMLButtonElement>('.sb-menu-item:not(:disabled)')?.focus()
+      }}
       className="sb-menu"
       role="menu"
       style={{ left: position.left, top: position.top, width: MENU_WIDTH }}
