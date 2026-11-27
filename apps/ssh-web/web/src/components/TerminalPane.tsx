@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { ContextMenu, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuState } from '@ursi/sidebar'
 import { WindowBar } from './WindowBar'
 import type { SearchAddon } from '@xterm/addon-search'
 import { openTerminalBridge, type TerminalBridge } from '../terminal/bridge'
@@ -151,7 +151,7 @@ export function TerminalPane({
       />
       {failed ? <div className="ssh-banner ssh-banner-error">{failed}</div> : null}
       {ended ? <div className="ssh-banner ssh-banner-ended">{ended}</div> : null}
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={container} />
     </div>
   )
 }

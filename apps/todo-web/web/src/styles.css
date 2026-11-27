@@ -247,6 +247,15 @@
 }
 
 /* 项目列表占满侧栏剩余高度：空白处也要能右键新建项目。 */
+/* 外层不滚动，只作菜单容器；列表在内层滚动，菜单才不会被裁或随滚动跑位。 */
+.project-list-frame {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .project-list-body {
   display: flex;
   flex: 1 1 auto;
@@ -262,19 +271,11 @@
   padding: 0;
 }
 
+/* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
 .project-item {
-  padding: var(--space-sm) var(--space-xs);
+  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
+  padding: var(--space-sm) var(--space-xs) var(--space-sm) calc(var(--space-xs) + 2px);
   cursor: pointer;
-  border-left: 2px solid transparent;
-}
-
-.project-item:hover {
-  background: var(--gray-200);
-}
-
-.project-item.active {
-  border-left-color: var(--black);
-  background: var(--gray-200);
 }
 
 .project-item.drop-ready {
@@ -282,9 +283,10 @@
   outline-offset: -1px;
 }
 
-.project-item.drop-over {
-  border-left-color: var(--gray-900);
-  background: var(--white);
+/* 三类选择器：拖拽悬停的白底要盖过 .sb-row:hover 的灰底。 */
+.project-list .project-item.drop-over {
+  box-shadow: inset 2px 0 0 var(--gray-900);
+  background-color: var(--white);
   outline: 1px dashed var(--gray-900);
   outline-offset: -1px;
 }

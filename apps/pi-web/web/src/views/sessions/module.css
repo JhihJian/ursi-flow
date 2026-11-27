@@ -524,22 +524,16 @@
 .pisess .session-group-head.is-cwd {
   box-shadow: inset 2px 0 0 var(--gray-900);
 }
+/* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
 .pisess .session-item {
   display: block;
   width: 100%;
-  padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-sm);
+  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
+  padding: var(--space-xs) var(--space-xs) var(--space-xs) calc(var(--space-sm) + 2px);
   border: 0;
-  border-left: 2px solid transparent;
-  background: none;
+  background-color: transparent;
   text-align: left;
   cursor: pointer;
-}
-.pisess .session-item:hover {
-  background: var(--gray-100);
-}
-.pisess .session-item.active {
-  border-left-color: var(--black);
-  background: var(--gray-200);
 }
 .pisess .session-item .name {
   display: block;
@@ -593,51 +587,6 @@
 .pisess .session-more:hover {
   color: var(--gray-900);
   background: var(--gray-100);
-}
-.pisess .context-menu {
-  position: absolute;
-  z-index: 400;
-  padding: var(--space-xs) 0;
-  border: 1px solid var(--gray-900);
-  background: var(--white);
-}
-.pisess .context-menu-heading {
-  padding: var(--space-xs) var(--space-sm);
-  border-bottom: 1px solid var(--gray-200);
-  color: var(--gray-400);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pisess .context-menu-item {
-  display: block;
-  width: 100%;
-  padding: var(--space-xs) var(--space-sm);
-  border: 0;
-  background: none;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--gray-900);
-  cursor: pointer;
-}
-.pisess .context-menu-item:hover:not(:disabled), .context-menu-item:focus-visible:not(:disabled) {
-  outline: none;
-  background: var(--gray-200);
-}
-.pisess .context-menu-item:disabled {
-  cursor: default;
-  color: var(--gray-400);
-}
-.pisess .context-menu-item.danger {
-  color: #b43c3c;
-}
-.pisess .context-menu-item.danger:hover:not(:disabled) {
-  background: rgba(180, 60, 60, 0.1);
-}
-.pisess .context-menu-item.danger:disabled {
-  color: rgba(180, 60, 60, 0.45);
 }
 .pisess-workspace {
   display: flex;

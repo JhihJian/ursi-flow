@@ -1,0 +1,119 @@
+/*
+ * @ursi/sidebar：侧栏列表行与右键菜单的共用样式。
+ * 只管三个视觉原子：左侧 2px 竖线、hover 灰底、文字截断；行高、字号、布局留给调用方。
+ * 颜色直接消费外壳 --ws-* 变量，一层回退，不定义自己的变量体系。
+ * 无全局选择器，无 position: fixed（契约见 workspace-shell/MODULE-CONTRACT.md 第 6 节）。
+ */
+
+/* ── 列表行 ─────────────────────────────────────────────── */
+
+/*
+ * 竖线用 inset box-shadow，不碰 border、padding 与盒模型宽度：
+ * 调用方常是 button 或有自己的内边距与边框重置，竖线不能被它们覆盖。
+ * 本样式要在各模块样式之前加载，模块自己刻意的底色（如拖拽态）才能盖过这里的 hover。
+ */
+.sb-row {
+  box-shadow: inset 2px 0 0 transparent;
+}
+
+.sb-row:hover {
+  background-color: var(--ws-line, #e5e5e5);
+}
+
+.sb-row.is-active {
+  box-shadow: inset 2px 0 0 var(--ws-ink, #1a1a1a);
+  background-color: var(--ws-line, #e5e5e5);
+}
+
+.sb-row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-row-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--ws-muted, #999999);
+}
+
+/* ── 右键菜单 ───────────────────────────────────────────── */
+
+/* portal 进模块容器后 absolute 定位；容器自己要 position: relative。 */
+.sb-menu {
+  position: absolute;
+  z-index: 200;
+  padding: 4px 0;
+  border: 1px solid var(--ws-ink, #1a1a1a);
+  background: #ffffff;
+}
+
+.sb-menu-heading {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ws-line, #e5e5e5);
+  color: var(--ws-muted, #999999);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ws-ink, #1a1a1a);
+  cursor: pointer;
+}
+
+.sb-menu-item:hover:not(:disabled),
+.sb-menu-item:focus-visible:not(:disabled) {
+  outline: none;
+  background: var(--ws-line, #e5e5e5);
+}
+
+.sb-menu-item:disabled {
+  color: var(--ws-muted, #999999);
+  cursor: default;
+}
+
+.sb-menu-item:disabled .sb-menu-icon {
+  opacity: 0.45;
+}
+
+.sb-menu-item.danger {
+  color: #b43c3c;
+}
+
+.sb-menu-item.danger:hover:not(:disabled) {
+  background: rgba(180, 60, 60, 0.1);
+}
+
+.sb-menu-item.danger:disabled {
+  color: rgba(180, 60, 60, 0.45);
+}
+
+.sb-menu-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.sb-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sb-menu-check {
+  flex: none;
+  color: var(--ws-muted, #999999);
+}

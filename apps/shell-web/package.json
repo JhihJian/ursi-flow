@@ -18,6 +18,7 @@
     "@ursi/fs-web": "*",
     "@ursi/pi-web": "*",
     "@ursi/sandbox-web": "*",
+    "@ursi/sidebar": "*",
     "@ursi/ssh-web": "*",
     "@ursi/todo-web": "*",
     "@ursi/workspace-shell": "*",

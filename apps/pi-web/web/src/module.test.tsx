@@ -297,17 +297,17 @@ describe('Pi Web 模块', () => {
     await act(async () => item.click())
     await settle()
     expect(container.querySelector('.pichat-bar-title')?.textContent).toBe('修一个 bug')
-    expect(container.querySelector('.session-item.active'), container.querySelector('.session-item')?.className).not.toBeNull()
+    expect(container.querySelector('.session-item.is-active'), container.querySelector('.session-item')?.className).not.toBeNull()
 
     await act(async () =>
       item.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 })),
     )
     await settle()
-    const menuText = container.querySelector('.context-menu')?.textContent ?? container.textContent ?? ''
+    const menuText = container.querySelector('.sb-menu')?.textContent ?? container.textContent ?? ''
     expect(menuText).not.toContain('打开')
     expect(menuText).toContain('释放运行时')
     // 没有本进程运行时：释放项禁用。
-    const evict = [...container.querySelectorAll('.context-menu-item')].find((b) => b.textContent?.includes('释放运行时'))
+    const evict = [...container.querySelectorAll('.sb-menu-item')].find((b) => b.textContent?.includes('释放运行时'))
     expect(evict?.hasAttribute('disabled')).toBe(true)
   })
 
@@ -337,7 +337,7 @@ describe('Pi Web 模块', () => {
     // 页面没换：还是同一个输入框 DOM 节点，标题已经从「新对话」变成会话。
     expect(container.querySelector('.pichat-composer')).toBe(composer)
     expect(container.querySelector('.pichat-bar-title')?.textContent).not.toBe('新对话')
-    expect(container.querySelector('.session-item.active')).toBeNull()
+    expect(container.querySelector('.session-item.is-active')).toBeNull()
 
     // 回到空会话页再点已有会话：发消息走续聊，只传 sessionId、不传 home。
     const newChat = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('新对话'))!

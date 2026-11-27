@@ -120,8 +120,8 @@ interface SessionRowItemProps {
  */
 function SessionRowItem({ row, active, live, onSelect, onMenu }: SessionRowItemProps) {
   const running = live?.status === 'running'
-  const classes = ['session-item']
-  if (active) classes.push('active')
+  const classes = ['sb-row', 'session-item']
+  if (active) classes.push('is-active')
   if (live) classes.push('is-live')
   return (
     <button

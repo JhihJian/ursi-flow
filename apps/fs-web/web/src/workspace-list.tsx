@@ -5,10 +5,11 @@ import { DirBrowser } from '@ursi/directory-picker'
 import type { DeviceOption, ListDirFn } from '@ursi/directory-picker'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
-import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 import { copyText } from './lib/clipboard.ts'
+import { useMenuContainer } from './menu-container.ts'
 
-type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+type OpenMenu = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => void
 
 /** 行内输入：回车提交、Esc 取消、失焦提交（与树内重命名同语义）。 */
 function InlineInput({
@@ -264,7 +265,13 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
   const addWorkspace = useTreeStore((state) => state.addWorkspace)
   const [adding, setAdding] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  const menuContainer = useMenuContainer()
+  /** 把视口坐标换成菜单容器坐标；容器未挂载时不开菜单。 */
+  const openMenu: OpenMenu = (clientX, clientY, items, heading) => {
+    if (!menuContainer) return
+    const rect = menuContainer.getBoundingClientRect()
+    setMenu({ x: clientX - rect.left, y: clientY - rect.top, items, heading })
+  }
   const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
 
   if (collapsed) {
@@ -320,7 +327,7 @@ export function WorkspaceList({ onRemove, collapsed, onExpand }: WorkspaceListPr
           />
         ))}
       </ul>
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={menuContainer} />
     </aside>
   )
 }

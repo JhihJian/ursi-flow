@@ -5,7 +5,7 @@ import { useAppStore } from '../../../pi-store'
 import { api } from '../api/client'
 import type { ListDirFn } from '@ursi/directory-picker'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
-import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 
 export type SectionId =
   | 'general'
@@ -311,7 +311,7 @@ function CreatePanel({ onDone }: { onDone: () => void }) {
 }
 
 /** pi home 清单：点一行切换，右键重命名/移除，「+」展开新增面板。 */
-export function HomeList() {
+export function HomeList({ menuContainer }: { menuContainer: HTMLElement | null }) {
   const homes = useAppStore((s) => s.homes)
   const homesLoading = useAppStore((s) => s.homesLoading)
   const homePath = useAppStore((s) => s.homePath)
@@ -319,7 +319,12 @@ export function HomeList() {
   const refreshHomes = useAppStore((s) => s.refreshHomes)
   const [creating, setCreating] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  /** 把视口坐标换成菜单容器坐标；容器未挂载时不开菜单。 */
+  const openAt = (clientX: number, clientY: number, items: MenuItem[], heading?: string): void => {
+    if (!menuContainer) return
+    const rect = menuContainer.getBoundingClientRect()
+    setMenu({ x: clientX - rect.left, y: clientY - rect.top, items, heading })
+  }
 
   return (
     <nav className="config-sidebar config-sidebar-homes" aria-label="pi home">
@@ -358,14 +363,14 @@ export function HomeList() {
             home={home}
             active={home.path === homePath}
             onSelect={() => void confirmHome(home.path)}
-            openMenu={openMenu}
+            openMenu={openAt}
           />
         ))}
         {homes.length === 0 ? (
           <li className="preset-empty">{homesLoading ? '扫描中…' : '没有发现 pi home'}</li>
         ) : null}
       </ul>
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={menuContainer} />
     </nav>
   )
 }

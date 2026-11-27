@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { keyToParent } from './api.ts'
+import { MenuContainerProvider } from './menu-container.ts'
 import type { WorkspaceApi } from './api.ts'
 import { injectEditorApi, useEditorStore, registerGitSaveListener } from './editor-store.ts'
 import { registerEditorApiInjector, useTreeStore, registerGitRefresh } from './tree-store.ts'
@@ -52,6 +53,7 @@ export function FileExplorer({
   const activeWorkspaceId = useTreeStore((state) => state.activeWorkspaceId)
   const selectedDirKey = useTreeStore((state) => state.selectedDirKey)
   const [creating, setCreating] = useState(false)
+  const [menuContainer, setMenuContainer] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setApi(api)
@@ -61,38 +63,40 @@ export function FileExplorer({
   void injectedApi
 
   return (
-    <div className="wsx-explorer">
-      <WorkspaceList
-        onRemove={onWorkspaceRemoved}
-        collapsed={listCollapsed}
-        onExpand={onExpandList}
-      />
-      <div className="wsx-tree-pane">
-        {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
-        {lastError ? (
-          <button type="button" className="wsx-panel-error" onClick={clearError}>
-            {lastError}（点击关闭）
-          </button>
-        ) : null}
-        {activeWorkspaceId ? (
-          <>
-            <GitBar onOpenFile={onOpenFile} />
-            <FileTree
-              onOpenFile={onOpenFile}
-              onFileDeleted={onFileDeleted}
-              onCreateDir={() => setCreating(true)}
-            />
-            <DirActions
-              selectedDirKey={selectedDirKey}
-              creating={creating}
-              onCreatingDone={() => setCreating(false)}
-            />
-            <GitSyncStatus />
-          </>
-        ) : (
-          <div className="wsx-explorer-empty">从左侧选择目录，或用左侧「+」添加</div>
-        )}
-      </div>
+    <div className="wsx-explorer" ref={setMenuContainer}>
+      <MenuContainerProvider value={menuContainer}>
+        <WorkspaceList
+          onRemove={onWorkspaceRemoved}
+          collapsed={listCollapsed}
+          onExpand={onExpandList}
+        />
+        <div className="wsx-tree-pane">
+          {workspaceError ? <div className="wsx-panel-error">{workspaceError}</div> : null}
+          {lastError ? (
+            <button type="button" className="wsx-panel-error" onClick={clearError}>
+              {lastError}（点击关闭）
+            </button>
+          ) : null}
+          {activeWorkspaceId ? (
+            <>
+              <GitBar onOpenFile={onOpenFile} />
+              <FileTree
+                onOpenFile={onOpenFile}
+                onFileDeleted={onFileDeleted}
+                onCreateDir={() => setCreating(true)}
+              />
+              <DirActions
+                selectedDirKey={selectedDirKey}
+                creating={creating}
+                onCreatingDone={() => setCreating(false)}
+              />
+              <GitSyncStatus />
+            </>
+          ) : (
+            <div className="wsx-explorer-empty">从左侧选择目录，或用左侧「+」添加</div>
+          )}
+        </div>
+      </MenuContainerProvider>
     </div>
   )
 }

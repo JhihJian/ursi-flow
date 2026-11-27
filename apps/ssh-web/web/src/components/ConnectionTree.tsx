@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { ContextMenu, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuState } from '@ursi/sidebar'
 import { TmuxInstallHint } from './TmuxInstallHint'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
 import type { Connection } from '../api/types'
@@ -220,7 +220,7 @@ export function ConnectionTree() {
           return (
             <li key={connection.id} className="ssh-tree-node">
               <div
-                className={selected ? 'ssh-tree-row parent active' : 'ssh-tree-row parent'}
+                className={selected ? 'sb-row ssh-tree-row parent is-active' : 'sb-row ssh-tree-row parent'}
                 onClick={() => selectConnectionRow(connection.id)}
                 onContextMenu={(event) => openContextMenu(event, connection)}
                 title={connection.command}
@@ -319,7 +319,7 @@ export function ConnectionTree() {
           </div>
         </div>
       ) : null}
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={container} />
     </div>
   )
 }
@@ -349,7 +349,7 @@ function SessionChildRow({
   return (
     <li
       key={rowKey}
-      className={open ? 'ssh-tree-row child active' : 'ssh-tree-row child'}
+      className={open ? 'sb-row ssh-tree-row child is-active' : 'sb-row ssh-tree-row child'}
       onClick={onClick}
       onContextMenu={onContextMenu}
       title={attachedNote}

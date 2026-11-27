@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } fro
 import type { SessionRow } from '../api'
 import type { SessionGroup } from '../lib/format'
 import { sessionTitle } from '../lib/format'
-import type { MenuItem, MenuState } from '../components/ContextMenu'
+import type { MenuItem, MenuState } from '@ursi/sidebar'
 
 interface MenuActions {
   deleteSession: (row: SessionRow) => void
@@ -18,16 +18,28 @@ interface MenuActions {
  *
  * 确认层要落在刚才菜单的位置上，但那时菜单 state 已经清空，所以坐标另存一份。
  */
-export function useSidebarMenu({ deleteSession, togglePin, evictSession, localSessionIds }: MenuActions) {
+export function useSidebarMenu({
+  deleteSession,
+  togglePin,
+  evictSession,
+  localSessionIds,
+  menuContainer,
+}: MenuActions & { menuContainer: HTMLElement | null }) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuAt = useRef({ x: 0, y: 0 })
 
-  const openMenu = useCallback((event: ReactMouseEvent, items: MenuItem[], heading?: string) => {
-    event.preventDefault()
-    event.stopPropagation()
-    menuAt.current = { x: event.clientX, y: event.clientY }
-    setMenu({ x: event.clientX, y: event.clientY, items, heading })
-  }, [])
+  /** 把视口坐标换成菜单容器坐标；容器未挂载时不开菜单。 */
+  const openMenu = useCallback(
+    (event: ReactMouseEvent, items: MenuItem[], heading?: string) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!menuContainer) return
+      const rect = menuContainer.getBoundingClientRect()
+      menuAt.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      setMenu({ x: menuAt.current.x, y: menuAt.current.y, items, heading })
+    },
+    [menuContainer],
+  )
 
   /** 项目组右键：关注 / 取消关注。 */
   const projectMenu = useCallback(

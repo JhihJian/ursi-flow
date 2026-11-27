@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'pi-agent-trajectory-viewer/style.css'
+import '@ursi/sidebar/style.css'
 import '@ursi/directory-picker/style.css'
 import './module.css'
 import './standalone.css'

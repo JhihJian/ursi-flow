@@ -1,5 +1,5 @@
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { usePi } from './pi-context'
 import { usePiNav } from './pi-nav'
 import { useChatController } from './views/chat/chat-context'
@@ -28,6 +28,8 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
   const assembledIds = useMemo(() => new Set(chats.map((chat) => chat.sessionId)), [chats])
 
   const items = home ? [{ label: 'home', value: home.name }] : []
+  // 右键菜单 portal 进侧栏根元素（不滚动），两段清单共用；坐标相对它换算。
+  const [menuContainer, setMenuContainer] = useState<HTMLDivElement | null>(null)
 
   return (
     <SidebarFrame
@@ -37,12 +39,12 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
       expand={expand}
       items={items}
     >
-      <div className="pi-sidebar pisess">
+      <div className="pi-sidebar pisess" ref={setMenuContainer}>
         {loading ? <p className="sidebar-note">加载 pi home…</p> : null}
         {error ? <p className="sidebar-note error">{error}</p> : null}
         <div className="pi-sidebar-homes">
           <div className="pi-manager-root">
-            <HomeList />
+            <HomeList menuContainer={menuContainer} />
           </div>
         </div>
         <div className="pi-sidebar-sessions">
@@ -53,6 +55,7 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
             onOpen={open}
             onEvict={(id) => void evict(id)}
             assembledIds={assembledIds}
+            menuContainer={menuContainer}
           />
         </div>
         <div className="pi-sidebar-foot">

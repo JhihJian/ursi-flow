@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import '@ursi/sidebar/style.css'
 import './module.css'
 import './standalone.css'
 import { createSshController } from './ssh-context'

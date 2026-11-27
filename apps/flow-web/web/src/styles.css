@@ -103,27 +103,19 @@
   min-height: 0;
 }
 
+/* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
 .flow-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 100%;
-  padding: var(--flow-space-sm);
+  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
+  padding: var(--flow-space-sm) var(--flow-space-sm) var(--flow-space-sm) calc(var(--flow-space-sm) + 2px);
   border: none;
-  border-left: 2px solid transparent;
-  background: none;
+  background-color: transparent;
   text-align: left;
   cursor: pointer;
   color: inherit;
-}
-
-.flow-item:hover {
-  background: var(--flow-wash);
-}
-
-.flow-item.is-selected {
-  border-left-color: var(--flow-ink);
-  background: var(--flow-wash);
 }
 
 .flow-item-name {

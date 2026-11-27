@@ -100,7 +100,7 @@ export function FlowSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
                 <li key={flow.id}>
                   <button
                     type="button"
-                    className={`flow-item${flow.id === flowId ? ' is-selected' : ''}${flow.valid ? '' : ' is-broken'}`}
+                    className={`sb-row flow-item${flow.id === flowId ? ' is-active' : ''}${flow.valid ? '' : ' is-broken'}`}
                     aria-current={flow.id === flowId ? 'true' : undefined}
                     onClick={() => void selectFlow(flow.id)}
                   >

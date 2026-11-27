@@ -14,10 +14,11 @@ import {
 import { keyName, keySegments } from './api.ts'
 import { flattenOpen, useTreeStore } from './tree-store.ts'
 import { badgeMapOf, useGitStore } from './git-store.ts'
-import { ContextMenu, type MenuItem, type MenuState } from './context-menu.tsx'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 import type { TreeRowData } from './tree-store.ts'
+import { useMenuContainer } from './menu-container.ts'
 
-type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+type OpenMenu = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => void
 
 interface TreeProps {
   onOpenFile: (key: string) => void
@@ -86,7 +87,13 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
   const reportError = useTreeStore((state) => state.reportError)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const openMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  const menuContainer = useMenuContainer()
+  /** 把视口坐标换成菜单容器坐标；容器未挂载时不开菜单。 */
+  const openMenu: OpenMenu = (clientX, clientY, items, heading) => {
+    if (!menuContainer) return
+    const rect = menuContainer.getBoundingClientRect()
+    setMenu({ x: clientX - rect.left, y: clientY - rect.top, items, heading })
+  }
 
   const rows = useMemo(() => flattenOpen(openDirs, dirs), [openDirs, dirs])
   const snapshot = useGitStore((state) => state.snapshot)
@@ -230,7 +237,7 @@ export function FileTree({ onOpenFile, onFileDeleted, onCreateDir }: TreeProps) 
           })}
         </div>
       </div>
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ContextMenu state={menu} onClose={() => setMenu(null)} container={menuContainer} />
     </>
   )
 }

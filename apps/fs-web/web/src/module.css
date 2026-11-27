@@ -518,48 +518,6 @@ button.wsx-git-sync-status {
 
 /* ---- 右键菜单：对齐 todo-web context-menu ---- */
 
-.wsx-context-menu {
-  position: fixed;
-  z-index: 200;
-  padding: 4px 0;
-  border: 1px solid var(--wsx-ink, #1a1a1a);
-  background: #fff;
-}
-
-.wsx-context-menu-heading {
-  padding: 4px 8px;
-  color: var(--wsx-dim, var(--ws-muted, #999999));
-  font-size: 11px;
-  border-bottom: 1px solid var(--wsx-line, var(--ws-line, #e5e5e5));
-}
-
-.wsx-context-menu-item {
-  display: block;
-  width: 100%;
-  padding: 4px 8px;
-  border: 0;
-  background: none;
-  text-align: left;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--wsx-ink, #1a1a1a);
-  cursor: pointer;
-}
-
-.wsx-context-menu-item:hover,
-.wsx-context-menu-item:focus-visible {
-  outline: none;
-  background: var(--wsx-line, var(--ws-line, #e5e5e5));
-}
-
-.wsx-context-menu-item--danger {
-  color: #b43c3c;
-}
-
-.wsx-context-menu-item--danger:hover {
-  background: rgba(180, 60, 60, 0.1);
-}
-
 /* ---- 文件视图（右侧编辑区） ---- */
 
 .wsx-view {
@@ -792,7 +750,9 @@ button.wsx-git-sync-status {
 
 /* ---- 二级侧边栏：一级目录列表 + 二级文件树 ---- */
 
+/* 右键菜单 portal 进这个根（不滚动），坐标相对它换算。 */
 .wsx-explorer {
+  position: relative;
   display: flex;
   gap: var(--wsx-space-sm, 8px);
   height: 100%;

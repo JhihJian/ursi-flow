@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useDndContext, useDroppable } from '@dnd-kit/core'
 import type { ProjectStats } from '@/api/types'
 import { formatTime } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
-import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
+import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 
 function projectTooltip(project: ProjectStats): string {
   return [project.name, project.description, project.path].filter(Boolean).join(' · ')
 }
 
-type OpenMenu = (x: number, y: number, items: MenuItem[], heading?: string) => void
+type OpenMenu = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => void
 
 function ProjectItem({
   project,
@@ -66,8 +66,9 @@ function ProjectItem({
       ref={setNodeRef}
       data-project-id={project.id}
       className={cx(
+        'sb-row',
         'project-item',
-        active && 'active',
+        active && 'is-active',
         dragging && 'drop-ready',
         isOver && 'drop-over',
       )}
@@ -96,39 +97,48 @@ export function ProjectList() {
   const projectsError = useTodoStore((state) => state.projectsError)
   const selectedProjectId = useTodoStore((state) => state.selectedProjectId)
   const startCreateProject = useTodoStore((state) => state.startCreateProject)
+  // 外层不滚动，只作菜单容器；列表在内层滚动，菜单才不会被裁或随滚动跑位。
+  const menuContainer = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
-
-  const showMenu: OpenMenu = (x, y, items, heading) => setMenu({ x, y, items, heading })
+  const openMenu = useCallback<OpenMenu>((clientX, clientY, items, heading) => {
+    const host = menuContainer.current
+    if (!host) return
+    const rect = host.getBoundingClientRect()
+    setMenu({ x: clientX - rect.left, y: clientY - rect.top, items, heading })
+  }, [])
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   return (
-    <div
-      className="project-list-body"
-      onContextMenu={(event) => {
-        // 项目项自己处理右键；落在空白处时提示新建项目。
-        event.preventDefault()
-        showMenu(event.clientX, event.clientY, [{ label: 'new project', onSelect: startCreateProject }])
-      }}
-    >
-      <ul className="project-list">
-        {projectsLoading ? <li className="project-item loading">Loading...</li> : null}
-        {!projectsLoading && projectsError ? (
-          <li className="project-item loading">Error loading projects</li>
-        ) : null}
-        {!projectsLoading && !projectsError && projects.length === 0 ? (
-          <li className="project-item loading">No projects</li>
-        ) : null}
-        {!projectsLoading
-          ? projects.map((project) => (
-              <ProjectItem
-                key={project.id}
-                project={project}
-                active={project.id === selectedProjectId}
-                openMenu={showMenu}
-              />
-            ))
-          : null}
-      </ul>
-      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+    <div className="project-list-frame" ref={menuContainer}>
+      <div
+        className="project-list-body"
+        onContextMenu={(event) => {
+          // 项目项自己处理右键；落在空白处时提示新建项目。
+          event.preventDefault()
+          openMenu(event.clientX, event.clientY, [{ label: 'new project', onSelect: startCreateProject }])
+        }}
+      >
+        <ul className="project-list">
+          {projectsLoading ? <li className="project-item loading">Loading...</li> : null}
+          {!projectsLoading && projectsError ? (
+            <li className="project-item loading">Error loading projects</li>
+          ) : null}
+          {!projectsLoading && !projectsError && projects.length === 0 ? (
+            <li className="project-item loading">No projects</li>
+          ) : null}
+          {!projectsLoading
+            ? projects.map((project) => (
+                <ProjectItem
+                  key={project.id}
+                  project={project}
+                  active={project.id === selectedProjectId}
+                  openMenu={openMenu}
+                />
+              ))
+            : null}
+        </ul>
+      </div>
+      <ContextMenu state={menu} onClose={closeMenu} container={menuContainer.current} />
     </div>
   )
 }

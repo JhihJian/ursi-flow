@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Listing, SessionRow } from '../api'
 import { primaryLive } from '../live'
 import {
@@ -13,7 +13,7 @@ import { useGroupFold } from '../hooks/useGroupFold'
 import { useSidebarMenu } from '../hooks/useSidebarMenu'
 import { useSessionsController } from '../sessions-context'
 import { RootPicker } from './RootPicker'
-import { ContextMenu } from './ContextMenu'
+import { ContextMenu } from '@ursi/sidebar'
 import { RefreshIcon, SearchIcon } from './Icons'
 import { SessionGroupList } from './SessionGroupList'
 
@@ -35,6 +35,8 @@ export interface SessionsPanelProps {
   onEvict: (sessionId: string) => void
   /** 本进程装配过的会话 id：只有这些行才能释放运行时。 */
   assembledIds: ReadonlySet<string>
+  /** 菜单挂载容器（侧栏根元素，不滚动），右键坐标相对它换算。 */
+  menuContainer: HTMLElement | null
 }
 
 /**
@@ -44,7 +46,15 @@ export interface SessionsPanelProps {
  * 根目录、日期筛选、关注、运行态来自 controller，视图私有的状态在各自的 hook 里。
  * 当前页面与运行时动作不在这里，由宿主通过 props 传入。
  */
-export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assembledIds }: SessionsPanelProps) {
+export function SessionsPanel({
+  activeId,
+  cwd,
+  onPickDir,
+  onOpen,
+  onEvict,
+  assembledIds,
+  menuContainer,
+}: SessionsPanelProps) {
   const {
     root,
     configError,
@@ -72,8 +82,6 @@ export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assem
   } = useSessionsController()
   // 搜索默认收起成图标，点开才显示输入框。纯瞬时状态，收起时连搜索词一起清空。
   const [searchOpen, setSearchOpen] = useState(false)
-  // 浮层挂在侧边栏容器内，避免用全局 position: fixed 在多区域布局里坐标错位。
-  const containerRef = useRef<HTMLDivElement>(null)
 
   // 条形按整份列表统计，不跟着搜索与筛选变，否则选一天后其它天就消失了。
   const allRows = listing?.sessions ?? NO_ROWS
@@ -90,7 +98,13 @@ export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assem
 
   const fold = useGroupFold(groups, activeId, root, { searching: query.trim().length > 0 })
   const pickGroup = (group: SessionGroup) => onPickDir(group.key)
-  const menu = useSidebarMenu({ deleteSession, togglePin, evictSession: onEvict, localSessionIds: assembledIds })
+  const menu = useSidebarMenu({
+    deleteSession,
+    togglePin,
+    evictSession: onEvict,
+    localSessionIds: assembledIds,
+    menuContainer,
+  })
 
   const liveForRow = (row: SessionRow) => (liveEnabled ? primaryLive(liveByPath.get(row.path)) : null)
 
@@ -136,7 +150,7 @@ export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assem
   }
 
   return (
-    <div className="pisess pisess-sidebar-host" ref={containerRef}>
+    <div className="pisess pisess-sidebar-host">
         <div className="pisess-body">
           {configError ? (
             <p className="sidebar-note error">无法读取服务配置：{configError}</p>
@@ -254,7 +268,7 @@ export function SessionsPanel({ activeId, cwd, onPickDir, onOpen, onEvict, assem
           />
         </div>
       ) : null}
-      <ContextMenu state={menu.menu} onClose={menu.close} container={containerRef.current} />
+      <ContextMenu state={menu.menu} onClose={menu.close} container={menuContainer} />
     </div>
   )
 }

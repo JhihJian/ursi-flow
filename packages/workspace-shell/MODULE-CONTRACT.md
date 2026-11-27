@@ -81,8 +81,8 @@ export function createExecutorModule(): WorkspaceModule {
 
 - 所有模块样式挂模块根类（如 `.executor-app`），变量挂在该容器上。
 - 禁止写 `html`、`body`、`:root`、`#root`、全局 `*` 重置。独立入口需要时另建 `standalone.css`，只在独立入口导入。
-- 避免 `position: fixed`；需要浮层时用 `position: absolute` 挂在模块容器内。
-- 视觉沿用外壳的灰度、衬线标题 + 等宽数据；不要引入彩色主题。
+- 避免 `position: fixed`；需要浮层时用 `position: absolute` 挂在模块容器内。侧边栏的右键菜单直接用 `@ursi/sidebar` 的 `ContextMenu`，传一个不滚动且 `position: relative` 的容器，不要自己写一份。
+- 视觉沿用外壳的灰度、衬线标题 + 等宽数据；不要引入彩色主题。侧边栏列表行加 `@ursi/sidebar` 的 `sb-row` 类，竖线与 hover 灰底由它提供。
 
 ## 7. 副作用：可关闭、可注入
 

@@ -299,48 +299,6 @@ padding: var(--space-xs) 0;
   cursor: default;
 }
 
-.pi-manager-root .context-menu {
-position: fixed;
-  z-index: 200;
-  padding: 4px 0;
-  border: 1px solid var(--gray-900);
-  background: var(--white);
-}
-
-.pi-manager-root .context-menu-heading {
-padding: 4px var(--space-sm);
-  border-bottom: 1px solid var(--gray-200);
-  color: var(--gray-400);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.pi-manager-root .context-menu-item {
-display: block;
-  width: 100%;
-  padding: var(--space-xs) var(--space-sm);
-  border: 0;
-  background: none;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--gray-900);
-  cursor: pointer;
-}
-
-.pi-manager-root .context-menu-item:hover, .pi-manager-root .context-menu-item:focus-visible {
-outline: none;
-  background: var(--gray-200);
-}
-
-.pi-manager-root .context-menu-item.danger {
-color: var(--danger);
-}
-
-.pi-manager-root .context-menu-item.danger:hover {
-background: rgba(179, 37, 62, 0.1);
-}
-
 .pi-manager-root .preset-empty {
 padding: var(--space-sm) var(--space-xs);
   font-size: 11px;

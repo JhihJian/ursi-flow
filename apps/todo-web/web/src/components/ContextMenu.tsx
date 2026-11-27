@@ -2,6 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom'
 import { cx } from '@/lib/ui'
 
+/*
+ * 工作区（任务表格、任务图）的右键菜单。侧边栏的菜单已收进 @ursi/sidebar，
+ * 这里只服务工作区：它仍用 position: fixed + body portal，因为任务图是整页滚动的
+ * 画布，菜单要越过多个滚动容器。迁入 @ursi/sidebar 需要先给工作区找一个不滚动的
+ * 定位容器，属于另一件事。
+ */
 export interface MenuItem {
   label: string
   onSelect: () => void

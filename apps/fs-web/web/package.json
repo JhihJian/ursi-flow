@@ -20,6 +20,7 @@
     "@tanstack/react-virtual": "^3.14.28",
     "@ursi/directory-picker": "*",
     "@ursi/location": "*",
+    "@ursi/sidebar": "*",
     "lucide-react": "0.468.0",
     "markdown-it": "^15.0.3",
     "monaco-editor": "^0.58.0",

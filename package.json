@@ -18,10 +18,12 @@
     "apps/pi-web/server",
     "apps/pi-web/web",
     "packages/directory-picker",
+    "packages/sidebar",
     "packages/location"
   ],
   "scripts": {
-    "test": "npm run test:location && node --test apps/fs-web/server/test/*.test.ts",
+    "test": "npm run test:location && npm run test -w @ursi/sidebar && node --test apps/fs-web/server/test/*.test.ts",
+    "test:sidebar": "npm run test -w @ursi/sidebar",
     "test:directory-picker": "npm run test -w @ursi/directory-picker",
     "test:todo-web": "npm run test -w @ursi/todo-web",
     "dev:shell-web": "npm run dev -w @ursi/shell-web",
