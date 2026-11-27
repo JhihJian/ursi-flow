@@ -154,7 +154,13 @@ function modelIdOf(model: Record<string, unknown>): string {
   return typeof model.id === 'string' ? model.id : ''
 }
 
-function ModelRows({ models }: { models: Array<Record<string, unknown>> }) {
+function ModelRows({
+  models,
+  onRemove,
+}: {
+  models: Array<Record<string, unknown>>
+  onRemove?: (index: number) => void
+}) {
   if (models.length === 0) return <p className="mono-dim">该 provider 还没有模型。</p>
   return (
     <table className="item-table model-table">
@@ -164,6 +170,7 @@ function ModelRows({ models }: { models: Array<Record<string, unknown>> }) {
           <th className="col-size">Context</th>
           <th className="col-size">Max out</th>
           <th className="col-size">能力</th>
+          {onRemove ? <th className="col-state" /> : null}
         </tr>
       </thead>
       <tbody>
@@ -181,6 +188,20 @@ function ModelRows({ models }: { models: Array<Record<string, unknown>> }) {
               <td className="col-size">{typeof model.contextWindow === 'number' ? model.contextWindow.toLocaleString('en-US') : '—'}</td>
               <td className="col-size">{typeof model.maxTokens === 'number' ? model.maxTokens.toLocaleString('en-US') : '—'}</td>
               <td className="col-size">{capabilities.length > 0 ? capabilities.join(' / ') : '—'}</td>
+              {onRemove ? (
+                <td className="col-state">
+                  <button
+                    type="button"
+                    className="btn small btn-danger"
+                    title={`从草稿移除 ${modelIdOf(model) || '该模型'}`}
+                    onClick={() => {
+                      if (window.confirm(`从草稿移除模型 ${modelIdOf(model) || '（缺 id）'}？`)) onRemove(index)
+                    }}
+                  >
+                    删除
+                  </button>
+                </td>
+              ) : null}
             </tr>
           )
         })}
@@ -297,6 +318,17 @@ function ProviderEditor({
     setDiscovered({ ...discovered, models: [] })
   }
 
+  /** 把草稿里的 models 数组删掉一项（对象映射形态会被规整成数组）；只改草稿，保存才落盘。 */
+  function removeModel(index: number) {
+    const entry = parseDraft()
+    if (!entry) return
+    const current = modelsOf(entry)
+    if (index < 0 || index >= current.length) return
+    const nextModels = current.filter((_, i) => i !== index)
+    const next = { ...entry, models: nextModels }
+    setText(JSON.stringify(next, null, 2))
+  }
+
   return (
     <div className="detail-sheet">
       <div className="detail-grip" aria-hidden />
@@ -335,7 +367,7 @@ function ProviderEditor({
               <span className="field-label">模型</span>
               <span className="mono-dim">{models.length} 个 · 对齐 pi --list-models 的列</span>
             </div>
-            <ModelRows models={models} />
+            <ModelRows models={models} onRemove={removeModel} />
           </div>
 
           <div className="detail-grid">
