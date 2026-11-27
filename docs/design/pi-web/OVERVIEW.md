@@ -380,3 +380,4 @@ v1 的目标是让三种页面读同一套实体、同一份权威、同一个�
 - `trajectories` 的 LRU 上限与两个窗口的分桶缓存（当前只按页面各自缓存）。
 - chat 与 sessions 的轨迹配色映射、`ContextMenu` 与解析代码合并成一份共享层（当前仍是每个子模块一份）。
 - 会话级 `capabilities` 的前端解禁提示、`stale` 应用按钮的可见入口。
+- **同一文件在注册表里有两份实体**：前端列表请求带 `root=<home>/sessions`，`originFromQuery` 一律按外部目录算 origin；`createChat` 按 home 算。于是扫描结果注册一份 `external` 实体，运行时注册一份 `home` 实体，同一文件两条记录。后果是刚建的新会话（只有 home 那份）不出现在列表里，直到落盘并被扫描成 external。修法：`root` 命中某个已登记 home 的 `sessions/` 时按 home 算 origin，并把已有 external 实体并入。

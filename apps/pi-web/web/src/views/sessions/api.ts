@@ -59,6 +59,8 @@ interface SessionEntity {
   cwd: string
   title: string | null
   persistence: 'memory' | 'file'
+  /** 实体被注册表记录的时刻；还没落盘的新会话只有这个时间。 */
+  seenAt: number
   origin: { kind: 'home'; homeId: string; homePath: string } | { kind: 'external'; rootPath: string }
   disk: {
     size: number
@@ -87,8 +89,9 @@ function toRow(entity: SessionEntity): SessionRow {
     ...(entity.title ? { name: entity.title } : {}),
     firstMessage: entity.disk?.firstMessage ?? '',
     messageCount: entity.disk?.messageCount ?? 0,
-    created: entity.disk?.createdAt ?? 0,
-    modified: entity.disk?.updatedAt ?? 0,
+    created: entity.disk?.createdAt ?? entity.seenAt,
+    // 与服务端排序同一口径：还没落盘的新会话按注册时刻算「今天」，不会被日期筛掉。
+    modified: Math.max(entity.disk?.updatedAt ?? 0, entity.seenAt),
     size: entity.disk?.size ?? 0,
     format: entity.disk?.format ?? 'unknown',
     detailsPending: false,
