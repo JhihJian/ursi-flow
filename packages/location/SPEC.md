@@ -72,5 +72,5 @@ ssh://<设备名>/abs/path    远程，设备名是 ssh-web 的连接名
 ## 归属
 
 - 父级：[ursi-flow](../../SPEC.md)。
-- 使用方：`@ursi/directory-picker`、fs-web 服务端与前端、pi-web 服务端（本机路径规范化）。ssh-web 的 Rust 侧只做最小解析。
+- 使用方：`@ursi/directory-picker`、fs-web 服务端与前端、pi-web 服务端（本机路径规范化）、todo-web 前端（项目路径存 URI，服务端不解析）、flow-web 服务端（flow home 只认本机）与前端。ssh-web 的 Rust 侧只做最小解析。
 - 设计背景与取舍见 [位置契约设计](../../docs/design/location/URI-CONTRACT.md)。

@@ -6,7 +6,7 @@ parent: ../../SPEC.md
 
 ## 功能意图
 
-`@ursi/directory-picker` 给各应用的「输入服务器目录路径」场景一个统一的浏览组件，替代手打绝对路径。包只含 UI 与交互，不含数据获取：数据由调用方注入一个 `listDir(target)` 函数，服务端各自的浏览路由负责位置解析、realpath 规范化、目录校验与排序。定位与 `@ursi/workspace-shell` 相同：共享 UI 包，不是业务模块。
+`@ursi/directory-picker` 给各应用的「输入服务器目录」场景一个统一的浏览组件，替代手打路径。包只含 UI 与交互，不含数据获取：数据由调用方注入一个 `listDir(target)` 函数，服务端各自的浏览路由负责位置解析、realpath 规范化、目录校验与排序。定位与 `@ursi/workspace-shell` 相同：共享 UI 包，不是业务模块。
 
 位置的身份是 URI，与 `@ursi/location` 一致：`file:///abs` 是本机，`ssh://<设备名>/abs` 是远程设备。组件只经 `@ursi/location` 从一个位置派生相邻位置（进子目录、回上级、面包屑），不自己拼路径字符串。
 
@@ -47,4 +47,4 @@ parent: ../../SPEC.md
 - 父级：[ursi-flow](../../SPEC.md)。包只依赖 `@ursi/location`（位置契约纯函数），模块接入经各自的 api 封装注入 `listDir`，不产生跨模块 import。
 - 组件说 URI。`listDir` 收到的目标里，`~` 这类本机简写与位置 URI 混在一起：组件自己产生的导航（进子目录、回上级、面包屑、设备切换）都是 URI，只有本机的「~」按钮透传简写。服务端认不认 URI 由各应用自己决定。
 - 浏览路由归各应用服务端所有：fs-web 是 `GET /api/fs-web/browse`（任意本机目录），pi-web 是 `GET /api/homes/browse`（任意本机目录）与 `GET /api/sessions/browse`（带会话计数）。组件不规定服务端形态。
-- flow-web、todo-web 后续接入时按同一契约添加各自浏览路由。
+- 浏览是 fs-web 的能力。todo-web 与 flow-web 不加自己的浏览路由，选目录器的 `listDir` 由组合根注入 fs-web 导出的 `browse` 命令，与它们的「在文件模块打开」是同一条边。flow-web 只选本机，不注入设备清单；todo-web 注入设备清单，远程目录可达。

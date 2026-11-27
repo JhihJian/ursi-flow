@@ -25,12 +25,12 @@ Flow Core 与 Flow Runtime 是只做推进的库，不带守护进程、Socket �
 
 ## 模块关系
 
-- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`；它不依赖 ursi-flow 的其他模块。
+- **查看待办。** SUMM-Todo 看板由自己的 Rust 服务托管 React 页面并提供同源 API，读写 `~/.ursi/todo/todo.db`。项目路径是[位置契约](packages/location/SPEC.md)的 URI，可以指向远程设备。看板自己不访问文件系统：选目录器的数据来自 fs-web 的 `browse`，「在此打开终端」来自 ssh-web，都由组合根注入，它的服务端没有浏览路由也没有 ssh 调用。
 - **连上主机。** SSH 终端由自己的 Rust 服务托管页面并提供同源 API 与 WS 桥，读写 `~/.ursi/ssh/ssh.db`，同样不依赖 ursi-flow 的其他模块。它也以 `@ursi/ssh-web/module` 接入 [工作区外壳](packages/workspace-shell/SPEC.md) 成为独立一栏，服务与数据归属不变。
 - **管文件。** [fs-web 文件管理器](apps/fs-web/SPEC.md) 由零依赖 Node 服务托管页面并提供同源 API，目录清单存本机状态文件。本机目录直接读写；远程目录只认位置 URI 里的设备名，向 ssh-web 查询连接参数后以 `ssh` 在远端执行，自己不保存任何凭据。它以 `@ursi/fs-web/module` 接入工作区外壳，组合根把 ssh-web 的设备清单与「在此打开终端」两条命令注入给它。
 - **看清出站路由。** dae 路由观察台由零依赖 Node 服务托管页面，按 dae native API 读取本机代理状态，不持有自己的数据；连接与流记录留在 dae 进程内存，重启即丢。配置采用 dae 的 managed layout，写入由 dae 自己完成，本服务只注入 token、编排校验与等待热加载。
 - **推进一次 Flow。** [Flow Runtime](apps/ursi-flow/runtime/SPEC.md) 的引擎读 FLOW.md，把每一步渲染好的提示词交给执行器，校验回执后交给 Flow Core 选边，并把过程写成日志实体与可恢复快照。
-- **在浏览器里跑 Flow。** [Flow 工作台](apps/flow-web/SPEC.md) 的服务端读用户 flow home 里的 `FLOW.md`，用 `apps/ursi-flow` 的引擎开跑并保存运行；页面负责选包、填变量、回答人工确认与看过程日志。运行事实归工作台状态目录，Flow 包本身只读。它同时是工作区外壳里的 `flow` 模块，通过组合根注入的文件模块命令打开 Flow 目录。
+- **在浏览器里跑 Flow。** [Flow 工作台](apps/flow-web/SPEC.md) 的服务端读用户 flow home 里的 `FLOW.md`，用 `apps/ursi-flow` 的引擎开跑并保存运行。flow home 是位置 URI，只接受本机，因为引擎在工作台所在机器上执行，执行器契约没有设备维度；页面负责选包、填变量、回答人工确认与看过程日志。运行事实归工作台状态目录，Flow 包本身只读。它同时是工作区外壳里的 `flow` 模块，通过组合根注入的文件模块命令打开 Flow 目录。
 - **执行一个 Flow 包。** [ursi-flow](apps/ursi-flow/SPEC.md) 把 Core、执行器与 Runtime 装配成一次运行：`runFlow` 负责装配与确认问答，命令行负责加载包、传变量与打印结果。执行器只实现 `prompt` 与 `command` 两个方法，换成真实 Agent 时其他模块不动。
 - **在浏览器里用 Pi。** Pi Web 一个进程同时管三件事：配置（与 CLI 读同一份 pi home，靠文件级乐观锁与备份互不覆盖）、对话（装配常驻运行时，SSE 推流，扩展 UI 请求转成会话内确认）、会话浏览（任意根目录的 `.jsonl` 都能看，写操作只有删除文件与记录特别关注）。三者共用一份会话实体表：对话写进来的会话立刻出现在浏览列表里，历史会话可以在同一实体上续聊，运行态（含其它进程的心跳）挂在实体的 `runtimes` 上。启动/终止只涉及一个单元，页面与接口同源，工作台通过 `/api/pi` 前缀接入。
 - **使用沙箱。** 外部调用方通过 Gateway 打开已登记的 SSH、浏览器或 ACP 等端点，业务会话由对应服务持有。现行 Flow 的命令和 Pi 节点直接在本机工作目录运行，无需 Gateway。
