@@ -28,7 +28,7 @@ parent: ../../SPEC.md
 
 - `style.css` 在各入口于模块样式**之前**加载（shell-web 的 `registry.tsx` 与各独立入口的 `main.tsx` 均已如此）。模块自己刻意的底色（如 todo 拖拽悬停的白底）因此能盖过 `.sb-row:hover` 的灰底。
 - 已接入全部侧边栏行：todo 项目项、ssh 父行与子行、pi 会话项与 Home 行、flow 项、fs 目录行。fs 文件树（虚拟化，行高由测量驱动）不接。
-- hover 灰底统一为 `--ws-line`（#e5e5e5）。接入前 pi 会话用 #f5f5f5、flow 用 #fafafa、fs 目录行激活用 8% 墨色淡染，现在全部一致。
+- hover 灰底统一为 `--ws-line`（#e5e5e5），选中态与 hover 同色，只靠左侧竖线区分。todo 与 flow 原本就是这样；pi 会话原本 hover #f5f5f5、选中 #e5e5e5 两级，统一后降为一级，与仓库主流一致，不为此新增外壳变量。fs 目录行激活底色由 8% 墨色淡染改为同色。
 - 行有圆角时（fs 目录行 4px），`inset box-shadow` 竖线跟随圆角，视觉上无碍。
 - 无全局选择器，无 `position: fixed`。
 
