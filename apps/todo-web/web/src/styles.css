@@ -1514,31 +1514,6 @@
   font-size: 11px;
 }
 
-/* Mute button */
-.mute-btn {
-  position: fixed;
-  bottom: var(--space-md);
-  right: var(--space-md);
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  padding: var(--space-xs);
-  cursor: pointer;
-  font-size: 12px;
-  border-radius: 2px;
-  opacity: 0.5;
-  transition: opacity 0.2s;
-  z-index: 100;
-}
-
-.mute-btn:hover {
-  opacity: 1;
-  background: var(--gray-200);
-}
-
-.mute-btn .mute-icon {
-  display: inline-block;
-}
-
 /* 内容区变窄时先收起时间列，再收起按天筛选，把宽度留给任务标题。 */
 @container tasks (max-width: 640px) {
   .task-table th.col-time,
@@ -1572,7 +1547,7 @@
 }
 
 /* 补填结果与原因的内嵌输入框，替代浏览器原生 prompt。 */
-.prompt-backdrop {
+.todo-prompt-backdrop {
   position: fixed;
   inset: 0;
   z-index: 300;
@@ -1582,7 +1557,7 @@
   background: rgba(26, 26, 26, 0.18);
 }
 
-.prompt-panel {
+.todo-prompt-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
@@ -1592,7 +1567,7 @@
   background: var(--white);
 }
 
-.prompt-title {
+.todo-prompt-title {
   margin: 0;
   font-family: var(--font-serif);
   font-size: 14px;
@@ -1600,19 +1575,19 @@
   color: var(--gray-900);
 }
 
-.prompt-field {
+.todo-prompt-field {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
 }
 
-.prompt-label {
+.todo-prompt-label {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--gray-400);
 }
 
-.prompt-input {
+.todo-prompt-input {
   width: 100%;
   padding: var(--space-sm);
   border: 1px solid var(--gray-200);
@@ -1623,27 +1598,27 @@
 }
 
 /* 单行输入不提供拖柄，避免看起来像可多行。 */
-.prompt-input.is-single {
+.todo-prompt-input.is-single {
   resize: none;
 }
 
-.prompt-input:focus {
+.todo-prompt-input:focus {
   outline: none;
   border-color: var(--gray-900);
 }
 
-.prompt-footer {
+.todo-prompt-footer {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
-.prompt-error {
+.todo-prompt-error {
   font-size: 11px;
   color: #b43c3c;
 }
 
-.prompt-actions {
+.todo-prompt-actions {
   display: flex;
   gap: var(--space-sm);
   margin-left: auto;

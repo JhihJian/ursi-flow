@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { GitBranchNodeDto } from '../../server/src/types.ts'
+import { useMenuContainer } from './menu-container.ts'
 
 /** git 摘要 chip 的弹出层：定位在锚点元素下方，点外部/Esc/滚动关闭。
- *  内容是一棵展开的树（分支树或变更文件树），行渲染由调用方给。 */
+ *  内容是一棵展开的树（分支树或变更文件树），行渲染由调用方给。
+ *  和右键菜单一样 portal 进侧栏根（不滚动），坐标相对它，不用全局 position: fixed。 */
 
 export interface PopoverTreeRow {
   key: string
@@ -34,6 +36,8 @@ export type { PopoverState as GitPopoverState }
 
 const POPOVER_WIDTH = 260
 const POPOVER_MAX_HEIGHT = 320
+/** 上下都紧时至少给这个高度，宁可被容器底边裁一点也不缩成一条。 */
+const POPOVER_MIN_HEIGHT = 120
 
 /** 树数据 → 行列表；expanded 之外的目录行折叠。 */
 export function flattenBranchNodes(
@@ -130,18 +134,24 @@ export function GitPopover({
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+  const container = useMenuContainer()
+  const [position, setPosition] = useState<{ left: number; top: number; height: number } | null>(null)
 
   useLayoutEffect(() => {
-    if (!state) {
+    if (!state || !container) {
       setPosition(null)
       return
     }
+    const host = container.getBoundingClientRect()
     const box = state.anchor.getBoundingClientRect()
-    const left = Math.max(4, Math.min(box.left, window.innerWidth - POPOVER_WIDTH - 4))
-    const top = box.bottom + 4
-    setPosition({ left, top })
-  }, [state])
+    // 锚点相对侧栏根的坐标；上下都夹在容器内，下面放不下就翻到锚点上方。
+    const left = Math.max(4, Math.min(box.left - host.left, host.width - POPOVER_WIDTH - 4))
+    const below = host.height - (box.bottom - host.top) - 4
+    const above = box.top - host.top - 4
+    const height = Math.max(POPOVER_MIN_HEIGHT, Math.min(POPOVER_MAX_HEIGHT, below, above))
+    const top = below >= height ? box.bottom - host.top + 4 : box.top - host.top - height - 4
+    setPosition({ left, top, height })
+  }, [state, container])
 
   useEffect(() => {
     if (!state) return
@@ -171,7 +181,7 @@ export function GitPopover({
     }
   }, [state, onClose])
 
-  if (!state || !position) return null
+  if (!state || !container || !position) return null
 
   return createPortal(
     <div
@@ -181,7 +191,7 @@ export function GitPopover({
         left: position.left,
         top: position.top,
         width: POPOVER_WIDTH,
-        maxHeight: POPOVER_MAX_HEIGHT,
+        maxHeight: position.height,
       }}
     >
       <div className="wsx-git-popover-heading">{state.heading}</div>
@@ -224,6 +234,6 @@ export function GitPopover({
         )}
       </div>
     </div>,
-    document.body,
+    container,
   )
 }

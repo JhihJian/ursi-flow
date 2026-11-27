@@ -52,8 +52,27 @@ button {
   color: inherit;
 }
 
-#root {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
+/* 右下角静音按钮：只在独立页面出现，钉在视口角落，不随工作区滚动。 */
+.mute-btn {
+  position: fixed;
+  bottom: var(--space-md);
+  right: var(--space-md);
+  z-index: 100;
+  padding: var(--space-xs);
+  border: 1px solid var(--gray-200);
+  border-radius: 2px;
+  background: var(--white);
+  font-size: 12px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.mute-btn:hover {
+  opacity: 1;
+  background: var(--gray-200);
+}
+
+.mute-btn .mute-icon {
+  display: inline-block;
 }

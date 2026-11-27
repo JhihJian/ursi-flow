@@ -61,19 +61,19 @@ function TextPrompt({
 
   return createPortal(
     <div
-      className="prompt-backdrop"
+      className="todo-prompt-backdrop"
       onPointerDown={(event) => {
         // 点面板外空白关闭，和右键菜单的关闭习惯一致。
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <section className="prompt-panel" role="dialog" aria-modal="true" aria-label={options.title}>
-        <h2 className="prompt-title">{options.title}</h2>
-        <label className="prompt-field">
-          <span className="prompt-label">{options.label}</span>
+      <section className="todo-prompt-panel" role="dialog" aria-modal="true" aria-label={options.title}>
+        <h2 className="todo-prompt-title">{options.title}</h2>
+        <label className="todo-prompt-field">
+          <span className="todo-prompt-label">{options.label}</span>
           <textarea
             ref={inputRef}
-            className={options.multiline ? 'prompt-input' : 'prompt-input is-single'}
+            className={options.multiline ? 'todo-prompt-input' : 'todo-prompt-input is-single'}
             rows={options.multiline ? 5 : 1}
             placeholder={options.placeholder}
             value={value}
@@ -91,9 +91,9 @@ function TextPrompt({
             }}
           />
         </label>
-        <div className="prompt-footer">
-          {error ? <span className="prompt-error">{error}</span> : null}
-          <div className="prompt-actions">
+        <div className="todo-prompt-footer">
+          {error ? <span className="todo-prompt-error">{error}</span> : null}
+          <div className="todo-prompt-actions">
             <button type="button" className="btn" onClick={onClose}>
               cancel
             </button>
