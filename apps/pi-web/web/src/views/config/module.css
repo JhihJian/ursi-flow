@@ -1,9 +1,14 @@
 /*
- * 管理台模块样式（由 src/styles.css 用 scripts/scope-css.py 生成，勿手改）。
+ * 管理台模块样式（本文件是唯一真源，直接编辑）。
  *
- * 独立入口仍然 import styles.css；作为工作台模块时用这份作用域化版本：
- * 所有选择器都挂在 .pi-manager-root 下，:root 变量搬到根类上，
- * html/body/#root 与全局 reset 不下发，避免污染宿主外壳。
+ * 独立入口（App.tsx）与工作台模块共用：所有选择器都挂在 .pi-manager-root 下，
+ * :root 变量搬到根类上，html/body/#root 与全局 reset 不下发，避免污染宿主外壳。
+ *
+ * 高度链约定（新增分区必须遵守）：
+ *   main.config-detail（overflow:hidden，不滚）
+ *   → .config-section-host（约束高度，不滚）
+ *   → .section / .split-list / .split-detail（唯一滚动层，滚动条按版面约定隐藏）。
+ *   中间任何一层丢了 min-height:0 或 flex 约束，内容超高就会被裁切且无法滚动。
  */
 
 .pi-manager-root,
@@ -387,6 +392,23 @@ flex: 1;
 }
 
 .pi-manager-root .config-detail > [hidden] {
+display: none;
+}
+
+/*
+ * 分区宿主：config-detail 与滚动层之间的固定高度层。
+ * 缺了它，flex 子项默认 min-height:auto 会把高度撑到内容高，
+ * 下层 .section 的 overflow:auto 永远不生效，内容被 main 裁掉。
+ */
+.pi-manager-root .config-section-host {
+flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pi-manager-root .config-section-host[hidden] {
 display: none;
 }
 

@@ -205,12 +205,14 @@ function ManagerWorkspace() {
   return (
     <main className="pi-manager-root config-detail manager-module-workspace" key={homePath}>
       {blocked ? (
-        <EmptyState title={blocked.title} hint={blocked.hint} />
+        <div className="config-section-host">
+          <EmptyState title={blocked.title} hint={blocked.hint} />
+        </div>
       ) : (
         SECTIONS.map(({ id }) => {
           if (!mounted.has(id)) return null
           return (
-            <div key={id} hidden={id !== section} style={id !== section ? { display: 'none' } : undefined}>
+            <div key={id} hidden={id !== section} className="config-section-host">
               <SectionContent id={id} home={homePath} />
             </div>
           )
