@@ -92,7 +92,8 @@ export function ContextMenu({ state, onClose, container }: ContextMenuProps) {
       // 捕获阶段先于菜单内的点击触发，点菜单本身不能关掉它。
       if (ref.current?.contains(event.target as Node)) return
       close()
-      // 不让这次 pointerdown 继续触发宿主行为（如折叠面板）。
+      // 这次按下不再传给宿主的 pointerdown 监听（如关系图开始拖节点）；
+      // 宿主的 click 照常触发，菜单开着时点另一行就是切到那一行，不用点两次。
       event.stopPropagation()
     }
     const onKeyDown = (event: KeyboardEvent) => {

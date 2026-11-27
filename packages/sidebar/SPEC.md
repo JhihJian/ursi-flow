@@ -38,7 +38,9 @@ parent: ../../SPEC.md
 
 `MenuState` 是 `{ x, y, heading?, items }`，`x/y` 是**容器相对坐标**：调用方用 `event.clientX/Y` 减去 `container.getBoundingClientRect()` 的 `left/top` 得到。`heading` 是顶部说明行，用于删除确认。`MenuItem` 是 `{ label, onSelect, danger?, disabled?, reason?, icon?, checked? }`，取五份拷贝的并集。
 
-定位：宽固定 200，行高固定 30。右侧放不下就左翻到指针左边，翻过去也放不下（窄栏）就贴左。上下夹在容器内。关闭时机：点菜单外（捕获阶段，且阻止这次 `pointerdown` 继续触发宿主行为）、Esc、窗口 resize、任何滚动（菜单自身内滚除外）。点菜单项先关再执行 `onSelect`。容器未挂载时（ref 回调首次给 `null`）不渲染也不挂监听，Esc 不会误触发 `onClose`。
+定位：宽固定 200，行高固定 30。右侧放不下就左翻到指针左边，翻过去也放不下（窄栏）就贴左。上下夹在容器内。关闭时机：点菜单外、Esc、窗口 resize、任何滚动（菜单自身内滚除外）。点菜单项先关再执行 `onSelect`。容器未挂载时（ref 回调首次给 `null`）不渲染也不挂监听，Esc 不会误触发 `onClose`。
+
+点菜单外是非模态的：捕获阶段拦掉这次 `pointerdown`（宿主不会因此开始拖节点），但 `click` 照常到宿主。菜单开着时点另一行就是切到那一行，不用点两次。
 
 焦点：打开后焦点进第一个可用项，关闭后还给打开前的焦点元素。二次确认（菜单直接换成另一个菜单，不经过 `null`）不还焦点，直接进新菜单的第一项。
 
@@ -49,7 +51,7 @@ parent: ../../SPEC.md
 - 替换了全部七份拷贝：todo 项目列表、任务表格、任务关系图，ssh 连接树与终端区，fs 文件树与目录列表，pi 会话与配置。仓库里不再有本地 `ContextMenu` 实现。
 - todo、fs、pi 配置三家原来是视口坐标，已改为容器相对坐标；ssh 与 pi 会话原本就是。
 - todo 工作区（任务表格、任务图）的容器是 `.todo-workspace` 根，经 `MenuContainerProvider` 下发；关系图的三处 `setMenu` 收口到一个 `openAt`。
-- 组件测试 19 例覆盖：坐标夹紧与左翻、点外关闭与阻止冒泡、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、二次确认不还焦点（`npm run test:sidebar`）。
+- 组件测试 20 例覆盖：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、二次确认不还焦点（`npm run test:sidebar`）。
 
 ### 菜单容器的选择
 

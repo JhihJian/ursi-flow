@@ -142,6 +142,19 @@ test('点容器内其它地方关闭，且拦住这次 pointerdown 不让它冒�
   expect(seenByHost).not.toHaveBeenCalled()
 })
 
+test('点外面时 click 照常到宿主：菜单开着时点另一行就是切到那一行，不用点两次', () => {
+  const { host, onClose } = mount({ x: 10, y: 10, items })
+  const row = document.createElement('button')
+  host.appendChild(row)
+  const clicked = vi.fn()
+  row.addEventListener('click', clicked)
+  // 真实点击是 pointerdown 后跟 click；这里分两次触发，确认后者不被拦。
+  fireEvent.pointerDown(row)
+  fireEvent.click(row)
+  expect(onClose).toHaveBeenCalledTimes(1)
+  expect(clicked).toHaveBeenCalledTimes(1)
+})
+
 test('点菜单自身不关闭', () => {
   const { host, onClose } = mount({ x: 10, y: 10, items })
   fireEvent.pointerDown(host.querySelector('[role="menu"]')!)
