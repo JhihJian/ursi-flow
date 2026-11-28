@@ -1,0 +1,104 @@
+/* 预览页自己的排版。只管页面骨架，行的外观全部来自 ../src/style.css。 */
+body {
+  margin: 0;
+  font-family: var(--ws-mono);
+  font-size: 13px;
+  color: var(--ws-ink);
+  background: #fafafa;
+}
+
+.pv-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.pv-page h1 {
+  font-family: var(--ws-serif);
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.pv-lead {
+  color: var(--ws-dim);
+  margin: 0 0 20px;
+}
+
+.pv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.pv-frame {
+  background: #fff;
+  border: 1px solid var(--ws-line);
+  padding: 12px;
+}
+
+.pv-frame h2 {
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+
+.pv-frame p {
+  color: var(--ws-muted);
+  margin: 0 0 10px;
+  font-size: 11px;
+}
+
+.pv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* 侧栏模拟：各行是 SidebarRow 自带的 button，这里只给容器宽度和 children 的样式。 */
+.pv-child {
+  padding-left: 24px;
+}
+
+.pv-dir {
+  display: block;
+  font-size: 11px;
+  color: var(--ws-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-meta {
+  font-size: 11px;
+  color: var(--ws-muted);
+}
+
+.pv-chevron {
+  border: 0;
+  background: none;
+  color: var(--ws-muted);
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.pv-chevron.open {
+  transform: rotate(90deg);
+}
+
+.pv-icon {
+  color: var(--ws-muted);
+}
+
+.pv-menu-host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pv-result {
+  margin-top: 10px !important;
+  color: var(--ws-ink) !important;
+}

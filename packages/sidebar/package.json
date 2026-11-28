@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "vite --host 0.0.0.0 --port 5175 --config vite.preview.config.ts"
   },
   "peerDependencies": {
     "react": "^19.0.0",

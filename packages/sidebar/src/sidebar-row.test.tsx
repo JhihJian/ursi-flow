@@ -67,3 +67,18 @@ test('onClick、onContextMenu 原样触发；rowRef 拿到根元素', () => {
   expect(onClick).toHaveBeenCalledTimes(1)
   expect(onContextMenu).toHaveBeenCalledTimes(1)
 })
+
+test('as="div" 时根元素是 div，用于行里要嵌套按钮的场景；默认 button', () => {
+  const { container, rerender } = render(<SidebarRow label="a" />)
+  expect(container.querySelector('div.sb-row')).toBeNull()
+  expect(container.querySelector('button.sb-row')).not.toBeNull()
+  rerender(<SidebarRow as="div" label="a" />)
+  const root = container.querySelector('div.sb-row')
+  expect(root).not.toBeNull()
+  expect(root!.hasAttribute('type')).toBe(false)
+  // 点击与 ref 照常生效
+  const onClick = vi.fn()
+  rerender(<SidebarRow as="div" label="a" onClick={onClick} />)
+  fireEvent.click(container.querySelector('div.sb-row')!)
+  expect(onClick).toHaveBeenCalledTimes(1)
+})

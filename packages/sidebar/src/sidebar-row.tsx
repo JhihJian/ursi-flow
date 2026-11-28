@@ -2,6 +2,12 @@ import type { MouseEvent, ReactNode } from 'react'
 import { cx } from './cx'
 
 export interface SidebarRowProps {
+  /**
+   * 根元素标签。默认 button，行天然可点、可聚焦、可被键盘触发。
+   * 行里要嵌套按钮（如折叠 chevron）时用 div，HTML 不允许 button 嵌套 button；
+   * 此时键盘可达由内嵌按钮自己保证。
+   */
+  as?: 'button' | 'div'
   /** 选中态：左侧竖线显色 + 灰底。 */
   active?: boolean
   /** 悬停提示。 */
@@ -47,6 +53,7 @@ export interface SidebarRowProps {
  * 根元素是 button：行天然是可点、可聚焦、可被键盘触发的。
  */
 export function SidebarRow({
+  as = 'button',
   active,
   title,
   ariaCurrent,
@@ -63,9 +70,10 @@ export function SidebarRow({
   ...rest
 }: SidebarRowProps) {
   const data = Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('data-')))
+  const Tag = as
   return (
-    <button
-      type="button"
+    <Tag
+      type={as === 'button' ? 'button' : undefined}
       ref={rowRef}
       {...data}
       title={title}
@@ -81,6 +89,6 @@ export function SidebarRow({
       </span>
       {meta !== undefined && meta !== null ? <span className="sb-row-meta">{meta}</span> : null}
       {children}
-    </button>
+    </Tag>
   )
 }

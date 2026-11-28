@@ -20,12 +20,14 @@ parent: ../../SPEC.md
 
 ### 列表行（`SidebarRow`）
 
-`<SidebarRow label meta? />`。根元素是 `button`（行天然可点、可聚焦、可被键盘触发），带 `sb-row` 与布局修饰类，`active` 加 `is-active`。管四件事：左侧 2px 竖线（激活时为 `--ws-ink`）、hover 灰底（`--ws-line`）、标签截断、两种布局：
+`<SidebarRow label meta? />`。根元素默认是 `button`（行天然可点、可聚焦、可被键盘触发），带 `sb-row` 与布局修饰类，`active` 加 `is-active`。行里要嵌套按钮时（ssh 父行的折叠 chevron）传 `as="div"`，HTML 不允许 button 嵌套 button，此时键盘可达由内嵌按钮自己保证。管四件事：左侧 2px 竖线（激活时为 `--ws-ink`）、hover 灰底（`--ws-line`）、标签截断、两种布局：
 
 - `inline`（默认）：`leading` / `label` / `meta` 横向排，`meta` 靠右截断。ssh 子行、ssh 父行（chevron 走 `leading`）用。
 - `stack`：标签在上，`meta` 与 `children` 在下。todo 项目行（`children` 放第二行目录与第三行统计）、pi 会话行、flow 行、fs 目录行（`leading` 放图标，`trailing` 放未就绪标记，`children` 放第二行路径）用。
 
-调用方的口子：`onClick`、`onContextMenu`、`rowRef`（dnd-kit 的 `setNodeRef`）、`className`（业务状态类拼这里）、`title`、`ariaCurrent`、`data-*`。
+调用方的口子：`onClick`、`onContextMenu`、`rowRef`（dnd-kit 的 `setNodeRef`）、`className`（业务状态类拼这里）、`title`、`ariaCurrent`、`data-*`、`as`。
+
+预览页：`npm run dev -w @ursi/sidebar`，起在 `0.0.0.0:5175`，四栏分别演示基础、stack 布局、leading/trailing、右键菜单与二次确认。页面在 `preview/`，不进 build 也不进 typecheck，样式加载顺序与真实应用一致（外壳变量 → 本包 → 页面排版）。
 
 竖线用 `inset box-shadow` 画，不用 `border-left`：调用方常有自己的边框与内边距重置，`box-shadow` 不会被它们覆盖，也不占盒模型宽度。代价是行内容比原来左移 2px，`SidebarRow` 默认左内边距多给 2px 补偿，调用方覆盖内边距时也要多给 2px。
 
@@ -58,7 +60,7 @@ parent: ../../SPEC.md
 - 替换了全部七份拷贝：todo 项目列表、任务表格、任务关系图，ssh 连接树与终端区，fs 文件树与目录列表，pi 会话与配置。仓库里不再有本地 `ContextMenu` 实现。
 - todo、fs、pi 配置三家原来是视口坐标，已改为容器相对坐标；ssh 与 pi 会话原本就是。
 - todo 工作区（任务表格、任务图）的容器是 `.todo-workspace` 根，经 `MenuContainerProvider` 下发；关系图的三处 `setMenu` 收口到一个 `openAt`。
-- `ContextMenu` 21 例：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、重渲染不抢焦点、二次确认不还焦点。`SidebarRow` 7 例：根元素与类名、className 拼接、label/meta、布局类、子元素顺序、透传属性、事件与 rowRef（`npm run test:sidebar`）。
+- `ContextMenu` 21 例：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、重渲染不抢焦点、二次确认不还焦点。`SidebarRow` 8 例：根元素与类名、className 拼接、label/meta、布局类、子元素顺序、透传属性、事件与 rowRef、as=div（`npm run test:sidebar`）。
 
 ### 菜单容器的选择
 

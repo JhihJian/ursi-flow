@@ -220,6 +220,7 @@ export function ConnectionTree() {
           return (
             <li key={connection.id} className="ssh-tree-node">
               <SidebarRow
+                as="div"
                 className="ssh-tree-row parent"
                 active={selected}
                 onClick={() => selectConnectionRow(connection.id)}
