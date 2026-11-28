@@ -153,7 +153,6 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
     <li data-wsx-ws-id={workspace.id}>
       <SidebarRow
         className={'wsx-wslist-item' + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
-        layout="stack"
         active={active}
         title={itemSummary(workspace) + (workspace.error ? `（${workspace.error}）` : '')}
         onClick={() => selectWorkspace(workspace.id)}

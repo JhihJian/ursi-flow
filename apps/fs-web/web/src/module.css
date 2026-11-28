@@ -850,12 +850,12 @@ button.wsx-git-sync-status {
   color: var(--ws-muted, var(--ws-muted, #999999));
 }
 
-.wsx-wslist-item .sb-row-label {
+.wsx-wslist-item .sb-label {
   font-weight: 500;
   color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
 }
 
-.wsx-wslist-item--broken .sb-row-label {
+.wsx-wslist-item--broken .sb-label {
   color: var(--ws-muted, #999999);
   text-decoration: line-through;
 }

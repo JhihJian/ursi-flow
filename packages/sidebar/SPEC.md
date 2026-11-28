@@ -6,9 +6,9 @@ parent: ../../SPEC.md
 
 ## 功能意图
 
-`@ursi/sidebar` 收编各应用侧边栏里重复实现的两样东西：列表行 `SidebarRow`（左侧 2px 竖线 + hover 灰底 + 标签/附加文字两种布局），以及右键菜单 `ContextMenu`。收编前 `ContextMenu` 在 todo-web、ssh-web、fs-web、pi-web（会话与配置两处）各有一份几乎相同的拷贝，其中四份用 `position: fixed` 挂到 `document.body`，违反 [workspace-shell 契约](../workspace-shell/MODULE-CONTRACT.md) 第 6 节。今后改侧边栏行的视觉或右键菜单，只改这一个包。
+`@ursi/sidebar` 收编各应用侧边栏里重复实现的三样东西：列表行 `SidebarRow`（主标签 + 说明）、可折叠分组 `SidebarGroup`（父行 + 子级树）、右键菜单 `ContextMenu`。收编前 `ContextMenu` 在 todo-web、ssh-web、fs-web、pi-web（会话与配置两处）各有一份几乎相同的拷贝，其中四份用 `position: fixed` 挂到 `document.body`，违反 [workspace-shell 契约](../workspace-shell/MODULE-CONTRACT.md) 第 6 节。今后改侧边栏行的视觉或右键菜单，只改这一个包。
 
-包导出 `SidebarRow`、`ContextMenu` 与 `style.css`（`.sb-row*` 与 `.sb-menu*`）。它与 `@ursi/directory-picker` 同类：共享 UI 包，不是业务模块，不持有数据，不含请求。
+包导出 `SidebarRow`、`SidebarGroup`、`ContextMenu` 与 `style.css`（`.sb-row*`、`.sb-group*`、`.sb-menu*`）。它与 `@ursi/directory-picker` 同类：共享 UI 包，不是业务模块，不持有数据，不含请求。
 
 设计上刻意不做的：
 
@@ -20,14 +20,28 @@ parent: ../../SPEC.md
 
 ### 列表行（`SidebarRow`）
 
-`<SidebarRow label meta? />`。根元素默认是 `button`（行天然可点、可聚焦、可被键盘触发），带 `sb-row` 与布局修饰类，`active` 加 `is-active`。行里要嵌套按钮时（ssh 父行的折叠 chevron）传 `as="div"`，HTML 不允许 button 嵌套 button，此时键盘可达由内嵌按钮自己保证。管四件事：左侧 2px 竖线（激活时为 `--ws-ink`）、hover 灰底（`--ws-line`）、标签截断、两种布局：
+`<SidebarRow label meta? />`。一行 = 主标签 + 说明（可选），没有说明就是单行。结构固定：`leading | main（label / meta / children）| trailing`，`main` 纵向，说明在主标签下方。全部侧边栏行都是这一种布局，没有第二种。
 
-- `inline`（默认）：`leading` / `label` / `meta` 横向排，`meta` 靠右截断。ssh 子行、ssh 父行（chevron 走 `leading`）用。
-- `stack`：标签在上，`meta` 与 `children` 在下。todo 项目行（`children` 放第二行目录与第三行统计）、pi 会话行、flow 行、fs 目录行（`leading` 放图标，`trailing` 放未就绪标记，`children` 放第二行路径）用。
+根元素默认是 `button`（行天然可点、可聚焦、可被键盘触发），带 `sb-row`，`active` 加 `is-active`。行里要嵌套按钮时传 `as="div"`，HTML 不允许 button 嵌套 button，此时键盘可达由内嵌按钮自己保证。
 
-调用方的口子：`onClick`、`onContextMenu`、`rowRef`（dnd-kit 的 `setNodeRef`）、`className`（业务状态类拼这里）、`title`、`ariaCurrent`、`data-*`、`as`。
+调用方的口子：`onClick`、`onContextMenu`、`rowRef`（dnd-kit 的 `setNodeRef`）、`className`（业务状态类拼这里）、`title`、`ariaCurrent`、`data-*`、`as`。行里多出来的东西走 `leading`（图标）、`trailing`（徽标、未就绪标记）、`children`。
 
-预览页：`npm run dev -w @ursi/sidebar`，起在 `0.0.0.0:5175`，四栏分别演示基础、stack 布局、leading/trailing、右键菜单与二次确认。页面在 `preview/`，不进 build 也不进 typecheck，样式加载顺序与真实应用一致（外壳变量 → 本包 → 页面排版）。
+竖线用 `inset box-shadow` 画，不用 `border-left`：调用方常有自己的边框与内边距重置，`box-shadow` 不会被它们覆盖，也不占盒模型宽度。代价是行内容比原来左移 2px，`SidebarRow` 默认左内边距多给 2px 补偿，调用方覆盖内边距时也要多给 2px。
+
+只在样式层接 `.sb-row` 不走 `SidebarRow` 的：pi Home 行（四行结构且错误行在最前）。fs 文件树（虚拟化，行高由测量驱动）不接。
+
+### 分组（`SidebarGroup`）
+
+`<SidebarGroup open onToggle label>{children}</SidebarGroup>`。父行 + 子级列表，只管三件事：chevron、缩进、参考线。
+
+- `open` 受控，状态由调用方持有。点父行或点 chevron 都触发 `onToggle`，chevron 的点击不冒泡到父行，所以只触发一次。
+- 嵌套深度自动 +1（Context 传递），调用方不传 `depth`。每级缩进 12px，父行 `padding-left = 6px + depth × 12px`，子级容器 `margin-left = depth × 12px`，参考线 `left = 13px` 正好对齐父行 chevron 中心，子级行再缩进 24px。
+- 父行是 `div`（chevron 是 button），父行的 `active`、`title`、`onContextMenu`、`className`、`meta` 透传到内部 `SidebarRow`。
+- `children` 是什么由调用方决定，通常是 `SidebarRow` 或另一个 `SidebarGroup`。子级里的行点击不触发父行 `onToggle`。
+
+ssh 连接树用它：父行点击 = 翻转展开 + 选中连接（原 `selectConnectionRow` 保证点开，现在统一为 toggle + 选中）。
+
+预览页：`npm run dev -w @ursi/sidebar`，起在 `0.0.0.0:5175`，四栏分别演示基础单行、说明行、分组树（含嵌套）、右键菜单与二次确认。页面在 `preview/`，不进 build 也不进 typecheck，样式加载顺序与真实应用一致（外壳变量 → 本包 → 页面排版）。
 
 竖线用 `inset box-shadow` 画，不用 `border-left`：调用方常有自己的边框与内边距重置，`box-shadow` 不会被它们覆盖，也不占盒模型宽度。代价是行内容比原来左移 2px，`SidebarRow` 默认左内边距多给 2px 补偿，调用方覆盖内边距时也要多给 2px。
 
@@ -36,7 +50,8 @@ parent: ../../SPEC.md
 #### 验收
 
 - `style.css` 在各入口于模块样式**之前**加载（shell-web 的 `registry.tsx` 与各独立入口的 `main.tsx` 均已如此）。模块自己刻意的底色（如 todo 拖拽悬停的白底）因此能盖过 `.sb-row:hover` 的灰底。
-- `SidebarRow` 已接入：todo 项目项、ssh 父行与子行、pi 会话项、flow 项、fs 目录行。pi Home 行只用 `.sb-row` 样式。
+- `SidebarRow` 已接入：todo 项目项（目录与统计合成一段说明）、ssh 子行、pi 会话项、flow 项、fs 目录行。`SidebarGroup` 已接入：ssh 连接树。pi Home 行只用 `.sb-row` 样式。
+- 接入后 ssh 子行由 26px 单行变为两行（名 + 时间），与其它列表行一致。
 - hover 灰底统一为 `--ws-line`（#e5e5e5），选中态与 hover 同色，只靠左侧竖线区分。todo 与 flow 原本就是这样；pi 会话原本 hover #f5f5f5、选中 #e5e5e5 两级，统一后降为一级，与仓库主流一致，不为此新增外壳变量。fs 目录行激活底色由 8% 墨色淡染改为同色。
 - 行有圆角时（fs 目录行 4px），`inset box-shadow` 竖线跟随圆角，视觉上无碍。
 - 无全局选择器，无 `position: fixed`。
@@ -60,7 +75,7 @@ parent: ../../SPEC.md
 - 替换了全部七份拷贝：todo 项目列表、任务表格、任务关系图，ssh 连接树与终端区，fs 文件树与目录列表，pi 会话与配置。仓库里不再有本地 `ContextMenu` 实现。
 - todo、fs、pi 配置三家原来是视口坐标，已改为容器相对坐标；ssh 与 pi 会话原本就是。
 - todo 工作区（任务表格、任务图）的容器是 `.todo-workspace` 根，经 `MenuContainerProvider` 下发；关系图的三处 `setMenu` 收口到一个 `openAt`。
-- `ContextMenu` 21 例：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、重渲染不抢焦点、二次确认不还焦点。`SidebarRow` 8 例：根元素与类名、className 拼接、label/meta、布局类、子元素顺序、透传属性、事件与 rowRef、as=div（`npm run test:sidebar`）。
+- `ContextMenu` 21 例：坐标夹紧与左翻、点外关闭（拦 pointerdown 不拦 click）、Esc、resize、页面与容器内滚动、点菜单内不关、禁用项不触发、先关再选、容器为 null 不渲染、焦点进入与归还、重渲染不抢焦点、二次确认不还焦点。`SidebarRow` 7 例：根元素与类名、className 拼接、固定结构与空槽不渲染、单行、透传属性、事件与 rowRef、as=div。`SidebarGroup` 5 例：open 渲染子级与 aria、父行 div 与 chevron 不嵌套、点父行与 chevron 各触发一次、透传到父行、嵌套深度自动 +1 与显式覆盖、子级点击不冒泡（`npm run test:sidebar`）。
 
 ### 菜单容器的选择
 
@@ -79,5 +94,5 @@ parent: ../../SPEC.md
 
 - 父级：[ursi-flow](../../SPEC.md)。零运行时依赖（React 为 peer），不依赖其它 `packages/`。
 - 各模块 package.json 以 `"@ursi/sidebar": "*"` 依赖，样式由入口或组合根引入，模块之间不互相 import。
-- 后续新应用接侧边栏行时：用 `SidebarRow`，业务状态拼进 `className`，覆盖内边距时左内边距多 2px；右键菜单传一个不滚动且 `position: relative` 的容器。多个消费者共用一个容器时，用 Context 下发（Context 单独成文件，避免容器组件与消费者互相 import）。
+- 后续新应用接侧边栏行时：用 `SidebarRow`，业务状态拼进 `className`，覆盖内边距时左内边距多 2px；有子级用 `SidebarGroup`，自己持有 open 状态；右键菜单传一个不滚动且 `position: relative` 的容器。多个消费者共用一个容器时，用 Context 下发（Context 单独成文件，避免容器组件与消费者互相 import）。
 - 工作区的菜单也用本包的 `ContextMenu`，容器规则相同；本包不管工作区的行样式。

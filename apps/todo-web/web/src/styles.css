@@ -290,26 +290,31 @@
   outline-offset: -1px;
 }
 
-.project-item .sb-row-label {
+.project-item .sb-label {
   font-weight: 500;
   color: var(--gray-900);
-  display: block;
 }
 
 /* 项目目录：取位置 URI 的末段，行内省略，悬停靠整行的 title 看完整 URI。 */
+/* 说明行：目录 + 统计并排，目录等宽字体、统计淡色。 */
+.project-item .sb-meta {
+  display: flex;
+  gap: var(--space-xs, 4px);
+  color: var(--gray-400);
+}
+
 .project-item .dir {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--gray-600);
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--gray-600);
 }
 
 .project-item .meta {
-  font-size: 11px;
-  color: var(--gray-400);
+  flex: none;
 }
 
 .project-item.loading {

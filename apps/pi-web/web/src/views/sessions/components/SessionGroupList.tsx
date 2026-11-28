@@ -123,7 +123,6 @@ function SessionRowItem({ row, active, live, onSelect, onMenu }: SessionRowItemP
   return (
     <SidebarRow
       className={live ? 'session-item is-live' : 'session-item'}
-      layout="stack"
       active={active}
       title={`${sessionTitle(row)}\n${row.cwd || row.path}`}
       onClick={onSelect}

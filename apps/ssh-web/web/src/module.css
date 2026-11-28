@@ -130,88 +130,42 @@
   contain: inline-size;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  /* 嵌入外壳时没有全局复位，浏览器默认的 ul 缩进会顶出一条空白列，这里显式清零。 */
   margin: 0;
   padding: 0;
-  list-style: none;
 }
 
-.ssh-tree-node {
-  min-width: 0;
-}
-
-/* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供，这里只管布局与尺寸。 */
-/* 行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写 ssh 自己的差异。 */
-.ssh-tree-row {
+/* 行的盒模型、hover、选中、截断、分组缩进与参考线由 @ursi/sidebar 管，这里只写 ssh 自己的差异。 */
+.ssh-tree-row.parent {
   height: 26px;
   padding: 0 var(--ssh-space-xs) 0 calc(var(--ssh-space-xs) + 2px);
 }
 
-.ssh-tree-chevron {
-  flex: none;
-  width: 14px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ssh-gray-400);
-  font-size: 10px;
-  line-height: 1;
-  cursor: pointer;
-  transition: transform 120ms ease;
-}
-
-.ssh-tree-chevron:hover {
-  color: var(--ssh-gray-900);
-}
-
-.ssh-tree-chevron.open {
-  transform: rotate(90deg);
-}
-
-.ssh-tree-row .sb-row-label {
+.ssh-tree-row .sb-label {
   font-weight: 500;
   color: var(--ssh-gray-900);
 }
 
-/* 会话子行：缩进 + 参考线与父行区分，字号略小、字重常规。 */
-.ssh-tree-children {
-  position: relative;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ssh-tree-children::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 14px;
-  width: 1px;
-  background: var(--ssh-gray-200);
-}
-
+/* 会话子行：字号略小、字重常规、上下内边距略紧。缩进与参考线由 SidebarGroup 给。 */
 .ssh-tree-row.child {
-  padding-left: 24px;
   font-size: 12px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
-.ssh-tree-row.child .sb-row-label {
+.ssh-tree-row.child .sb-label {
   font-weight: 400;
   color: var(--ssh-gray-600);
 }
-.ssh-tree-row.child.is-active .sb-row-label {
+.ssh-tree-row.child.is-active .sb-label {
   color: var(--ssh-gray-900);
 }
-.ssh-tree-row .sb-row-meta {
-  max-width: 45%;
+.ssh-tree-row .sb-meta {
   color: var(--ssh-gray-400);
   font-variant-numeric: tabular-nums;
 }
 
-
 .ssh-tree-note {
   padding: var(--ssh-space-xs);
-  padding-left: 22px;
+  padding-left: 24px;
   color: var(--ssh-gray-600);
   font-size: 11px;
   line-height: 1.6;

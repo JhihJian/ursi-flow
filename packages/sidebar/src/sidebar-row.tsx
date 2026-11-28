@@ -26,31 +26,25 @@ export interface SidebarRowProps {
    * 与 React 的 ref 不同，这里是普通 prop，函数组件直接传即可。
    */
   rowRef?: (element: HTMLElement | null) => void
-  /** 左侧主标签，超出截断。 */
+  /** 主标签，超出截断。 */
   label: ReactNode
-  /** 附加文字。inline 布局靠右、超出截断；stack 布局在标签下方、不截断。 */
+  /** 说明，在主标签下方一行，超出截断。没有就是单行。 */
   meta?: ReactNode
-  /**
-   * stack：标签在上、附加文字在下（todo 项目、pi 会话）。
-   * inline：标签在左、附加文字靠右（ssh 子行、flow）。默认 inline。
-   */
-  layout?: 'inline' | 'stack'
-  /** 标签前的图标或折叠按钮。 */
+  /** 主标签左侧：图标、折叠按钮。 */
   leading?: ReactNode
-  /** 标签后的徽标。 */
+  /** 行尾右侧：徽标、状态标记。 */
   trailing?: ReactNode
-  /** 渲染在标签下方的其它内容（第二行路径、错误提示等）。 */
+  /** 渲染在说明下方的其它内容。 */
   children?: ReactNode
   /** data-* 属性原样挂到根元素，用于定位（如按 id 找到行再弹确认菜单）。 */
   [key: `data-${string}`]: string | undefined
 }
 
 /**
- * 侧边栏列表的一行。只管四件事：选中态、hover 灰底、左侧竖线、文字截断，
- * 外加 click / contextmenu / ref 三个口子。行里多出来的东西（拖放、折叠按钮、
- * 内联编辑）由调用方用 className、rowRef、leading、children 自己接。
- *
- * 根元素是 button：行天然是可点、可聚焦、可被键盘触发的。
+ * 侧边栏列表的一行：主标签 + 说明（可选）。
+ * 管：选中态、hover 灰底、左侧竖线、文字截断，外加 click / contextmenu / ref 三个口子。
+ * 行里多出来的东西（拖放、折叠按钮、内联编辑）由调用方用 className、rowRef、
+ * leading、trailing、children 自己接。
  */
 export function SidebarRow({
   as = 'button',
@@ -63,7 +57,6 @@ export function SidebarRow({
   rowRef,
   label,
   meta,
-  layout = 'inline',
   leading,
   trailing,
   children,
@@ -78,17 +71,17 @@ export function SidebarRow({
       {...data}
       title={title}
       aria-current={ariaCurrent}
-      className={cx('sb-row', `sb-row--${layout}`, active && 'is-active', className)}
+      className={cx('sb-row', active && 'is-active', className)}
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
-      {leading ? <span className="sb-row-leading">{leading}</span> : null}
-      <span className="sb-row-label">
-        {label}
-        {trailing}
+      {leading ? <span className="sb-leading">{leading}</span> : null}
+      <span className="sb-main">
+        <span className="sb-label">{label}</span>
+        {meta !== undefined && meta !== null ? <span className="sb-meta">{meta}</span> : null}
+        {children}
       </span>
-      {meta !== undefined && meta !== null ? <span className="sb-row-meta">{meta}</span> : null}
-      {children}
+      {trailing ? <span className="sb-trailing">{trailing}</span> : null}
     </Tag>
   )
 }

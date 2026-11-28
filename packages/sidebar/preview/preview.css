@@ -53,11 +53,6 @@ body {
   gap: 1px;
 }
 
-/* 侧栏模拟：各行是 SidebarRow 自带的 button，这里只给容器宽度和 children 的样式。 */
-.pv-child {
-  padding-left: 24px;
-}
-
 .pv-dir {
   display: block;
   font-size: 11px;
@@ -70,21 +65,6 @@ body {
 .pv-meta {
   font-size: 11px;
   color: var(--ws-muted);
-}
-
-.pv-chevron {
-  border: 0;
-  background: none;
-  color: var(--ws-muted);
-  font-size: 10px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  transition: transform 120ms ease;
-}
-
-.pv-chevron.open {
-  transform: rotate(90deg);
 }
 
 .pv-icon {

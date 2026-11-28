@@ -140,7 +140,6 @@ export function FlowSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
                 <li key={flow.id}>
                   <SidebarRow
                     className={flow.valid ? 'flow-item' : 'flow-item is-broken'}
-                    layout="stack"
                     active={flow.id === flowId}
                     ariaCurrent={flow.id === flowId ? 'true' : undefined}
                     onClick={() => void selectFlow(flow.id)}

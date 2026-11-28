@@ -138,23 +138,23 @@
   padding: var(--flow-space-sm) var(--flow-space-sm) var(--flow-space-sm) calc(var(--flow-space-sm) + 2px);
 }
 
-.flow-item .sb-row-label {
+.flow-item .sb-label {
   font-family: var(--flow-serif);
   font-size: 14px;
 }
 
-.flow-item .sb-row-meta {
+.flow-item .sb-meta {
   font-family: var(--flow-mono);
   font-size: 10.5px;
   color: var(--flow-faint);
 }
 
-.flow-item.is-broken .sb-row-label {
+.flow-item.is-broken .sb-label {
   color: var(--flow-muted);
   text-decoration: line-through;
 }
 
-.flow-item.is-broken .sb-row-meta {
+.flow-item.is-broken .sb-meta {
   color: var(--flow-ink);
 }
 

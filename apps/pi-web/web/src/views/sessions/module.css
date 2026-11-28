@@ -529,11 +529,11 @@
 .pisess .session-item {
   padding: var(--space-xs) var(--space-xs) var(--space-xs) calc(var(--space-sm) + 2px);
 }
-.pisess .session-item .sb-row-label {
+.pisess .session-item .sb-label {
   font-weight: 500;
   color: var(--gray-900);
 }
-.pisess .session-item .sb-row-meta {
+.pisess .session-item .sb-meta {
   display: flex;
   gap: var(--space-sm);
   color: var(--gray-400);

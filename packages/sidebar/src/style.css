@@ -9,8 +9,11 @@
 
 /*
  * 竖线用 inset box-shadow，不碰 border、padding 与盒模型宽度：
- * 调用方常是 button 或有自己的内边距与边框重置，竖线不能被它们覆盖。
+ * 调用方常有自己的边框与内边距重置，竖线不能被它们覆盖。
  * 本样式要在各模块样式之前加载，模块自己刻意的底色（如拖拽态）才能盖过这里的 hover。
+ *
+ * 一行 = 主标签 + 说明（可选）。结构：leading | main（label / meta / children）| trailing。
+ * main 是纵向的，说明在主标签下方；没有说明时就是单行。
  */
 .sb-row {
   /* 左内边距多 2px：竖线由 box-shadow 画，不占宽度，补回来与原来的 border-left 版对齐。 */
@@ -22,17 +25,10 @@
   text-align: left;
   cursor: pointer;
   box-shadow: inset 2px 0 0 transparent;
-  /* 行内布局：leading / label / meta 横向排，meta 靠右截断。 */
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
-}
-
-.sb-row--stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
 }
 
 .sb-row:hover {
@@ -44,37 +40,88 @@
   background-color: var(--ws-line, #e5e5e5);
 }
 
-.sb-row-leading {
+.sb-leading,
+.sb-trailing {
   display: flex;
   flex: none;
   align-items: center;
 }
 
-.sb-row-label {
+.sb-main {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sb-label,
+.sb-meta,
+.sb-main > * {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sb-row--stack .sb-row-label {
-  flex: none;
-}
-
-.sb-row-meta {
-  flex: none;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sb-meta {
   font-size: 11px;
   color: var(--ws-muted, #999999);
 }
 
-.sb-row--stack .sb-row-meta {
-  overflow: visible;
-  white-space: normal;
+/* ── 分组（父行 + 子级） ────────────────────────────────── */
+
+/*
+ * 缩进按嵌套深度算，每级 12px，用 CSS 变量由组件写进 style。
+ * 父行 padding-left = 6px + depth × 12px，chevron 宽 14px，中心在 padding-left + 7px。
+ * 子级容器 margin-left = depth × 12px，参考线画在其 ::before，left = 13px，正好对齐父行 chevron 中心。
+ * 子级行相对容器再缩进 24px。
+ */
+.sb-group {
+  --sb-indent: calc(var(--sb-depth, 0) * 12px);
+}
+
+.sb-group > .sb-row {
+  padding-left: calc(6px + var(--sb-indent));
+}
+
+.sb-group-children {
+  position: relative;
+  margin-left: var(--sb-indent);
+}
+
+.sb-group-children::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 13px;
+  width: 1px;
+  background: var(--ws-line, #e5e5e5);
+}
+
+.sb-group-children > .sb-row {
+  padding-left: 24px;
+}
+
+.sb-chevron {
+  width: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ws-muted, #999999);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.sb-chevron:hover {
+  color: var(--ws-ink, #1a1a1a);
+}
+
+.sb-chevron.is-open {
+  transform: rotate(90deg);
 }
 
 /* ── 右键菜单 ───────────────────────────────────────────── */

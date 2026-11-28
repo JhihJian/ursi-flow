@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { ContextMenu, SidebarRow, type MenuState } from '@ursi/sidebar'
+import { ContextMenu, SidebarGroup, SidebarRow, type MenuState } from '@ursi/sidebar'
 import { TmuxInstallHint } from './TmuxInstallHint'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
 import type { Connection } from '../api/types'
@@ -93,16 +93,6 @@ export function ConnectionTree() {
     })
   }
 
-  const selectConnectionRow = (id: number): void => {
-    setCollapsed((current) => {
-      if (!current.has(id)) return current
-      const next = new Set(current)
-      next.delete(id)
-      return next
-    })
-    void selectConnection(id)
-  }
-
   const isOpen = (connectionId: number, tmuxSession: string | null): boolean =>
     terminals.some(
       (tab) =>
@@ -138,27 +128,26 @@ export function ConnectionTree() {
   }
 
   const renderSessionChildren = (connection: Connection, state: SessionsState | undefined) => {
-    if (!state || state.loading) return <li className="ssh-tree-note">查询中…</li>
+    if (!state || state.loading) return <div className="ssh-tree-note">查询中…</div>
     if (state.error !== null) {
       return (
-        <li className="ssh-tree-note ssh-error-note">
+        <div className="ssh-tree-note ssh-error-note">
           {state.error}
           <TmuxInstallHint />
-        </li>
+        </div>
       )
     }
     if (state.sessions === null) {
       return (
-        <li className="ssh-tree-note">
+        <div className="ssh-tree-note">
           远端未安装 tmux，连接后将回退普通 shell，断开即结束。
           <TmuxInstallHint />
-        </li>
+        </div>
       )
     }
     return (
       <>
         <SessionChildRow
-          rowKey="::default"
           label="main"
           meta="默认会话 ssh-main"
           open={isOpen(connection.id, null)}
@@ -167,7 +156,6 @@ export function ConnectionTree() {
         {state.sessions.map((session) => (
           <SessionChildRow
             key={session.name}
-            rowKey={session.name}
             label={session.name}
             meta={new Date(session.created * 1000).toLocaleString()}
             attached={session.attached}
@@ -176,7 +164,7 @@ export function ConnectionTree() {
             onContextMenu={(event) => openSessionContextMenu(event, connection, session.name)}
           />
         ))}
-        {state.sessions.length === 0 ? <li className="ssh-tree-note">远端暂无 tmux 会话</li> : null}
+        {state.sessions.length === 0 ? <div className="ssh-tree-note">远端暂无 tmux 会话</div> : null}
       </>
     )
   }
@@ -213,44 +201,30 @@ export function ConnectionTree() {
           +
         </button>
       </div>
-      <ul className="ssh-item-list">
+      <div className="ssh-item-list">
         {connections.map((connection) => {
           const expanded = !collapsed.has(connection.id)
           const selected = connection.id === activeId
           return (
-            <li key={connection.id} className="ssh-tree-node">
-              <SidebarRow
-                as="div"
-                className="ssh-tree-row parent"
-                active={selected}
-                onClick={() => selectConnectionRow(connection.id)}
-                onContextMenu={(event) => openContextMenu(event, connection)}
-                title={connection.command}
-                leading={
-                  <button
-                    type="button"
-                    className={expanded ? 'ssh-tree-chevron open' : 'ssh-tree-chevron'}
-                    aria-label={expanded ? '收起' : '展开'}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      toggleCollapse(connection.id)
-                    }}
-                  >
-                    ▸
-                  </button>
-                }
-                label={connection.name}
-              />
-              {expanded ? (
-                <ul className="ssh-tree-children">
-                  {renderSessionChildren(connection, sessionsByConnection[connection.id])}
-                </ul>
-              ) : null}
-            </li>
+            <SidebarGroup
+              key={connection.id}
+              className="ssh-tree-row parent"
+              open={expanded}
+              onToggle={() => {
+                toggleCollapse(connection.id)
+                void selectConnection(connection.id)
+              }}
+              active={selected}
+              onContextMenu={(event) => openContextMenu(event, connection)}
+              title={connection.command}
+              label={connection.name}
+            >
+              {renderSessionChildren(connection, sessionsByConnection[connection.id])}
+            </SidebarGroup>
           )
         })}
-        {connections.length === 0 ? <li className="ssh-empty">右键新建连接</li> : null}
-      </ul>
+        {connections.length === 0 ? <div className="ssh-empty">右键新建连接</div> : null}
+      </div>
       {notice && !pendingDelete && !pendingKill ? <div className="ssh-tree-note ssh-error-note">{notice}</div> : null}
       {pendingDelete ? (
         <div className="ssh-confirm">
@@ -329,7 +303,6 @@ export function ConnectionTree() {
 
 /** 会话子行：label 与标签栏内容一致；attached > 0 时在 meta 标 ●（远端有客户端）。 */
 function SessionChildRow({
-  rowKey,
   label,
   meta,
   attached,
@@ -337,7 +310,6 @@ function SessionChildRow({
   onClick,
   onContextMenu,
 }: {
-  rowKey: string
   label: string
   meta: string
   attached?: number
@@ -350,21 +322,19 @@ function SessionChildRow({
       ? `${attached} client${attached === 1 ? '' : 's'} attached`
       : undefined
   return (
-    <li key={rowKey}>
-      <SidebarRow
-        className="ssh-tree-row child"
-        active={open}
-        onClick={onClick}
-        onContextMenu={onContextMenu}
-        title={attachedNote}
-        label={
-          <>
-            {label}
-            {open ? ' ●' : ''}
-          </>
-        }
-        meta={meta}
-      />
-    </li>
+    <SidebarRow
+      className="ssh-tree-row child"
+      active={open}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      title={attachedNote}
+      label={
+        <>
+          {label}
+          {open ? ' ●' : ''}
+        </>
+      }
+      meta={meta}
+    />
   )
 }

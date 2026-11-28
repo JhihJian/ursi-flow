@@ -17,7 +17,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 
 #### 验收
 
-- 左侧为树状连接面板（固定 200px）：连接为父行，默认全部展开，选中行即选中该连接；每个连接的 tmux 会话子级独立加载与刷新（含默认入口 main、远端客户端数标记 ●、创建时间），右键连接行为 `New connection`、`New session`、`Edit`、`Delete`，空白处为 `New connection`，标题行另有 `+`（新建）、⇩（从本机 ssh config 批量导入）与 ↻（刷新全部连接的会话列表）。点会话子行不在侧栏内切换，而是在终端区顶部标签栏打开/激活对应标签。
+- 左侧为树状连接面板（固定 200px）：连接为父行，默认全部展开，点父行或折叠箭头翻转展开并选中该连接；每个连接的 tmux 会话子级独立加载与刷新（含默认入口 main、远端客户端数标记 ●、创建时间），右键连接行为 `New connection`、`New session`、`Edit`、`Delete`，空白处为 `New connection`，标题行另有 `+`（新建）、⇩（从本机 ssh config 批量导入）与 ↻（刷新全部连接的会话列表）。点会话子行不在侧栏内切换，而是在终端区顶部标签栏打开/激活对应标签。
 - 顶部标签栏常驻显示：每个打开的会话一个标签，标签内容与会话子行一致（会话名），点标签激活、点 × 或中键关闭，标签栏尾部 `+` 新建会话；同一 (连接, tmux 会话) 只允许一个标签。当前标签用白底黑字加顶部黑线标记，未激活标签退到灰字，标记不跟随终端亮暗主题。多个标签常驻堆叠渲染，仅激活的可见，每个标签面板铺满同一块终端区（绝对定位叠放，尺寸随终端区伸缩），切标签不重建、不重连 SSH，非激活标签的输出照常写入。
 - 列表空白处或连接项右键打开菜单：空白处为 `New connection`，连接项为 `New connection`、`New session`、`Edit`、`Delete`。侧栏标题行右侧另有 `+` 按钮直接新建。
 - 连接字段在终端区底部升起的面板维护，仅两项：名称（唯一）与 ssh 命令（如 `ssh jhihjian@10.0.0.5`，支持 `~/.ssh/config` 别名、`-p`、`-i`、`-J` 等全部 OpenSSH 参数）。服务端保存时做基本校验：命令首词必须是 `ssh`，其余原样保留。
@@ -75,7 +75,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 - ssh-web 以 `@ursi/ssh-web/module` 接入 ursi-flow 工作区外壳：侧边栏是连接树与会话入口，工作区是标签栏加终端；`createSshModule({ apiBaseUrl })` 工厂创建独立的 store 实例，不设模块级单例；独立入口与嵌入共用同一套组件。
 - 工厂返回 `WorkspaceModule & { commands: SshCommands }`，与 fs-web 的 `FsCommands` 同一模式，由组合根注入给需要的模块。`commands.listDevices()` 走 `GET /connections` 返回 `{ device, label }[]`，`device` 与 `label` 都是连接 `name`，按名称排序；`commands.openTerminal({ device, cwd })` 按设备名找连接（找不到抛 `ssh-web 里没有名为 <device> 的连接`），store 里还没有连接列表时先 `loadConnections()`，再对默认会话（null）调 `openTerminal(connection.id, null, cwd)`。两条命令都直接走工厂闭包里的 controller（api + store），不依赖 Provider 是否已挂载：ssh 未在当前 profile 展开时，跨模块调用依然可用，打开的标签在该模块下次展开时出现。
 - 嵌入时宿主 vite 把 `/api/ssh-web/*` 代理到 8091 并重写为 `/api/*`（HTTP 与 WS 同规则），服务端路由保持 `/api` 不变；模块所有请求（含终端 WS）都走注入的前缀。
-- 样式全部作用域在 `.ssh-embed` 容器内，类名带 `ssh-` 前缀；列表行用 `@ursi/sidebar` 的 `SidebarRow`，右键菜单用它的 `ContextMenu`，以侧栏容器坐标系定位，不越栏、不吃宿主样式；亮暗主题偏好存于带模块前缀的 localStorage 键（`ssh.terminal-light`）。
+- 样式全部作用域在 `.ssh-embed` 容器内，类名带 `ssh-` 前缀；连接树的父子结构用 `@ursi/sidebar` 的 `SidebarGroup`（折叠、缩进、参考线由它管，open 状态在本组件持有），会话行用 `SidebarRow`，右键菜单用 `ContextMenu`，以侧栏容器坐标系定位，不越栏、不吃宿主样式；亮暗主题偏好存于带模块前缀的 localStorage 键（`ssh.terminal-light`）。
 - `Ctrl/Cmd+F` 仅在指针或焦点落在 ssh 模块内时拦截，其余场景不干扰宿主快捷键。
 
 ### 服务与接口

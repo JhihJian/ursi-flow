@@ -16,35 +16,25 @@ test('根元素是 button，带 sb-row 类；active 加 is-active', () => {
 
 test('调用方的 className 拼在后面，业务状态类不丢', () => {
   const { container } = render(<SidebarRow label="a" className="project-item drop-over" />)
-  const root = container.querySelector('button')!
-  expect(root.className).toBe('sb-row sb-row--inline project-item drop-over')
+  expect(container.querySelector('button')!.className).toBe('sb-row project-item drop-over')
 })
 
-test('label 与 meta 各自一个 span；meta 为空时不渲染', () => {
-  const { container, rerender } = render(<SidebarRow label="名" meta="附加" />)
-  expect(container.querySelector('.sb-row-label')!.textContent).toBe('名')
-  expect(container.querySelector('.sb-row-meta')!.textContent).toBe('附加')
-  rerender(<SidebarRow label="名" />)
-  expect(container.querySelector('.sb-row-meta')).toBeNull()
-})
-
-test('layout 决定修饰类：默认 inline，stack 显式指定', () => {
-  const { container, rerender } = render(<SidebarRow label="a" />)
-  expect(container.querySelector('.sb-row--inline')).not.toBeNull()
-  rerender(<SidebarRow label="a" layout="stack" />)
-  expect(container.querySelector('.sb-row--stack')).not.toBeNull()
-})
-
-test('leading 渲染在 label 之前，trailing 渲染在 label 内部，children 在 meta 之后', () => {
+test('结构固定：leading | main（label / meta / children）| trailing；空槽不渲染', () => {
   const { container } = render(
-    <SidebarRow label="名" meta="附" leading={<i className="lead" />} trailing={<b className="tail" />}>
+    <SidebarRow label="名" meta="附加" leading={<i className="lead" />} trailing={<b className="tail" />}>
       <span className="child" />
     </SidebarRow>,
   )
   const root = container.querySelector('button')!
-  const order = Array.from(root.children).map((node) => node.className)
-  expect(order).toEqual(['sb-row-leading', 'sb-row-label', 'sb-row-meta', 'child'])
-  expect(root.querySelector('.sb-row-label .tail')).not.toBeNull()
+  expect(Array.from(root.children).map((n) => n.className)).toEqual(['sb-leading', 'sb-main', 'sb-trailing'])
+  expect(Array.from(root.querySelector('.sb-main')!.children).map((n) => n.className)).toEqual(['sb-label', 'sb-meta', 'child'])
+  expect(root.querySelector('.sb-trailing .tail')).not.toBeNull()
+})
+
+test('没有 meta 就是单行：不渲染 meta 节点', () => {
+  const { container } = render(<SidebarRow label="名" />)
+  expect(container.querySelector('.sb-meta')).toBeNull()
+  expect(container.querySelector('.sb-main')!.childElementCount).toBe(1)
 })
 
 test('title、aria-current、data-* 原样挂到根元素', () => {
@@ -68,17 +58,12 @@ test('onClick、onContextMenu 原样触发；rowRef 拿到根元素', () => {
   expect(onContextMenu).toHaveBeenCalledTimes(1)
 })
 
-test('as="div" 时根元素是 div，用于行里要嵌套按钮的场景；默认 button', () => {
-  const { container, rerender } = render(<SidebarRow label="a" />)
-  expect(container.querySelector('div.sb-row')).toBeNull()
-  expect(container.querySelector('button.sb-row')).not.toBeNull()
-  rerender(<SidebarRow as="div" label="a" />)
+test('as="div" 时根元素是 div，用于行里要嵌套按钮的场景；点击与 ref 照常', () => {
+  const onClick = vi.fn()
+  const { container } = render(<SidebarRow as="div" label="a" onClick={onClick} />)
   const root = container.querySelector('div.sb-row')
   expect(root).not.toBeNull()
   expect(root!.hasAttribute('type')).toBe(false)
-  // 点击与 ref 照常生效
-  const onClick = vi.fn()
-  rerender(<SidebarRow as="div" label="a" onClick={onClick} />)
-  fireEvent.click(container.querySelector('div.sb-row')!)
+  fireEvent.click(root!)
   expect(onClick).toHaveBeenCalledTimes(1)
 })

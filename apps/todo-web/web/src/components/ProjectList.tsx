@@ -79,7 +79,6 @@ function ProjectItem({
     <li ref={setNodeRef} data-project-id={project.id}>
       <SidebarRow
         className={cx('project-item', dragging && 'drop-ready', isOver && 'drop-over')}
-        layout="stack"
         active={active}
         title={projectTooltip(project)}
         onClick={() => {
@@ -91,12 +90,15 @@ function ProjectItem({
           openMenu(event.clientX, event.clientY, menuItems)
         }}
         label={project.name}
-      >
-        {dirLabel ? <span className="dir">{dirLabel}</span> : null}
-        <span className="meta">
-          {open} tasks / {formatTime(project.total_time_minutes)}
-        </span>
-      </SidebarRow>
+        meta={
+          <>
+            {dirLabel ? <span className="dir">{dirLabel}</span> : null}
+            <span className="meta">
+              {open} tasks / {formatTime(project.total_time_minutes)}
+            </span>
+          </>
+        }
+      />
     </li>
   )
 }
