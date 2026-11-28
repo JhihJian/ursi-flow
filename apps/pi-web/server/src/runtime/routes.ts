@@ -116,6 +116,18 @@ route('GET', '/api/sessions/:id/facts', 'none', async ({ params }) => {
   const entity = requireEntity(params.id)
   const chat = liveChat(entity.id)
   if (chat) return projectLiveFacts(chat, liveFactsText(chat))
-  if (entity.filePath) return replay(await readFile(entity.filePath, 'utf8'))
+  if (entity.filePath) {
+    let text: string
+    try {
+      text = await readFile(entity.filePath, 'utf8')
+    } catch (error) {
+      // 实体还挂着文件但文件已被外部删除：按会话缺失报，不落 500。
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new HomeError(`会话文件不存在：${entity.filePath}`, 404, 'session_absent')
+      }
+      throw error
+    }
+    return replay(text)
+  }
   throw notLocal(entity.id)
 })

@@ -12,7 +12,7 @@ references:
 
 结论先行：
 
-- 三个实体加一个值对象：`PiHome`（聚合根）、`PiSession`（统一会话）、`SessionTrajectory`（会话的从属子资源）、`RuntimeProfile`（派生快照，值对象）。凡是跨两个页面读写的对象都进这套模型。
+- 三个实体加两个值对象：`PiHome`（聚合根）、`PiSession`（统一会话）、`SessionTrajectory`（会话的从属子资源）、`RuntimeProfile`（派生快照，值对象）、`SessionFacts`（运行事实快照，值对象：只能由会话文件重放或运行时给出，不能从配置目录反推）。凡是跨两个页面读写的对象都进这套模型。
 - 会话身份只有 `sessionId` 一个：磁盘历史、内存加载、SSE 运行的对话、一次性任务、子会话，都是同一个 `PiSession` 的不同状态投影。`/api/live`、`/api/tasks`、`/api/chat/*` 全部收编。
 - 一致性靠「字段唯一写者 + 每会话串行状态机 + 带 epoch 的版本号」，不靠对账、轮询猜测或跨模块补丁。
 - 本文明确区分 v1 与 v2：v1 只做「统一实体 + 单一权威 + 整体重发」，条目级增量同步、集合增量合并留到 v2 验收。混在一起会得到一个更难调试、却没证明更省事的系统。
@@ -24,6 +24,7 @@ erDiagram
   PiHome ||--o{ PiSession : "origin=home"
   PiHome ||--|| RuntimeProfile : "派生快照"
   PiSession ||--|| SessionTrajectory : "从属子资源"
+  PiSession ||--|| SessionFacts : "运行事实子资源"
   PiSession ||--o{ RuntimeFact : "本地与其它进程的运行态"
   PiSession ||--o{ PiSession : "parentFile 子会话"
 ```
@@ -62,7 +63,7 @@ erDiagram
 | 运行 | `model` / `queue` / `interactions[]` | 当前模型与思考级别、排队输入数、待回执的扩展 UI 请求 |
 | 执行 | `execution?` | 仅 `kind: task`：`{ timeoutMs, outcome: 'ok' \| 'error' \| 'cancelled', outputLength, lastText }` |
 | 配置 | `profileRevision` | 装配时钉住的版本；`stale` 是 `state ≠ discovered 且 profileRevision < home.profileRevision` 的派生值，不存字段 |
-| 能力 | `capabilities` | 由状态与 origin 派生的布尔与原因码：`canLoad`、`canTurn`、`canEvict`、`canDelete`、`canContinue` |
+| 能力 | `capabilities` | 由状态与 origin 派生的布尔与原因码：`canLoad`、`canTurn`、`canEvict`、`canDelete`、`canContinue`。原因码：无头老文件 `legacy_without_header`（只读），同机异进程心跳占用 `runtime_elsewhere` |
 
 同构规则：
 
@@ -85,9 +86,18 @@ erDiagram
 
 稳定 `entryId`：条目自带 `id` 时直接用；缺 id 的老行服务端按 `(fileSessionId, 行号)` 派生，因此从不同偏移分页读到的同一条目 id 一致，合并不会重复。
 
-### 1.4 RuntimeProfile（受管配置快照，值对象）
+### 1.4 SessionFacts（运行事实，从属子资源）
 
-`config` 写文件，`chat` 消费的是服务端派生出的不可变快照。它是值对象：无 id、无生命周期、可随时重建。
+`SessionFacts` 是同一会话的第二个只读子资源（`GET /api/sessions/:id/facts`）：这次会话实际上用了什么模型、看到哪些 skills、连了哪些 MCP server、有哪些工具。它与轨迹同构地挂在会话下，但权威口径相反：轨迹能从运行时流式拿到，事实却只能由会话文件重放或运行时直接给，不能从 home 的配置目录反推——配置是「现在想让它怎样」，事实是「当时实际上怎样」。
+
+- 有本地运行时：`facts/replay.ts` 重放会话文件后，模型、思考等级与活跃工具按运行时当前值字段级覆盖（刚切过模型时文件里还是旧值），MCP 不覆盖。
+- 没有本地运行时：只读文件重放。
+
+两种来源同一份返回形状，用 `source: 'runtime' | 'file'` 标口径；可空字段为 `null` 表示「文件里没记」，不是「会话里没有」；无头老文件没有系统提示词与工具声明，`recorded: false` 并带 `reason: 'not_recorded'`。
+
+### 1.5 RuntimeProfile（受管配置快照，值对象）
+
+`config` 写文件，`runtime` 消费的是服务端派生出的不可变快照。它是值对象：无 id、无生命周期、可随时重建。
 
 ```ts
 RuntimeProfile {
@@ -120,7 +130,7 @@ RuntimeProfile {
 
 `catalog` 与 `revision` 分开：配置文件变化是即时的，扩展 provider 的目录要靠一次显式采集（会加载扩展、可能超时或 503），不能混进同一个版本号触发全量重采集。
 
-### 1.5 唯一标识与版本
+### 1.6 唯一标识与版本
 
 | 标识 | 生成规则 | 作用域 |
 | --- | --- | --- |
@@ -139,7 +149,7 @@ RuntimeProfile {
 
 心跳的 `updatedAt` 不算语义变化：只有 `status` 迁移、实体增删、磁盘事实变化才递增 `collectionRevision`，否则每个运行中会话每 15 秒都会制造一次变更，游标优化退化。
 
-### 1.6 读写归属（Single Source of Truth）
+### 1.7 读写归属（Single Source of Truth）
 
 | 数据 | 唯一写者 | 读者 | 可重建 |
 | --- | --- | --- | --- |
@@ -149,10 +159,11 @@ RuntimeProfile {
 | `PiSession.seenAt` | 注册时写；之后只在实质变化（状态、文件、标题）时刷，心跳不刷 | 列表排序兜底、外部根回收 | 否 |
 | `PiSession.persistence` | 首条消息落盘时由运行时写一次 | 侧栏、会话页、配置页 | 是（看文件是否存在） |
 | `PiSession.disk` | 扫描器 | 侧栏、会话页、配置页 | 是 |
-| `PiSession.state`/`error`/`queue`/`interactions`/`execution` | SessionService 状态机 | 侧栏、会话页、配置页 | 否（重启回落 `discovered`） |
+| `PiSession.state`/`error`/`queue`/`interactions`/`execution` | 注册表的状态迁移入口 `transition()`（对话、任务、扫描只上报事实） | 侧栏、会话页、配置页 | 否（重启回落 `discovered`） |
 | `PiSession.runtimes[i]` | 本进程由运行时注册表写；其它进程由心跳读取器写自己那一项 | 侧栏、会话页、配置页 | 是 |
 | `SessionTrajectory.entries` | 按 `source` 单一归属：`file` 归扫描器，`runtime` 归运行时 | 侧栏、会话页、配置页 | 是 |
 | `SessionTrajectory.tail` | 运行时 | 侧栏、会话页、配置页 | 否 |
+| `SessionFacts` | 派生：有本地运行时由运行时投影，否则由 `facts/replay.ts` 重放会话文件 | 会话页事实面板 | 是 |
 | RuntimeProfile | 派生服务（按 home + revision 缓存） | 侧栏、会话页、配置页 | 是 |
 | 偏好（特别关注） | sessions 域 | sessions | 否 |
 
@@ -171,9 +182,11 @@ stateDiagram-v2
   ready --> running: turn 受理
   running --> ready: agent_settled / abort
   running --> failed: 回合出错
-  failed --> ready: 重置错误（仅回合出错，运行时可复用）
+  failed --> running: 回合重试（运行时可复用）
   ready --> evicted: 空闲超时 / 显式 evict / 应用新配置 / 进程退出
   running --> evicted: 进程退出（先 abort）
+  failed --> evicted: 释放运行时
+  evicted --> loading: 重新装配（打开 / 续聊 / 起任务）
   evicted --> discovered: 下次扫描刷新磁盘事实
   discovered --> deleted: 删除 / 文件被外部删除
   ready --> deleted: 删除（同事务 evict + unlink）
@@ -186,11 +199,15 @@ stateDiagram-v2
 `loading`、`evicted` 是运行时有无的两端。`failed` 有两种来源，恢复路径不同：
 
 - `loading → failed`：从未装配出运行时，必须经 `loading` 重装才能到 `ready`；
-- `running → failed`：运行时仍在，可原地重置错误直接回 `ready`。
+- `running → failed`：运行时仍在，可原地重试回合直接回 `running`。
+
+`deleted` 不是 `SessionState` 的取值：删除是把实体从注册表摘掉（`removeEntity`），图里画成终态只是为了表达「之后不可达」。
 
 `stale`（配置落后）、`persistence: memory`、`queue` 都不进状态机：它们是派生值或计数器。
 
 ### 2.1 转移表与守卫
+
+迁移的唯一入口是注册表的 `transition(sessionId, to, opts)`（opts 可顺带写 `error` 与 `instanceId`）：它按合法迁移表校验，非法迁移报 `ConflictError`→409，同状态重复迁移是幂等 no-op（心跳与事件回调会反复同步同一目标状态），实体不存在时返回 null。运行时有无的两端不由路由触发：扫描认领（`evicted → discovered`）与运行时释放（`→ evicted`）由注册表自己的函数直接落状态，它们是写者自己的事实，不是动作请求。
 
 | 从 | 到 | 触发 | 守卫与副作用 |
 | --- | --- | --- | --- |
@@ -203,11 +220,13 @@ stateDiagram-v2
 | `running` | `ready` | `agent_settled` | 首条消息已落盘时 `persistence → file` |
 | `running` | `ready` | `abort` | 先取消挂起的交互再中止；中止失败只记 `error`，状态仍回 `ready`，不允许卡在 `running` |
 | `running` | `failed` | 回合出错 | 记 `error`（`phase = 'turn'`）；任务同时写 `execution.outcome` |
-| `failed` | `ready` | 重置错误 | 仅当 `error.phase = 'turn'`，运行时可复用，不必重装 |
+| `failed` | `running` | 回合重试 | 仅当 `error.phase = 'turn'`，运行时可复用，不必重装 |
 | `loading` | — | `DELETE` / `evict` / `model` | 拒绝 409 `session_loading`，附进行中的装配套信息；调用方可等装配完成或放弃 |
 | `ready` | `evicted` | 空闲 30 分钟 / evict / 应用新配置 | 释放顺序：abort → dispose → settleCredentialWrites → 按 `instanceId` 删本实例心跳 |
 | `running` | `evicted` | 进程退出 | 先 abort 再走同一释放路径 |
-| `evicted` | `discovered` | 下次扫描 | 只覆盖 `disk`，不动身份与归属；`persistence: memory` 的会话没有文件，evict 直接转 `deleted` |
+| `failed` | `evicted` | 显式释放 / 空闲回收 | 失败但运行时可复用，释放与 `ready` 走同一路径 |
+| `evicted` | `loading` | 重新装配（打开 / 续聊 / 起任务） | 扫描还没把实体回落 `discovered` 时由装配前显式迁移，因此 `session_loading` 分支真实可达 |
+| `evicted` | `discovered` | 下次扫描 | 只覆盖 `disk`，不动身份与归属；`persistence: memory` 的会话没有文件，evict 直接移出注册表 |
 | `discovered`/`ready`/`failed` | `deleted` | `DELETE /session` | 同一事务：摘运行时 → 删 `.jsonl` 与同名子目录 → 移除实体 → 递增 `collectionRevision` |
 | `running` | — | `DELETE /session` | 拒绝 409 `session_busy`，`capabilities.canDelete=false` 带原因码 |
 | `discovered` | `deleted` | 文件被外部删除 | 扫描发现消失，移除实体 |
@@ -242,6 +261,7 @@ graph LR
   H --> P[runtime-profile]
   H --> C[config 子资源]
   S --> T[trajectory]
+  S --> F[facts]
   S --> E[events SSE]
   S --> A[turn / abort / interaction / model / evict]
 ```
@@ -258,13 +278,14 @@ graph LR
 | `POST /api/sessions` | 建会话或起任务：`{ origin, kind?, cwd?, model?, thinkingLevel?, subagent?, instruct?, timeoutMs? }` |
 | `GET /api/sessions/:id` | 单个实体：状态、`runtimes`、`capabilities`、模型、队列、`execution` |
 | `POST /api/sessions/:id/turn` | `{ text, mode }` → `202 { disposition }` |
-| `POST /api/sessions/:id/abort` | 中止并回传排队输入；幂等 |
+| `POST /api/sessions/:id/abort` | 中止并回传排队输入；先取消运行中的一次性任务，两者都没有则 409 `session_not_local` |
 | `POST /api/sessions/:id/interaction` | 扩展 UI 回执 `{ interactionId, value }` |
 | `POST /api/sessions/:id/model` | 只切本会话的模型与思考级别 |
 | `POST /api/sessions/:id/evict` | 释放运行时，保留文件 |
 | `DELETE /api/sessions/:id` | 删除文件与实体（`running` → 409 `session_busy`） |
 | `GET /api/sessions/:id/trajectory?window=full\|page&cursor=&limit=` | 轨迹子资源：`{ revision, entries[], tail?, nextCursor, complete, reset }` |
 | `GET /api/sessions/:id/events?since=` | SSE：`state`、`trajectory`、`delta`、`interaction`、`error`，每帧带 `revision` |
+| `GET /api/sessions/:id/facts` | 运行事实 `SessionFacts`：`source`、`model`、`skills`、`mcp`、`tools`、`promptSectionKeys`、`recorded` |
 | `GET /api/sessions/prefs`、`PUT /api/sessions/prefs` | 项目特别关注 |
 
 外部目录的回收：`root=` 接入的根由服务端按 LRU 维护一个有限集合（默认 4 个，可配），空闲超过 TTL（默认 30 分钟）或超限时最旧的那个被移出扫描列表，其下的 `discovered` 实体从注册表移除（文件不动），已加载的运行时按 `ready` 空闲回收处理。home 的 `sessionsRoot` 不算外部根，不会被回收。否则每次切目录都留一份后台扫描目标，扫描面会无限膨胀。接口层的 `root=` 与外部目录扫描能力保留；界面侧会话根锁在 home 的 `sessions/`，不再提供目录选择入口（选目录面板与 `/api/sessions/browse` 已随需求移除）。
@@ -294,7 +315,7 @@ graph LR
 - 重连带 `since`：同一 `epoch` 内服务端补发其后的状态与整段轨迹；epoch 不同返回 `resetRequired`，客户端整份重取。
 - 集合读取的 `since` 在 v1 只有两种结果：`notModified` 或完整列表。v1 不做条目级增量合并，避免 `upserted/removed/乱序` 三种合并语义在前端出现。
 - 乐观锁只在配置写入保留：`If-Match: <revision>`，冲突 409 并回传当前文件实体。会话实体的写者只有本进程状态机，不需要实体级乐观锁。
-- 语义化错误码：`session_busy`（`running` 删改）、`session_loading`（删除、evict 或换模型撞上进行中的装配）、`reset_required`（游标失效）、`session_absent`（文件已被外部删除）。
+- 语义化错误码：`session_busy`（`running` 删改）、`session_loading`（删除、evict 或换模型撞上进行中的装配）、`reset_required`（游标失效）、`session_absent`（文件已被外部删除）、`session_not_local`（该会话在本进程没有运行时）、`runtime_elsewhere`（同机另一个 pi 进程正占着这条会话）。
 
 ## 4 前端：一处侧栏，两种页面
 
@@ -327,7 +348,7 @@ PiStore {
 
 | 页面 | 读 | 动作 | 页面私有状态 |
 | --- | --- | --- | --- |
-| 会话页 | `sessionId` 为空时读 `profiles` 的候选模型与 subagent，当前目录来自侧栏点选；非空时读 `sessions` 中 `state ∈ {loading, ready, running, failed}`，只读时 `trajectory.page`，续聊后 `trajectory.full.tail` | create / load / turn / abort / interaction / model | 输入草稿、模型草稿 |
+| 会话页 | `sessionId` 为空时读 `profiles` 的候选模型与 subagent，当前目录来自侧栏点选；非空时读 `sessions` 中 `state ∈ {loading, ready, running, failed}`，只读时 `trajectory.page`，续聊后 `trajectory.full.tail`；事实面板按事件流节拍单独拉 `facts`（不进 store，拿不到就隐藏） | create / load / turn / abort / interaction / model | 输入草稿、模型草稿 |
 | 配置页 | 当前 `home`；`profiles`；配置域子资源表单 | 保存 config / 新增或复制 home / 刷新目录 | 分区选择、表单草稿 |
 
 会话页只有一个，路由键只有 `sessionId`：空会话页与某条会话是同一个组件，`id` 为空就是「还没选会话」。建立、发起、继续三种动作都在这一个页面的同一个输入框里完成，发消息只走一处 `submit`：没有 `id` 就 `create` 后原地填 id（不换页、不重挂输入框），有 `id` 没运行时就先 `load` 再 `turn`，有运行时直接 `turn`。
@@ -366,7 +387,13 @@ v1 的目标是让两种页面读同一套实体、同一份权威、同一个�
 
 已落地：
 
-- 一个进程 `apps/pi-web/server`：`config/`、`chat/`、`sessions/` 三个域，共用 `sessions/registry.ts` 这一份会话实体表；状态目录统一为 `$PI_WEB_STATE`（`homes.json`、`sessions/index.json`、`sessions/prefs.json`、`model-catalog/`）。
+- 一个进程 `apps/pi-web/server`：四个域，共用 `sessions/registry.ts` 这一份会话实体表；状态目录统一为 `$PI_WEB_STATE`（`homes.json`、`sessions/index.json`、`sessions/prefs.json`、`model-catalog/`）。
+  - `config/`：文件级配置（home 注册表与 settings / skills / agents / mcp / models / plugins 读写）。
+  - `sessions/`：纯磁盘事实（扫描、轨迹、删除、偏好、外部根）与实体表。
+  - `runtime/`：活会话运行时（装配与 resume、turn、SSE、abort / 模型切换 / 交互应答 / evict、跨进程心跳读取与合流、运行时事实投影）。与 `sessions/` 不互相 import，只共用实体表；动作类能力由组合根注入。
+  - `facts/`：纯提取（`types.ts` 是 `SessionFacts` 契约，`replay.ts` 把 JSONL 重放成事实）。零 IO、零依赖、不 import `config`；谁读文件、谁来展示由调用方决定。
+  - 依赖方向：`config` ← `sessions` / `runtime` → `facts`；`sessions` 与 `runtime` 之间只走 `server.ts` 这个组合根。
+- 心跳合流不是一个读接口的副作用：`server.ts` 启动 12 秒定时器把跨进程心跳合流进实体表，会话清单只读。
 - 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
 - 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
 - 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。

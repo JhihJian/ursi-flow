@@ -7,7 +7,7 @@ import { HomeError, resolveRequestedHome } from '../shared/pi-home.ts'
 /**
  * home 注册表：进程内唯一实例。
  *
- * 配置域写它，对话与会话域只读；`profileRevision` 也在这里维护，因为它是
+ * 配置域写它，运行时域与会话域只读；`profileRevision` 也在这里维护，因为它是
  * 「同一份 home 的配置版本」，属于聚合根的派生字段。
  */
 

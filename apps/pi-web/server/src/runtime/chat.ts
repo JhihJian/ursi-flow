@@ -35,7 +35,7 @@ import {
  * 首帧回放会话行文本（与 pi 会话文件同形状），浏览器用同一个 `parsePiJsonl`
  * 解析，因此对话与会话浏览共用一份渲染。
  *
- * 进程内状态不落盘：重启后浏览器按 sessionFile 续聊。
+ * 进程内状态不落盘：重启后浏览器按 `sessionId` 续聊（会话文件由实体给出）。
  */
 
 export type ChatState = 'idle' | 'running' | 'error'

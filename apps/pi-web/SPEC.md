@@ -47,9 +47,10 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - `GET /api/sessions` 支持 `home`（home 路径或 id）与 `root`（任意绝对目录）两种作用域，返回同一份实体：实体归属跟随最近一次扫到它的作用域（运行中的除外），换一种访问方式列表不变空；带 `since` 时未变化回 `notModified`，变化回完整列表（epoch 不匹配时要求整份重取）。
 - 扫描只收 `*.jsonl`，跳过名为 `subagents` 的子目录：pi 把子代理对话记在 `<会话id>/subagents/` 下，文件头只有父会话 id，它们不是独立会话。
 - 外部目录按 LRU 维护（默认 4 个）并带空闲 TTL（默认 30 分钟），过期即移出扫描目标，其下 `discovered` 实体被移除，文件不动。
-- 状态机：`discovered → loading → ready ⇄ running`，旁支 `failed`，`evicted` 回流 `discovered`，`deleted` 终态。`loading` 与 `running` 的删改分别返回 409 `session_loading` / `session_busy`。
+- 状态机只有一个迁移入口 `registry.transition(sessionId, to, opts)`：按合法迁移表校验，非法迁移 409，同状态重复迁移是幂等 no-op。可达路径：`discovered → loading → ready ⇄ running`，`loading → failed`（装配失败），`failed → loading`（重装）/ `failed → running`（回合重试，运行时可复用），`ready`/`running`/`failed → evicted`，`evicted → loading`（重装）；`evicted` 另由下次扫描回落 `discovered`，`deleted` 由删除摘实体、不是迁移。续聊与起任务在装配前先显式 transition 到 `loading`，所以 `loading` 与 `running` 的删改分别返回 409 `session_loading` / `session_busy` 两个分支都真实可达。
 - 同一 `sessionId` 的装配单飞：并发「继续」拿到同一个运行时，不出现并行追加同一份 JSONL。
 - 上游 `sessionFile` 不是跨接口的键：删除与续聊都只按实体 `sessionId` 定位，客户端不传路径。续聊时服务端按实体的 `filePath` 打开文件，home 按实体归属取；能否续聊由 `capabilities.canContinue` 给出，不能续聊返回 409 `session_not_continuable`。
+- 跨进程保护：同机另一个 pi 进程的心跳挂在这条会话上时，`capabilitiesOf` 给 `canContinue: false` 与原因码 `runtime_elsewhere`（两个运行时追同一个文件会双写），续聊装配返回 409 `runtime_elsewhere`；跨机心跳不拦，v1 的 live 事实以会话文件为准。`abort` 先取消运行中的一次性任务再走对话中止，两者都没有时返回 409 `session_not_local`。
 
 ### 轨迹
 
@@ -59,6 +60,21 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 - 文件存在本地运行时且已落盘内容时以运行时为准，其它情况以文件为准；接口形态一致。
 - 体积超过上限返回 413 与中文说明；支持 gzip 协商。
 - 事件流 `GET /api/sessions/:id/events` 只对存在本地运行时的会话开放，帧带 `revision`，重连按 `since` 续接。
+
+### 运行事实
+
+运行事实（`SessionFacts`）是会话的第二个只读子资源：这次会话实际上用了什么模型、看到哪些 skills、连了哪些 MCP server、有哪些工具。它只能由会话文件或 pi 运行时给出，不能从 home 的配置目录反推——配置是「现在想让它怎样」，事实是「当时实际上怎样」。
+
+#### 验收
+
+- `GET /api/sessions/:id/facts` 返回 `{ source, model, skills, mcp, tools, promptSectionKeys, recorded, reason? }`；`model` 含 `initial`/`current`/`thinkingLevel`/`changes[]`，`skills` 含 `listed`/`read`，`mcp` 含 `servers`/`note`，`tools` 含 `names`。
+- 会话有本地运行时则由运行时直接投影（`source: 'runtime'`）：模型、思考等级与活跃工具按运行时当前值字段级覆盖重放结果（刚切过模型时文件里还是旧值），MCP 不覆盖。
+- 没有本地运行时读会话文件重放（`source: 'file'`）；两种来源同一份返回形状，客户端只按 `source` 显示口径。
+- 可空字段为 `null` 表示「会话文件里没记」，不是「会话里没有」。无头老文件没有系统提示词与工具声明，`recorded: false` 并带 `reason: 'not_recorded'`。
+- MCP server 清单是尽力推断（提示词分区只列间接暴露的 server，其余从工具名前缀推断），`mcp.note` 说明口径，与 `servers` 同时为 `null` 或同时有值。
+- 实体不存在 404 `session_absent`；既没有本地运行时也没有会话文件 409 `session_not_local`。
+- `facts/` 零依赖：`replay.ts` 只做 JSON 与字符串处理，不读配置目录、不做 IO、不 import `config`，输入就是会话文件内容。
+- 会话页在线程头部下方挂事实面板（`web/src/views/chat/facts-panel.tsx`），只读这份事实，随事件流的节流帧重拉（默认折叠成一行）；拿不到（409 / 404 / 网络失败）就整块隐藏，不在前端拼。
 
 ### 侧栏与页面
 
@@ -85,18 +101,21 @@ pi coding agent 的浏览器端：配置、对话、会话浏览三件事操作�
 
 - 对话上限 `PI_WEB_MAX_CHATS`（默认 8），空闲 30 分钟自动释放并保留文件；进程退出统一释放（abort → dispose → settleCredentialWrites → 删本实例心跳）。
 - 一次性任务用同一实体（`kind: 'task'`）：`execution` 记录超时、结果、输出长度与最后助手文本；并发上限 `PI_WEB_MAX_TASKS`（默认 4），超时 `PI_WEB_TASK_TIMEOUT_MS`（默认 600000）。
+- 跨进程心跳的合流由 `server.ts` 启动的定时器驱动（12 秒一次，启动时立即跑一次），会话清单只读、不触发合流。心跳超过 60 秒没续写视为失联，同机条目再用 pid 判活。
 - pi SDK 未安装时配置与浏览仍可用，对话与任务返回 503。
 
 ## 模块结构
 
-- `server/src/server.ts`：入口（配置 → 路由 → 静态 → 信号）。
+- `server/src/server.ts`：入口与组合根（配置 → 路由 → 静态 → 信号）：把 runtime 域能力注入会话域，启动心跳合流定时器与外部根回收。
 - `server/src/config.ts`、`state.ts`：唯一读环境变量与状态目录布局的地方。
 - `server/src/http/`：路由表（段匹配 + 每条路由声明 home 策略）、响应原语、静态托管。
 - `server/src/shared/`：pi home 校验、SDK 按需加载、原子写与乐观锁、JSONC、frontmatter。
 - `server/src/config/`：home 注册表、settings / skills / agents / mcp / models / plugins 的文件级读写与路由。
-- `server/src/chat/`：常驻对话运行时、会话装配与释放、一次性任务、跨进程心跳读取。
+- `server/src/sessions/`：纯磁盘事实：扫描、轨迹、删除、偏好、外部根、会话实体注册表（`registry.ts`）与路由。不 import runtime，动作类能力由组合根注入。
+- `server/src/runtime/`：活会话运行时域：装配（新会话 / resume / 一次性任务）、turn、SSE 事件流、abort / 模型切换 / 交互应答 / evict、跨进程心跳读取与合流、运行时事实投影。
+- `server/src/facts/`：纯提取域：`types.ts` 是 `SessionFacts` 契约，`replay.ts` 把会话 JSONL 重放成事实（零 IO 零依赖，不 import `config`）。
+- 域之间的依赖方向：`sessions` 与 `runtime` 不互相 import，只共用 `sessions/registry.ts` 的实体表；`facts` 谁都不 import；两端由 `server.ts` 接线。
 - `server/src/config/builtin-plugins.ts`：内置扩展清单与安装（文件复制，临时文件 + rename 保证原子）；探测规则复用心跳的 `detectPlugin`。
-- `server/src/sessions/`：扫描、轨迹转换、偏好、删除、会话实体注册表（`registry.ts`）与路由。
 - `web/src/pi-store.ts`：pi home 清单与增删改的唯一真源。
 - `web/src/pi-context.tsx`：当前 home 及其派生的 `sessionsRoot`；`pi-nav.tsx`：当前页面与当前目录。
 - `web/src/module.tsx`：组合根，Provider 嵌套与 home 变化的跟随；`pi-sidebar.tsx`、`pi-workspace.tsx`、`pi-status.tsx`：侧栏、按页面渲染、状态栏。
