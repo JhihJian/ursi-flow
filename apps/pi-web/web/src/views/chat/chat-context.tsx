@@ -616,6 +616,8 @@ export function ChatProvider({
       try {
         const next = await api.setChatModel(activeId, provider, modelId, thinkingLevel)
         patchChat(next.sessionId, next)
+        // 切模型不产生事件帧：事实面板的重取信号只能由这里补一下。
+        setFactsTick((current) => current + 1)
       } catch (failure) {
         setError(errorText(failure))
       }
@@ -666,6 +668,8 @@ export function ChatProvider({
       setRunningTools([])
       setPending(0)
       setUiRequests([])
+      // 释放后事实改由会话文件重放给出（source 从 runtime 变 file），事件流已断，这里补一次重取。
+      setFactsTick((current) => current + 1)
       void refreshChats()
     },
     [activeId, api, notify, refreshChats],

@@ -39,13 +39,14 @@ export function FactsPanel({ sessionId, tick }: FactsPanelProps) {
 
   const source = facts.source === 'runtime' ? '实时' : '历史文件'
 
-  // 老会话没有 system message：能确认的事实一个都没有，展开也没有内容可看。
+  // 会话文件里没有 system message：能确认的事实一个都没有，展开也没内容可看。
+  // 刚建的对话也落在这一支，因此话不说满：只说没记，不猜原因。
   if (!facts.recorded) {
     return (
       <section className="pichat-facts">
         <div className="pichat-facts-head">
           <span className="pichat-facts-title">本次运行</span>
-          <span className="pichat-facts-summary">此会话未记录运行事实（老会话没有 system message）</span>
+          <span className="pichat-facts-summary">此会话未记录运行事实</span>
           <span className="pichat-facts-source">{source}</span>
         </div>
       </section>
@@ -53,7 +54,7 @@ export function FactsPanel({ sessionId, tick }: FactsPanelProps) {
   }
 
   return (
-    <section className={`pichat-facts${open ? ' is-open' : ''}`}>
+    <section className="pichat-facts">
       <button
         type="button"
         className="pichat-facts-head"
