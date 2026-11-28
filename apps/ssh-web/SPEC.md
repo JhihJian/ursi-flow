@@ -17,7 +17,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 
 #### 验收
 
-- 左侧为树状连接面板（固定 200px）：连接为父行，默认全部展开，点父行或折叠箭头翻转展开并选中该连接；每个连接的 tmux 会话子级独立加载与刷新（含默认入口 main、远端客户端数标记 ●、创建时间），右键连接行为 `New connection`、`New session`、`Edit`、`Delete`，空白处为 `New connection`，标题行另有 `+`（新建）、⇩（从本机 ssh config 批量导入）与 ↻（刷新全部连接的会话列表）。点会话子行不在侧栏内切换，而是在终端区顶部标签栏打开/激活对应标签。
+- 左侧为树状连接面板（固定 200px）：连接为父行，默认全部展开，点父行或折叠箭头翻转展开并选中该连接；每个连接的 tmux 会话子级独立加载与刷新（只列远端 `tmux ls` 的真实会话，不额外插入默认入口；远端客户端数标记 ●、创建时间），右键连接行为 `New connection`、`Open`（打开默认会话 `ssh-main`，远端没有则新建）、`New session`、`Edit`、`Delete`，空白处为 `New connection`，标题行另有 `+`（新建）、⇩（从本机 ssh config 批量导入）与 ↻（刷新全部连接的会话列表）。点会话子行不在侧栏内切换，而是在终端区顶部标签栏打开/激活对应标签。展开连接只展开，不附带打开终端；打开默认会话走右键 `Open`。
 - 顶部标签栏常驻显示：每个打开的会话一个标签，标签内容与会话子行一致（会话名），点标签激活、点 × 或中键关闭，标签栏尾部 `+` 新建会话；同一 (连接, tmux 会话) 只允许一个标签。当前标签用白底黑字加顶部黑线标记，未激活标签退到灰字，标记不跟随终端亮暗主题。多个标签常驻堆叠渲染，仅激活的可见，每个标签面板铺满同一块终端区（绝对定位叠放，尺寸随终端区伸缩），切标签不重建、不重连 SSH，非激活标签的输出照常写入。
 - 列表空白处或连接项右键打开菜单：空白处为 `New connection`，连接项为 `New connection`、`New session`、`Edit`、`Delete`。侧栏标题行右侧另有 `+` 按钮直接新建。
 - 连接字段在终端区底部升起的面板维护，仅两项：名称（唯一）与 ssh 命令（如 `ssh jhihjian@10.0.0.5`，支持 `~/.ssh/config` 别名、`-p`、`-i`、`-J` 等全部 OpenSSH 参数）。服务端保存时做基本校验：命令首词必须是 `ssh`，其余原样保留。
@@ -37,7 +37,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 #### 验收
 
 - 布局为左侧树状连接面板 + 右侧顶部会话标签栏与终端区：嵌入 ursi-flow 工作区时，连接树进外壳的侧边栏堆叠，标签栏与终端进中间工作区；独立入口用同一对组件配一栏可折叠侧边栏。布局纯 flex 实现，不用可拖拽分隔条（折叠后重开靠远端 tmux 恢复屏幕）。
-- 选中连接后，树中该连接下实时列出远端 tmux 会话（`GET /api/connections/{id}/tmux-sessions`，实时执行远端 `tmux ls` 不缓存，每个连接独立加载与刷新）；远端未安装 tmux 时显示「远端未安装 tmux，连接后将回退普通 shell，断开即结束」并列出安装命令（Debian/Ubuntu `sudo apt install tmux`、Fedora/RHEL `sudo dnf install tmux`、macOS `brew install tmux`，命令可选中复制）；SSH 失败（认证失败、不可达）时错误显示在该连接的子级区，错误下方同样给出这份安装指引供排查。默认入口 main 展示为「默认会话 ssh-main」。
+- 选中连接后，树中该连接下实时列出远端 tmux 会话（`GET /api/connections/{id}/tmux-sessions`，实时执行远端 `tmux ls` 不缓存，每个连接独立加载与刷新）；远端未安装 tmux 时显示「远端未安装 tmux，连接后将回退普通 shell，断开即结束」并列出安装命令（Debian/Ubuntu `sudo apt install tmux`、Fedora/RHEL `sudo dnf install tmux`、macOS `brew install tmux`，命令可选中复制）；SSH 失败（认证失败、不可达）时错误显示在该连接的子级区，错误下方同样给出这份安装指引供排查。请求不带会话名时服务端用 `ssh-main`（`tmux new -A -s ssh-main`），前端对应右键 `Open`。
 - 点击任一会话项（含默认入口）即在顶部标签栏打开（或激活）标签并启动全新 OpenSSH 子进程：认证失败、主机不可达等失败原因原样显示在终端区（OpenSSH 自身的错误输出），不产生会话。WS 握手即启动子进程，服务端无会话注册表。新建 tmux 会话经标签栏 `+` 或右键 `New session` 展开内联表单，名称限 ASCII 字母数字下划线连字符（1–64），服务端与前端同校验；重名由远端 `tmux new -A` 语义兜底（直接 attach 已有会话）。
 - 远端有 tmux 时，PTY 启动命令为 `tmux new -A -s <会话名>`：SSH 断开、刷新页面或关闭浏览器后远端 tmux 会话与其中进程继续运行；重新点击同一会话即 attach 回去，屏幕内容完整恢复。tmux 内 `exit` 退出 shell 会结束 tmux 会话，前端收到退出码。改名在终端内执行 tmux 命令完成；移除会话由侧栏承担：tmux 会话子行右键 `Remove session`，在侧栏底部内联输入会话名二次确认后服务端在远端执行 `tmux kill-session -t <会话名>`（其中进程一并结束），打开中的对应标签关闭，失败原因（ssh 失败、会话不存在）原样显示在侧栏提示区。
 - 远端有 tmux 的激活终端顶部渲染 window 条，把会话内的 window（tmux 状态栏里的「标签」）平铺为可点击标签：实时列出 `index:name`（附窗格数 tooltip），当前 window 高亮；点击切换（远端 `tmux select-window`，attach 中的终端立即换画面）、`+` 新建（`tmux new-window`，名称可空）、`×` 关闭（`tmux kill-window`，其中窗格进程一并结束）。列表每 10 秒同步一次，操作后立即刷新；操作失败原因显示在事件提示区。回退普通 shell 或已结束的标签不渲染 window 条。

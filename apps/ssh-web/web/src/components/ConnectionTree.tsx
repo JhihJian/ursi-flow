@@ -51,6 +51,7 @@ export function ConnectionTree() {
     ]
     if (connection) {
       items.push(
+        { label: 'Open', onSelect: () => openTerminal(connection.id, null) },
         { label: 'New session', onSelect: () => void selectConnection(connection.id).then(openSessionForm) },
         { label: 'Edit', onSelect: () => setEditor({ kind: 'edit', connection }) },
         {
@@ -147,12 +148,6 @@ export function ConnectionTree() {
     }
     return (
       <>
-        <SessionChildRow
-          label="main"
-          meta="默认会话 ssh-main"
-          open={isOpen(connection.id, null)}
-          onClick={() => openTerminal(connection.id, null)}
-        />
         {state.sessions.map((session) => (
           <SessionChildRow
             key={session.name}
