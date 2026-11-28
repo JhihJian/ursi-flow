@@ -28,7 +28,7 @@ parent: ../../SPEC.md
 
 竖线用 `inset box-shadow` 画，不用 `border-left`：调用方常有自己的边框与内边距重置，`box-shadow` 不会被它们覆盖，也不占盒模型宽度。代价是行内容比原来左移 2px，`SidebarRow` 默认左内边距多给 2px 补偿，调用方覆盖内边距时也要多给 2px。
 
-只在样式层接 `.sb-row` 不走 `SidebarRow` 的：pi Home 行（四行结构且错误行在最前）。fs 文件树（虚拟化，行高由测量驱动）不接。
+不接的：fs 文件树（虚拟化，行高由测量驱动）。
 
 ### 分组（`SidebarGroup`）
 
@@ -45,12 +45,14 @@ ssh 连接树用它：父行点击 = 翻转展开 + 选中连接（原 `selectCo
 
 竖线用 `inset box-shadow` 画，不用 `border-left`：调用方常有自己的边框与内边距重置，`box-shadow` 不会被它们覆盖，也不占盒模型宽度。代价是行内容比原来左移 2px，`SidebarRow` 默认左内边距多给 2px 补偿，调用方覆盖内边距时也要多给 2px。
 
-只在样式层接 `.sb-row` 不走 `SidebarRow` 的：pi Home 行（四行结构且错误行在最前，套不进 label/meta 模型）。fs 文件树（虚拟化，行高由测量驱动）不接。
+`meta` 槽默认单行截断。要多行说明时，调用方给自己的 `.sb-meta` 加 `display: flex; flex-direction: column`（pi Home 行的路径 + 摘要就是这样）。行里要嵌套交互元素时传 `as="div"`。
+
+**通配重置会吃掉行的内边距**：有的模块用 `.module-root * { margin: 0; padding: 0 }` 做全局复位，优先级高于 `.sb-row`，调用方要在自己的行类上显式给回内边距（pi Home 行的 `.preset-item` 就是这样）。
 
 #### 验收
 
 - `style.css` 在各入口于模块样式**之前**加载（shell-web 的 `registry.tsx` 与各独立入口的 `main.tsx` 均已如此）。模块自己刻意的底色（如 todo 拖拽悬停的白底）因此能盖过 `.sb-row:hover` 的灰底。
-- `SidebarRow` 已接入：todo 项目项（目录与统计合成一段说明）、ssh 子行、pi 会话项、flow 项、fs 目录行。`SidebarGroup` 已接入：ssh 连接树。pi Home 行只用 `.sb-row` 样式。
+- `SidebarRow` 已接入全部侧边栏行：todo 项目项（目录与统计合成一段说明）、ssh 子行、pi 会话项、pi Home 行（label 名 + 来源，meta 路径 + 摘要两行，trailing 重命名失败的 `!` 标记）、flow 项、fs 目录行。`SidebarGroup` 已接入：ssh 连接树。仓库里不再有裸用 `.sb-row` 类的地方。
 - 接入后 ssh 子行由 26px 单行变为两行（名 + 时间），与其它列表行一致。
 - hover 灰底统一为 `--ws-line`（#e5e5e5），选中态与 hover 同色，只靠左侧竖线区分。todo 与 flow 原本就是这样；pi 会话原本 hover #f5f5f5、选中 #e5e5e5 两级，统一后降为一级，与仓库主流一致，不为此新增外壳变量。fs 目录行激活底色由 8% 墨色淡染改为同色。
 - 行有圆角时（fs 目录行 4px），`inset box-shadow` 竖线跟随圆角，视觉上无碍。

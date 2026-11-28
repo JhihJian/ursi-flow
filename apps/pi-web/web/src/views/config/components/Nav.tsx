@@ -5,7 +5,7 @@ import { useAppStore } from '../../../pi-store'
 import { api } from '../api/client'
 import type { ListDirFn } from '@ursi/directory-picker'
 import type { HomeCreateMode, HomeSummary } from '../api/types'
-import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
+import { ContextMenu, SidebarRow, type MenuItem, type MenuState } from '@ursi/sidebar'
 
 export type SectionId =
   | 'general'
@@ -146,26 +146,37 @@ function HomeItem({
   }
 
   return (
-    <li
-      data-pi-home-id={home.id}
-      className={`sb-row preset-item${active ? ' is-active' : ''}${home.valid ? '' : ' invalid'}`}
-      title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}\n右键查看更多操作`}
-      onClick={onSelect}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        openMenu(event.clientX, event.clientY, menuItems, home.description || undefined)
-      }}
-    >
-      {renameError ? <span className="preset-error">{renameError}</span> : null}
-      <span className="preset-main">
-        <span className="preset-name">
-          {home.name}
-          <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
-        </span>
-        <span className="preset-path">{home.path}</span>
-        <span className="preset-sub">{summaryLine(home)}</span>
-      </span>
+    <li data-pi-home-id={home.id}>
+      <SidebarRow
+        className={home.valid ? 'preset-item' : 'preset-item invalid'}
+        active={active}
+        title={`${home.name}\n${home.path}${home.description ? `\n${home.description}` : ''}\n右键查看更多操作`}
+        onClick={onSelect}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openMenu(event.clientX, event.clientY, menuItems, home.description || undefined)
+        }}
+        label={
+          <span className="preset-name">
+            {home.name}
+            <span className="preset-source">{home.sources.map((s) => SOURCE_LABEL[s]).join('/')}</span>
+          </span>
+        }
+        meta={
+          <>
+            <span className="preset-path">{home.path}</span>
+            <span className="preset-sub">{summaryLine(home)}</span>
+          </>
+        }
+        trailing={
+          renameError ? (
+            <span className="preset-error" title={renameError}>
+              !
+            </span>
+          ) : null
+        }
+      />
     </li>
   )
 }

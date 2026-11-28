@@ -214,76 +214,69 @@ list-style: none;
 }
 
 /* 行的竖线与 hover/激活灰底由 @ursi/sidebar 的 .sb-row 提供；左内边距 2px 补回竖线的位置。 */
+/* Home 行走 SidebarRow：label = 名 + 来源，meta = 路径 + 摘要（两行），trailing = 重命名失败的 ! 标记。
+   上面 .pi-manager-root * 把所有后代 padding 清零且优先级更高，这里要显式给回行的内边距。 */
 .pi-manager-root .preset-item {
-  /* 不走 SidebarRow（四行结构 + 前置错误行），只用 .sb-row 的视觉；抵消它的默认内边距，由 .preset-main 承担。 */
-  display: flex;
-  align-items: stretch;
-  padding: 0;
+  padding: var(--space-sm) var(--space-xs) var(--space-sm) calc(var(--space-sm) + 2px);
   user-select: none;
 }
 
-.pi-manager-root .preset-item.invalid .preset-name {
-color: var(--gray-400);
-}
-
-.pi-manager-root .preset-main {
-flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: var(--space-sm) var(--space-xs);
-  overflow: hidden;
-}
-
-.pi-manager-root .preset-name {
-display: flex;
-  align-items: baseline;
-  gap: var(--space-xs);
+.pi-manager-root .preset-item .sb-label {
   color: var(--gray-900);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.pi-manager-root .preset-item.is-active .preset-name {
-color: var(--black);
+.pi-manager-root .preset-item.invalid .sb-label {
+  color: var(--gray-400);
+}
+
+.pi-manager-root .preset-item.is-active .sb-label {
+  color: var(--black);
   font-weight: 500;
 }
 
-.pi-manager-root .preset-path {
-font-size: 10px;
-  color: var(--gray-400);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.pi-manager-root .preset-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
 }
 
 .pi-manager-root .preset-source {
-flex: none;
+  flex: none;
   font-size: 10px;
+  font-weight: 400;
   color: var(--gray-400);
   letter-spacing: 0.5px;
 }
 
-.pi-manager-root .preset-sub {
-font-size: 11px;
+/* 三行紧凑排：label / 路径 / 摘要，行距统一 1px。 */
+.pi-manager-root .preset-item .sb-main {
+  gap: 0;
+}
+
+.pi-manager-root .preset-item .sb-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
   color: var(--gray-400);
+}
+
+.pi-manager-root .preset-path,
+.pi-manager-root .preset-sub {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pi-manager-root .preset-item.invalid .preset-sub {
-color: var(--danger);
+  color: var(--danger);
 }
 
 .pi-manager-root .preset-error {
-display: block;
-  padding: 2px var(--space-xs);
   color: var(--danger);
-  font-size: 10px;
-  line-height: 1.4;
+  font-weight: 700;
+  cursor: help;
 }
 
 .pi-manager-root .preset-item-editing {
