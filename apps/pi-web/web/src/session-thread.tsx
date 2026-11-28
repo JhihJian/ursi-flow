@@ -11,7 +11,7 @@ import { RefreshIcon } from './views/sessions/components/Icons'
 type ReadOnly =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; turns: ReturnType<typeof parsePiJsonl> }
+  | { status: 'ready'; turns: ReturnType<typeof parsePiJsonl>; forId: string }
   | { status: 'error'; message: string }
 
 /**
@@ -92,7 +92,7 @@ export function SessionThread({ sessionId }: { sessionId: string | null }) {
       .then((text) => {
         if (seq !== loadSeq.current) return
         try {
-          setReadOnly({ status: 'ready', turns: parsePiJsonl(text) })
+          setReadOnly({ status: 'ready', turns: parsePiJsonl(text), forId: rowId })
         } catch (failure) {
           setReadOnly({ status: 'error', message: errorText(failure) })
         }
@@ -134,13 +134,75 @@ export function SessionThread({ sessionId }: { sessionId: string | null }) {
   }, [fingerprint])
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
-  // 新内容到达时贴住底部；用户往上翻时不打扰。
+  // 轨迹的真实滚动窗格在组件库内部：阅读/执行视图是 .view-pane，记录表是 .record-list；
+  // 外层 .pichat-thread 只在流式回执撑高时才滚。找不到内部窗格就退回外层容器。
+  const scrollPaneOf = useCallback((): HTMLElement | null => {
+    const body = bodyRef.current
+    if (!body) return null
+    return body.querySelector<HTMLElement>('.view-pane, .record-list') ?? body
+  }, [])
+
+  /** 外层容器与内部窗格都推到底部：用户在哪个窗格上滚动都能落在最新消息。 */
+  const scrollToBottom = useCallback(() => {
+    const body = bodyRef.current
+    const pane = scrollPaneOf()
+    if (pane && pane !== body) pane.scrollTop = pane.scrollHeight
+    if (body) body.scrollTop = body.scrollHeight
+  }, [scrollPaneOf])
+
+  /** 是否停在底部附近：外层与内部窗格任一在底部即算。 */
+  const nearBottom = useCallback(() => {
+    const body = bodyRef.current
+    if (!body) return true
+    const close = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 240
+    const pane = scrollPaneOf()
+    return pane !== null && close(pane)
+  }, [scrollPaneOf])
+
+  // 进入（或回到）一条会话先定位到最新消息：pendingJump 只消费一次，
+  // 等这条会话的内容真的排出（revision 推进且内容属于当前会话）再跳，
+  // 之后的输出交给贴底逻辑。组件不按会话重挂，这个标记按 sessionId 重置。
+  const pendingJumpRef = useRef(true)
+  useEffect(() => {
+    pendingJumpRef.current = true
+  }, [sessionId])
+  const loadedForId = readOnly.status === 'ready' ? readOnly.forId : live ? sessionId : null
+  useEffect(() => {
+    if (!pendingJumpRef.current || !parsed?.ok || loadedForId === null) return
+    const frame = requestAnimationFrame(() => {
+      pendingJumpRef.current = false
+      scrollToBottom()
+      // 阅读视图按内容测量布局，下一帧再校准一次。
+      requestAnimationFrame(() => {
+        if (!pendingJumpRef.current) scrollToBottom()
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [revision, parsed?.ok, loadedForId, scrollToBottom])
+
+  // 用户是否停在底部附近只在滚动时记录：新内容到达时此刻的判断才可靠。
+  const wasNearBottomRef = useRef(true)
   useEffect(() => {
     const body = bodyRef.current
     if (!body) return
-    const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 240
-    if (nearBottom) body.scrollTop = body.scrollHeight
-  }, [revision, chat.transcript, chat.partial, chat.thinking, chat.runningTools.length])
+    const record = () => {
+      wasNearBottomRef.current = nearBottom()
+    }
+    // 视图切换会换掉内部窗格，跟着 revision 重挂一次监听。
+    const pane = scrollPaneOf()
+    body.addEventListener('scroll', record, { passive: true })
+    pane?.addEventListener('scroll', record, { passive: true })
+    return () => {
+      body.removeEventListener('scroll', record)
+      pane?.removeEventListener('scroll', record)
+    }
+  }, [nearBottom, scrollPaneOf, revision, chat.transcript])
+
+  // 新内容到达时贴住底部；用户往上翻时不打扰。
+  useEffect(() => {
+    if (!wasNearBottomRef.current) return
+    scrollToBottom()
+  }, [revision, chat.transcript, chat.partial, chat.thinking, chat.runningTools.length, scrollToBottom])
 
   const {
     error,
