@@ -61,7 +61,7 @@ function Tree() {
       <SidebarGroup
         open={!!open.a}
         onToggle={() => toggle('a')}
-        label="连接 dev-01"
+        label="dev-01"
         meta="ssh dev-01 · 2 会话"
         active={active === 'a'}
         onContextMenu={(event) => {
@@ -69,7 +69,7 @@ function Tree() {
           setActive('a')
         }}
       >
-        <SidebarRow label="main" meta="默认会话" active={active === 'a-main'} onClick={() => setActive('a-main')} />
+        <SidebarRow label="build" meta="3 windows · 昨天" active={active === 'a-build'} onClick={() => setActive('a-build')} />
         <SidebarGroup
           open={!!open['a-1']}
           onToggle={() => toggle('a-1')}
@@ -81,8 +81,8 @@ function Tree() {
           <SidebarRow label="window 1" meta="tail -f" active={active === 'a-1-1'} onClick={() => setActive('a-1-1')} />
         </SidebarGroup>
       </SidebarGroup>
-      <SidebarGroup open={!!open.b} onToggle={() => toggle('b')} label="连接 dev-02（收起）" active={active === 'b'} onContextMenu={(event) => { event.preventDefault(); setActive('b') }}>
-        <SidebarRow label="main" />
+      <SidebarGroup open={!!open.b} onToggle={() => toggle('b')} label="dev-02" active={active === 'b'} onContextMenu={(event) => { event.preventDefault(); setActive('b') }}>
+        <SidebarRow label="editor" meta="1 window" active={active === 'b-editor'} onClick={() => setActive('b-editor')} />
       </SidebarGroup>
     </Frame>
   )
