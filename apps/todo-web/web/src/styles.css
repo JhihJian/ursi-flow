@@ -297,6 +297,17 @@
   display: block;
 }
 
+/* 项目目录：取位置 URI 的末段，行内省略，悬停靠整行的 title 看完整 URI。 */
+.project-item .dir {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .project-item .meta {
   font-size: 11px;
   color: var(--gray-400);

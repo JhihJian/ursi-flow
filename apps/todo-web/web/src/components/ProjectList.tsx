@@ -2,12 +2,25 @@ import { useCallback, useRef, useState } from 'react'
 import { useDndContext, useDroppable } from '@dnd-kit/core'
 import type { ProjectStats } from '@/api/types'
 import { formatTime } from '@/lib/format'
+import { basename, parse } from '@ursi/location'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
 import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
 
 function projectTooltip(project: ProjectStats): string {
   return [project.name, project.description, project.path].filter(Boolean).join(' · ')
+}
+
+/** 项目目录展示：解析位置 URI，失败时（历史数据或手输内容）原样显示。 */
+function projectLocationLabel(path: string | null | undefined): string | null {
+  if (!path) return null
+  try {
+    const loc = parse(path)
+    const prefix = loc.device ? `${loc.device}:` : ''
+    return `${prefix}${basename(loc)}`
+  } catch {
+    return path
+  }
 }
 
 type OpenMenu = (clientX: number, clientY: number, items: MenuItem[], heading?: string) => void
@@ -32,6 +45,7 @@ function ProjectItem({
     data: { type: 'project', projectId: project.id },
   })
   const open = project.task_count.pending + project.task_count.in_progress + project.task_count.blocked
+  const dirLabel = projectLocationLabel(project.path)
 
   const menuItems: MenuItem[] = [
     { label: 'new project', onSelect: startCreateProject },
@@ -83,6 +97,7 @@ function ProjectItem({
       }}
     >
       <span className="name">{project.name}</span>
+      {dirLabel ? <span className="dir">{dirLabel}</span> : null}
       <span className="meta">
         {open} tasks / {formatTime(project.total_time_minutes)}
       </span>
