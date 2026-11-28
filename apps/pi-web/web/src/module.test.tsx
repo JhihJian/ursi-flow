@@ -271,7 +271,7 @@ async function waitFor(predicate: () => boolean, tries = 40): Promise<void> {
 
 /** 项目组默认折叠：点箭头展开后取第一条会话行。 */
 async function expandAndPick(): Promise<HTMLElement> {
-  const caret = container.querySelector('.session-group-caret') as HTMLElement
+  const caret = container.querySelector('.sb-chevron') as HTMLElement
   await act(async () => caret.click())
   await settle()
   const item = container.querySelector('.session-item') as HTMLElement
@@ -323,8 +323,8 @@ describe('Pi Web 模块', () => {
     const items = await (async () => {
       // 两组各展开一次，收齐两行。
       await expandAndPick()
-      const secondGroup = [...container.querySelectorAll('.session-group-caret')].find(
-        (caret) => caret.closest('section, .session-group')?.querySelector('.session-item') === null,
+      const secondGroup = [...container.querySelectorAll('.session-group .sb-chevron')].find(
+        (caret) => caret.closest('.sb-group')?.querySelector('.session-item') === null,
       ) as HTMLElement | undefined
       if (secondGroup) {
         await act(async () => secondGroup.click())
@@ -381,8 +381,8 @@ describe('Pi Web 模块', () => {
     await act(async () => root.render(<Harness />))
     await settle()
     await settle()
-    // 点组头把目录设为当前目录。
-    const groupHead = container.querySelector('.session-group-name') as HTMLElement
+    // 点组头行：翻转并把它设为当前目录。
+    const groupHead = container.querySelector('.sb-row.session-group') as HTMLElement
     await act(async () => groupHead.click())
     await settle()
 
@@ -410,8 +410,9 @@ describe('Pi Web 模块', () => {
     await act(async () => newChat.click())
     await settle()
     await waitFor(() => container.querySelector('.pichat-bar-title')?.textContent === '新对话')
-    // 点「+ 新对话」只回空会话页：侧栏高亮清掉，组按默认规则收起。
-    const item = await expandAndPick()
+    // 点「+ 新对话」只回空会话页：侧栏高亮清掉。组在前面点组头时已展开，用户点过的组不再按默认规则收起。
+    await waitFor(() => container.querySelector('.session-item') !== null)
+    const item = container.querySelector('.session-item') as HTMLElement
     await act(async () => item.click())
     await settle()
     posts = []

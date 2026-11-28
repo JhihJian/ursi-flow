@@ -43,8 +43,7 @@ export function useSidebarMenu({
 
   /** 项目组右键：关注 / 取消关注。 */
   const projectMenu = useCallback(
-    (event: ReactMouseEvent, group: SessionGroup) => {
-      const pinned = event.currentTarget.getAttribute('data-pinned') === 'true'
+    (event: ReactMouseEvent, group: SessionGroup, pinned: boolean) => {
       openMenu(
         event,
         [{ label: pinned ? '取消特别关注' : '设为特别关注', onSelect: () => togglePin(group.key, !pinned) }],

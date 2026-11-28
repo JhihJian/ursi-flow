@@ -8,12 +8,16 @@ const DepthContext = createContext(0)
 export interface SidebarGroupProps {
   /** 是否展开子级。受控：状态由调用方持有，组件只渲染。 */
   open: boolean
-  /** 点击父行或 chevron 时触发，调用方在这里翻转 open。 */
+  /** 点击父行或 chevron 时触发，调用方在这里翻转 open。只管翻转，选中之类的模块行为放 onClick。 */
   onToggle: () => void
+  /** 点父行时触发（chevron 不触发）。模块在这里做自己的「选中」，翻转已经由 onToggle 负责。 */
+  onClick?: () => void
   /** 父行内容，传给 SidebarRow 的 label。 */
   label: ReactNode
   /** 父行说明，传给 SidebarRow 的 meta。 */
   meta?: ReactNode
+  /** 父行尾部，传给 SidebarRow 的 trailing（标记、计数之外的附加物）。 */
+  trailing?: ReactNode
   active?: boolean
   title?: string
   onContextMenu?: (event: MouseEvent) => void
@@ -31,7 +35,7 @@ export interface SidebarGroupProps {
  *
  * 父行是 div（SidebarRow as="div"），因为 chevron 是 button，HTML 不允许 button 嵌套。
  */
-export function SidebarGroup({ open, onToggle, label, meta, active, title, onContextMenu, className, depth, children }: SidebarGroupProps) {
+export function SidebarGroup({ open, onToggle, onClick, label, meta, trailing, active, title, onContextMenu, className, depth, children }: SidebarGroupProps) {
   const inherited = useContext(DepthContext)
   const level = depth ?? inherited
   return (
@@ -42,7 +46,10 @@ export function SidebarGroup({ open, onToggle, label, meta, active, title, onCon
           className={className}
           active={active}
           title={title}
-          onClick={onToggle}
+          onClick={() => {
+            onToggle()
+            onClick?.()
+          }}
           onContextMenu={onContextMenu}
           leading={
             <button
@@ -60,6 +67,7 @@ export function SidebarGroup({ open, onToggle, label, meta, active, title, onCon
           }
           label={label}
           meta={meta}
+          trailing={trailing}
         />
         {open ? <div className="sb-group-children">{children}</div> : null}
       </div>

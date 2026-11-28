@@ -205,10 +205,8 @@ export function ConnectionTree() {
               key={connection.id}
               className="ssh-tree-row parent"
               open={expanded}
-              onToggle={() => {
-                toggleCollapse(connection.id)
-                void selectConnection(connection.id)
-              }}
+              onToggle={() => toggleCollapse(connection.id)}
+              onClick={() => void selectConnection(connection.id)}
               active={selected}
               onContextMenu={(event) => openContextMenu(event, connection)}
               title={connection.command}

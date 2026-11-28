@@ -32,14 +32,14 @@ parent: ../../SPEC.md
 
 ### 分组（`SidebarGroup`）
 
-`<SidebarGroup open onToggle label>{children}</SidebarGroup>`。父行 + 子级列表，只管三件事：chevron、缩进、参考线。
+`<SidebarGroup open onToggle onClick? label>{children}</SidebarGroup>`。父行 + 子级列表，只管三件事：chevron、缩进、参考线。
 
-- `open` 受控，状态由调用方持有。点父行或点 chevron 都触发 `onToggle`，chevron 的点击不冒泡到父行，所以只触发一次。
+- `open` 受控，状态由调用方持有。**点父行 = 翻转 + 模块的选中**：先触发 `onToggle` 再触发 `onClick`。点 chevron 只翻转，不触发 `onClick`，它的点击也不冒泡到父行。`onToggle` 只管翻转，选中之类的模块行为放 `onClick`，两边各管一件事。
 - 嵌套深度自动 +1（Context 传递），调用方不传 `depth`。每级缩进 12px，父行 `padding-left = 6px + depth × 12px`，子级容器 `margin-left = depth × 12px`，参考线 `left = 13px` 正好对齐父行 chevron 中心，子级行再缩进 24px。
-- 父行是 `div`（chevron 是 button），父行的 `active`、`title`、`onContextMenu`、`className`、`meta` 透传到内部 `SidebarRow`。
+- 父行是 `div`（chevron 是 button），父行的 `active`、`title`、`onContextMenu`、`className`、`meta`、`trailing` 透传到内部 `SidebarRow`。
 - `children` 是什么由调用方决定，通常是 `SidebarRow` 或另一个 `SidebarGroup`。子级里的行点击不触发父行 `onToggle`。
 
-ssh 连接树用它：父行点击 = 翻转展开 + 选中连接（原 `selectConnectionRow` 保证点开，现在统一为 toggle + 选中）。
+两处用它，都是「点行翻转，顺带做该模块的选中」：ssh 连接树点父行翻转并选中连接（`selectConnection`）；pi 会话分组点父行翻转并把该目录设为新对话的 cwd（composer 栏的目录跟着变，用户能看到反馈）。原来 pi 组头是两个独立按钮（箭头折叠、目录名只设 cwd），用户点行没反应，和 ssh 不一致。
 
 预览页：`npm run dev -w @ursi/sidebar`，起在 `0.0.0.0:5175`，四栏分别演示基础单行、说明行、分组树（含嵌套）、右键菜单与二次确认。页面在 `preview/`，不进 build 也不进 typecheck，样式加载顺序与真实应用一致（外壳变量 → 本包 → 页面排版）。
 
@@ -52,7 +52,7 @@ ssh 连接树用它：父行点击 = 翻转展开 + 选中连接（原 `selectCo
 #### 验收
 
 - `style.css` 在各入口于模块样式**之前**加载（shell-web 的 `registry.tsx` 与各独立入口的 `main.tsx` 均已如此）。模块自己刻意的底色（如 todo 拖拽悬停的白底）因此能盖过 `.sb-row:hover` 的灰底。
-- `SidebarRow` 已接入全部侧边栏行：todo 项目项（目录与统计合成一段说明）、ssh 子行、pi 会话项、pi Home 行（label 名 + 来源，meta 路径 + 摘要两行，trailing 重命名失败的 `!` 标记）、flow 项、fs 目录行。`SidebarGroup` 已接入：ssh 连接树。仓库里不再有裸用 `.sb-row` 类的地方。
+- `SidebarRow` 已接入全部侧边栏行：todo 项目项（目录与统计合成一段说明）、ssh 子行、pi 会话项、pi Home 行（label 名 + 来源，meta 路径 + 摘要两行，trailing 重命名失败的 `!` 标记）、flow 项、fs 目录行。`SidebarGroup` 已接入：ssh 连接树、pi 会话分组（原 `useGroupFold` 之上的自写组头与「显示更多」都进了子级）。仓库里不再有裸用 `.sb-row` 类的地方，也没有自写的可折叠树。
 - 接入后 ssh 子行由 26px 单行变为两行（名 + 时间），与其它列表行一致。
 - hover 灰底统一为 `--ws-line`（#e5e5e5），选中态与 hover 同色，只靠左侧竖线区分。todo 与 flow 原本就是这样；pi 会话原本 hover #f5f5f5、选中 #e5e5e5 两级，统一后降为一级，与仓库主流一致，不为此新增外壳变量。fs 目录行激活底色由 8% 墨色淡染改为同色。
 - 行有圆角时（fs 目录行 4px），`inset box-shadow` 竖线跟随圆角，视觉上无碍。

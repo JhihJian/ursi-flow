@@ -36,18 +36,21 @@ test('父行是 div（不与 chevron 的 button 嵌套），带 chevron；open �
   expect(container.querySelector('.sb-chevron')!.getAttribute('aria-expanded')).toBe('false')
 })
 
-test('点父行或点 chevron 都触发 onToggle；chevron 不冒泡到父行，所以只触发一次', () => {
+test('点父行触发 onToggle 和 onClick；点 chevron 只触发 onToggle（不冒泡到父行）', () => {
   const onToggle = vi.fn()
+  const onClick = vi.fn()
   const { container } = render(
-    <SidebarGroup open label="父" onToggle={onToggle}>
+    <SidebarGroup open label="父" onToggle={onToggle} onClick={onClick}>
       <SidebarRow label="子" />
     </SidebarGroup>,
   )
   const { parent, group } = groupOf(container)
   fireEvent.click(parent)
   expect(onToggle).toHaveBeenCalledTimes(1)
+  expect(onClick).toHaveBeenCalledTimes(1)
   fireEvent.click(group.querySelector('.sb-chevron')!)
   expect(onToggle).toHaveBeenCalledTimes(2)
+  expect(onClick).toHaveBeenCalledTimes(1)
 })
 
 test('active、title、onContextMenu、className 透传到父行', () => {

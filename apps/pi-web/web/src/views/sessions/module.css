@@ -467,67 +467,33 @@
 .pisess .session-group + .session-group {
   margin-top: var(--space-xs);
 }
-/* 组头是一行两个按钮：箭头折叠，目录名点选为当前目录（新对话落在它下面）。 */
-.pisess .session-group-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-xs);
-  width: 100%;
-  padding: var(--space-sm) var(--space-xs) var(--space-xs);
-}
-.pisess .session-group-caret {
-  flex: none;
-  width: 9px;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-  color: var(--gray-400);
-  font-size: 9px;
-}
-.pisess .session-group-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
+/* 组头走 SidebarGroup：点行翻转并设为当前目录，chevron 与缩进由组件管。
+   这里只写差异：目录名用衬线体加粗，当前目录的组头文字加深（竖线由 .sb-row 的 active 提供）。 */
+.pisess .session-group .sb-label {
   font-family: var(--font-serif);
   font-size: 12px;
   font-weight: 600;
   color: var(--gray-600);
   letter-spacing: 0.3px;
 }
+.pisess .session-group:hover .sb-label,
+.pisess .session-group.is-active .sb-label {
+  color: var(--gray-900);
+}
 .pisess .session-group-pin {
-  flex: none;
   font-size: 7px;
   color: var(--gray-900);
 }
-.pisess .session-group-count {
-  flex: none;
+.pisess .session-group .sb-meta {
   font-size: 11px;
   color: var(--gray-400);
   font-variant-numeric: tabular-nums;
 }
-.pisess .session-group-head:hover .session-group-name {
-  color: var(--gray-900);
-}
-/* 当前目录的组头：左侧竖线，与选中会话行的表达一致。 */
-.pisess .session-group-head.is-cwd .session-group-name {
-  color: var(--gray-900);
-}
-.pisess .session-group-head.is-cwd {
-  box-shadow: inset 2px 0 0 var(--gray-900);
-}
 /* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
 /* 行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写会话行自己的差异。 */
-.pisess .session-item {
-  padding: var(--space-xs) var(--space-xs) var(--space-xs) calc(var(--space-sm) + 2px);
+.pisess .sb-group-children > .session-item {
+  padding-top: var(--space-xs);
+  padding-bottom: var(--space-xs);
 }
 .pisess .session-item .sb-label {
   font-weight: 500;
@@ -565,7 +531,7 @@
 }
 .pisess .session-more {
   width: 100%;
-  padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-md);
+  padding: var(--space-xs) var(--space-xs) var(--space-xs) 24px;
   border: 0;
   background: none;
   color: var(--gray-400);
