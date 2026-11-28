@@ -266,9 +266,8 @@ graph LR
 | `GET /api/sessions/:id/trajectory?window=full\|page&cursor=&limit=` | 轨迹子资源：`{ revision, entries[], tail?, nextCursor, complete, reset }` |
 | `GET /api/sessions/:id/events?since=` | SSE：`state`、`trajectory`、`delta`、`interaction`、`error`，每帧带 `revision` |
 | `GET /api/sessions/prefs`、`PUT /api/sessions/prefs` | 项目特别关注 |
-| `GET /api/sessions/browse?root=` | 目录列举，供选目录与校验；不建实体 |
 
-外部目录的回收：`root=` 接入的根由服务端按 LRU 维护一个有限集合（默认 4 个，可配），空闲超过 TTL（默认 30 分钟）或超限时最旧的那个被移出扫描列表，其下的 `discovered` 实体从注册表移除（文件不动），已加载的运行时按 `ready` 空闲回收处理。home 的 `sessionsRoot` 不算外部根，不会被回收。否则每次切目录都留一份后台扫描目标，扫描面会无限膨胀。
+外部目录的回收：`root=` 接入的根由服务端按 LRU 维护一个有限集合（默认 4 个，可配），空闲超过 TTL（默认 30 分钟）或超限时最旧的那个被移出扫描列表，其下的 `discovered` 实体从注册表移除（文件不动），已加载的运行时按 `ready` 空闲回收处理。home 的 `sessionsRoot` 不算外部根，不会被回收。否则每次切目录都留一份后台扫描目标，扫描面会无限膨胀。接口层的 `root=` 与外部目录扫描能力保留；界面侧会话根锁在 home 的 `sessions/`，不再提供目录选择入口（选目录面板与 `/api/sessions/browse` 已随需求移除）。
 
 ### 3.2 旧端点收编
 
@@ -371,9 +370,9 @@ v1 的目标是让两种页面读同一套实体、同一份权威、同一个�
 - 会话身份统一：新建会话由服务端铸造 uuidv7 并在 `SessionManager.create(cwd, dir, { id })` 写入文件头；无头老文件按 `(filePath, 首行内容)` 派生只读实体。
 - 状态机与守卫：`running` 删改 409 `session_busy`、装配中 409 `session_loading`、同会话装配单飞、运行态（本地 + 心跳）合流进 `runtimes`、外部根 LRU + TTL、配置变更以 `profileRevision` 传播。
 - 接口收编：`/api/live`、`/api/chat/*`、`/api/tasks`、`/api/session/disk` 全部并入 `/api/sessions`、`/api/homes`；错误信封与 home 策略统一。
-- 一个工作区模块 `pi`：一个侧栏（home 管理区、目录与会话列表、底部按钮排）与两种页面（会话、配置），home 一份真源（`pi-store`），会话根由 home 派生且可显式改成外部目录。会话页只有一个、路由键只用 `sessionId`，空会话页发首条消息才建会话且原地填 id，续聊只传 `sessionId`。结构见 `SINGLE-SIDEBAR.md`。
+- 一个工作区模块 `pi`：一个侧栏（home 管理区、目录与会话列表、底部按钮排）与两种页面（会话、配置），home 一份真源（`pi-store`），会话根锁在 home 的 `sessions/`，界面不提供切换入口。会话页只有一个、路由键只用 `sessionId`，空会话页发首条消息才建会话且原地填 id，续聊只传 `sessionId`。结构见 `SINGLE-SIDEBAR.md`。
 - 折叠态：外壳把这一节压到 32px 时只渲染一条可点开的窄条（模块名 + home）。
-- 验证：后端 `node --test` 加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（含模块装配、页面切换、折叠、home 记忆与根目录跟随）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
+- 验证：后端 `node --test` 加 `tsc -p tsconfig.json --noEmit`；前端 `vitest`（含模块装配、页面切换、折叠、home 记忆）；`npm run build:shell-web` 与 `npm run build:pi-web` 均通过。
 - 部署：一个 `ursi-pi-web` 单元、一条 `/api/pi` 反代、一次性状态迁移。
 
 下一轮（v2）：

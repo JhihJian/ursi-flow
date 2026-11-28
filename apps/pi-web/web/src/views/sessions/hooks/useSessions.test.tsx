@@ -29,7 +29,6 @@ beforeEach(() => {
   respond = () => null
   api = {
     baseUrl: '',
-    fetchConfig: () => Promise.reject(new Error('不用')),
     fetchSessions: (_root, since) => {
       calls.push({ since })
       try {
@@ -39,7 +38,6 @@ beforeEach(() => {
       }
     },
     fetchDetail: () => Promise.reject(new Error('不用')),
-    fetchBrowse: () => Promise.reject(new Error('不用')),
     sessionTextUrl: () => '',
     fetchPrefs: () => Promise.reject(new Error('不用')),
     updatePrefs: () => Promise.reject(new Error('不用')),

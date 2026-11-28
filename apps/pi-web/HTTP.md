@@ -24,8 +24,6 @@
 | `POST /api/config/plugins/builtin/uninstall` | required | 卸载内置扩展（清掃 .ts/.js/index 四种形态；幂等） |
 | `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径；每条实体带合流后的 `runtimes`（本进程 + 其它进程心跳），响应带 `heartbeatDetected`。`state=live` 只筛「本进程装配过」的实体，存活与否看 `runtimes` |
 | `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`）。新建传 `home` 与 `cwd`；续聊只传 `sessionId`，home 按实体归属取、会话文件取实体的 `filePath`，不接受 `sessionFile` |
-| `GET /api/sessions/config` | none | 会话视图初始值 |
-| `GET /api/sessions/browse?path=` | none | 目录列举 |
 | `GET/PUT /api/sessions/prefs` | none | 项目特别关注 |
 | `GET /api/sessions/roots?home=` | none | 该 home 的会话根 |
 | `GET /api/sessions/:id` | none | 单个实体（状态、运行态、能力、模型、队列） |
@@ -82,4 +80,3 @@
 | `PI_WEB_MAX_TASKS` / `PI_WEB_TASK_TIMEOUT_MS` | 4 / 600000 | 一次性任务上限与超时 |
 | `PI_WEB_MAX_FILES` / `PI_WEB_MAX_TEXT_BYTES` | 5000 / 67108864 | 扫描文件数上限、轨迹体积上限 |
 | `PI_WEB_EXTERNAL_ROOTS` / `PI_WEB_EXTERNAL_ROOT_TTL_MS` | 4 / 1800000 | 外部目录 LRU 与空闲回收 |
-| `PI_WEB_SESSIONS_ROOT` | 空 | 没有 home 时的初始根 |

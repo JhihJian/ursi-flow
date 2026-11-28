@@ -1,5 +1,6 @@
 /**
- * 会话目录接口的客户端封装。所有请求都带 `root`，根路径由用户在界面里指定。
+ * 会话接口的客户端封装。列表与删除带 `root`（当前 home 的 sessions/），
+ * 轨迹与详情按会话 id 定位。
  *
  * 接口前缀由宿主注入（嵌入工作区时是 /api/pi-sessions，独立入口是 /api），
  * 因此这里导出工厂而不是写死路径的函数。
@@ -59,18 +60,6 @@ export interface SessionDetail extends SessionRow {
   tooLarge: boolean
 }
 
-export interface BrowseEntry {
-  name: string
-  path: string
-  sessions: number
-}
-
-export interface BrowseResult {
-  path: string
-  parent: string | null
-  dirs: BrowseEntry[]
-}
-
 /** 服务端会话实体（与 server/src/sessions/registry.ts 的 PiSession 同构）。 */
 interface SessionEntity {
   id: string
@@ -123,12 +112,6 @@ function toRow(entity: SessionEntity): SessionRow {
   }
 }
 
-export interface ServerConfig {
-  defaultRoot: string
-  suggestedRoots: string[]
-  maxTextBytes: number
-}
-
 export interface Prefs {
   /** 特别关注的项目键，顺序即显示顺序。 */
   pinnedProjects: string[]
@@ -156,11 +139,9 @@ export class RequestError extends Error {
 
 export interface SessionsApi {
   baseUrl: string
-  fetchConfig: () => Promise<ServerConfig>
   /** `since` 等于服务端当前版本时返回 null，表示列表没变、沿用上一份。 */
   fetchSessions: (root: string, since?: number) => Promise<Listing | null>
   fetchDetail: (root: string, id: string) => Promise<SessionDetail>
-  fetchBrowse: (path: string) => Promise<BrowseResult>
   sessionTextUrl: (root: string, id: string) => string
   fetchPrefs: () => Promise<Prefs>
   updatePrefs: (change: { pin?: string; unpin?: string }) => Promise<Prefs>
@@ -197,7 +178,6 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
 
   return {
     baseUrl: base,
-    fetchConfig: () => readJson<ServerConfig>('/api/sessions/config'),
     fetchSessions: async (root, since) => {
       const payload = await readJson<{
         revision?: number
@@ -221,7 +201,6 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
       const entity = await readJson<SessionEntity>(withRoot(`/api/sessions/${encodeURIComponent(id)}`, root))
       return { ...toRow(entity), tooLarge: (entity.disk?.size ?? 0) > 64 * 1024 * 1024 }
     },
-    fetchBrowse: (path) => readJson<BrowseResult>(`/api/sessions/browse?path=${encodeURIComponent(path)}`),
     sessionTextUrl,
     fetchPrefs: () => readJson<Prefs>('/api/sessions/prefs'),
     updatePrefs: (change) =>

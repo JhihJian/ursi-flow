@@ -12,7 +12,6 @@ import {
 import { useGroupFold } from '../hooks/useGroupFold'
 import { useSidebarMenu } from '../hooks/useSidebarMenu'
 import { useSessionsController } from '../sessions-context'
-import { RootPicker } from './RootPicker'
 import { ContextMenu } from '@ursi/sidebar'
 import { RefreshIcon, SearchIcon } from './Icons'
 import { SessionGroupList } from './SessionGroupList'
@@ -41,8 +40,8 @@ export interface SessionsPanelProps {
  * 侧栏的会话面板：目录行、按日筛选条形、搜索与按项目分组的会话列表。
  * 外框与折叠由宿主负责，这里只管内容。
  *
- * 根目录、日期筛选、关注、运行态来自 controller，视图私有的状态在各自的 hook 里。
- * 当前页面与运行时动作不在这里，由宿主通过 props 传入。
+ * 根目录由宿主注入（当前 home 的 sessions/），日期筛选、关注、运行态来自 controller，
+ * 视图私有的状态在各自的 hook 里。当前页面与运行时动作不在这里，由宿主通过 props 传入。
  */
 export function SessionsPanel({
   activeId,
@@ -55,7 +54,6 @@ export function SessionsPanel({
 }: SessionsPanelProps) {
   const {
     root,
-    configError,
     listing,
     loading,
     error,
@@ -69,10 +67,6 @@ export function SessionsPanel({
     reload,
     notice,
     clearNotice,
-    picking,
-    setPicking,
-    setRoot,
-    config,
     runtimeByPath,
     heartbeatDetected,
   } = useSessionsController()
@@ -140,9 +134,6 @@ export function SessionsPanel({
   return (
     <div className="pisess pisess-sidebar-host">
         <div className="pisess-body">
-          {configError ? (
-            <p className="sidebar-note error">无法读取服务配置：{configError}</p>
-          ) : null}
           {notice ? (
             <button type="button" className="sidebar-notice" onClick={clearNotice} title="点击关闭">
               {notice.message}
@@ -150,16 +141,12 @@ export function SessionsPanel({
           ) : null}
 
           <div className="root-row">
-            <button
-              type="button"
-              className="root-button"
+            <span
+              className="root-label"
               title={root ?? ''}
-              onClick={() => setPicking(true)}
-              disabled={!root}
             >
-              <span className="root-label">{root ? shortRoot(root) : '选择目录'}</span>
-              <span className="root-hint">切换</span>
-            </button>
+              {root ? shortRoot(root) : '未指定目录'}
+            </span>
             <button
               type="button"
               className="rail-toggle"
@@ -239,17 +226,6 @@ export function SessionsPanel({
             {daySummary ? ` · ${daySummary}` : ''}
           </p>
         </div>
-      {picking ? (
-        <div className="picker-backdrop">
-          <RootPicker
-            root={root ?? ''}
-            defaultRoot={config?.defaultRoot ?? ''}
-            suggestedRoots={config?.suggestedRoots ?? []}
-            onPick={setRoot}
-            onClose={() => setPicking(false)}
-          />
-        </div>
-      ) : null}
       <ContextMenu state={menu.menu} onClose={menu.close} container={menuContainer} />
     </div>
   )

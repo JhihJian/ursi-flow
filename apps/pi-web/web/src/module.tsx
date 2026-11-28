@@ -7,7 +7,7 @@ import { PiSidebar } from './pi-sidebar'
 import { PiWorkspace } from './pi-workspace'
 import { PiStatus } from './pi-status'
 import { ManagerProvider } from './views/config/module'
-import { SessionsProvider, useSessionsController } from './views/sessions/sessions-context'
+import { SessionsProvider } from './views/sessions/sessions-context'
 import { ChatProvider } from './views/chat/chat-context'
 
 /**
@@ -25,21 +25,19 @@ export interface PiModuleOptions {
 }
 
 /**
- * home 一变：会话列表的默认根换成它的 sessions/，当前目录清空（别的 home 下的目录对这里没有意义），
- * 页面离开会话页。只在 home 变化的那一刻动，之后根与目录是用户的事。
+ * home 一变：会话列表的根自动换成它的 sessions/（SessionsProvider 直接从 PiContext 拿，不需要桥），
+ * 当前目录清空（别的 home 下的目录对这里没有意义），页面离开会话页。
  */
 function FollowHome() {
   const { homePath, sessionsRoot } = usePi()
-  const { setRoot } = useSessionsController()
   const { setCwd } = usePiNav()
   const lastHome = useRef(homePath)
 
   useEffect(() => {
     if (!sessionsRoot || lastHome.current === homePath) return
     lastHome.current = homePath
-    setRoot(sessionsRoot)
     setCwd(null)
-  }, [homePath, sessionsRoot, setRoot, setCwd])
+  }, [homePath, sessionsRoot, setCwd])
 
   return null
 }
@@ -66,7 +64,7 @@ function ChatLayer({ children, apiBaseUrl }: { children: ReactNode; apiBaseUrl: 
 
 /**
  * 会话列表的 Provider。删除会话后页面正指着它就回空会话页，
- * 所以这层要读 PiNav：放在 PiNavProvider 之内。
+ * 所以这层要读 PiNav 与 PiContext：放在 PiNavProvider 之内。
  */
 function SessionsLayer({
   apiBaseUrl,
@@ -77,12 +75,15 @@ function SessionsLayer({
   storageKey: string
   children: ReactNode
 }) {
+  const { sessionsRoot } = usePi()
   const { page, toDraft } = usePiNav()
   return (
     <SessionsProvider
       options={{
         apiBaseUrl,
         storageKey: `${storageKey}.sessions`,
+        // 根目录锁死为当前 home 的 sessions/：home 一变这里就跟着变。
+        initialRoot: sessionsRoot,
         onDeleted: (sessionId) => {
           if (page.kind === 'session' && page.id === sessionId) toDraft()
         },

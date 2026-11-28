@@ -34,7 +34,7 @@ PiProvider        home 与 homes 的唯一真源（home store 提到组合根）
 │   work         ~/pi-work     │
 │ [+ 新增]                      │
 ├──────────────────────────────┤
-│ 📁 ~/.pi/agent/sessions  [切换]│  目录行（点「切换」开目录面板）
+│ 📁 ~/.pi/agent/sessions      │  目录行（只展示，无切换入口）
 │ ▁▃▅▂▇▃▁  今天 · 全部        │  按日筛选（沿用）
 │ [🔍]                         │  搜索（沿用）
 │ ── 特别关注 ──               │
@@ -220,3 +220,10 @@ SessionThread(sessionId: string | null)
 - **存活会话豁免失效**：豁免按 `state=live` 清单里的路径算，但 `state=live` 的语义是「本进程装配过」，心跳只写 `runtimes` 不改 `state`，别的进程开着的会话全被过滤掉。改为只认实体上的 `runtimes`，侧栏不再另拉接口，`createLiveFeed` 删除。
 - **存活会话从清单里消失**（排查时挖出的服务端竞态）：`GET /api/sessions` 先合心跳再扫描。心跳对未登记的 id 建占位实体，`state: 'running'`、`origin: external('')`、`filePath: null`；随后 `upsertDisk` 见它不是 `discovered`，不走认领分支，不补 `origin` 与 `filePath`，按 home 过滤时就被排除。存活越久的会话越容易中招。改为占位实体直接带心跳里的路径、目录、模型，归属按会话文件落在哪个 home 的 `sessions/` 下判定，状态是 `discovered`。
 - **模型选择器不可见**：数据是对的（4 个候选、默认与思考级别都有），但空会话页上它是唯一要操作的东西，却用了对话态那种无边框 11px 灰字的内联样式。空会话态给 composer 加 `is-draft`，选择器按正常控件显示，建完对话回到内联样式。
+
+## 第四轮：会话根锁死 home 与默认只看今天
+
+外部目录接入走通过后，选目录面板（`RootPicker`）成了侧栏里唯一一处「可能指向别处」的入口，而它没有对应的真实需求：home 决定一切，会话根就该是 `<home>/sessions`。同时第三轮「默认不筛」的前提变了：会话数累积上千后首屏就是全量列表，跨天打开首屏又长又旧。
+
+- **会话根锁死**：`SessionsProvider` 的 `root` 改为直接从组合根注入的 `sessionsRoot` 派生，home 一变根自动跟着变，`setRoot` 删除。`FollowHome` 不再调 `setRoot`，只负责清 cwd 与离开会话页。`RootPicker`、目录行上的「切换」按钮、localStorage 的根记忆全部删除；服务端随之删掉只为面板服务的 `GET /api/sessions/config` 与 `GET /api/sessions/browse`，以及只有 config 消费过的 `PI_WEB_SESSIONS_ROOT`。`GET /api/sessions?root=` 与外部根 LRU 是接口层能力，保留。
+- **默认只看今天**：`selectedDays` 初始值与换 home 重置都改为 `Set([todayKey()])`，与第三轮「默认不筛」互为反向修正：当时要解决的是「今天没会话首屏像丢了」，如今要解决的是「全量首屏太长太旧」。存活豁免保证开着的会话永远可见，完整历史交给搜索与「全部」。

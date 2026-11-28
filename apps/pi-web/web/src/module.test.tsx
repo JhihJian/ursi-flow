@@ -4,7 +4,6 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { WorkspaceProvider } from '@ursi/workspace-shell'
 import { createPiModule } from './module'
-import { useSessionsController } from './views/sessions/sessions-context'
 
 /**
  * 模块装配测试：一个侧栏、一个会话页、一个配置页、一份 home。
@@ -167,9 +166,6 @@ beforeEach(() => {
         catalog: { fetchedAt: null },
       })
     }
-    if (path === '/api/sessions/config') {
-      return respond({ defaultRoot: HOME.sessionsRoot, suggestedRoots: [], maxTextBytes: 1_000_000 })
-    }
     if (path === '/api/sessions') {
       // 本进程装配过的（state=live）与磁盘清单分开回：侧栏的「释放运行时」按前者决定可用。
       const live = parsed.searchParams.get('state') === 'live'
@@ -293,7 +289,9 @@ describe('Pi Web 模块', () => {
     await settle()
     const text = container.textContent ?? ''
     expect(text).toContain('Pi home')
-    expect(container.querySelector('.root-button')?.textContent).toContain('pi-home/sessions')
+    // 目录行只是展示：根目录锁死为 home 的 sessions/，没有「切换」入口。
+    expect(container.querySelector('.root-label')?.textContent).toContain('pi-home/sessions')
+    expect(container.querySelector('.root-button')).toBeNull()
     expect(container.querySelector('.session-list')).not.toBeNull()
     const foot = container.querySelector('.pi-sidebar-foot')
     expect(foot?.textContent).toContain('新对话')
@@ -303,10 +301,11 @@ describe('Pi Web 模块', () => {
     expect(container.querySelector('[role="tablist"]')).toBeNull()
   })
 
-  test('会话列表默认不按日期筛：几天前的会话直接可见，活着的会话有绿点', async () => {
+  test('默认只看今天：几天前的会话被筛掉，活着的会话豁免仍可见', async () => {
     const lastWeek = Date.now() - 7 * 24 * 3600_000
     diskSessions = [
-      SESSION,
+      // SESSION 不存活且是一周前的：默认筛「今天」时应被筛掉。
+      { ...SESSION, disk: { ...SESSION.disk, updatedAt: lastWeek, createdAt: lastWeek } },
       {
         ...SESSION,
         id: 'sess-alive',
@@ -317,25 +316,13 @@ describe('Pi Web 模块', () => {
       },
     ]
     await act(async () => root.render(<Harness />))
-    // 两条会话都是一周前的，组能出来就说明默认没按「今天」筛。
-    await waitFor(() => container.querySelectorAll('.session-group').length === 2)
-    expect(container.querySelector('.session-list')?.textContent).not.toContain('没有会话')
-    const items = await (async () => {
-      // 两组各展开一次，收齐两行。
-      await expandAndPick()
-      const secondGroup = [...container.querySelectorAll('.session-group .sb-chevron')].find(
-        (caret) => caret.closest('.sb-group')?.querySelector('.session-item') === null,
-      ) as HTMLElement | undefined
-      if (secondGroup) {
-        await act(async () => secondGroup.click())
-        await settle()
-      }
-      return [...container.querySelectorAll('.session-item')]
-    })()
-    expect(items).toHaveLength(2)
+    await waitFor(() => container.querySelectorAll('.session-group').length === 1)
+    // 一周前的 SESSION 连组都没了，只剩存活豁免的那组。
+    expect(container.querySelector('.session-list')?.textContent).not.toContain('/tmp/proj')
+    const items = await expandAndPick().then((picked) => [picked])
+    expect(items).toHaveLength(1)
     const alive = items.find((item) => item.textContent?.includes('别的进程开着'))
     expect(alive?.querySelector('.session-live-dot'), alive?.className).not.toBeNull()
-    expect(items.find((item) => item.textContent?.includes('修一个 bug'))?.querySelector('.session-live-dot')).toBeNull()
   })
 
   test('工作区默认是空会话页，点配置进配置页，返回回到空会话页', async () => {
@@ -443,42 +430,5 @@ describe('Pi Web 模块', () => {
     await settle()
     await settle()
     expect(localStorage.getItem('pi-manager.home')).toBe(HOME.path)
-  })
-})
-
-describe('会话根目录跟随 home', () => {
-  /** 在 Provider 内读会话根并写进 DOM，不改产品代码。 */
-  function RootProbe() {
-    const { root, setRoot } = useSessionsController()
-    return (
-      <>
-        <span data-testid="root">{root ?? 'none'}</span>
-        <button type="button" data-testid="pick" onClick={() => setRoot('/elsewhere')}>
-          选外部目录
-        </button>
-      </>
-    )
-  }
-
-  test('用户选了外部目录后，home 没变就不会被拉回 sessionsRoot', async () => {
-    const Provider = MODULE.Provider!
-    await act(async () => {
-      root.render(
-        <WorkspaceProvider>
-          <Provider>
-            <RootProbe />
-          </Provider>
-        </WorkspaceProvider>,
-      )
-    })
-    await settle()
-    expect(container.querySelector('[data-testid="root"]')?.textContent).toBe(HOME.sessionsRoot)
-
-    const pick = container.querySelector('[data-testid="pick"]') as HTMLButtonElement
-    await act(async () => pick.click())
-    // 多走几轮 effect：以前 SessionsBridge 的依赖里有 root，这里会被拉回去。
-    await settle()
-    await settle()
-    expect(container.querySelector('[data-testid="root"]')?.textContent).toBe('/elsewhere')
   })
 })

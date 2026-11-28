@@ -44,6 +44,3 @@ export const SCAN_MAX_FILES = num(process.env.PI_WEB_MAX_FILES, 5000)
 export const MAX_TEXT_BYTES = num(process.env.PI_WEB_MAX_TEXT_BYTES, 64 * 1024 * 1024)
 export const EXTERNAL_ROOT_LIMIT = num(process.env.PI_WEB_EXTERNAL_ROOTS, 4)
 export const EXTERNAL_ROOT_TTL_MS = num(process.env.PI_WEB_EXTERNAL_ROOT_TTL_MS, 30 * 60_000)
-
-/** 会话列表初始根：独立入口没有 home 时用它。 */
-export const SESSIONS_ROOT = process.env.PI_WEB_SESSIONS_ROOT?.trim() || ''

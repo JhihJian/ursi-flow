@@ -294,33 +294,15 @@
   margin-top: var(--space-sm);
   border-bottom: 1px solid var(--gray-200);
 }
-.pisess .root-button {
-  display: flex;
-  flex: 1;
-  align-items: baseline;
-  gap: var(--space-xs);
-  min-width: 0;
-  padding: var(--space-xs) 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
 .pisess .root-label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
   color: var(--gray-900);
-}
-.pisess .root-hint {
-  flex: none;
-  font-size: 11px;
-  color: var(--gray-400);
-}
-.pisess .root-button:hover .root-hint {
-  color: var(--gray-900);
-  text-decoration: underline;
+  cursor: default;
 }
 .pisess .sidebar-search {
   flex: none;
@@ -657,47 +639,4 @@
 .pisess .viewer-error {
   font-size: 13px;
   color: #b43c3c;
-}
-.pisess .picker-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-lg);
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.pisess .picker {
-  display: flex;
-  flex-direction: column;
-  width: min(640px, 100%);
-  max-height: min(560px, 100%);
-  border: 1px solid var(--gray-900);
-  background: var(--white);
-}
-.pisess .picker-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--gray-200);
-}
-.pisess .picker-title {
-  flex: 1;
-  font-family: var(--font-serif);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--gray-900);
-}
-.pisess .picker-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-sm) var(--space-md);
-}
-.pisess .picker-action.primary:hover {
-  background: var(--black);
 }
