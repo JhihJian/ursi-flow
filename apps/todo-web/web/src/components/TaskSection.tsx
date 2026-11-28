@@ -1,6 +1,7 @@
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 import type { Task, TaskStatus } from '@/api/types'
+import { region } from '@demand/react'
 import { formatTaskTime, prioritySymbol, STATUS_LABELS } from '@/lib/format'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore, type TaskView } from '@/store/todo-store'
@@ -195,6 +196,7 @@ export function TaskSection() {
   return (
     <section
       className={cx('tasks-section', view === 'graph' && 'is-graph')}
+      {...region('task-list')}
       onContextMenu={(event) => {
         // 行右键自己处理；落在列表空白处时只给新建任务。
         if (!selectedProjectId) return

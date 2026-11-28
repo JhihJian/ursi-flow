@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { region } from '@demand/react'
 import type { Priority, TaskStatus } from '@/api/types'
 import { taskTimeInfo } from '@/lib/format'
 import { copyText } from '@/lib/clipboard'
@@ -178,6 +179,7 @@ function TaskDetailEditor({ detail }: { detail: DetailState }) {
     <section
       ref={sheetRef}
       className="detail-sheet"
+      {...region('task-detail')}
       style={{ height }}
       role="dialog"
       aria-modal="false"

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DirBrowser } from '@ursi/directory-picker'
 import type { DeviceOption } from '@ursi/directory-picker'
 import { parse } from '@ursi/location'
+import { region } from '@demand/react'
 import type { ProjectStats } from '@/api/types'
 import { errorMessage } from '@/lib/ui'
 import { useTodoHost } from '@/module'
@@ -68,7 +69,13 @@ function ProjectForm({ id, project }: ProjectFormProps) {
   }
 
   return (
-    <section className="project-sheet" role="dialog" aria-modal="false" aria-label="Project form">
+    <section
+      className="project-sheet"
+      {...region('project-editor')}
+      role="dialog"
+      aria-modal="false"
+      aria-label="Project form"
+    >
       <div className="project-sheet-body">
         <input
           className="detail-title-input"

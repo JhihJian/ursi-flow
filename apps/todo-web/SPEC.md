@@ -2,6 +2,7 @@
 parent: ../../SPEC.md
 references:
   - README.md
+  - DEMAND.md
   - server/HTTP.md
   - ../../docs/design/todo-web/DASHBOARD.md
   - ../../docs/design/todo-web/WORKSPACE-SHELL.md
@@ -86,6 +87,18 @@ references:
 #### 验收
 
 - 待办库中出现新的完成任务时，播放提示音并发送桌面通知，随后刷新任务。通知被静音时只刷新不提示，静音设置跨刷新保留。
+
+### 用户需求遮罩
+
+独立页面把用户亲自声明的行为要求记在 [DEMAND.md](DEMAND.md)，按页面分区分节。分工：DEMAND 只记用户说过的要求，agent 不能自行改写；本规格记现在怎么实现与可测试的验收口径。分区用 `@demand/react` 的 `region(id)` 标在已有元素上，不增加 DOM。独立入口只在开发模式下启用遮罩。
+
+#### 验收
+
+- 开发模式下按 `Ctrl/Cmd+Shift+D` 盖住页面，鼠标移到项目栏、任务区、任务详情、项目编辑四处，显示该分区在 DEMAND.md 里的需求，高亮框与分区边界一致。`Esc` 退出。
+- 遮罩激活期间页面不响应点击与拖拽，面板是唯一可交互区域。
+- 项目栏折叠成 32px 窄条时仍命中 `project-list`。任务详情停靠在任务区下方、在 DOM 上是它的兄弟时命中 `task-detail`。
+- DEMAND.md 的节与页面上标的分区双向一致，由 `web/src/demand.test.ts` 守着。解析失败时面板显示错误与行号。
+- 生产构建不挂遮罩。
 
 ### 独立构建与部署
 

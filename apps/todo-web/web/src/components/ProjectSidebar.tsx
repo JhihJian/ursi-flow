@@ -1,4 +1,5 @@
 import { formatTime } from '@/lib/format'
+import { region } from '@demand/react'
 import { useTodoStore } from '@/store/todo-store'
 import { ProjectList } from './ProjectList'
 
@@ -30,7 +31,7 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
       : 'No project selected'
 
     return (
-      <aside className="sidebar sidebar-collapsed">
+      <aside className="sidebar sidebar-collapsed" {...region('project-list')}>
         <button
           type="button"
           className="rail-toggle"
@@ -62,7 +63,7 @@ export function ProjectSidebar({ collapsed, onCollapse, onExpand }: ProjectSideb
   }
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" {...region('project-list')}>
       <div className="sidebar-head">
         <h2 className="sidebar-title">Projects</h2>
         <button

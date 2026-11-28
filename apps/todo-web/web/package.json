@@ -19,11 +19,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@demand/core": "file:../../../../dev-demand/packages/core",
+    "@demand/react": "file:../../../../dev-demand/packages/react",
+    "@dnd-kit/core": "^6.3.1",
+    "@remixicon/react": "^4.9.0",
     "@ursi/directory-picker": "*",
     "@ursi/location": "*",
     "@ursi/sidebar": "*",
-    "@dnd-kit/core": "^6.3.1",
-    "@remixicon/react": "^4.9.0",
     "markdown-it": "^15.0.3",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-history": "^1.5.2",
