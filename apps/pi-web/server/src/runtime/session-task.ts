@@ -10,7 +10,7 @@ import { HomeError } from '../shared/pi-home.ts'
 import { loadSdk } from '../shared/sdk.ts'
 import { profileRevisionOf } from '../config/registry.ts'
 import { MAX_TASKS as MAX_TASKS_VALUE, TASK_TIMEOUT_MS } from '../config.ts'
-import { detachRuntime, syncRuntime } from '../sessions/registry.ts'
+import { detachRuntime, syncRuntime, transition } from '../sessions/registry.ts'
 
 /**
  * 一次性会话任务：用 pi SDK 在指定 pi home 下起一个 AgentSession，跑完一轮就结束。
@@ -138,6 +138,15 @@ export async function startSessionTask(options: StartOptions): Promise<SessionTa
     subagent: options.subagent,
   })
 
+  // 任务总是新会话：实体通常还不存在，这次迁移是 no-op；若同一份文件已经被扫到，
+  // 先标成装配中，下面的 syncRuntime 再把它落成 running。
+  try {
+    transition(assembled.sessionId, 'loading')
+  } catch (error) {
+    await disposeSession(assembled.session, options.home)
+    throw error
+  }
+
   const task: SessionTask = {
     sessionId: assembled.sessionId,
     agent: options.agent,
@@ -177,7 +186,7 @@ function syncTaskEntity(task: SessionTask): void {
     homePath: task.home,
     filePath: task.sessionFile,
     cwd: task.cwd,
-    state: running ? 'running' : task.state === 'error' ? 'failed' : 'ready',
+    toState: running ? 'running' : task.state === 'error' ? 'failed' : 'ready',
     model: null,
     queue: 0,
     interactions: 0,
@@ -246,6 +255,20 @@ export async function cancelSessionTask(sessionId: string): Promise<void> {
   finish(task, 'cancelled', '调用方取消了会话')
   const handle = live.get(sessionId)
   if (handle) await handle.abort()
+}
+
+/**
+ * 取消一条正在运行的一次性任务；没有运行中的任务时返回 false。
+ *
+ * 与 `cancelSessionTask` 的区别：它不抛错也不等收尾，供「一个 abort 按钮管两种运行时」
+ * 的路由用——有任务就取消任务，没有任务再交给对话运行时。
+ */
+export function abortSessionTask(sessionId: string): boolean {
+  const task = tasks.get(sessionId)
+  if (!task || task.state !== 'running') return false
+  finish(task, 'cancelled', '调用方取消了会话')
+  void live.get(sessionId)?.abort().catch(() => undefined)
+  return true
 }
 
 /** 供测试与自检：SDK 是否可用。 */

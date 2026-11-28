@@ -107,6 +107,11 @@ export interface ChatController {
   notice: Notice | null
   clearNotice: () => void
   uiRequests: UiRequest[]
+  /**
+   * 「本次运行」面板的重取信号：transcript、state、agent_settled 帧到达时递增
+   * （300ms 节流）。事实面板据此重拉 /facts，不自己开事件流。
+   */
+  factsTick: number
 
   /** 模型与思考级别的草稿。cwd 由 PiNav 持有，不在这里。 */
   draft: ChatDraft
@@ -134,6 +139,9 @@ const EMPTY_DRAFT: ChatDraft = { model: '', thinkingLevel: '' }
 
 /** 模型不支持思考时唯一可用的档位。 */
 const NO_THINKING = 'off'
+
+/** 运行事实的重取窗口：流式期间帧很密，事实不需要跟着每一帧刷新。 */
+const FACTS_THROTTLE_MS = 300
 
 const ChatContext = createContext<ChatController | null>(null)
 
@@ -166,6 +174,7 @@ export function ChatProvider({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [uiRequests, setUiRequests] = useState<UiRequest[]>([])
+  const [factsTick, setFactsTick] = useState(0)
 
   const [draft, setDraftState] = useState<ChatDraft>(EMPTY_DRAFT)
   const [sending, setSending] = useState(false)
@@ -311,6 +320,24 @@ export function ChatProvider({
     setRetry(null)
     setCompacting(false)
     let goneCheck: number | undefined
+    // 运行事实面板的重取节流：一帧里可能连来几个 transcript/state，本进程不为每一帧
+    // 都打一次 /facts。窗口内只补一次尾触发，切走会话时清掉。
+    let factsAt = 0
+    let factsTimer: number | undefined
+    const bumpFacts = () => {
+      const wait = FACTS_THROTTLE_MS - (Date.now() - factsAt)
+      if (wait <= 0) {
+        factsAt = Date.now()
+        setFactsTick((current) => current + 1)
+        return
+      }
+      if (factsTimer !== undefined) return
+      factsTimer = window.setTimeout(() => {
+        factsTimer = undefined
+        factsAt = Date.now()
+        setFactsTick((current) => current + 1)
+      }, wait)
+    }
     const source = new EventSource(api.chatStreamUrl(activeId))
 
     source.onmessage = (event) => {
@@ -326,8 +353,10 @@ export function ChatProvider({
       switch (frame.type) {
         case 'transcript':
           setTranscript(typeof frame.jsonl === 'string' ? frame.jsonl : '')
+          bumpFacts()
           break
         case 'state':
+          bumpFacts()
           setStreaming(frame.isStreaming === true)
           setPartial(typeof frame.partial === 'string' ? frame.partial : '')
           setThinking(typeof frame.partialThinking === 'string' ? frame.partialThinking : '')
@@ -365,6 +394,7 @@ export function ChatProvider({
           patchChat(activeId, { state: 'running', error: null })
           break
         case 'agent_settled':
+          bumpFacts()
           setStreaming(false)
           setPartial('')
           setThinking('')
@@ -477,6 +507,7 @@ export function ChatProvider({
       alive = false
       streamReadyRef.current.delete(activeId)
       if (goneCheck !== undefined) clearTimeout(goneCheck)
+      if (factsTimer !== undefined) clearTimeout(factsTimer)
       source.close()
     }
   }, [activeId, api, notify, patchChat])
@@ -673,6 +704,7 @@ export function ChatProvider({
     notice,
     clearNotice: () => setNotice(null),
     uiRequests,
+    factsTick,
     draft: { ...draft, thinkingLevel: draftThinkingLevel },
     setDraft,
     draftModel,

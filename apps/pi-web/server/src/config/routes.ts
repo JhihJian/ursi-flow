@@ -583,7 +583,7 @@ route('GET', '/api/homes/:id/runtime-profile', 'none', async ({ params }) => run
 
 async function runtimeProfileOf(summary: ReturnType<typeof requireHome>) {
   if (!summary.valid) throw new HomeError(`该 pi home 不可用：${summary.path}`, 400, 'home_invalid')
-  const { chatOptions } = await import('../chat/chat.ts')
+  const { chatOptions } = await import('../runtime/chat.ts')
   const options = await chatOptions(summary.path)
   return {
     homeId: summary.id,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { parsePiJsonl, TrajectoryViewer } from 'pi-agent-trajectory-viewer'
 import { useChatController } from './views/chat/chat-context'
+import { FactsPanel } from './views/chat/facts-panel'
 import { usePi } from './pi-context'
 import { usePiNav } from './pi-nav'
 import { errorText, useSessionsController } from './views/sessions/sessions-context'
@@ -265,6 +266,9 @@ export function SessionThread({ sessionId }: { sessionId: string | null }) {
           ) : null}
         </span>
       </header>
+
+      {/* 会话事实：空会话页没有 sessionId，拉不到事实时面板自己也整块不显示。 */}
+      {sessionId !== null ? <FactsPanel sessionId={sessionId} tick={chat.factsTick} /> : null}
 
       {error ? (
         <div className="pichat-banner is-error" onClick={clearError} title="点击关闭">

@@ -1,11 +1,18 @@
 import type http from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { listAgentProfiles } from '../config/agents.ts'
 import { HomeError } from '../shared/pi-home.ts'
 import { profileRevisionOf } from '../config/registry.ts'
 import { CHAT_IDLE_MS, CHAT_UI_TIMEOUT_MS, MAX_CHATS as MAX_CHATS_VALUE } from '../config.ts'
-import { detachRuntime, syncRuntime } from '../sessions/registry.ts'
+import {
+  detachRuntime,
+  foreignRuntimeOf,
+  getEntity,
+  syncRuntime,
+  transition,
+} from '../sessions/registry.ts'
 import { loadSdk } from '../shared/sdk.ts'
 import { catalogCwd, readCachedCatalog } from '../config/models-runtime.ts'
 import {
@@ -14,6 +21,7 @@ import {
   resolveCwd,
   sessionRoot,
   type AgentSession,
+  type AssembledSession,
   type ThinkingLevel,
 } from './session-runtime.ts'
 
@@ -61,7 +69,7 @@ interface UiRequest {
   onAbort?: () => void
 }
 
-interface ChatRecord extends ChatInfo {
+export interface ChatRecord extends ChatInfo {
   /** 最近一次收到的用户消息：还没名字的会话在 agent_start 时拿它命名。 */
   lastPrompt: string
   /** 运行时实例标识：心跳与释放都按它比对，同一会话不同实例互不干扰。 */
@@ -113,6 +121,15 @@ export function nameIfUnnamed(chat: Pick<ChatRecord, "name" | "lastPrompt" | "se
   chat.session.setSessionName(title)
 }
 
+/**
+ * 对话自身的运行态：只在这里改，实体状态由 `syncEntity` 按它投影。
+ * 本包不动对话内部的状态机，只把写入口收敛成一个。
+ */
+function setChatState(chat: ChatRecord, next: ChatState): void {
+  if (chat.state === next) return
+  chat.state = next
+}
+
 /** 把运行时快照写进会话实体：state、队列、模型、错误都由这里同步。 */
 function syncEntity(chat: ChatRecord): void {
   syncRuntime({
@@ -122,7 +139,7 @@ function syncEntity(chat: ChatRecord): void {
     filePath: chat.sessionFile,
     cwd: chat.cwd,
     title: chat.name,
-    state: chat.state === 'running' ? 'running' : chat.state === 'error' ? 'failed' : 'ready',
+    toState: chat.state === 'running' ? 'running' : chat.state === 'error' ? 'failed' : 'ready',
     model: parseModelRef(chat.model, chat.thinkingLevel),
     queue: chat.pendingCount,
     interactions: chat.uiPending.size,
@@ -132,7 +149,8 @@ function syncEntity(chat: ChatRecord): void {
   })
 }
 
-function parseModelRef(
+/** `provider/modelId` 拆成实体上的模型事实；拆不开的引用返回 null。 */
+export function parseModelRef(
   model: string | null,
   thinkingLevel: string | null,
 ): { provider: string; modelId: string; thinkingLevel: string } | null {
@@ -150,6 +168,16 @@ function parseModelRef(
 export function chatTranscript(sessionId: string): string | null {
   const chat = chats.get(sessionId)
   return chat ? chat.transcript : null
+}
+
+/**
+ * 活的对话运行时。
+ *
+ * 公开给同域的运行事实投影用：它要的是运行时对象本身（会话管理器、活跃工具），
+ * 对外的 `ChatInfo` 不够。不在对话表里就是 null。
+ */
+export function liveChat(sessionId: string): ChatRecord | null {
+  return chats.get(sessionId) ?? null
 }
 
 function publicInfo(chat: ChatRecord): ChatInfo {
@@ -458,31 +486,56 @@ export async function createChat(options: CreateChatOptions): Promise<ChatInfo> 
     )
   }
 
+  // 续聊：装配期间先把实体标成「装配中」，并发请求据此拿 409 而不是又装一份。
+  // 文件名就是会话 id，装配后再按真实 id 补一次（幂等），两种口径都不漏。
+  const resumeId = options.sessionFile ? sessionIdOfFile(options.sessionFile) : null
+  if (resumeId) {
+    assertNoForeignRuntime(resumeId)
+    transition(resumeId, 'loading')
+  }
+
   let chatId: string | null = null
   const uiContext = createUiContext(() => chatId)
 
-  const assembled = await assembleSession({
-    home: options.home,
-    cwd: options.cwd,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    subagent: options.subagent,
-    sessionFile: options.sessionFile,
-    uiContext: uiContext as never,
-    abortHandler: () => {
-      if (chatId) void abortChat(chatId)
-    },
-  })
+  let assembled: AssembledSession
+  try {
+    assembled = await assembleSession({
+      home: options.home,
+      cwd: options.cwd,
+      model: options.model,
+      thinkingLevel: options.thinkingLevel,
+      subagent: options.subagent,
+      sessionFile: options.sessionFile,
+      uiContext: uiContext as never,
+      abortHandler: () => {
+        if (chatId) void abortChat(chatId)
+      },
+    })
+  } catch (error) {
+    // 装配失败要离开「装配中」，否则实体永远卡在 loading，连删除都做不了。
+    if (resumeId) {
+      transition(resumeId, 'failed', {
+        error: { message: error instanceof Error ? error.message : String(error), phase: 'assemble' },
+      })
+    }
+    throw error
+  }
 
   const existing = chats.get(assembled.sessionId)
   if (existing) {
     // 同一会话文件不能有两个运行时并行追加：丢掉这份新装配的会话，接到已有对话上。
     await disposeSession(assembled.session, options.home)
     existing.lastActivity = Date.now()
+    // 接回已有运行时：实体按它的真实状态回到 ready（正在跑就保持 running），
+    // 否则一次并发续聊会把实体永久卡在 loading。
+    if (existing.state !== 'running') transition(assembled.sessionId, 'ready')
     return { ...publicInfo(existing), fallbackMessage: null } as ChatInfo & {
       fallbackMessage: string | null
     }
   }
+
+  // 装配前的 loading 是按文件名推的 id，这里按会话头里的真实 id 再对一次。
+  transition(assembled.sessionId, 'loading')
 
   chatId = assembled.sessionId
   const chat: ChatRecord = {
@@ -523,13 +576,34 @@ export async function createChat(options: CreateChatOptions): Promise<ChatInfo> 
   }
 }
 
-function transcriptOf(session: AgentSession): string {
+/** 会话文件的行文本：运行事实投影与轨迹接口都从同一份行重建。 */
+export function transcriptOf(session: AgentSession): string {
   const header = session.sessionManager.getHeader()
   const entries = session.sessionManager.getEntries()
   const lines: string[] = []
   if (header) lines.push(JSON.stringify(header))
   for (const entry of entries) lines.push(JSON.stringify(entry))
   return lines.length > 0 ? `${lines.join('\n')}\n` : ''
+}
+
+/** 会话文件路径推会话 id：pi 的会话文件名就是会话头里的 id。 */
+function sessionIdOfFile(filePath: string): string {
+  return basename(filePath).replace(/\.jsonl$/i, '')
+}
+
+/**
+ * 同机另一个 pi 进程正在用这条会话时拒绝装配：两个运行时追同一个文件会双写。
+ * 跨机心跳不拦（v1 允许双开，live 事实以会话文件为准）。
+ */
+function assertNoForeignRuntime(sessionId: string): void {
+  const entity = getEntity(sessionId)
+  const foreign = entity ? foreignRuntimeOf(entity) : null
+  if (!foreign) return
+  throw new HomeError(
+    `这条会话正被本机另一个 pi 进程使用（pid ${foreign.pid}），先关掉那个进程再续聊`,
+    409,
+    'runtime_elsewhere',
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +615,7 @@ function handleEvent(chat: ChatRecord, event: { type: string } & Record<string, 
   chat.lastActivity = chat.updatedAt
   switch (event.type) {
     case 'agent_start':
-      chat.state = 'running'
+      setChatState(chat, 'running')
       chat.error = null
       nameIfUnnamed(chat)
       syncEntity(chat)
@@ -549,7 +623,7 @@ function handleEvent(chat: ChatRecord, event: { type: string } & Record<string, 
       break
     case 'agent_settled':
       flushDelta(chat)
-      chat.state = 'idle'
+      setChatState(chat, 'idle')
       chat.partial = ''
       chat.partialThinking = ''
       refreshTranscript(chat)
@@ -714,7 +788,7 @@ export async function promptChat(
     run.catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
       chat.error = message
-      chat.state = 'error'
+      setChatState(chat, 'error')
       syncEntity(chat)
       broadcast(chat, { type: 'error', message })
       reject(new HomeError(message, 400, 'prompt_failed'))

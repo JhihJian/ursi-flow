@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HomeError } from '../shared/pi-home.ts'
-import { detectPlugin } from '../chat/live-sessions.ts'
+import { detectPlugin } from '../runtime/live-sessions.ts'
 
 /**
  * 内置扩展的安装：把本仓自带的扩展文件复制进目标 home 的 extensions/ 目录。

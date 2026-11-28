@@ -52,6 +52,14 @@ export function configureApiBase(base: string): void {
   defaultBase = base
 }
 
+/**
+ * 当前前缀下的完整地址。给自带路由、不经过 createApiClient 的请求（例如会话运行事实）
+ * 用：独立站点同源，工作台模块由宿主代理，前缀只有一份。
+ */
+export function apiUrlOf(path: string): string {
+  return apiUrl(() => defaultBase, path)
+}
+
 export class ApiError extends Error {
   readonly code: string
   readonly status: number

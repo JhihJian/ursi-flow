@@ -3,25 +3,30 @@ import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HANDLED, route } from '../http/router.ts'
 import { HomeError, resolveRequestedHome } from '../shared/pi-home.ts'
-import { homes, requireHome } from '../config/registry.ts'
+import { homes } from '../config/registry.ts'
 import {
   capabilitiesOf,
   collectionCursor,
   originOfRoot,
   getEntity,
+  heartbeatPluginFound,
   homeOrigin,
   listEntities,
   project,
   touchExternalRoot,
+  transition,
+  type PiSession,
   type SessionOrigin,
   type SessionState,
 } from './registry.ts'
 import type { SessionService } from './service.ts'
-import { syncLiveSessions } from '../chat/live-sessions.ts'
 
 /**
  * 会话域路由：所有读写都以实体 id 为准，路径里的 `:id` 就是 `sessionId`。
  * 作用域由 `home`（home 路径或 id）或 `root`（任意目录）给出。
+ *
+ * 本域只持有磁盘事实。装配运行时、跑一轮消息属于 runtime 域：这些动作由组合根
+ * （`server.ts`）把运行时能力注入进来，会话域不 import 它。
  */
 
 let service: SessionService | null = null
@@ -35,7 +40,47 @@ function requireService(): SessionService {
   return service
 }
 
-/** 所有已登记 / 已发现的有效 home 路径：心跳汇总要用。 */
+/**
+ * 会话域需要的运行时能力，只声明形状、不关心实现。
+ *
+ * 返回体由路由原样回给客户端，会话域只取 `sessionId` 去拿实体。
+ */
+export interface SessionRuntime {
+  /** 新建或续接对话；返回的 sessionId 与实体 id 相同。 */
+  createChat(options: {
+    home: string
+    cwd?: string
+    model?: string
+    thinkingLevel?: string
+    subagent?: string | null
+    sessionFile?: string | null
+  }): Promise<{ sessionId: string }>
+  /** 起一次性会话任务；返回的 sessionId 与实体 id 相同。 */
+  startSessionTask(options: {
+    agent: string
+    home: string
+    subagent: string | null
+    instruct: string
+    cwd?: string
+    model?: string
+    thinkingLevel?: string
+  }): Promise<{ sessionId: string }>
+  /** 本地运行时的权威行文本；没有本地运行时返回 null。 */
+  chatTranscript(sessionId: string): string | null
+}
+
+let runtime: SessionRuntime | null = null
+
+export function setSessionRuntime(next: SessionRuntime): void {
+  runtime = next
+}
+
+function requireRuntime(): SessionRuntime {
+  if (!runtime) throw new HomeError('会话运行时未初始化', 500, 'runtime_missing')
+  return runtime
+}
+
+/** 所有已登记 / 已发现的有效 home 路径：会话根清单用。 */
 function homePaths(): string[] {
   const paths: string[] = []
   for (const entry of homes.list()) {
@@ -65,7 +110,6 @@ async function originFromQuery(url: URL): Promise<SessionOrigin | null> {
 
 route('GET', '/api/sessions', 'none', async ({ url }) => {
   const svc = requireService()
-  const live = syncLiveSessions(homePaths())
   const origin = await originFromQuery(url)
   let pendingDetails = 0
   let truncated = false
@@ -87,15 +131,15 @@ route('GET', '/api/sessions', 'none', async ({ url }) => {
   const cursor = collectionCursor()
   const since = Number(url.searchParams.get('since') ?? '')
   if (Number.isFinite(since) && since === cursor.revision) {
-    return { ...cursor, notModified: true, pendingDetails, truncated, heartbeatDetected: live.pluginDetected }
+    return { ...cursor, notModified: true, pendingDetails, truncated, heartbeatDetected: heartbeatPluginFound() }
   }
   return {
     ...cursor,
     sessions: entities,
     pendingDetails,
     truncated,
-    /** 心跳插件是否装在任一 home：会话视图的运行态功能以此为开关。 */
-    heartbeatDetected: live.pluginDetected,
+    /** 心跳插件是否装在任一 home：会话视图的运行态功能以此为开关。心跳合流由运行时域定时做。 */
+    heartbeatDetected: heartbeatPluginFound(),
     ...(origin?.kind === 'home' ? { homeId: origin.homeId } : {}),
     ...(origin?.kind === 'external' ? { root: origin.rootPath } : {}),
   }
@@ -171,8 +215,7 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
     if (typeof payload.instruct !== 'string' || !payload.instruct.trim()) {
       throw new HomeError('instruct 必填', 400, 'invalid_request')
     }
-    const { startSessionTask } = await import('../chat/session-task.ts')
-    const task = await startSessionTask({
+    const task = await requireRuntime().startSessionTask({
       agent: homes.list().find((entry) => entry.path === home)?.name ?? home,
       home,
       subagent: typeof payload.subagent === 'string' && payload.subagent.trim() ? payload.subagent.trim() : null,
@@ -194,6 +237,7 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
   // 续聊的会话文件就是实体的 filePath；能否续聊由实体的 capabilities 给出，不在这里重算。
   const resumeEntity = resumeId ? requireEntity(resumeId) : null
   if (resumeEntity) {
+    assertFreeToAttach(resumeEntity)
     const { canContinue, reason } = capabilitiesOf(resumeEntity)
     if (!canContinue) {
       throw new HomeError(`这条会话不能续聊：${reason ?? '当前状态不允许'}`, 409, 'session_not_continuable')
@@ -201,10 +245,11 @@ route('POST', '/api/sessions', 'none', async ({ body }) => {
     if (!resumeEntity.filePath) {
       throw new HomeError(`会话还没有落盘，不能续聊：${resumeId}`, 409, 'session_not_persisted')
     }
+    // 先把实体标成「装配中」：并发的 turn / model / delete 拿到 409，而不是又装一份运行时。
+    transition(resumeEntity.id, 'loading')
   }
 
-  const { createChat } = await import('../chat/chat.ts')
-  const chat = await createChat({
+  const chat = await requireRuntime().createChat({
     home,
     cwd: typeof payload.cwd === 'string' && payload.cwd.trim() ? payload.cwd.trim() : undefined,
     model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
@@ -226,6 +271,21 @@ function requireEntity(id: string) {
   return entity
 }
 
+/**
+ * 同机另一个 pi 进程正在跑这条会话时本服务只读：两个运行时追同一个会话文件会双写。
+ *
+ * 这里只读实体的 capabilities，不 import runtime；跨机心跳不拦（v1 允许双开，
+ * live 事实以会话文件为准）。
+ */
+function assertFreeToAttach(entity: PiSession): void {
+  if (capabilitiesOf(entity).reason !== 'runtime_elsewhere') return
+  throw new HomeError(
+    '这条会话正被同机的另一个 pi 进程使用，本服务只读：先关掉那个进程再续聊',
+    409,
+    'runtime_elsewhere',
+  )
+}
+
 route('GET', '/api/sessions/:id', 'none', async ({ params }) => project(requireEntity(params.id)))
 
 /** 轨迹：有本地运行时用它的权威行文本，否则读文件；两者同一份返回形状。 */
@@ -233,8 +293,7 @@ route('GET', '/api/sessions/:id/trajectory', 'none', async ({ params, req, res }
   const entity = requireEntity(params.id)
   const local = entity.runtimes.some((fact) => fact.origin === 'local')
   if (local) {
-    const { chatTranscript } = await import('../chat/chat.ts')
-    const jsonl = chatTranscript(entity.id)
+    const jsonl = requireRuntime().chatTranscript(entity.id)
     if (jsonl !== null) {
       const info = entity.filePath ? await stat(entity.filePath).catch(() => null) : null
       res.writeHead(200, {
@@ -258,77 +317,6 @@ route('GET', '/api/sessions/:id/trajectory', 'none', async ({ params, req, res }
   // 文件形态：逐行转换成组件库认的形状后流式输出，可 gzip。
   await requireService().streamText(entity, res, String(req.headers['accept-encoding'] ?? ''))
   return HANDLED
-})
-
-/** 事件流：只有存在本地运行时的会话有增量；其它会话由客户端轮询集合。 */
-route('GET', '/api/sessions/:id/events', 'none', async ({ params, req, res }) => {
-  const entity = requireEntity(params.id)
-  if (!entity.runtimes.some((fact) => fact.origin === 'local')) {
-    throw new HomeError('该会话没有本地运行时', 409, 'session_not_local')
-  }
-  const { attachChatStream } = await import('../chat/chat.ts')
-  attachChatStream(entity.id, req, res)
-  return HANDLED
-})
-
-route('POST', '/api/sessions/:id/turn', 'none', async ({ params, body, res }) => {
-  const entity = requireEntity(params.id)
-  if (entity.state === 'loading') throw new HomeError('会话正在装配，稍后再试', 409, 'session_loading')
-  const payload = await body<{ text?: unknown; mode?: unknown }>()
-  if (typeof payload.text !== 'string') throw new HomeError('text 必填', 400, 'invalid_request')
-  const { promptChat } = await import('../chat/chat.ts')
-  const result = await promptChat(
-    entity.id,
-    payload.text,
-    payload.mode === 'steer' ? 'steer' : 'followUp',
-  )
-  const updated = getEntity(entity.id)
-  res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-  res.end(JSON.stringify({ ...result, session: updated ? project(updated) : null }))
-  return HANDLED
-})
-
-route('POST', '/api/sessions/:id/abort', 'none', async ({ params }) => {
-  requireEntity(params.id)
-  const { abortChat } = await import('../chat/chat.ts')
-  return abortChat(params.id)
-})
-
-route('POST', '/api/sessions/:id/interaction', 'none', async ({ params, body }) => {
-  requireEntity(params.id)
-  const payload = await body<{ interactionId?: unknown; requestId?: unknown; value?: unknown }>()
-  const requestId = payload.interactionId ?? payload.requestId
-  if (typeof requestId !== 'string' || !requestId) {
-    throw new HomeError('interactionId 必填', 400, 'invalid_request')
-  }
-  const { answerUiRequest } = await import('../chat/chat.ts')
-  answerUiRequest(params.id, requestId, payload.value)
-  return { ok: true }
-})
-
-route('POST', '/api/sessions/:id/model', 'none', async ({ params, body }) => {
-  const entity = requireEntity(params.id)
-  if (entity.state === 'loading') throw new HomeError('会话正在装配，稍后再试', 409, 'session_loading')
-  const payload = await body<{ provider?: unknown; modelId?: unknown; thinkingLevel?: unknown }>()
-  if (typeof payload.provider !== 'string' || !payload.provider.trim()) {
-    throw new HomeError('provider 必填', 400, 'invalid_request')
-  }
-  const { setChatModel } = await import('../chat/chat.ts')
-  return setChatModel(
-    entity.id,
-    payload.provider.trim(),
-    typeof payload.modelId === 'string' && payload.modelId.trim() ? payload.modelId.trim() : undefined,
-    typeof payload.thinkingLevel === 'string' && payload.thinkingLevel.trim()
-      ? payload.thinkingLevel.trim()
-      : undefined,
-  )
-})
-
-route('POST', '/api/sessions/:id/evict', 'none', async ({ params }) => {
-  requireEntity(params.id)
-  const { closeChat } = await import('../chat/chat.ts')
-  await closeChat(params.id)
-  return { ok: true }
 })
 
 route('DELETE', '/api/sessions/:id', 'none', async ({ params }) => {

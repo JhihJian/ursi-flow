@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
-import { syncProcessRuntimes } from '../sessions/registry.ts'
+import { homes } from '../config/registry.ts'
+import { noteHeartbeatSync, syncProcessRuntimes } from '../sessions/registry.ts'
 
 /**
  * 跨进程会话运行态：读心跳扩展写在 home 里的文件。
@@ -102,6 +103,29 @@ function parseBeat(path: string, text: string): LiveSession {
   }
 }
 
+/** 心跳合流的间隔：心跳本身 15 秒续写一次，合流比它快一拍就够。 */
+export const HEARTBEAT_SYNC_MS = 12_000
+
+/**
+ * 定时把心跳合流进会话实体，初次立即执行一次。返回 stop，退出时调用。
+ *
+ * 会话清单不再自己触发合流：读接口只管读，运行态的刷新由运行时域按固定节拍做。
+ * 有效 home 从配置注册表取，不依赖调用方传进来。
+ */
+export function startHeartbeatSync(intervalMs = HEARTBEAT_SYNC_MS): () => void {
+  const run = (): void => {
+    const paths: string[] = []
+    for (const entry of homes.list()) {
+      if (entry.valid && !paths.includes(entry.path)) paths.push(entry.path)
+    }
+    syncLiveSessions(paths)
+  }
+  run()
+  const timer = setInterval(run, intervalMs)
+  timer.unref?.()
+  return () => clearInterval(timer)
+}
+
 /**
  * 跨进程心跳合流进会话实体：只替换 `origin: 'process'` 的运行态。
  *
@@ -109,6 +133,7 @@ function parseBeat(path: string, text: string): LiveSession {
  */
 export function syncLiveSessions(homePaths: string[]): LiveSessionsListing {
   const listing = readLiveSessionsAllHomes(homePaths)
+  noteHeartbeatSync(listing.pluginDetected)
   syncProcessRuntimes(
     listing.sessions.map((session) => ({
       sessionId: session.sessionId,

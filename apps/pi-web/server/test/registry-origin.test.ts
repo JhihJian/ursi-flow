@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { homes } from '../src/config/registry.ts'
 import {
   collectionCursor,
+  capabilitiesOf,
   externalOrigin,
+  getEntity,
   homeOrigin,
   listEntities,
   originOfRoot,
   syncProcessRuntimes,
   syncRuntime,
+  transition,
   upsertDisk,
   type DiskRow,
   type RuntimeSnapshot,
 } from '../src/sessions/registry.ts'
+import { ConflictError } from '../src/shared/rw.ts'
 
 /**
  * 磁盘上的会话文件没有归属：哪个作用域扫到它，它就归哪个作用域。
@@ -150,7 +154,7 @@ test('心跳不刷 seenAt，实质变化（状态、标题）才刷', () => {
     homePath: '/pi',
     filePath: '/pi/sessions/seenat-only-on-change.jsonl',
     cwd: '/demo/alpha',
-    state: 'ready',
+    toState: 'ready',
     instanceId: 'inst-1',
     ...over,
   })
@@ -167,13 +171,125 @@ test('心跳不刷 seenAt，实质变化（状态、标题）才刷', () => {
   assert.equal(collectionCursor().revision, settled)
 
   // 状态变化：刷
-  syncRuntime(snap({ state: 'running' }))
+  syncRuntime(snap({ toState: 'running' }))
   const ran = entity.seenAt
   assert.ok(ran >= born)
   assert.ok(collectionCursor().revision > settled)
 
   // 标题变化：刷（新会话首条消息命名后列表要能拿到）
-  syncRuntime(snap({ state: 'running', title: '首条消息' }))
+  syncRuntime(snap({ toState: 'running', title: '首条消息' }))
   assert.ok(entity.seenAt >= ran)
   assert.equal(entity.title, '首条消息')
 })
+
+/** 让时钟走一段：stateSince 是毫秒级时间戳，同一毫秒内看不出来。 */
+function tick(ms = 5): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+test('状态迁移只走 transition：非法跳转抛 ConflictError', () => {
+  const entity = upsertDisk(HOME, disk('transition-illegal', 1))
+  assert.equal(entity.state, 'discovered')
+  // discovered 只能进 loading：直接跳 running 说明装配与状态机脱节了。
+  assert.throws(() => transition(entity.id, 'running'), ConflictError)
+  assert.throws(() => transition(entity.id, 'ready'), ConflictError)
+  assert.equal(entity.state, 'discovered')
+
+  // 不存在的实体返回 null，不凭空建实体。
+  assert.equal(transition('transition-never-registered', 'loading'), null)
+  assert.equal(listEntities({ query: 'transition-never-registered' }).length, 0)
+
+  // 同状态重复迁移是幂等的 no-op（心跳与事件回调会反复同步同一个目标状态）。
+  transition(entity.id, 'loading')
+  const since = entity.stateSince
+  const revision = collectionCursor().revision
+  transition(entity.id, 'loading')
+  assert.equal(entity.stateSince, since)
+  assert.equal(collectionCursor().revision, revision)
+})
+
+test('loading→ready→running→ready 链路：stateSince 递增，版本号跟着走', () => {
+  const entity = upsertDisk(HOME, disk('transition-chain', 1))
+  let last = entity.stateSince
+  const run = (to: 'loading' | 'ready' | 'running' | 'failed') => {
+    tick()
+    const before = collectionCursor().revision
+    transition(entity.id, to)
+    assert.equal(entity.state, to)
+    assert.ok(entity.stateSince > last, `${to} 的 stateSince 要递增`)
+    assert.ok(collectionCursor().revision > before, `${to} 要递增集合版本`)
+    last = entity.stateSince
+  }
+
+  run('loading')
+  run('ready')
+  run('running')
+  run('ready')
+
+  // 失败与重试：running→failed，failed→running（运行时还活着，重试不重新装配）。
+  run('running')
+  run('failed')
+  run('running')
+})
+
+test('syncRuntime 按目标状态迁移，装配失败可以带错误落成 failed', () => {
+  const base = {
+    kind: 'chat' as const,
+    homePath: '/pi',
+    filePath: '/pi/sessions/assemble-failed.jsonl',
+    cwd: '/demo/alpha',
+    instanceId: 'inst-assemble',
+  }
+  // 续聊从扫到的磁盘实体出发：装配前置 loading，装配失败落成 failed 并带错误。
+  const entity = upsertDisk(HOME, { ...disk('assemble-failed', 1), path: base.filePath })
+  assert.equal(transition('assemble-failed', 'loading')?.state, 'loading')
+  const failed = transition('assemble-failed', 'failed', {
+    error: { message: '模型不存在', phase: 'assemble' },
+  })
+  assert.equal(failed?.state, 'failed')
+  assert.equal(failed?.error?.phase, 'assemble')
+  // 重试：failed→loading，装配成功后由 syncRuntime 落回 ready 并清掉错误。
+  assert.equal(transition('assemble-failed', 'loading')?.state, 'loading')
+  const ready = syncRuntime({ ...base, sessionId: 'assemble-failed', toState: 'ready' })
+  assert.equal(ready.state, 'ready')
+  assert.equal(ready.error, null)
+  assert.equal(getEntity('assemble-failed')?.state, 'ready')
+  assert.equal(entity.id, 'assemble-failed')
+})
+
+test('同机异进程心跳：canContinue 为 false，理由 runtime_elsewhere', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-origin-home-'))
+  writeFileSync(join(dir, 'settings.json'), '{}')
+  mkdirSync(join(dir, 'sessions'), { recursive: true })
+  const home = await homes.add({ mode: 'adopt', path: dir, name: '异进程心跳' })
+  try {
+    const id = 'beat-other-process'
+    const file = join(dir, 'sessions', 'proj', `${id}.jsonl`)
+    const entity = upsertDisk(homeOrigin(dir), { ...disk(id, 1), path: file })
+    assert.equal(capabilitiesOf(entity).canContinue, true)
+
+    syncProcessRuntimes([
+      {
+        sessionId: id,
+        fact: {
+          instanceId: `process:${hostname()}:${process.pid}:${id}`,
+          origin: 'process' as const,
+          host: hostname(),
+          pid: process.pid,
+          status: 'running' as const,
+          updatedAt: Date.now(),
+        },
+        hint: { sessionFile: file, cwd: '/demo/proj' },
+      },
+    ])
+    const after = capabilitiesOf(entity)
+    assert.equal(after.canContinue, false)
+    assert.equal(after.reason, 'runtime_elsewhere')
+    // v1 只读：运行态能力维持现状，不因心跳变隐
+    assert.equal(after.canLoad, true)
+  } finally {
+    await homes.remove(home.id)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+

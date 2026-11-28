@@ -24,9 +24,9 @@ import {
   uninstallBuiltinExtension,
   listBuiltinExtensions,
 } from '../src/config/builtin-plugins.ts'
-import { detectPlugin } from '../src/chat/live-sessions.ts'
+import { detectPlugin } from '../src/runtime/live-sessions.ts'
 import { listAgentProfiles, readAgentsSettings, writeAgentsSettings, renderProfile, saveAgentProfile } from '../src/config/agents.ts'
-import { readLiveSessions, readLiveSessionsAllHomes } from '../src/chat/live-sessions.ts'
+import { readLiveSessions, readLiveSessionsAllHomes } from '../src/runtime/live-sessions.ts'
 
 /** 仓库 apps/pi-web 根：内置扩展源文件与安装对账用。 */
 const REPO_APP_ROOT = fileURLToPath(new URL('../..', import.meta.url))
@@ -614,7 +614,7 @@ test('homes：init 初始化默认配置，clone 复制配置但不带凭据', a
 // ---------------------------------------------------------------------------
 
 test('session-task：subagent 定义解析（文件名与 name 都不区分大小写）', async () => {
-  const { resolveSubagent } = await import('../src/chat/session-task.ts')
+  const { resolveSubagent } = await import('../src/runtime/session-task.ts')
   const dir = makeHome()
   mkdirSync(join(dir, 'agents'), { recursive: true })
   writeFileSync(join(dir, 'agents', 'Reviewer.md'), '---\nname: reviewer\ndescription: 评审\n---\n你是评审员。\n')
@@ -628,7 +628,7 @@ test('session-task：subagent 定义解析（文件名与 name 都不区分大�
 })
 
 test('session-task：参数校验在加载 SDK 之前完成', async () => {
-  const { startSessionTask } = await import('../src/chat/session-task.ts')
+  const { startSessionTask } = await import('../src/runtime/session-task.ts')
   const dir = makeHome()
   mkdirSync(join(dir, 'agents'), { recursive: true })
   writeFileSync(join(dir, 'agents', 'a.md'), '---\nname: a\n---\nx\n')
@@ -648,7 +648,7 @@ test('session-task：参数校验在加载 SDK 之前完成', async () => {
 })
 
 test('session-task：任务表按 home 过滤并倒序', async () => {
-  const { getTask, listTasks, taskCapacity } = await import('../src/chat/session-task.ts')
+  const { getTask, listTasks, taskCapacity } = await import('../src/runtime/session-task.ts')
   assert.equal(getTask('missing-id'), null)
   assert.ok(Array.isArray(listTasks()))
   const capacity = taskCapacity()
@@ -657,7 +657,7 @@ test('session-task：任务表按 home 过滤并倒序', async () => {
 })
 
 test('session-task：取消不存在的任务报 404 语义', async () => {
-  const { cancelSessionTask } = await import('../src/chat/session-task.ts')
+  const { cancelSessionTask } = await import('../src/runtime/session-task.ts')
   await assert.rejects(cancelSessionTask('nope'), /没有这个会话任务/)
 })
 
@@ -693,7 +693,7 @@ test('homes：name 唯一，findByName 精确优先再忽略大小写', async ()
 })
 
 test('session-task：subagent 的 tools 声明会成为会话工具集', async () => {
-  const { parseSubagentTools } = await import('../src/chat/session-task.ts')
+  const { parseSubagentTools } = await import('../src/runtime/session-task.ts')
   assert.deepEqual(parseSubagentTools('read, grep, find, ls, bash'), [
     'read', 'grep', 'find', 'ls', 'bash',
   ])
@@ -1285,12 +1285,12 @@ test('models-check：只写 name 或 api 的内置覆盖条目合法，自定义
 // ---------------------------------------------------------------------------
 
 test('session runtime：会话根固定在 <home>/sessions', async () => {
-  const { sessionRoot } = await import('../src/chat/session-runtime.ts')
+  const { sessionRoot } = await import('../src/runtime/session-runtime.ts')
   assert.equal(sessionRoot('/tmp/home'), join('/tmp/home', 'sessions'))
 })
 
 test('session runtime：续聊的会话文件必须落在该 home 的 sessions 下', async () => {
-  const { assertSessionFileIn } = await import('../src/chat/session-runtime.ts')
+  const { assertSessionFileIn } = await import('../src/runtime/session-runtime.ts')
   const home = makeHome()
   const root = join(home, 'sessions', '--proj--')
   mkdirSync(root, { recursive: true })
@@ -1304,7 +1304,7 @@ test('session runtime：续聊的会话文件必须落在该 home 的 sessions �
 })
 
 test('session runtime：thinkingLevel 与 cwd、模型引用在加载 SDK 前校验', async () => {
-  const { normalizeThinkingLevel, resolveCwd } = await import('../src/chat/session-runtime.ts')
+  const { normalizeThinkingLevel, resolveCwd } = await import('../src/runtime/session-runtime.ts')
   assert.equal(normalizeThinkingLevel('high'), 'high')
   assert.equal(normalizeThinkingLevel(undefined), null)
   assert.throws(() => normalizeThinkingLevel('turbo'), /thinkingLevel 只能是/)
@@ -1317,7 +1317,7 @@ test('session runtime：thinkingLevel 与 cwd、模型引用在加载 SDK 前校
 })
 
 test('chat：对话可选项只读文件与缓存，不建会话', async () => {
-  const { chatOptions } = await import('../src/chat/chat.ts')
+  const { chatOptions } = await import('../src/runtime/chat.ts')
   const home = makeHome()
   writeFileSync(
     join(home, 'settings.json'),

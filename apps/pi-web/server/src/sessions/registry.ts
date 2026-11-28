@@ -1,7 +1,9 @@
+import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { homeIdOf } from '../config/homes.ts'
 import { homes } from '../config/registry.ts'
 import { EPOCH, EXTERNAL_ROOT_LIMIT, EXTERNAL_ROOT_TTL_MS } from '../config.ts'
+import { ConflictError } from '../shared/rw.ts'
 
 /**
  * 会话实体注册表：Pi Web 单一真源。
@@ -111,7 +113,8 @@ export interface RuntimeSnapshot {
   filePath: string | null
   cwd: string
   title?: string | null
-  state: SessionState
+  /** 目标状态：只声明运行时能直接到达的那几种，其余（loading / evicted）走 transition 与 detachRuntime。 */
+  toState: 'ready' | 'running' | 'failed'
   model?: { provider: string; modelId: string; thinkingLevel: string } | null
   queue?: number
   interactions?: number
@@ -120,6 +123,23 @@ export interface RuntimeSnapshot {
   execution?: TaskExecution | null
   instanceId: string
 }
+
+/**
+ * 合法迁移表：状态只能沿这张表走，装配（loading）与释放（evicted）各有自己的入口。
+ *
+ * `failed` 可以直接回到 `running`：上一轮失败的对话运行时还活着，重试不必重新装配；
+ * 需要重新装配时走 `failed → loading`。
+ */
+const TRANSITIONS: Record<SessionState, SessionState[]> = {
+  discovered: ['loading'],
+  loading: ['ready', 'failed'],
+  ready: ['running', 'failed', 'evicted'],
+  running: ['ready', 'failed', 'evicted'],
+  failed: ['loading', 'running', 'evicted'],
+  evicted: ['loading'],
+}
+
+const LOCAL_HOST = hostname()
 
 const entities = new Map<string, PiSession>()
 let revision = 0
@@ -226,7 +246,7 @@ export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
     // `discovered` 包括心跳先于扫描建出的占位：扫到文件就由扫描认领，归属对齐到当前作用域。
     if (existing.state === 'discovered' || existing.state === 'evicted') {
       existing.disk = disk
-      existing.state = 'discovered'
+      setState(existing, 'discovered')
       existing.title = row.name ?? existing.title
       existing.cwd = row.cwd || existing.cwd
       existing.filePath = row.path
@@ -274,11 +294,42 @@ export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
   return entity
 }
 
-/** 运行时字段的唯一写者：对话、任务都从这里同步。 */
+/** 状态字段的唯一写入口：只有这里能改 `state`，每次变化同步 `stateSince`。 */
+function setState(entity: PiSession, to: SessionState): void {
+  if (entity.state === to) return
+  entity.state = to
+  entity.stateSince = Date.now()
+  bump()
+}
+
+/**
+ * 状态迁移的唯一入口：按 `TRANSITIONS` 校验，非法迁移报冲突（路由层转 409）。
+ *
+ * 同状态重复迁移是幂等的 no-op：心跳与事件回调会反复同步同一个目标状态。
+ * 实体不存在时返回 null，调用方按「还没登记」处理，不在这里凭空建实体。
+ */
+export function transition(
+  sessionId: string,
+  to: SessionState,
+  opts?: { error?: { message: string; phase: 'assemble' | 'turn' } | null; instanceId?: string },
+): PiSession | null {
+  const entity = entities.get(sessionId)
+  if (!entity) return null
+  if (entity.state !== to && !TRANSITIONS[entity.state].includes(to)) {
+    const actor = opts?.instanceId ? `（实例 ${opts.instanceId}）` : ''
+    throw new ConflictError(`会话 ${sessionId} 不能从 ${entity.state} 迁移到 ${to}${actor}`)
+  }
+  setState(entity, to)
+  if (opts && 'error' in opts) entity.error = opts.error ?? null
+  return entity
+}
+
+/** 运行时字段的唯一写者：对话、任务都从这里同步。状态则统一走 `transition`。 */
 export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
   const origin = homeOrigin(snapshot.homePath)
   let entity = entities.get(snapshot.sessionId)
   if (!entity) {
+    // 新实体直接落成运行时给的目标状态：它没有前一个状态可迁移。
     entity = {
       id: snapshot.sessionId,
       identitySource: 'minted',
@@ -290,7 +341,7 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
       cwd: snapshot.cwd,
       title: snapshot.title ?? null,
       disk: null,
-      state: snapshot.state,
+      state: snapshot.toState,
       stateSince: Date.now(),
       error: snapshot.error ?? null,
       runtimes: [],
@@ -304,14 +355,13 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
     entities.set(entity.id, entity)
     bump()
   } else {
+    const stateChanged = entity.state !== snapshot.toState
     const changed =
-      entity.state !== snapshot.state
+      stateChanged
       || entity.error?.message !== snapshot.error?.message
       || entity.queue !== (snapshot.queue ?? 0)
       || entity.filePath !== snapshot.filePath
       || (snapshot.title != null && snapshot.title !== entity.title)
-    if (entity.state !== snapshot.state) entity.stateSince = Date.now()
-    entity.state = snapshot.state
     entity.error = snapshot.error ?? null
     entity.filePath = snapshot.filePath ?? entity.filePath
     entity.persistence = entity.filePath ? 'file' : 'memory'
@@ -328,6 +378,8 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
       entity.seenAt = Date.now()
       bump()
     }
+    // 状态走唯一入口：非法迁移直接抛冲突，不会静默把实体写成别的样子。
+    transition(entity.id, snapshot.toState, { instanceId: snapshot.instanceId })
   }
 
   const now = Date.now()
@@ -336,7 +388,7 @@ export function syncRuntime(snapshot: RuntimeSnapshot): PiSession {
     origin: 'local',
     host: '',
     pid: process.pid,
-    status: snapshot.state === 'running' ? 'running' : 'idle',
+    status: snapshot.toState === 'running' ? 'running' : 'idle',
     updatedAt: now,
   }
   const others = entity.runtimes.filter((item) => item.instanceId !== snapshot.instanceId)
@@ -352,12 +404,13 @@ export function detachRuntime(sessionId: string, instanceId: string): void {
   if (entity.runtimes.some((item) => item.origin === 'local')) return
   if (entity.persistence === 'memory' && !entity.filePath) {
     entities.delete(sessionId)
-  } else {
-    entity.state = 'evicted'
-    entity.stateSince = Date.now()
-    entity.queue = 0
-    entity.interactions = 0
+    bump()
+    return
   }
+  // 释放是运行时的最后一步，必须走完：哪怕当前状态不在迁移表里也落成 evicted。
+  setState(entity, 'evicted')
+  entity.queue = 0
+  entity.interactions = 0
   bump()
 }
 
@@ -442,6 +495,23 @@ export function entityCount(): number {
   return entities.size
 }
 
+/**
+ * 心跳汇总的旁路事实：心跳插件是否装在任一 home。
+ *
+ * 由 runtime 的心跳合流写、会话清单读：会话域不 import runtime，也不自己扫 extensions/。
+ */
+let heartbeatPluginDetected = false
+
+export function noteHeartbeatSync(pluginDetected: boolean): void {
+  if (heartbeatPluginDetected === pluginDetected) return
+  heartbeatPluginDetected = pluginDetected
+  bump()
+}
+
+export function heartbeatPluginFound(): boolean {
+  return heartbeatPluginDetected
+}
+
 export interface SessionFilter {
   origin?: SessionOrigin
   state?: SessionState | 'live'
@@ -481,6 +551,13 @@ export function modifiedOf(entity: PiSession): number {
   return entity.disk?.updatedAt ?? entity.seenAt
 }
 
+/**
+ * 同机另一个进程正在用这条会话：两个运行时同时追同一个文件会双写，本进程只读。
+ */
+export function foreignRuntimeOf(entity: PiSession): RuntimeFact | null {
+  return entity.runtimes.find((item) => item.origin === 'process' && item.host === LOCAL_HOST) ?? null
+}
+
 /** 能力由状态与身份派生，不单独存字段。 */
 export function capabilitiesOf(entity: PiSession): PiSessionCapabilities {
   const local = entity.runtimes.some((item) => item.origin === 'local')
@@ -496,7 +573,17 @@ export function capabilitiesOf(entity: PiSession): PiSessionCapabilities {
   }
   if (entity.origin.kind === 'external' && entity.kind === 'cli') {
     // 外部目录的会话要用某个 home 的 profile 才能运行，由调用方显式指定。
-    return { ...base, canTurn: false, canContinue: base.canLoad }
+    const foreign = foreignRuntimeOf(entity) !== null
+    return {
+      ...base,
+      canTurn: false,
+      canContinue: foreign ? false : base.canLoad,
+      ...(foreign ? { reason: 'runtime_elsewhere' } : {}),
+    }
+  }
+  // 同机异进程心跳：v1 只读，跨机心跳不管（live 事实以会话文件为准）。
+  if (foreignRuntimeOf(entity)) {
+    return { ...base, canContinue: false, reason: 'runtime_elsewhere' }
   }
   return base
 }

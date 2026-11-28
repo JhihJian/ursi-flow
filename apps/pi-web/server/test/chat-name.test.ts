@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { nameIfUnnamed } from '../src/chat/chat.ts'
+import { nameIfUnnamed } from '../src/runtime/chat.ts'
 
 /**
  * 没名字的会话用首条用户消息命名，名字经 SDK 写进会话文件，
