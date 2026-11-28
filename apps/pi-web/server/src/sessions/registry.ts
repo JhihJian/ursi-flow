@@ -192,6 +192,20 @@ function sameOrigin(a: SessionOrigin, b: SessionOrigin): boolean {
   return scopeKeyOf(a) === scopeKeyOf(b)
 }
 
+/** 心跳的 `provider/model` 转成实体上的模型事实；拆不开或不完整的引用不记。 */
+function modelOf(ref: string | null): PiSession['model'] {
+  if (!ref) return null
+  const slash = ref.indexOf('/')
+  if (slash <= 0 || slash === ref.length - 1) return null
+  return { provider: ref.slice(0, slash), modelId: ref.slice(slash + 1), thinkingLevel: '' }
+}
+
+/** 一条会话的归属：按会话文件落在哪个已登记 home 的 sessions/ 下判定。 */
+export function originOfSessionFile(filePath: string): SessionOrigin {
+  const owner = homes.list().find((entry) => entry.valid && filePath.startsWith(`${join(entry.path, 'sessions')}/`))
+  return owner ? homeOrigin(owner.path) : externalOrigin('')
+}
+
 /** 扫描结果写进注册表：只有 `discovered` 实体可以整体替换磁盘事实。 */
 export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
   const existing = entities.get(row.id)
@@ -209,6 +223,7 @@ export function upsertDisk(origin: SessionOrigin, row: DiskRow): PiSession {
   }
   if (existing) {
     const before = JSON.stringify([existing.disk, existing.origin])
+    // `discovered` 包括心跳先于扫描建出的占位：扫到文件就由扫描认领，归属对齐到当前作用域。
     if (existing.state === 'discovered' || existing.state === 'evicted') {
       existing.disk = disk
       existing.state = 'discovered'
@@ -346,8 +361,26 @@ export function detachRuntime(sessionId: string, instanceId: string): void {
   bump()
 }
 
-/** 跨进程心跳：只替换 `origin: 'process'` 的那批运行态。 */
-export function syncProcessRuntimes(facts: Array<{ sessionId: string; fact: RuntimeFact }>): void {
+/**
+ * 其它进程正在用的会话：心跳里有路径与目录，占位实体要带上，
+ * 否则它在清单里没有归属、没有文件，按 home 过滤时永远缺席。
+ */
+export interface ProcessSessionHint {
+  sessionFile: string | null
+  cwd: string
+  /** 心跳里的模型引用 `provider/model`，只给侧栏显示用。 */
+  model?: string | null
+}
+
+/**
+ * 跨进程心跳：只替换 `origin: 'process'` 的那批运行态。
+ *
+ * 尚未登记的会话先按心跳建一条 `discovered` 实体（它是磁盘上被别的进程用着的会话，
+ * 不是本进程在跑），归属按会话文件落在哪个 home 的 sessions/ 下判定。
+ */
+export function syncProcessRuntimes(
+  facts: Array<{ sessionId: string; fact: RuntimeFact; hint?: ProcessSessionHint }>,
+): void {
   const bySession = new Map<string, RuntimeFact[]>()
   for (const { sessionId, fact } of facts) {
     const list = bySession.get(sessionId) ?? []
@@ -363,25 +396,28 @@ export function syncProcessRuntimes(facts: Array<{ sessionId: string; fact: Runt
     entity.runtimes = next
     changed = true
   }
+  const hints = new Map(facts.map((item) => [item.sessionId, item.hint]))
   for (const [sessionId, list] of bySession) {
     if (entities.has(sessionId)) continue
-    // 其它进程的会话可能还没进注册表（文件在别的地方或刚创建），只登记运行态。
+    // 其它进程的会话可能还没进注册表（还没扫到，或在 home 之外），只登记运行态与心跳给的路径。
+    const hint = hints.get(sessionId)
+    const filePath = hint?.sessionFile ?? null
     const entity: PiSession = {
       id: sessionId,
       identitySource: 'header',
-      origin: externalOrigin(''),
+      origin: filePath ? originOfSessionFile(filePath) : externalOrigin(''),
       kind: 'cli',
       parentFile: null,
       persistence: 'file',
-      filePath: null,
-      cwd: '',
+      filePath,
+      cwd: hint?.cwd ?? '',
       title: null,
       disk: null,
-      state: 'running',
+      state: 'discovered',
       stateSince: Date.now(),
       error: null,
       runtimes: list,
-      model: null,
+      model: modelOf(hint?.model),
       queue: 0,
       interactions: 0,
       execution: null,

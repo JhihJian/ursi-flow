@@ -58,7 +58,7 @@ erDiagram
 | 持久化 | `persistence` | `memory`（已创建但还没有消息，尚未落文件）/ `file` |
 | 磁盘事实 | `filePath` / `cwd` / `title` / `disk` | `title` 优先，没名字时用 `firstMessage`；本服务端开的对话在首条消息的 `agent_start` 时经 SDK `setSessionName` 用首条用户消息命名，名字写进会话文件的 `session_info` 条目，`/name` 改过的不再覆盖。原说明： `disk` 含 `size`、`mtime`、`format`、`messageCount`、`firstMessage`、`createdAt`、`updatedAt`、`fileSessionId` |
 | 生命周期 | `state` / `stateSince` / `error` | `error` 带 `phase: 'assemble' \| 'turn'`，决定 `failed` 的恢复路径（见第 2 节） |
-| 运行 | `runtimes[]` | 每项 `RuntimeFact { instanceId, origin: 'local' \| 'process', host, pid, status, updatedAt }`；本进程直接写，其它进程由心跳补 |
+| 运行 | `runtimes[]` | 每项 `RuntimeFact { instanceId, origin: 'local' \| 'process', host, pid, status, updatedAt }`；本进程直接写，其它进程由心跳补。心跳先于扫描到达时先按心跳里的路径与目录建 `discovered` 占位实体，扫到后由扫描认领 |
 | 运行 | `model` / `queue` / `interactions[]` | 当前模型与思考级别、排队输入数、待回执的扩展 UI 请求 |
 | 执行 | `execution?` | 仅 `kind: task`：`{ timeoutMs, outcome: 'ok' \| 'error' \| 'cancelled', outputLength, lastText }` |
 | 配置 | `profileRevision` | 装配时钉住的版本；`stale` 是 `state ≠ discovered 且 profileRevision < home.profileRevision` 的派生值，不存字段 |
@@ -287,7 +287,7 @@ graph LR
 | `GET /api/config?root=` | `GET /api/homes/:id`（`sessionsRoot` + `capabilities`） |
 | `DELETE /api/sessions/:id?root=` | `DELETE /api/sessions/:id` |
 
-真正省事的是同一数据源被合流：live 心跳、chat 会话、任务表、会话扫描四套列表变成一张表。只统一了路径、语义没跟上的（例如把 `options` 塞进 home 的原始配置）不做，宁可让 profile 携带解析结果。
+真正省事的是同一数据源被合流：live 心跳、chat 会话、任务表、会话扫描四套列表变成一张表。合流之后前端就只能读这一张表：侧栏曾经另拉 `state=live` 当存活清单，而它的语义是「本进程装配过」，别的进程开着但本进程没装配的会话就不在其中。只统一了路径、语义没跟上的（例如把 `options` 塞进 home 的原始配置）不做，宁可让 profile 携带解析结果。
 
 ### 3.3 事件与并发语义
 

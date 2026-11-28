@@ -34,6 +34,8 @@ const row = (over: Partial<SessionRow>): SessionRow => ({
   size: 2048,
   format: 'pi',
   detailsPending: false,
+  runtimes: [],
+  model: null,
   ...over,
 })
 
@@ -123,9 +125,18 @@ describe('groupSessions', () => {
     const today = row({ id: 'new', projectKey: '/p1', projectName: 'p1', modified: Date.now() })
     const days = new Set([dayKey(Date.now())])
     expect(groupSessions([yesterday, today], '', days).map((g) => g.sessions.map((s) => s.id))).toEqual([['new']])
-    const alive = new Set([yesterday.path])
-    expect(groupSessions([yesterday, today], '', days, alive).map((g) => g.sessions.map((s) => s.id))).toEqual([['new', 'old']])
-    expect(groupSessions([yesterday, today], '不存在', days, alive)).toEqual([])
+    // 活着 = 实体上有任一运行态，不另拉清单。
+    const aliveYesterday = row({
+      ...yesterday,
+      runtimes: [{ origin: 'process', status: 'idle', host: 'h', pid: 1, updatedAt: 1 }],
+    })
+    expect(groupSessions([aliveYesterday, today], '', days).map((g) => g.sessions.map((s) => s.id))).toEqual([['new', 'old']])
+    expect(groupSessions([aliveYesterday, today], '不存在', days)).toEqual([])
+  })
+
+  test('不选日期时不筛', () => {
+    const old = row({ id: 'old', projectKey: '/p1', projectName: 'p1', modified: 1 })
+    expect(groupSessions([old], '', new Set())).toHaveLength(1)
   })
 })
 

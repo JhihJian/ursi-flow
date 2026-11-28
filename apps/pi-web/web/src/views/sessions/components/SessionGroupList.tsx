@@ -1,8 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import type { SessionRow } from '../api'
+import type { SessionRow, SessionRuntime } from '../api'
 import { GROUP_VISIBLE, SHOW_MORE_STEP, type useGroupFold } from '../hooks/useGroupFold'
 import { formatAge, sessionMeta, sessionTitle, type SessionGroup } from '../lib/format'
-import type { LiveSessionInfo } from '../live'
 
 interface SessionGroupListProps {
   groups: readonly SessionGroup[]
@@ -13,7 +12,7 @@ interface SessionGroupListProps {
   /** 当前目录（新对话会落在它下面）：对应的组头高亮。 */
   activeGroupKey: string | null
   /** 这条会话的存活状态；心跳插件未开启时传 () => null。 */
-  liveForRow: (row: SessionRow) => LiveSessionInfo | null
+  liveForRow: (row: SessionRow) => SessionRuntime | null
   fold: ReturnType<typeof useGroupFold>
   onSelect: (row: SessionRow) => void
   /** 点组头：目录成为当前目录，不折叠；折叠由左侧的箭头负责。 */
@@ -109,7 +108,7 @@ export function SessionGroupList({
 interface SessionRowItemProps {
   row: SessionRow
   active: boolean
-  live: LiveSessionInfo | null
+  live: SessionRuntime | null
   onSelect: () => void
   onMenu: (event: ReactMouseEvent, row: SessionRow) => void
 }
@@ -141,7 +140,7 @@ function SessionRowItem({ row, active, live, onSelect, onMenu }: SessionRowItemP
         {sessionTitle(row)}
       </span>
       <span className="meta">
-        <span>{live ? live.model ?? formatAge(row.modified) : formatAge(row.modified)}</span>
+        <span>{live && row.model ? row.model : formatAge(row.modified)}</span>
         <span>{sessionMeta(row)}</span>
       </span>
     </button>

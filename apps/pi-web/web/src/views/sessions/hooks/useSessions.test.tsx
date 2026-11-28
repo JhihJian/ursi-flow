@@ -16,6 +16,7 @@ const listing = (revision: number, pendingDetails = 0): Listing => ({
   pendingDetails,
   truncated: false,
   revision,
+  heartbeatDetected: false,
 })
 
 let api: SessionsApi

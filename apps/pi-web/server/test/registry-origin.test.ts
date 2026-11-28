@@ -10,6 +10,7 @@ import {
   homeOrigin,
   listEntities,
   originOfRoot,
+  syncProcessRuntimes,
   syncRuntime,
   upsertDisk,
   type DiskRow,
@@ -96,6 +97,50 @@ test('root 正好是某个已登记 home 的 sessions/ 时归属按 home 算，�
     await homes.remove(home.id)
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('心跳先于扫描到达：占位实体带上路径与 home 归属，扫到后仍留在该 home 的清单里', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-origin-home-'))
+  writeFileSync(join(dir, 'settings.json'), '{}')
+  mkdirSync(join(dir, 'sessions'), { recursive: true })
+  const home = await homes.add({ mode: 'adopt', path: dir, name: '心跳先到' })
+  try {
+    const id = 'beat-before-scan'
+    const file = join(dir, 'sessions', 'proj', `${id}.jsonl`)
+    const fact = { instanceId: `process:h:1:${id}`, origin: 'process' as const, host: 'h', pid: 1, status: 'idle' as const, updatedAt: 1 }
+
+    // 心跳先到：别的进程正在用一条还没扫到的会话。
+    syncProcessRuntimes([
+      { sessionId: id, fact, hint: { sessionFile: file, cwd: '/demo/proj', model: 'prov/model-x' } },
+    ])
+    const placeholder = listEntities({ origin: homeOrigin(dir) }).find((item) => item.id === id)
+    assert.ok(placeholder, '按 home 查清单要能查到占位实体')
+    assert.equal(placeholder.state, 'discovered', '占位不是本进程在跑，状态是 discovered')
+    assert.equal(placeholder.filePath, file)
+    assert.deepEqual(placeholder.model, { provider: 'prov', modelId: 'model-x', thinkingLevel: '' })
+
+    // 随后扫描到同一文件：归属与磁盘事实由扫描认领，运行态保留。
+    upsertDisk(homeOrigin(dir), { ...disk(id, 2), path: file })
+    const after = listEntities({ origin: homeOrigin(dir) }).find((item) => item.id === id)
+    assert.ok(after, '扫到后仍要留在该 home 的清单里')
+    assert.equal(after.disk?.firstMessage, '你好')
+    assert.equal(after.runtimes.filter((item) => item.origin === 'process').length, 1)
+  } finally {
+    await homes.remove(home.id)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('心跳没给路径的会话：占位实体归 external 空根，不混进任何 home 的清单', () => {
+  const fact = { instanceId: 'process:h:1:nopath', origin: 'process' as const, host: 'h', pid: 1, status: 'idle' as const, updatedAt: 1 }
+  syncProcessRuntimes([{ sessionId: 'beat-no-path', fact }])
+  const entity = listEntities({ query: 'beat-no-path' })[0]
+  assert.ok(entity)
+  assert.equal(entity.filePath, null)
+  assert.equal(entity.origin.kind, 'external')
+  assert.equal(listEntities({ origin: HOME }).some((item) => item.id === 'beat-no-path'), false)
+  // `state=live` 的语义是「本进程装配过」，不是「心跳在跳」：存活与否看实体的 runtimes。
+  assert.equal(listEntities({ state: 'live' }).some((item) => item.id === 'beat-no-path'), false)
 })
 
 test('心跳不刷 seenAt，实质变化（状态、标题）才刷', () => {

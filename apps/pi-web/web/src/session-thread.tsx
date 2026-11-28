@@ -257,7 +257,7 @@ export function SessionThread({ sessionId }: { sessionId: string | null }) {
             {sessionId === null ? (
               <>
                 <p>{cwd ? `工作目录 ${cwd}` : '在左侧点一个目录，或者点一条会话。'}</p>
-                <p className="pichat-hint">模型与思考级别在下面选，发出第一条消息才建会话。</p>
+                <p className="pichat-hint">模型与思考级别在输入框下方选择，发出第一条消息即建会话。</p>
               </>
             ) : (
               <>

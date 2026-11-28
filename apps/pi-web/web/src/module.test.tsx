@@ -16,6 +16,32 @@ import { useSessionsController } from './views/sessions/sessions-context'
 /** 近期时间：默认只看今天，行要落在今天才不被日期筛掉。 */
 const NOW = Date.now() - 60_000
 
+interface SessionEntityFixture {
+  id: string
+  state: string
+  kind: string
+  filePath: string | null
+  cwd: string
+  title: string | null
+  persistence: string
+  seenAt: number
+  origin: { kind: string; homeId: string; homePath: string }
+  disk: {
+    size: number
+    mtime: number
+    format: string
+    messageCount: number
+    firstMessage: string
+    createdAt: number
+    updatedAt: number
+    projectKey: string
+    projectName: string
+    projectDir: string
+  }
+  runtimes: Array<{ origin: 'local' | 'process'; status: 'idle' | 'running'; host: string; pid: number; updatedAt: number }>
+  model: { provider: string; modelId: string; thinkingLevel: string } | null
+}
+
 const HOME = {
   id: 'home-1',
   name: '默认',
@@ -33,7 +59,7 @@ const HOME = {
 }
 
 /** 侧栏里的一条会话：有 id、有文件、有 cwd。 */
-const SESSION = {
+const SESSION: SessionEntityFixture = {
   id: 'sess-1',
   state: 'discovered',
   kind: 'chat',
@@ -56,6 +82,7 @@ const SESSION = {
     projectDir: '/tmp/proj',
   },
   runtimes: [],
+  model: null,
 }
 
 /** jsdom 没有 EventSource：给一个只够 ChatProvider 挂回调的桩。 */
@@ -76,6 +103,8 @@ let esOpened: string[] = []
 let esFrames: string[] = []
 /** 续聊成功过的会话 id：此后 state=live 的清单里有它。 */
 let assembled: string[] = []
+/** 磁盘清单默认只有 SESSION；需要别的清单的用例在渲染前替换它。 */
+let diskSessions: typeof SESSION[] = []
 
 let posts: Array<{ path: string; body: Record<string, unknown> }> = []
 
@@ -94,6 +123,7 @@ beforeEach(() => {
   esOpened = []
   esFrames = []
   assembled = []
+  diskSessions = [SESSION]
   localStorage.clear()
   ;(globalThis as { EventSource?: unknown }).EventSource = EventSourceStub
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -146,7 +176,7 @@ beforeEach(() => {
       return respond({
         epoch: 'e',
         revision: 1,
-        sessions: live ? assembled : [SESSION],
+        sessions: live ? assembled : diskSessions,
         pendingDetails: 0,
         truncated: false,
         heartbeatDetected: false,
@@ -170,7 +200,7 @@ beforeEach(() => {
 })
 
 /** ChatProvider 眼里的会话运行时：实体投影。 */
-function chatOf(entity: Omit<typeof SESSION, 'filePath' | 'title'> & { filePath: string | null; title: string | null }, state: string) {
+function chatOf(entity: SessionEntityFixture, state: string) {
   return {
     sessionId: entity.id,
     home: HOME.path,
@@ -270,6 +300,41 @@ describe('Pi Web 模块', () => {
     expect(foot?.textContent).toContain('配置')
     // 三段切换不再存在。
     expect(container.querySelector('[role="tablist"]')).toBeNull()
+  })
+
+  test('会话列表默认不按日期筛：几天前的会话直接可见，活着的会话有绿点', async () => {
+    const lastWeek = Date.now() - 7 * 24 * 3600_000
+    diskSessions = [
+      SESSION,
+      {
+        ...SESSION,
+        id: 'sess-alive',
+        filePath: '/tmp/pi-home/sessions/sess-alive.jsonl',
+        title: '别的进程开着',
+        disk: { ...SESSION.disk, updatedAt: lastWeek, createdAt: lastWeek, projectKey: '/tmp/other', projectName: 'other', projectDir: '/tmp/other' },
+        runtimes: [{ origin: 'process', status: 'idle', host: 'h', pid: 7, updatedAt: lastWeek }],
+      },
+    ]
+    await act(async () => root.render(<Harness />))
+    // 两条会话都是一周前的，组能出来就说明默认没按「今天」筛。
+    await waitFor(() => container.querySelectorAll('.session-group').length === 2)
+    expect(container.querySelector('.session-list')?.textContent).not.toContain('没有会话')
+    const items = await (async () => {
+      // 两组各展开一次，收齐两行。
+      await expandAndPick()
+      const secondGroup = [...container.querySelectorAll('.session-group-caret')].find(
+        (caret) => caret.closest('section, .session-group')?.querySelector('.session-item') === null,
+      ) as HTMLElement | undefined
+      if (secondGroup) {
+        await act(async () => secondGroup.click())
+        await settle()
+      }
+      return [...container.querySelectorAll('.session-item')]
+    })()
+    expect(items).toHaveLength(2)
+    const alive = items.find((item) => item.textContent?.includes('别的进程开着'))
+    expect(alive?.querySelector('.session-live-dot'), alive?.className).not.toBeNull()
+    expect(items.find((item) => item.textContent?.includes('修一个 bug'))?.querySelector('.session-live-dot')).toBeNull()
   })
 
   test('工作区默认是空会话页，点配置进配置页，返回回到空会话页', async () => {

@@ -120,7 +120,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   return (
     <>
       {optionsError ? <div className="pichat-banner is-error">{optionsError}</div> : null}
-      <div className="pichat-composer">
+      {/* 空会话态还没有对话可看，选择器是这一页唯一要操作的东西，给它正常控件的模样。 */}
+      <div className={`pichat-composer${sessionId === null ? ' is-draft' : ''}`}>
         <textarea
           ref={inputRef}
           className="pichat-textarea"

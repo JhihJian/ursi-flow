@@ -10,14 +10,15 @@ import {
 } from 'react'
 import {
   createSessionsApi,
+  NO_ROWS,
   type Prefs,
   type ServerConfig,
   type SessionsApi,
   type SessionRow,
+  type SessionRuntime,
 } from './api'
 import { useSessions } from './hooks/useSessions'
-import { indexLiveByFile, type LiveSessionFeed, type LiveSessionInfo, type LiveSessionSource } from './live'
-import { todayKey } from './lib/format'
+import { indexRuntimesByFile } from './live'
 
 /**
  * 模块共享状态：根目录、搜索词、关注的项目与服务配置。当前页面在 PiNav，不在这里。
@@ -46,11 +47,6 @@ export interface SessionsControllerOptions {
   onNotice?: (notice: Notice) => void
   /** 某条会话被删除后通知宿主：页面正指着它时要退回别处。 */
   onDeleted?: (sessionId: string) => void
-  /**
-   * 会话运行态来源，由宿主注入（会话模块不采集心跳）。
-   * 不注入时模块按纯磁盘列表工作，行为与之前完全一致。
-   */
-  liveSessions?: LiveSessionSource
 }
 
 export interface SessionsController {
@@ -65,7 +61,8 @@ export interface SessionsController {
   picking: boolean
   setPicking: (picking: boolean) => void
   /**
-   * 按日筛选选中的日历日（`YYYY-MM-DD`），空集表示不筛。默认只看今天。
+   * 按日筛选选中的日历日（`YYYY-MM-DD`），空集表示不筛。默认不筛：
+   * 几天没打开时「只看今天」给出的是空列表，像会话丢了。
    * 放在共享状态里：跨模块跳转要往里加日期，换根目录要重置，侧栏折叠不能丢。
    */
   selectedDays: ReadonlySet<string>
@@ -81,14 +78,10 @@ export interface SessionsController {
   loading: boolean
   error: string | null
   reload: () => void
-  /** 运行态（未注入来源时为空）。 */
-  live: LiveSessionInfo[]
-  liveByPath: Map<string, LiveSessionInfo[]>
-  liveError: string | null
-  /** 心跳插件已检测到：运行态功能（绿点、运行中列表）总开关。 */
-  liveEnabled: boolean
-  /** 存活会话（心跳在跳，含运行中与空闲）所在的会话文件路径。 */
-  alivePaths: ReadonlySet<string>
+  /** 运行态按会话文件路径索引，随清单一起到达。 */
+  runtimeByPath: Map<string, SessionRuntime[]>
+  /** 心跳插件已检测到：没装时不会有其它进程的运行态，侧栏提示去装。 */
+  heartbeatDetected: boolean
 }
 
 /** 记住的根目录只在本模块的键下，宿主注入 storageKey 后互不干扰。 */
@@ -136,11 +129,7 @@ export function SessionsProvider({
   const [picking, setPicking] = useState(false)
   const [pinnedProjects, setPinnedProjects] = useState<string[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [selectedDays, setSelectedDaysState] = useState<ReadonlySet<string>>(() => new Set([todayKey()]))
-  const [live, setLive] = useState<LiveSessionInfo[]>([])
-  const [liveError, setLiveError] = useState<string | null>(null)
-  /** 心跳插件是否检测到：未检测到时运行态功能整体关闭（不显示绿点）。 */
-  const [liveEnabled, setLiveEnabled] = useState(false)
+  const [selectedDays, setSelectedDaysState] = useState<ReadonlySet<string>>(() => new Set())
 
   const notify = useCallback(
     (next: Notice) => {
@@ -171,39 +160,9 @@ export function SessionsProvider({
 
   const { listing, loading, error, reload } = useSessions(root, api)
 
-  // 运行态：来源由宿主注入，5 秒一次；心跳插件未检测到时整段不跑（功能门控），
-  // 安装插件后下个轮询周期自动开启。失败只降级成一行小字，不影响磁盘列表。
-  const liveSource = options.liveSessions
-  useEffect(() => {
-    if (!liveSource) return
-    let alive = true
-    const load = () => {
-      void liveSource
-        .fetch()
-        .then((feed: LiveSessionFeed) => {
-          if (!alive) return
-          setLive(feed.heartbeatDetected ? feed.sessions : [])
-          setLiveEnabled(feed.heartbeatDetected)
-          setLiveError(null)
-        })
-        .catch((failure: unknown) => {
-          if (alive) setLiveError(errorText(failure))
-        })
-    }
-    load()
-    const timer = setInterval(load, 5_000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [liveSource])
-
-  const liveByPath = useMemo(
-    () => indexLiveByFile({ sessions: live, stale: 0, warnings: [], heartbeatDetected: liveEnabled, now: Date.now() }),
-    [live, liveEnabled],
-  )
-  // 存活的会话豁免日期筛选：空闲挂着的会话不写盘，活动时间停在开它那天，
-  // 按「今天」筛会让昨晚开着今天还活着的会话从列表里消失。
+  // 运行态就在清单的每条实体上：本进程装配的与其它进程心跳合流后由服务端挂好，
+  // 心跳有变化集合版本号就变，15 秒轮询自然跟上。不另拉接口，避免两份数据对不齐。
+  const runtimeByPath = useMemo(() => indexRuntimesByFile(listing?.sessions ?? NO_ROWS), [listing])
   const setSelectedDays = useCallback(
     (update: ReadonlySet<string> | ((current: ReadonlySet<string>) => ReadonlySet<string>)) => {
       setSelectedDaysState((current) =>
@@ -213,15 +172,13 @@ export function SessionsProvider({
     [],
   )
 
-  const alivePaths = useMemo(() => new Set(liveByPath.keys()), [liveByPath])
-
   const setRoot = useCallback(
     (next: string) => {
       rememberRoot(storageKey, next)
       setQuery('')
       setPicking(false)
-      // 换根目录回到只看今天：别的目录里选的日期对这里没有意义。
-      setSelectedDays(new Set([todayKey()]))
+      // 换根目录清掉日期筛选：别的目录里选的日期对这里没有意义。
+      setSelectedDays(new Set())
       setRootState(next)
     },
     [storageKey],
@@ -292,11 +249,8 @@ export function SessionsProvider({
     loading,
     error,
     reload,
-    live,
-    liveByPath,
-    liveError,
-    liveEnabled,
-    alivePaths,
+    runtimeByPath,
+    heartbeatDetected: listing?.heartbeatDetected ?? false,
   }
 
   return <SessionsContext.Provider value={value}>{children}</SessionsContext.Provider>

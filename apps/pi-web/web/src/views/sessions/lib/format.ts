@@ -56,6 +56,11 @@ export function formatWhen(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+/** 会话是否活着：有任一运行态（本进程装配或其它进程心跳）就算。 */
+export function isAlive(row: SessionRow): boolean {
+  return row.runtimes.length > 0
+}
+
 /**
  * 默认折叠哪些组：只有包含选中会话的组展开，其余收起。
  * 会话可能有上千条，一次全展开会让侧栏长到无法扫读；而「展开第一组」在数据上
@@ -160,18 +165,17 @@ export function matchesDays(row: SessionRow, days: ReadonlySet<string>): boolean
  * 按项目分组：组按组内最新活动倒序，组内会话同样倒序，命不中搜索的会话和
  * 因此空掉的组都不出现。
  *
- * `alivePaths` 里的会话豁免日期筛选：空闲挂着的会话不写盘，活动时间停在开它那天，
+ * 活着的会话豁免日期筛选：空闲挂着的会话不写盘，活动时间停在开它那天，
  * 但它今天还活着，按日期筛掉会让人以为它已经没了。搜索仍然照常生效。
  */
 export function groupSessions(
   rows: readonly SessionRow[],
   query = '',
   days: ReadonlySet<string> = new Set(),
-  alivePaths: ReadonlySet<string> = new Set(),
 ): SessionGroup[] {
   const groups = new Map<string, SessionGroup>()
   for (const row of rows) {
-    if (!alivePaths.has(row.path) && !matchesDays(row, days)) continue
+    if (!isAlive(row) && !matchesDays(row, days)) continue
     if (!matchesQuery(row, query)) continue
     const group = groups.get(row.projectKey)
     if (group) {

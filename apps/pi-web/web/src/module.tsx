@@ -9,7 +9,6 @@ import { PiStatus } from './pi-status'
 import { ManagerProvider } from './views/config/module'
 import { SessionsProvider, useSessionsController } from './views/sessions/sessions-context'
 import { ChatProvider } from './views/chat/chat-context'
-import type { LiveSessionFeed } from './views/sessions/live'
 
 /**
  * Pi Web：一个模块、一个侧栏、两种页面（会话、配置）。
@@ -23,51 +22,6 @@ export interface PiModuleOptions {
   apiBaseUrl?: string
   /** localStorage 键前缀。 */
   storageKey?: string
-}
-
-/** 运行态来源：外部进程心跳已经合流进会话实体。 */
-function createLiveFeed(base: string): () => Promise<LiveSessionFeed> {
-  return async () => {
-    const response = await fetch(`${base}/api/sessions?state=live`)
-    const payload = (await response.json()) as {
-      heartbeatDetected?: boolean
-      sessions?: Array<{
-        id: string
-        filePath: string | null
-        parentFile: string | null
-        cwd: string
-        title: string | null
-        model: { provider: string; modelId: string } | null
-        runtimes: Array<{ origin: 'local' | 'process'; host: string; pid: number; status: 'idle' | 'running'; updatedAt: number }>
-        stateSince: number
-        seenAt: number
-      }>
-    }
-    const now = Date.now()
-    return {
-      sessions: (payload.sessions ?? []).flatMap((session) =>
-        session.runtimes.map((fact) => ({
-          sessionId: session.id,
-          sessionFile: session.filePath,
-          parentSessionFile: session.parentFile,
-          cwd: session.cwd,
-          name: session.title,
-          model: session.model ? `${session.model.provider}/${session.model.modelId}` : null,
-          mode: 'chat',
-          status: fact.status,
-          host: fact.host,
-          sameHost: fact.origin === 'local' || fact.host === '',
-          pid: fact.pid,
-          startedAt: session.stateSince,
-          updatedAt: Math.max(fact.updatedAt, session.seenAt, now - 60_000),
-        })),
-      ),
-      stale: 0,
-      warnings: [],
-      heartbeatDetected: payload.heartbeatDetected === true,
-      now,
-    }
-  }
 }
 
 /**
@@ -129,7 +83,6 @@ function SessionsLayer({
       options={{
         apiBaseUrl,
         storageKey: `${storageKey}.sessions`,
-        liveSessions: { fetch: createLiveFeed(apiBaseUrl) },
         onDeleted: (sessionId) => {
           if (page.kind === 'session' && page.id === sessionId) toDraft()
         },

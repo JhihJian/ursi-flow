@@ -7,6 +7,18 @@
 
 export type SessionFormat = 'pi' | 'legacy' | 'unknown'
 
+/**
+ * 一条会话的运行态。本进程装配的与其它进程心跳合流后挂在实体上，
+ * 是「这条会话现在是否活着」的唯一来源。
+ */
+export interface SessionRuntime {
+  origin: 'local' | 'process'
+  status: 'idle' | 'running'
+  host: string
+  pid: number
+  updatedAt: number
+}
+
 export interface SessionRow {
   id: string
   path: string
@@ -23,7 +35,14 @@ export interface SessionRow {
   format: SessionFormat
   /** 只有头部元信息，消息数与首条消息还在后台补 */
   detailsPending: boolean
+  /** 本进程装配与其它进程心跳合流后的运行态；空数组表示没人在用它。 */
+  runtimes: SessionRuntime[]
+  /** 最近一次运行用的模型（会话级事实），侧栏存活会话旁显示。 */
+  model: string | null
 }
+
+/** 还没有清单时的空列表：稳定的引用，下游 useMemo 不会因为空数组每次新建而重算。 */
+export const NO_ROWS: SessionRow[] = []
 
 export interface Listing {
   root: string
@@ -32,6 +51,8 @@ export interface Listing {
   truncated: boolean
   /** 集合版本号，下次轮询带上它做未变更快路径。 */
   revision: number
+  /** 心跳插件是否装在任一 home：没装时任何会话都不会有 `origin: 'process'` 的运行态。 */
+  heartbeatDetected: boolean
 }
 
 export interface SessionDetail extends SessionRow {
@@ -59,6 +80,7 @@ interface SessionEntity {
   cwd: string
   title: string | null
   persistence: 'memory' | 'file'
+  model: { provider: string; modelId: string; thinkingLevel: string } | null
   /** 实体被注册表记录的时刻；还没落盘的新会话只有这个时间。 */
   seenAt: number
   origin: { kind: 'home'; homeId: string; homePath: string } | { kind: 'external'; rootPath: string }
@@ -74,7 +96,7 @@ interface SessionEntity {
     projectName: string
     projectDir: string
   } | null
-  runtimes: Array<{ origin: 'local' | 'process'; status: 'idle' | 'running'; host: string; pid: number; updatedAt: number }>
+  runtimes: SessionRuntime[]
 }
 
 /** 实体投影成侧栏要的行：界面不需要知道实体内部结构。 */
@@ -96,6 +118,8 @@ function toRow(entity: SessionEntity): SessionRow {
     size: entity.disk?.size ?? 0,
     format: entity.disk?.format ?? 'unknown',
     detailsPending: false,
+    runtimes: entity.runtimes,
+    model: entity.model ? `${entity.model.provider}/${entity.model.modelId}` : null,
   }
 }
 
@@ -181,6 +205,7 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
         sessions?: SessionEntity[]
         pendingDetails?: number
         truncated?: boolean
+        heartbeatDetected?: boolean
       }>(withRoot('/api/sessions', root, since === undefined ? {} : { since: String(since) }))
       if (payload.notModified) return null
       return {
@@ -189,6 +214,7 @@ export function createSessionsApi(apiBaseUrl = '/api'): SessionsApi {
         pendingDetails: payload.pendingDetails ?? 0,
         truncated: payload.truncated ?? false,
         revision: payload.revision ?? 0,
+        heartbeatDetected: payload.heartbeatDetected === true,
       }
     },
     fetchDetail: async (root, id) => {

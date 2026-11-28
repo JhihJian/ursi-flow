@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import type { Listing, SessionRow } from '../api'
-import { primaryLive } from '../live'
+import { NO_ROWS, type Listing, type SessionRow } from '../api'
+import { primaryRuntime } from '../live'
 import {
   dailyBuckets,
   groupSessions,
@@ -17,8 +17,6 @@ import { ContextMenu } from '@ursi/sidebar'
 import { RefreshIcon, SearchIcon } from './Icons'
 import { SessionGroupList } from './SessionGroupList'
 
-/** 列表还没到时用的空数组：保持引用稳定，免得每次渲染都重算条形。 */
-const NO_ROWS: SessionRow[] = []
 /** 只选一天时把它写进脚注，比「筛选 1 天」更有用。 */
 const ONE_DAY = 1
 
@@ -75,10 +73,8 @@ export function SessionsPanel({
     setPicking,
     setRoot,
     config,
-    liveByPath,
-    alivePaths,
-    liveError,
-    liveEnabled,
+    runtimeByPath,
+    heartbeatDetected,
   } = useSessionsController()
   // 搜索默认收起成图标，点开才显示输入框。纯瞬时状态，收起时连搜索词一起清空。
   const [searchOpen, setSearchOpen] = useState(false)
@@ -86,10 +82,7 @@ export function SessionsPanel({
   // 条形按整份列表统计，不跟着搜索与筛选变，否则选一天后其它天就消失了。
   const allRows = listing?.sessions ?? NO_ROWS
   const buckets = useMemo(() => dailyBuckets(allRows), [allRows])
-  const groups = useMemo(
-    () => groupSessions(allRows, query, selectedDays, alivePaths),
-    [allRows, query, selectedDays, alivePaths],
-  )
+  const groups = useMemo(() => groupSessions(allRows, query, selectedDays), [allRows, query, selectedDays])
   const { pinned, rest } = useMemo(
     () => splitPinnedGroups(groups, pinnedProjects),
     [groups, pinnedProjects],
@@ -106,20 +99,15 @@ export function SessionsPanel({
     menuContainer,
   })
 
-  const liveForRow = (row: SessionRow) => (liveEnabled ? primaryLive(liveByPath.get(row.path)) : null)
+  const liveForRow = (row: SessionRow) => primaryRuntime(runtimeByPath.get(row.path))
 
   // 运行态不单独成列表：存活会话在项目分组里用绿点标出，与磁盘列表是同一份清单。
   const runningCount = useMemo(
     () =>
-      liveEnabled
-        ? new Set(
-            [...liveByPath.values()]
-              .flat()
-              .filter((item) => item.status === 'running')
-              .map((item) => item.sessionId),
-          ).size
-        : 0,
-    [liveEnabled, liveByPath],
+      new Set(
+        allRows.filter((row) => row.runtimes.some((item) => item.status === 'running')).map((row) => row.id),
+      ).size,
+    [allRows],
   )
 
   const daySummary = useMemo(() => {
@@ -220,13 +208,7 @@ export function SessionsPanel({
           <div className="session-list">
             {emptyText ? <p className={`sidebar-note${error ? ' error' : ''}`}>{emptyText}</p> : null}
 
-            {liveEnabled ? (
-              liveError ? (
-                <p className="sidebar-note" title={liveError}>
-                  运行态读取失败，只显示历史会话
-                </p>
-              ) : null
-            ) : (
+            {heartbeatDetected ? null : (
               <p
                 className="sidebar-note is-hint"
                 title="设置 → 插件 → 内置扩展，一键安装后这里会显示运行中的会话"

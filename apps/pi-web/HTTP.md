@@ -22,7 +22,7 @@
 | `GET /api/config/plugins/builtin` | required | 内置扩展清单（是否已安装、源文件是否可用、`heartbeatDetected` 总开关） |
 | `POST /api/config/plugins/builtin/install` | required | 一键安装内置扩展到 home 的 extensions/（已安装则覆盖；`id` 必填） |
 | `POST /api/config/plugins/builtin/uninstall` | required | 卸载内置扩展（清掃 .ts/.js/index 四种形态；幂等） |
-| `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径；响应带 `heartbeatDetected` |
+| `GET /api/sessions` | none | 会话集合；`home=` 或 `root=` 定作用域，`since=` 做未变更快路径；每条实体带合流后的 `runtimes`（本进程 + 其它进程心跳），响应带 `heartbeatDetected`。`state=live` 只筛「本进程装配过」的实体，存活与否看 `runtimes` |
 | `POST /api/sessions` | none | 建会话或起任务（`kind: chat \| task`）。新建传 `home` 与 `cwd`；续聊只传 `sessionId`，home 按实体归属取、会话文件取实体的 `filePath`，不接受 `sessionFile` |
 | `GET /api/sessions/config` | none | 会话视图初始值 |
 | `GET /api/sessions/browse?path=` | none | 目录列举 |

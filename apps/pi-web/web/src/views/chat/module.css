@@ -154,6 +154,14 @@
   color: var(--gray-900);
 }
 
+/* 空会话页：选择器是唯一要操作的东西，按正常控件显示，建完对话回到低调的内联样式。 */
+.pichat-composer.is-draft .pichat-select.is-inline {
+  max-width: 280px;
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+  font-size: 12px;
+}
+
 .pichat-note {
   margin: 0;
   overflow: hidden;

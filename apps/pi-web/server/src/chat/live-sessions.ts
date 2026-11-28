@@ -112,6 +112,7 @@ export function syncLiveSessions(homePaths: string[]): LiveSessionsListing {
   syncProcessRuntimes(
     listing.sessions.map((session) => ({
       sessionId: session.sessionId,
+      hint: { sessionFile: session.sessionFile, cwd: session.cwd, model: session.model },
       fact: {
         instanceId: `process:${session.host}:${session.pid}:${session.sessionId}`,
         origin: 'process' as const,
