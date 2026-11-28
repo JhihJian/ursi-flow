@@ -63,7 +63,7 @@ export function PiSidebar({ collapsed, collapse, expand }: ModuleSidebarProps): 
             + 新对话
           </button>
           <button type="button" className="rail-toggle" title="配置" aria-label="配置" onClick={toConfig}>
-            ⚙ 配置
+            ⚙
           </button>
         </div>
       </div>

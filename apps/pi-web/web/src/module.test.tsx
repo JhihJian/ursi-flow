@@ -297,7 +297,8 @@ describe('Pi Web 模块', () => {
     expect(container.querySelector('.session-list')).not.toBeNull()
     const foot = container.querySelector('.pi-sidebar-foot')
     expect(foot?.textContent).toContain('新对话')
-    expect(foot?.textContent).toContain('配置')
+    // 配置按钮只显示齿轮图标，无障碍语义在 aria-label 上。
+    expect(foot?.querySelector('[aria-label="配置"]')).not.toBeNull()
     // 三段切换不再存在。
     expect(container.querySelector('[role="tablist"]')).toBeNull()
   })
@@ -342,7 +343,7 @@ describe('Pi Web 模块', () => {
     await waitFor(() => container.querySelector('.pichat-bar-title') !== null)
     expect(container.querySelector('.pichat-bar-title')?.textContent).toBe('新对话')
 
-    const configButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('配置'))
+    const configButton = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '配置')
     expect(configButton).toBeDefined()
     await act(async () => configButton!.click())
     await waitFor(() => container.querySelector('.pi-config-page') !== null)
