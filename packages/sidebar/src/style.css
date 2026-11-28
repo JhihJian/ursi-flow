@@ -13,7 +13,26 @@
  * 本样式要在各模块样式之前加载，模块自己刻意的底色（如拖拽态）才能盖过这里的 hover。
  */
 .sb-row {
+  /* 左内边距多 2px：竖线由 box-shadow 画，不占宽度，补回来与原来的 border-left 版对齐。 */
+  padding: 6px 4px 6px 6px;
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   box-shadow: inset 2px 0 0 transparent;
+  /* 行内布局：leading / label / meta 横向排，meta 靠右截断。 */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.sb-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 .sb-row:hover {
@@ -25,17 +44,37 @@
   background-color: var(--ws-line, #e5e5e5);
 }
 
+.sb-row-leading {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
 .sb-row-label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.sb-row--stack .sb-row-label {
+  flex: none;
+}
+
 .sb-row-meta {
   flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--ws-muted, #999999);
+}
+
+.sb-row--stack .sb-row-meta {
+  overflow: visible;
+  white-space: normal;
 }
 
 /* ── 右键菜单 ───────────────────────────────────────────── */

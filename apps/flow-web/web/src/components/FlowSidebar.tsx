@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DirBrowser } from '@ursi/directory-picker'
+import { SidebarRow } from '@ursi/sidebar'
 import { SidebarFrame, type ModuleSidebarProps } from '@ursi/workspace-shell'
 import { useFlowHost } from '../host'
 import { sidebarItems } from '../lib/flow'
@@ -137,18 +138,20 @@ export function FlowSidebar({ collapsed, collapse, expand }: ModuleSidebarProps)
             <ul className="flow-list">
               {flows.map((flow) => (
                 <li key={flow.id}>
-                  <button
-                    type="button"
-                    className={`sb-row flow-item${flow.id === flowId ? ' is-active' : ''}${flow.valid ? '' : ' is-broken'}`}
-                    aria-current={flow.id === flowId ? 'true' : undefined}
+                  <SidebarRow
+                    className={flow.valid ? 'flow-item' : 'flow-item is-broken'}
+                    layout="stack"
+                    active={flow.id === flowId}
+                    ariaCurrent={flow.id === flowId ? 'true' : undefined}
                     onClick={() => void selectFlow(flow.id)}
-                  >
-                    <span className="flow-item-name">{flow.name}</span>
-                    <span className="flow-item-meta">
-                      {flow.id} · {flow.nodeCount} 节点 · {flow.variableCount} 变量
-                      {flow.valid ? '' : ' · 无法解析'}
-                    </span>
-                  </button>
+                    label={flow.name}
+                    meta={
+                      <>
+                        {flow.id} · {flow.nodeCount} 节点 · {flow.variableCount} 变量
+                        {flow.valid ? '' : ' · 无法解析'}
+                      </>
+                    }
+                  />
                 </li>
               ))}
             </ul>

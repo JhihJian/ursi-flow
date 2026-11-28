@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { SidebarRow } from '@ursi/sidebar'
 import type { SessionRow, SessionRuntime } from '../api'
 import { GROUP_VISIBLE, SHOW_MORE_STEP, type useGroupFold } from '../hooks/useGroupFold'
 import { formatAge, sessionMeta, sessionTitle, type SessionGroup } from '../lib/format'
@@ -119,30 +120,31 @@ interface SessionRowItemProps {
  */
 function SessionRowItem({ row, active, live, onSelect, onMenu }: SessionRowItemProps) {
   const running = live?.status === 'running'
-  const classes = ['sb-row', 'session-item']
-  if (active) classes.push('is-active')
-  if (live) classes.push('is-live')
   return (
-    <button
-      type="button"
-      className={classes.join(' ')}
+    <SidebarRow
+      className={live ? 'session-item is-live' : 'session-item'}
+      layout="stack"
+      active={active}
       title={`${sessionTitle(row)}\n${row.cwd || row.path}`}
       onClick={onSelect}
       onContextMenu={(event) => onMenu(event, row)}
-    >
-      <span className="name">
-        {live ? (
-          <span
-            className={`session-live-dot is-${live.status}`}
-            aria-label={running ? '运行中' : '空闲'}
-          />
-        ) : null}
-        {sessionTitle(row)}
-      </span>
-      <span className="meta">
-        <span>{live && row.model ? row.model : formatAge(row.modified)}</span>
-        <span>{sessionMeta(row)}</span>
-      </span>
-    </button>
+      label={
+        <>
+          {live ? (
+            <span
+              className={`session-live-dot is-${live.status}`}
+              aria-label={running ? '运行中' : '空闲'}
+            />
+          ) : null}
+          {sessionTitle(row)}
+        </>
+      }
+      meta={
+        <>
+          <span>{live && row.model ? row.model : formatAge(row.modified)}</span>
+          <span>{sessionMeta(row)}</span>
+        </>
+      }
+    />
   )
 }

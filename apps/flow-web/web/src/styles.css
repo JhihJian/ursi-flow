@@ -133,37 +133,28 @@
 }
 
 /* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
+/* 行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写 flow 自己的差异。 */
 .flow-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
   padding: var(--flow-space-sm) var(--flow-space-sm) var(--flow-space-sm) calc(var(--flow-space-sm) + 2px);
-  border: none;
-  background-color: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
 }
 
-.flow-item-name {
+.flow-item .sb-row-label {
   font-family: var(--flow-serif);
   font-size: 14px;
 }
 
-.flow-item-meta {
+.flow-item .sb-row-meta {
   font-family: var(--flow-mono);
   font-size: 10.5px;
   color: var(--flow-faint);
 }
 
-.flow-item.is-broken .flow-item-name {
+.flow-item.is-broken .sb-row-label {
   color: var(--flow-muted);
   text-decoration: line-through;
 }
 
-.flow-item.is-broken .flow-item-meta {
+.flow-item.is-broken .sb-row-meta {
   color: var(--flow-ink);
 }
 

@@ -5,7 +5,7 @@ import { DirBrowser } from '@ursi/directory-picker'
 import type { DeviceOption } from '@ursi/directory-picker'
 import type { WorkspaceInfo } from './api.ts'
 import { useTreeStore } from './tree-store.ts'
-import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
+import { ContextMenu, SidebarRow, type MenuItem, type MenuState } from '@ursi/sidebar'
 import { copyText } from './lib/clipboard.ts'
 import { useMenuContainer } from './menu-container.ts'
 
@@ -150,32 +150,35 @@ function WorkspaceItem({ workspace, active, openMenu, onRemove }: WorkspaceItemP
   }
 
   return (
-    <li
-      data-wsx-ws-id={workspace.id}
-      className={'sb-row wsx-wslist-item' + (active ? ' is-active' : '') + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
-      title={itemSummary(workspace) + (workspace.error ? `（${workspace.error}）` : '')}
-      onClick={() => selectWorkspace(workspace.id)}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        openMenu(event.clientX, event.clientY, menuItems)
-      }}
-    >
-      <span className="wsx-wslist-rowhead">
-        <Folder className="wsx-wslist-icon" size={12} aria-hidden="true" />
-        <span className="wsx-wslist-name">{workspace.label}</span>
-        <span className="wsx-wslist-rowtail">
-          {flash ? <span className="wsx-wslist-flash">{flash}</span> : null}
-          {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
-        </span>
-      </span>
-      <span
-        className={'wsx-wslist-path' + (active ? ' wsx-wslist-path--copyable' : '')}
-        title={active ? `${workspace.root}（点击复制）` : workspace.root}
-        onClick={copyRoot}
+    <li data-wsx-ws-id={workspace.id}>
+      <SidebarRow
+        className={'wsx-wslist-item' + (workspace.ready ? '' : ' wsx-wslist-item--broken')}
+        layout="stack"
+        active={active}
+        title={itemSummary(workspace) + (workspace.error ? `（${workspace.error}）` : '')}
+        onClick={() => selectWorkspace(workspace.id)}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openMenu(event.clientX, event.clientY, menuItems)
+        }}
+        leading={<Folder className="wsx-wslist-icon" size={12} aria-hidden="true" />}
+        label={workspace.label}
+        trailing={
+          <span className="wsx-wslist-rowtail">
+            {flash ? <span className="wsx-wslist-flash">{flash}</span> : null}
+            {!workspace.ready ? <span className="wsx-wslist-broken" title={workspace.error}>!</span> : null}
+          </span>
+        }
       >
-        {workspace.root}
-      </span>
+        <span
+          className={'wsx-wslist-path' + (active ? ' wsx-wslist-path--copyable' : '')}
+          title={active ? `${workspace.root}（点击复制）` : workspace.root}
+          onClick={copyRoot}
+        >
+          {workspace.root}
+        </span>
+      </SidebarRow>
     </li>
   )
 }

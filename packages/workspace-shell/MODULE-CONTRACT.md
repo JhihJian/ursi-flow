@@ -83,7 +83,7 @@ export function createExecutorModule(): WorkspaceModule {
 - 禁止写 `html`、`body`、`:root`、`#root`、全局 `*` 重置。独立入口需要时另建 `standalone.css`，只在独立入口导入。
 - 避免 `position: fixed`；需要浮层时用 `position: absolute` 挂在模块容器内。右键菜单与点击弹层直接用 `@ursi/sidebar` 的 `ContextMenu`，传一个不滚动且 `position: relative` 的容器，不要自己写一份。
 - 模态对话框（带遮罩、`aria-modal`）是唯一的例外：它的意图就是盖住整个视口、打断宿主的所有操作，遮罩必须 `position: fixed; inset: 0` 并 portal 到 `document.body`。类名要带模块前缀，不与宿主或其它模块撞名。
-- 视觉沿用外壳的灰度、衬线标题 + 等宽数据；不要引入彩色主题。侧边栏列表行加 `@ursi/sidebar` 的 `sb-row` 类，竖线与 hover 灰底由它提供。
+- 视觉沿用外壳的灰度、衬线标题 + 等宽数据；不要引入彩色主题。侧边栏列表行用 `@ursi/sidebar` 的 `SidebarRow`，竖线、hover 灰底、截断由它提供；业务状态拼进 `className`，不自己写行的盒模型。
 
 ## 7. 副作用：可关闭、可注入
 

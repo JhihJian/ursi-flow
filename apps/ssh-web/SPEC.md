@@ -75,7 +75,7 @@ ssh-web 为内网主机提供独立的浏览器 SSH 终端，也是 ursi-flow �
 - ssh-web 以 `@ursi/ssh-web/module` 接入 ursi-flow 工作区外壳：侧边栏是连接树与会话入口，工作区是标签栏加终端；`createSshModule({ apiBaseUrl })` 工厂创建独立的 store 实例，不设模块级单例；独立入口与嵌入共用同一套组件。
 - 工厂返回 `WorkspaceModule & { commands: SshCommands }`，与 fs-web 的 `FsCommands` 同一模式，由组合根注入给需要的模块。`commands.listDevices()` 走 `GET /connections` 返回 `{ device, label }[]`，`device` 与 `label` 都是连接 `name`，按名称排序；`commands.openTerminal({ device, cwd })` 按设备名找连接（找不到抛 `ssh-web 里没有名为 <device> 的连接`），store 里还没有连接列表时先 `loadConnections()`，再对默认会话（null）调 `openTerminal(connection.id, null, cwd)`。两条命令都直接走工厂闭包里的 controller（api + store），不依赖 Provider 是否已挂载：ssh 未在当前 profile 展开时，跨模块调用依然可用，打开的标签在该模块下次展开时出现。
 - 嵌入时宿主 vite 把 `/api/ssh-web/*` 代理到 8091 并重写为 `/api/*`（HTTP 与 WS 同规则），服务端路由保持 `/api` 不变；模块所有请求（含终端 WS）都走注入的前缀。
-- 样式全部作用域在 `.ssh-embed` 容器内，类名带 `ssh-` 前缀；列表行用 `@ursi/sidebar` 的 `sb-row`，右键菜单用它的 `ContextMenu`，以侧栏容器坐标系定位，不越栏、不吃宿主样式；亮暗主题偏好存于带模块前缀的 localStorage 键（`ssh.terminal-light`）。
+- 样式全部作用域在 `.ssh-embed` 容器内，类名带 `ssh-` 前缀；列表行用 `@ursi/sidebar` 的 `SidebarRow`，右键菜单用它的 `ContextMenu`，以侧栏容器坐标系定位，不越栏、不吃宿主样式；亮暗主题偏好存于带模块前缀的 localStorage 键（`ssh.terminal-light`）。
 - `Ctrl/Cmd+F` 仅在指针或焦点落在 ssh 模块内时拦截，其余场景不干扰宿主快捷键。
 
 ### 服务与接口

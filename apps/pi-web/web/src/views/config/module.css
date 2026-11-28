@@ -215,10 +215,10 @@ list-style: none;
 
 /* 行的竖线与 hover/激活灰底由 @ursi/sidebar 的 .sb-row 提供；左内边距 2px 补回竖线的位置。 */
 .pi-manager-root .preset-item {
+  /* 不走 SidebarRow（四行结构 + 前置错误行），只用 .sb-row 的视觉；抵消它的默认内边距，由 .preset-main 承担。 */
   display: flex;
   align-items: stretch;
-  padding-left: 2px;
-  cursor: pointer;
+  padding: 0;
   user-select: none;
 }
 

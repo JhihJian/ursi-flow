@@ -272,10 +272,9 @@
 }
 
 /* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
+/* 行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写项目行自己的差异。 */
 .project-item {
-  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
   padding: var(--space-sm) var(--space-xs) var(--space-sm) calc(var(--space-xs) + 2px);
-  cursor: pointer;
 }
 
 .project-item.drop-ready {
@@ -291,7 +290,7 @@
   outline-offset: -1px;
 }
 
-.project-item .name {
+.project-item .sb-row-label {
   font-weight: 500;
   color: var(--gray-900);
   display: block;

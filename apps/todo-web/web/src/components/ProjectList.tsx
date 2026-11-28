@@ -5,7 +5,7 @@ import { formatTime } from '@/lib/format'
 import { basename, parse } from '@ursi/location'
 import { cx, errorMessage, readTaskDrag } from '@/lib/ui'
 import { useTodoStore } from '@/store/todo-store'
-import { ContextMenu, type MenuItem, type MenuState } from '@ursi/sidebar'
+import { ContextMenu, SidebarRow, type MenuItem, type MenuState } from '@ursi/sidebar'
 
 function projectTooltip(project: ProjectStats): string {
   return [project.name, project.description, project.path].filter(Boolean).join(' · ')
@@ -76,31 +76,27 @@ function ProjectItem({
   ]
 
   return (
-    <li
-      ref={setNodeRef}
-      data-project-id={project.id}
-      className={cx(
-        'sb-row',
-        'project-item',
-        active && 'is-active',
-        dragging && 'drop-ready',
-        isOver && 'drop-over',
-      )}
-      title={projectTooltip(project)}
-      onClick={() => {
-        void selectProject(project.id).catch((error) => alert(errorMessage(error)))
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        openMenu(event.clientX, event.clientY, menuItems)
-      }}
-    >
-      <span className="name">{project.name}</span>
-      {dirLabel ? <span className="dir">{dirLabel}</span> : null}
-      <span className="meta">
-        {open} tasks / {formatTime(project.total_time_minutes)}
-      </span>
+    <li ref={setNodeRef} data-project-id={project.id}>
+      <SidebarRow
+        className={cx('project-item', dragging && 'drop-ready', isOver && 'drop-over')}
+        layout="stack"
+        active={active}
+        title={projectTooltip(project)}
+        onClick={() => {
+          void selectProject(project.id).catch((error) => alert(errorMessage(error)))
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openMenu(event.clientX, event.clientY, menuItems)
+        }}
+        label={project.name}
+      >
+        {dirLabel ? <span className="dir">{dirLabel}</span> : null}
+        <span className="meta">
+          {open} tasks / {formatTime(project.total_time_minutes)}
+        </span>
+      </SidebarRow>
     </li>
   )
 }

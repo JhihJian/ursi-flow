@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { ContextMenu, type MenuState } from '@ursi/sidebar'
+import { ContextMenu, SidebarRow, type MenuState } from '@ursi/sidebar'
 import { TmuxInstallHint } from './TmuxInstallHint'
 import { useSshContainer, useSshController, useSshStore } from '../ssh-context'
 import type { Connection } from '../api/types'
@@ -219,25 +219,27 @@ export function ConnectionTree() {
           const selected = connection.id === activeId
           return (
             <li key={connection.id} className="ssh-tree-node">
-              <div
-                className={selected ? 'sb-row ssh-tree-row parent is-active' : 'sb-row ssh-tree-row parent'}
+              <SidebarRow
+                className="ssh-tree-row parent"
+                active={selected}
                 onClick={() => selectConnectionRow(connection.id)}
                 onContextMenu={(event) => openContextMenu(event, connection)}
                 title={connection.command}
-              >
-                <button
-                  type="button"
-                  className={expanded ? 'ssh-tree-chevron open' : 'ssh-tree-chevron'}
-                  aria-label={expanded ? '收起' : '展开'}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    toggleCollapse(connection.id)
-                  }}
-                >
-                  ▸
-                </button>
-                <span className="ssh-tree-label">{connection.name}</span>
-              </div>
+                leading={
+                  <button
+                    type="button"
+                    className={expanded ? 'ssh-tree-chevron open' : 'ssh-tree-chevron'}
+                    aria-label={expanded ? '收起' : '展开'}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggleCollapse(connection.id)
+                    }}
+                  >
+                    ▸
+                  </button>
+                }
+                label={connection.name}
+              />
               {expanded ? (
                 <ul className="ssh-tree-children">
                   {renderSessionChildren(connection, sessionsByConnection[connection.id])}
@@ -347,18 +349,21 @@ function SessionChildRow({
       ? `${attached} client${attached === 1 ? '' : 's'} attached`
       : undefined
   return (
-    <li
-      key={rowKey}
-      className={open ? 'sb-row ssh-tree-row child is-active' : 'sb-row ssh-tree-row child'}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      title={attachedNote}
-    >
-      <span className="ssh-tree-label">
-        {label}
-        {open ? ' ●' : ''}
-      </span>
-      <span className="ssh-tree-meta">{meta}</span>
+    <li key={rowKey}>
+      <SidebarRow
+        className="ssh-tree-row child"
+        active={open}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        title={attachedNote}
+        label={
+          <>
+            {label}
+            {open ? ' ●' : ''}
+          </>
+        }
+        meta={meta}
+      />
     </li>
   )
 }

@@ -836,48 +836,28 @@ button.wsx-git-sync-status {
 }
 
 /* 行的竖线与 hover/激活灰底由 @ursi/sidebar 的 .sb-row 提供。 */
+/* 两行条目：第一行图标 + 名称 + 右侧状态，第二行路径（点击复制）。
+   行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写目录行自己的差异。 */
 .wsx-wslist-item {
-  /* 两行条目：第一行图标 + 名称 + 右侧状态，第二行路径（点击复制）。 */
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 4px;
-  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
   padding: 3px 5px 3px 7px;
   border-radius: 4px;
   font-size: 12px;
   line-height: 1.4;
-  cursor: pointer;
   overflow: hidden;
-}
-
-/* 名称行整行：图标 + 名称 + 行尾状态，路径另起一行。 */
-.wsx-wslist-rowhead {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1 1 100%;
-  min-width: 0;
 }
 
 .wsx-wslist-icon {
-  flex: none;
-  color: var(--wsx-muted, var(--ws-muted, #999999));
+  color: var(--ws-muted, var(--ws-muted, #999999));
 }
 
-.wsx-wslist-item--broken .wsx-wslist-name {
-  color: var(--wsx-muted, #999999);
-  text-decoration: line-through;
-}
-
-.wsx-wslist-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.wsx-wslist-item .sb-row-label {
   font-weight: 500;
   color: var(--wsx-ink, var(--ws-ink, #1a1a1a));
+}
+
+.wsx-wslist-item--broken .sb-row-label {
+  color: var(--ws-muted, #999999);
+  text-decoration: line-through;
 }
 
 /* 名称行右侧：复制提示与未就绪感叹号。 */
@@ -885,7 +865,6 @@ button.wsx-git-sync-status {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex: none;
 }
 
 .wsx-wslist-flash {
@@ -895,7 +874,7 @@ button.wsx-git-sync-status {
 
 /* 第二行：完整路径，小字、悬停强调；仅选中态可点击复制。 */
 .wsx-wslist-path {
-  flex: 1 1 100%;
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -903,7 +882,7 @@ button.wsx-git-sync-status {
   /* 路径与名称同级字号，只靠颜色区分层级，避免出现三种字号。 */
   padding-left: 16px;
   font-size: 12px;
-  color: var(--wsx-muted, var(--ws-muted, #999999));
+  color: var(--ws-muted, var(--ws-muted, #999999));
   cursor: default;
 }
 

@@ -525,28 +525,17 @@
   box-shadow: inset 2px 0 0 var(--gray-900);
 }
 /* 行的竖线与 hover 灰底由 @ursi/sidebar 的 .sb-row 提供。 */
+/* 行的盒模型、hover、选中、截断由 @ursi/sidebar 的 .sb-row 管，这里只写会话行自己的差异。 */
 .pisess .session-item {
-  display: block;
-  width: 100%;
-  /* 左内边距多 2px：竖线由 .sb-row 用 box-shadow 画，不占宽度。 */
   padding: var(--space-xs) var(--space-xs) var(--space-xs) calc(var(--space-sm) + 2px);
-  border: 0;
-  background-color: transparent;
-  text-align: left;
-  cursor: pointer;
 }
-.pisess .session-item .name {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.pisess .session-item .sb-row-label {
   font-weight: 500;
   color: var(--gray-900);
 }
-.pisess .session-item .meta {
+.pisess .session-item .sb-row-meta {
   display: flex;
   gap: var(--space-sm);
-  font-size: 11px;
   color: var(--gray-400);
   font-variant-numeric: tabular-nums;
 }
